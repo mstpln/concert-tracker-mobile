@@ -50,6 +50,7 @@ body {
   max-width: 480px;
   margin: 0 auto;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -80,7 +81,7 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .error { color: var(--danger); font-size: 12.5px; }
 
 /* Onboarding */
-#onboarding.screen { min-height: 100vh; display: flex; align-items: center; }
+#onboarding.screen { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; }
 .onboarding-inner { padding: 32px 22px; text-align: left; width: 100%; }
 .onboarding-icon {
   width: 48px; height: 48px; margin: 0 0 14px; border-radius: 12px;
@@ -93,7 +94,7 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 #onboarding label { display: block; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); margin-bottom: 5px; }
 
 /* App shell */
-#app { display: flex; flex-direction: column; flex: 1; min-height: 100vh; }
+#app { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
 #app-header {
   display: flex; align-items: center; gap: 8px;
