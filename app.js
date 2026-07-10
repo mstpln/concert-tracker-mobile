@@ -13,6 +13,7 @@ let remote = null;
 let bands = [];
 let concerts = [];
 let news = [];
+let apiUsage = null;
 let newsLastOpenedAt = null;
 let currentTab = 'concerts';
 let currentScreen = 'main'; // 'main' | 'profile' | 'settings'
@@ -34,6 +35,19 @@ const el = (id) => document.getElementById(id);
 const SEED_BANDS = [];
 const SEED_CONCERTS = [];
 const SEED_NEWS = [];
+
+// The weekly research pipeline's three provider keys live only as GitHub
+// Actions secrets — by design, secret values can never be read back once
+// saved, so there's no way for this app to fetch them live. This is a
+// small static record of what was saved and when, filled in once at setup
+// time (matching the masked-key + added-date pattern used for the Groq key
+// above). If a key is ever rotated, update the masked/addedAt values here
+// to match.
+const RESEARCH_KEY_METADATA = {
+  ticketmaster: { label: 'Ticketmaster API key', masked: 'iS4B••••••••sraA', addedAt: '2026-07-10' },
+  tavily: { label: 'Tavily API key', masked: 'tvly••••••••yzt0', addedAt: '2026-07-10' },
+  groq: { label: 'Groq API key (research pipeline)', masked: 'gsk_••••••••rhcu', addedAt: '2026-07-10' },
+};
 
 async function init() {
   const { europeOnly: savedEuropeOnly = true, nearbyOnly: savedNearbyOnly = false } =
@@ -153,6 +167,9 @@ async function loadDataAndShowApp() {
   bands = await dlReadJsonFile(remote, 'bands.json', []);
   concerts = await dlReadJsonFile(remote, 'concerts.json', []);
   news = await dlReadJsonFile(remote, 'news.json', []);
+  // Written by the weekly GitHub Actions research pipeline, not by this
+  // app — read-only here, just to power the usage counters in Settings.
+  apiUsage = await dlReadJsonFile(remote, 'apiUsage.json', null);
   el('onboarding').classList.add('hidden');
   el('app').classList.remove('hidden');
   await updateHeaderBadge();
@@ -693,8 +710,8 @@ function stripTransient(list) {
 /* ---------------- News tab ---------------- */
 //
 // news.json validation rules (enforced by whatever writes to this file —
-// currently a manual research pass or a scheduled Claude task, not this
-// client, which only reads/displays):
+// the weekly GitHub Actions research pipeline, scripts/research.js, not
+// this client, which only reads/displays):
 //   1. Scope — only bands present in bands.json, matched by exact name/id,
 //      never guessed. Ambiguous band names are skipped rather than assumed.
 //   2. Recency — only items discovered in roughly the last 14 days count as
@@ -975,8 +992,9 @@ async function renderSettingsScreen() {
     </div>
     <div class="settings-field">
       <button id="recheck-btn" class="btn-secondary btn-block">Refresh now</button>
-      <p class="settings-hint">Re-fetches bands.json/concerts.json from your Worker. Doesn't run new research — that still happens on your scheduled Claude task, which writes to the same storage.</p>
+      <p class="settings-hint">Re-fetches bands.json/concerts.json from your Worker. Doesn't run new research — that happens automatically once a week (GitHub Actions), and writes to the same storage.</p>
     </div>
+    ${researchPipelineSectionHtml()}
   `;
 
   el('change-connection-btn').addEventListener('click', () => {
@@ -1022,6 +1040,70 @@ async function renderSettingsScreen() {
       if (btn) btn.textContent = 'Refresh now';
     }, 1800);
   });
+}
+
+// Renders the read-only "Research pipeline" block in Settings: which
+// provider keys are configured (masked, with the date each was added —
+// GitHub Actions secrets can't be read back, so this is a static record,
+// see RESEARCH_KEY_METADATA above) and how much of each free tier this
+// week's run has used, sourced from apiUsage.json (written by
+// scripts/research.js, never by this app).
+function researchPipelineSectionHtml() {
+  const keyRows = Object.values(RESEARCH_KEY_METADATA)
+    .map(
+      (k) => `
+        <p class="muted" style="font-size:12px;margin:0 0 4px">
+          ${escapeHtml(k.label)}: <strong>${escapeHtml(k.masked)}</strong> · added ${escapeHtml(formatSettingsDate(k.addedAt))}
+        </p>`
+    )
+    .join('');
+
+  if (!apiUsage) {
+    return `
+      <div class="settings-field">
+        <label>Research pipeline</label>
+        ${keyRows}
+        <p class="settings-hint">No usage data yet — this fills in after the weekly GitHub Actions run has run at least once.</p>
+      </div>`;
+  }
+
+  const tm = apiUsage.ticketmaster || {};
+  const tv = apiUsage.tavily || {};
+  const gq = apiUsage.groq || {};
+  const lastRun = apiUsage.lastRun || null;
+
+  const usageRows = [
+    tm.callsToday != null
+      ? `Ticketmaster: ${tm.callsToday.toLocaleString()} / ${(tm.freeTierDailyLimit ?? 5000).toLocaleString()} calls today`
+      : null,
+    tv.callsThisMonth != null
+      ? `Tavily: ${tv.callsThisMonth.toLocaleString()} / ${(tv.freeTierMonthlyLimit ?? 1000).toLocaleString()} credits this month`
+      : null,
+    gq.callsToday != null
+      ? `Groq: ${gq.callsToday.toLocaleString()} / ${(gq.freeTierDailyRequestLimit ?? 1000).toLocaleString()} requests, ${(
+          gq.tokensToday ?? 0
+        ).toLocaleString()} / ${(gq.freeTierTpdLimit ?? 200000).toLocaleString()} tokens today`
+      : null,
+  ]
+    .filter(Boolean)
+    .map((line) => `<p class="muted" style="font-size:12px;margin:0 0 4px">${escapeHtml(line)}</p>`)
+    .join('');
+
+  const lastRunHtml = lastRun
+    ? `<p class="settings-hint" style="margin-top:8px">
+         Last run: ${escapeHtml(formatSettingsDate(lastRun.finishedAt))} · ${escapeHtml(lastRun.status || 'unknown')}
+         · ${lastRun.bandsProcessed ?? 0} bands checked, ${lastRun.concertsAdded ?? 0} new concerts, ${lastRun.newsAdded ?? 0} new news items.
+       </p>`
+    : '';
+
+  return `
+    <div class="settings-field">
+      <label>Research pipeline</label>
+      ${keyRows}
+      <div style="margin-top:8px">${usageRows}</div>
+      ${lastRunHtml}
+      <p class="settings-hint" style="margin-top:8px">All three services have hard-coded usage caps set well below their free tier, so this can never incur a charge.</p>
+    </div>`;
 }
 
 /* ---------------- Enrichment (runs on add) ---------------- */
