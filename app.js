@@ -272,6 +272,11 @@ function showScreen(id) {
   ['screen-concerts', 'screen-myconcerts', 'screen-mybands', 'screen-profile', 'screen-settings', 'screen-connection-error'].forEach((s) => {
     el(s).classList.toggle('hidden', s !== id);
   });
+  // All screens share one scrollable container (#content), so without this
+  // a screen opened while scrolled down elsewhere (e.g. tapping a band from
+  // partway down the Concerts list) would inherit that same scroll offset
+  // instead of starting at the top.
+  el('content').scrollTop = 0;
 }
 
 /* ---------------- Concerts tab ---------------- */
