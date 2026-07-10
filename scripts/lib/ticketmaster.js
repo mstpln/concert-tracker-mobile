@@ -20,7 +20,18 @@ function apiKey() {
 // to reject "keyword happened to match" false positives without being so
 // strict it rejects legitimate minor formatting differences ("Blink-182"
 // vs "blink182").
+//
+// One real bug this let through on the first live run: "Arctic Monkeys
+// Tribute" at a small Istanbul bar matched against "Arctic Monkeys" because
+// it's a pure substring match, and independent WebSearch verification
+// afterward confirmed the real Arctic Monkeys have no announced 2026 tour
+// at all. Tribute/cover acts routinely reuse the original band's exact name
+// as a substring, so they need an explicit exclusion rather than relying on
+// the substring check to somehow reject them.
+const TRIBUTE_ACT_PATTERN = /\b(tribute|cover\s*band|coverband|revival|allstars|allstar|experience|reunion|homage)\b/i;
+
 function namesMatch(bandName, attractionName) {
+  if (TRIBUTE_ACT_PATTERN.test(attractionName || '')) return false;
   const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
   const a = norm(bandName);
   const b = norm(attractionName);
