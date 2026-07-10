@@ -691,6 +691,24 @@ function stripTransient(list) {
 }
 
 /* ---------------- News tab ---------------- */
+//
+// news.json validation rules (enforced by whatever writes to this file —
+// currently a manual research pass or a scheduled Claude task, not this
+// client, which only reads/displays):
+//   1. Scope — only bands present in bands.json, matched by exact name/id,
+//      never guessed. Ambiguous band names are skipped rather than assumed.
+//   2. Recency — only items discovered in roughly the last 14 days count as
+//      "new" for a given pipeline run; older items already in the file are
+//      left alone.
+//   3. concert / album / ticket — relaxed sourcing. Each requires a hard,
+//      checkable fact (a date+venue, an album title, or a live ticket
+//      link/on-sale date), so the source outlet matters less than the fact
+//      itself being present and specific.
+//   4. hiatus — stricter bar. Only published if backed by a direct quote/
+//      statement from the band or label, or corroborated by 2+ independent
+//      outlets. Otherwise treated as unconfirmed rumor and dropped.
+//   5. Dedup — skip if an item for the same band+category+fact already
+//      exists in the file.
 
 // Category metadata: label shown as the card's kicker, and which CSS
 // variable supplies its color. Colors themselves live in app.css (they
