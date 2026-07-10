@@ -3,11 +3,33 @@
 // (Chrome requires one) and let the app shell load instantly/offline.
 // It deliberately does NOT cache anything from the Cloudflare Worker (your
 // actual data) — those requests always go straight to the network so you
-// never see stale bands/concerts. Bump CACHE_NAME when you change any of
-// the shell files below, so old installs pick up the update.
-
+// never see stale bands/concerts.
+//
+// CACHE_NAME_LITERAL below is intentionally a hardcoded literal, NOT
+// derived from version.js via importScripts (an earlier version did that,
+// and it was a real bug found during a QA pass): browsers only re-check a
+// service worker for updates by re-fetching service-worker.js itself and
+// byte-comparing it to the currently-installed copy. If this file's own
+// bytes are unchanged, the browser never notices anything changed and
+// never reinstalls — even if an imported file's *content* changed — so an
+// already-installed user stays on the old cached shell indefinitely,
+// regardless of what version.js says. The fetch handler below is
+// cache-first for every same-origin request, which is exactly what made
+// this silent-staleness bug possible in the first place.
+//
+// So: every time you bump APP_VERSION in version.js, you MUST also bump
+// CACHE_NAME_LITERAL here to the same value — that's what actually forces
+// old installs to update. version.js's importScripts is kept below purely
+// so this file can sanity-assert the two stay in sync (see the console
+// warning) — it is NOT what drives cache invalidation.
 importScripts('./version.js');
-const CACHE_NAME = 'concert-tracker-shell-' + APP_VERSION;
+const CACHE_NAME_LITERAL = 'v14';
+if (CACHE_NAME_LITERAL !== APP_VERSION) {
+  console.warn(
+    `service-worker.js CACHE_NAME_LITERAL ("${CACHE_NAME_LITERAL}") is out of sync with version.js APP_VERSION ("${APP_VERSION}") — bump CACHE_NAME_LITERAL in service-worker.js to match, otherwise old installs won't update.`
+  );
+}
+const CACHE_NAME = 'concert-tracker-shell-' + CACHE_NAME_LITERAL;
 const SHELL_FILES = [
   './',
   './index.html',

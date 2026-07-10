@@ -1,6 +1,10 @@
 'use strict';
 // Shared read/write/diff helpers for bands.json and concerts.json.
-// Used by both background.js (weekly alarm check) and popup.js (UI).
+// Originally used by the Chrome-extension build's background.js (weekly
+// alarm check) and popup.js (UI); this file is copied byte-for-byte into
+// the current PWA build too, where app.js (UI) and remoteStore.js (storage
+// transport override) are the actual consumers — see remoteStore.js's
+// header comment for why this file is kept unchanged across both builds.
 
 async function dlReadJsonFile(dirHandle, filename, fallback) {
   try {
@@ -145,7 +149,7 @@ function dlEffectiveLastShowDate(band, concerts) {
 // - 'unknown'  — no lastKnownConcertDate and no concerts.json entries at all
 // - 'active'   — most recent known/upcoming date is in the future, or within
 //                thresholdYears of today
-// - 'inactive' — most recent known date is more than thresholdYears in the past
+// - 'inactive' — most recent known date is thresholdYears or more in the past
 // Returns { status, lastDate, lastYear }.
 function dlBandActivity(band, concerts, thresholdYears, today = new Date()) {
   const lastDate = dlEffectiveLastShowDate(band, concerts);
