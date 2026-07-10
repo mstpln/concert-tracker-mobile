@@ -66,6 +66,12 @@ class UsageTracker {
     this._lastTicketmasterCallAt = 0;
     this._lastTavilyCallAt = 0;
     this._lastGroqCallAt = 0;
+    // Stamped here (construction time — right after UsageTracker.load()
+    // resolves, at the very start of a run) rather than left unset. An
+    // earlier version never assigned this anywhere, so finishRun()'s
+    // `this._startedAt || new Date().toISOString()` fallback always fired,
+    // making every saved lastRun.startedAt/finishedAt pair identical.
+    this._startedAt = new Date().toISOString();
   }
 
   static async load() {
@@ -83,6 +89,32 @@ class UsageTracker {
     if (!state.rotation || typeof state.rotation.nextBandIndex !== 'number') {
       state.rotation = { nextBandIndex: 0 };
     }
+
+    // Resync every cap/limit field from config.js on every load, keeping
+    // only the running counters from the persisted state. Without this, a
+    // cap/limit field only ever gets its value from config the very first
+    // time that service's block is created (freshState()) — editing
+    // config.js afterward (tightening a cap for safety, or correcting a
+    // free-tier number) would silently have no effect on enforcement, and
+    // the Settings screen's usage bars (which read these same fields
+    // straight from apiUsage.json) would keep showing stale numbers too.
+    Object.assign(state.ticketmaster, {
+      freeTierDailyLimit: config.TICKETMASTER.freeTierDailyLimit,
+      perRunCap: config.TICKETMASTER.perRunCap,
+    });
+    Object.assign(state.tavily, {
+      freeTierMonthlyLimit: config.TAVILY.freeTierMonthlyLimit,
+      monthlyCap: config.TAVILY.monthlyCap,
+      perRunCap: config.TAVILY.perRunCap,
+    });
+    Object.assign(state.groq, {
+      freeTierDailyRequestLimit: config.GROQ.freeTierDailyRequestLimit,
+      freeTierTpmLimit: config.GROQ.freeTierTpmLimit,
+      freeTierTpdLimit: config.GROQ.freeTierTpdLimit,
+      dailyCap: config.GROQ.dailyCap,
+      perRunCap: config.GROQ.perRunCap,
+      safeTpd: config.GROQ.safeTpd,
+    });
 
     if (state.ticketmaster.dayOfCounts !== today) {
       state.ticketmaster.dayOfCounts = today;
@@ -166,7 +198,7 @@ class UsageTracker {
   // responses in the trailing 60s window. estimatedTokens is a rough
   // guess for the upcoming call (used only to decide whether to wait
   // longer); the real count gets recorded after the call via
-  // recordGroqCall().
+  // recordGroqTokens().
   async waitForGroqSlot(estimatedTokens = 1500) {
     // Minimum gap between requests (RPM safety).
     const gap = Date.now() - this._lastGroqCallAt;
@@ -187,11 +219,25 @@ class UsageTracker {
     this._lastGroqCallAt = Date.now();
   }
 
-  recordGroqCall(actualTokens) {
-    const tokens = Number.isFinite(actualTokens) ? actualTokens : 1500;
-    this._groqWindow.push({ at: Date.now(), tokens });
+  // Call counters are incremented here, right before the request goes out —
+  // matching recordTicketmasterCall/recordTavilyCall, which both record
+  // before attempting the call rather than after. Groq previously only
+  // recorded on a successful, JSON-parseable response (see the old
+  // recordGroqCall), which meant a thrown network error or a non-ok
+  // response (429, 400, etc.) consumed a real request against Groq's
+  // actual free-tier RPM/RPD quota but was never reflected in our own
+  // counters — a real, if usually small, undercount risk for the exact
+  // invariant ("never exceed real usage") this whole module exists to
+  // protect. Token counts still can't be known until the response comes
+  // back, so those are added separately via recordGroqTokens() on success.
+  recordGroqAttempt() {
     this.state.groq.callsThisRun += 1;
     this.state.groq.callsToday += 1;
+  }
+
+  recordGroqTokens(actualTokens) {
+    const tokens = Number.isFinite(actualTokens) ? actualTokens : 1500;
+    this._groqWindow.push({ at: Date.now(), tokens });
     this.state.groq.tokensThisRun += tokens;
     this.state.groq.tokensToday += tokens;
   }

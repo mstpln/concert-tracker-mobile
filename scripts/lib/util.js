@@ -45,11 +45,23 @@ function thisMonthIso() {
 // Strict YYYY-MM-DD check — used to enforce the mandatory-year data-entry
 // policy. Anything that isn't a full, explicit calendar date is rejected
 // rather than guessed or defaulted.
+//
+// Note this also has to catch day-of-month overflow (e.g. "2026-11-31" —
+// November only has 30 days). JS's Date constructor doesn't reject that:
+// it silently rolls it over to December 1st instead of returning Invalid
+// Date, so a plain regex-plus-NaN check lets a hallucinated LLM date
+// through as the literal, unrolled invalid string (every caller uses the
+// input string directly, never the rolled-over Date object) — exactly the
+// kind of bad date the mandatory-year policy exists to catch. Confirmed
+// with a live test during a QA pass: "2026-02-30" and "2026-04-31" both
+// passed the old regex-only check.
 function isValidFullDate(value) {
   if (typeof value !== 'string') return false;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const d = new Date(value + 'T00:00:00Z');
-  return !Number.isNaN(d.getTime());
+  const [y, m, d] = value.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (Number.isNaN(dt.getTime())) return false;
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
 
 // Truncates search-result text before it goes into a Groq prompt. Groq's
