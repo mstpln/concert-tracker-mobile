@@ -1,0 +1,207 @@
+'use strict';
+// Tracks how many calls/tokens each free-tier API has used, persisted in
+// apiUsage.json on the Worker so it survives across weekly runs. This is
+// the actual enforcement point for the "never risk costing money" and
+// "throttling" requirements — every call site in the pipeline must ask
+// this module for permission first, and record the call after.
+//
+// Also doubles as the data source for the app's Settings screen usage
+// counters (Task #137) — the shape of this file is intentionally simple
+// JSON so the client can read it directly.
+
+const config = require('./config');
+const worker = require('./workerClient');
+const { todayIso, thisMonthIso, sleep } = require('./util');
+
+function freshState() {
+  const today = todayIso();
+  const month = thisMonthIso();
+  return {
+    ticketmaster: {
+      freeTierDailyLimit: config.TICKETMASTER.freeTierDailyLimit,
+      perRunCap: config.TICKETMASTER.perRunCap,
+      dayOfCounts: today,
+      callsToday: 0,
+      callsThisRun: 0,
+    },
+    tavily: {
+      freeTierMonthlyLimit: config.TAVILY.freeTierMonthlyLimit,
+      monthlyCap: config.TAVILY.monthlyCap,
+      perRunCap: config.TAVILY.perRunCap,
+      monthOfCounts: month,
+      callsThisMonth: 0,
+      callsThisRun: 0,
+    },
+    groq: {
+      freeTierDailyRequestLimit: config.GROQ.freeTierDailyRequestLimit,
+      freeTierTpmLimit: config.GROQ.freeTierTpmLimit,
+      freeTierTpdLimit: config.GROQ.freeTierTpdLimit,
+      dailyCap: config.GROQ.dailyCap,
+      perRunCap: config.GROQ.perRunCap,
+      safeTpd: config.GROQ.safeTpd,
+      dayOfCounts: today,
+      callsToday: 0,
+      callsThisRun: 0,
+      tokensToday: 0,
+      tokensThisRun: 0,
+    },
+    lastRun: null,
+  };
+}
+
+class UsageTracker {
+  constructor(state) {
+    this.state = state;
+    this._groqWindow = []; // { at: epochMs, tokens } for the trailing 60s TPM check
+    this._notes = [];
+    this._lastTicketmasterCallAt = 0;
+    this._lastTavilyCallAt = 0;
+    this._lastGroqCallAt = 0;
+  }
+
+  static async load() {
+    const stored = await worker.readJson('apiUsage.json', null);
+    const state = stored && typeof stored === 'object' ? stored : freshState();
+
+    // Roll over daily/monthly counters that belong to a previous period —
+    // this is what stops a stale "callsThisMonth" from blocking a run
+    // forever, while still protecting the real monthly Tavily cap.
+    const today = todayIso();
+    const month = thisMonthIso();
+    if (!state.ticketmaster) state.ticketmaster = freshState().ticketmaster;
+    if (!state.tavily) state.tavily = freshState().tavily;
+    if (!state.groq) state.groq = freshState().groq;
+
+    if (state.ticketmaster.dayOfCounts !== today) {
+      state.ticketmaster.dayOfCounts = today;
+      state.ticketmaster.callsToday = 0;
+    }
+    if (state.groq.dayOfCounts !== today) {
+      state.groq.dayOfCounts = today;
+      state.groq.callsToday = 0;
+      state.groq.tokensToday = 0;
+    }
+    if (typeof state.groq.tokensToday !== 'number') state.groq.tokensToday = 0;
+    if (state.tavily.monthOfCounts !== month) {
+      state.tavily.monthOfCounts = month;
+      state.tavily.callsThisMonth = 0;
+    }
+    // Always zero the per-run counters at the start of a run.
+    state.ticketmaster.callsThisRun = 0;
+    state.tavily.callsThisRun = 0;
+    state.groq.callsThisRun = 0;
+    state.groq.tokensThisRun = 0;
+
+    return new UsageTracker(state);
+  }
+
+  note(text) {
+    this._notes.push(text);
+    console.log(`[usage] ${text}`);
+  }
+
+  // ---------------- Ticketmaster ----------------
+
+  canCallTicketmaster() {
+    const t = this.state.ticketmaster;
+    if (t.callsThisRun >= t.perRunCap) return false;
+    if (t.callsToday >= t.freeTierDailyLimit * 0.5) return false; // extra-safe daily backstop
+    return true;
+  }
+
+  async recordTicketmasterCall() {
+    const gap = Date.now() - this._lastTicketmasterCallAt;
+    if (gap < config.TICKETMASTER.minDelayMs) await sleep(config.TICKETMASTER.minDelayMs - gap);
+    this._lastTicketmasterCallAt = Date.now();
+    this.state.ticketmaster.callsThisRun += 1;
+    this.state.ticketmaster.callsToday += 1;
+  }
+
+  // ---------------- Tavily ----------------
+
+  canCallTavily() {
+    const t = this.state.tavily;
+    if (t.callsThisRun >= t.perRunCap) return false;
+    if (t.callsThisMonth >= t.monthlyCap) return false;
+    return true;
+  }
+
+  async recordTavilyCall() {
+    const gap = Date.now() - this._lastTavilyCallAt;
+    if (gap < config.TAVILY.minDelayMs) await sleep(config.TAVILY.minDelayMs - gap);
+    this._lastTavilyCallAt = Date.now();
+    this.state.tavily.callsThisRun += 1;
+    this.state.tavily.callsThisMonth += 1;
+  }
+
+  // ---------------- Groq ----------------
+
+  canCallGroq(estimatedTokens = 1500) {
+    const g = this.state.groq;
+    if (g.callsThisRun >= g.perRunCap) return false;
+    if (g.callsToday >= g.dailyCap) return false;
+    // TPD is the real binding constraint for this pipeline (a full run's
+    // total token usage matters more than any single minute) — stop
+    // making calls once today's usage plus the next call's estimate would
+    // approach the safe daily budget, well under the real 200,000 TPD
+    // free-tier ceiling.
+    if (g.tokensToday + estimatedTokens > g.safeTpd) return false;
+    return true;
+  }
+
+  // Blocks (sleeps) until it's safe to make another Groq call without
+  // breaching the real TPM limit, using actual token counts from prior
+  // responses in the trailing 60s window. estimatedTokens is a rough
+  // guess for the upcoming call (used only to decide whether to wait
+  // longer); the real count gets recorded after the call via
+  // recordGroqCall().
+  async waitForGroqSlot(estimatedTokens = 1500) {
+    // Minimum gap between requests (RPM safety).
+    const gap = Date.now() - this._lastGroqCallAt;
+    if (gap < config.GROQ.minDelayMs) await sleep(config.GROQ.minDelayMs - gap);
+
+    // TPM safety: purge the window and wait if adding the estimate would
+    // exceed the safe cap.
+    for (;;) {
+      const cutoff = Date.now() - 60_000;
+      this._groqWindow = this._groqWindow.filter((e) => e.at >= cutoff);
+      const used = this._groqWindow.reduce((sum, e) => sum + e.tokens, 0);
+      if (used + estimatedTokens <= config.GROQ.safeTpm) break;
+      const oldest = this._groqWindow[0];
+      const waitMs = oldest ? Math.max(1000, oldest.at + 60_000 - Date.now()) : 1000;
+      this.note(`Groq TPM guard: waiting ${Math.round(waitMs / 1000)}s to stay under safe TPM cap`);
+      await sleep(waitMs);
+    }
+    this._lastGroqCallAt = Date.now();
+  }
+
+  recordGroqCall(actualTokens) {
+    const tokens = Number.isFinite(actualTokens) ? actualTokens : 1500;
+    this._groqWindow.push({ at: Date.now(), tokens });
+    this.state.groq.callsThisRun += 1;
+    this.state.groq.callsToday += 1;
+    this.state.groq.tokensThisRun += tokens;
+    this.state.groq.tokensToday += tokens;
+  }
+
+  // ---------------- Persistence ----------------
+
+  finishRun(summary) {
+    this.state.lastRun = {
+      startedAt: this._startedAt || new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      ticketmasterCalls: this.state.ticketmaster.callsThisRun,
+      tavilyCalls: this.state.tavily.callsThisRun,
+      groqCalls: this.state.groq.callsThisRun,
+      groqTokens: this.state.groq.tokensThisRun,
+      notes: this._notes,
+      ...summary,
+    };
+  }
+
+  async save() {
+    await worker.writeJson('apiUsage.json', this.state);
+  }
+}
+
+module.exports = { UsageTracker, freshState };
