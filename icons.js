@@ -47,6 +47,12 @@ const ICONS = {
     '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/><path d="M12 13v6M9 16h6"/></svg>',
   moon:
     '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg>',
+  // App brand mark for the header (root tab level, next to "CONCERTDATES").
+  // Sized to 32x32 to match the height of the EU-filter/settings icon
+  // buttons in #app-header for visual alignment. The grid's one highlighted
+  // date stays the fixed accent blue regardless of header text color.
+  calendarBrand:
+    '<svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="16" rx="3"/><line x1="3" y1="9" x2="21" y2="9"/><rect x="7" y="2.5" width="2" height="4" rx="1" fill="currentColor" stroke="none"/><rect x="15" y="2.5" width="2" height="4" rx="1" fill="currentColor" stroke="none"/><rect x="6" y="12" width="3" height="3" rx="0.5"/><rect x="10.5" y="12" width="3" height="3" rx="0.5"/><rect x="15" y="12" width="3" height="3" rx="0.5" fill="#024ddf" stroke="none"/><rect x="6" y="16.5" width="3" height="3" rx="0.5"/><rect x="10.5" y="16.5" width="3" height="3" rx="0.5"/><rect x="15" y="16.5" width="3" height="3" rx="0.5"/></svg>',
 };
 
 function icon(name) {

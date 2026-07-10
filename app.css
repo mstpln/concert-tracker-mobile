@@ -109,8 +109,10 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   padding: 14px 16px;
   background: var(--header-bg); color: var(--header-text);
 }
+.header-brand { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
 .header-icon, .header-icon svg { display: flex; }
-.header-title { font-weight: 600; font-size: 15px; flex: 1; }
+.header-title { font-weight: 600; font-size: 15px; flex: 1; letter-spacing: 0.2px; }
+.brand-blue { color: var(--accent); }
 
 .icon-btn {
   width: 32px; height: 32px; border-radius: var(--radius);
@@ -143,6 +145,7 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 
 /* Rows */
 .row-card {
+  position: relative;
   border: 1px solid var(--border); border-radius: 10px;
   padding: 12px; margin-bottom: 8px; background: var(--surface);
 }
@@ -158,6 +161,16 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .row-actions .icon-btn { color: var(--text-muted); width: 28px; height: 28px; }
 .row-actions .icon-btn:hover { background: var(--surface-muted); }
 .row-card.is-past { opacity: 0.72; }
+/* My Concerts: the delete button sits in the card's bottom-right corner
+   instead of alongside the chevron up top, so it's not mistaken for part of
+   the row's primary tap target. Extra bottom padding keeps venue-details/
+   row-km text from running underneath it. */
+.row-card.has-corner-delete { padding-bottom: 44px; }
+.delete-corner-btn {
+  position: absolute; right: 8px; bottom: 8px;
+  color: var(--text-muted);
+}
+.delete-corner-btn:hover { background: var(--surface-muted); }
 .pill-going { background: var(--accent-bg); color: var(--accent); }
 .pill-attended { background: var(--surface-muted); color: var(--text-secondary); }
 .pill-inactive { background: var(--inactive-bg); color: var(--inactive); }
@@ -217,15 +230,18 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .add-band-card .form-row { display: flex; gap: 6px; }
 .add-band-card .form-row > * { flex: 1; min-width: 0; }
 
-/* Tab bar */
+/* Tab bar — sized ~30% taller than the original 9/16/3/11/8 rhythm for
+   easier tapping/legibility (padding, icon size, gap and label size all
+   scaled together so the row grows proportionally, not just padded). */
 #tabbar { display: flex; border-top: 1px solid var(--border); background: var(--surface); padding-bottom: env(safe-area-inset-bottom); }
 .tabitem {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: 9px 2px 8px; background: none; border: none; color: var(--text-muted);
-  font-size: 11px; white-space: nowrap;
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 12px 2px 10px; background: none; border: none; color: var(--text-muted);
+  font-size: 14px; white-space: nowrap;
 }
 .tabitem.active { color: var(--accent); }
 .tab-icon { display: flex; }
+.tab-icon svg { width: 21px; height: 21px; }
 
 /* Profile screen */
 .profile-header { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
@@ -244,12 +260,16 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 
 .show-buttons {
   display: flex; justify-content: space-between; align-items: center;
-  gap: 5px; margin-top: 6px; flex-wrap: wrap;
+  gap: 8px; margin-top: 10px; flex-wrap: wrap;
 }
-.show-buttons-group { display: flex; gap: 5px; flex-wrap: wrap; }
+.show-buttons-group { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Sized closer to what an official ticketing site would use for its own
+   buy/going/calendar buttons — bigger tap targets, bolder presence — rather
+   than the compact secondary-action sizing used elsewhere in the app. */
 .show-buttons .btn-secondary, .show-buttons .btn-primary {
-  padding: 5px 8px; font-size: 11.5px; gap: 4px; white-space: nowrap;
+  padding: 11px 16px; font-size: 14.5px; font-weight: 600; gap: 7px; white-space: nowrap;
 }
+.show-buttons svg { width: 16px; height: 16px; }
 
 .venue-details { margin-top: 6px; }
 .venue-details summary {

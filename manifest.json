@@ -1,6 +1,6 @@
 {
-  "name": "Concert Tracker",
-  "short_name": "Concerts",
+  "name": "ConcertDates",
+  "short_name": "ConcertD",
   "description": "Personal concert tracker — bands, tour dates, and shows you're attending.",
   "start_url": "./index.html",
   "scope": "./",

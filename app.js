@@ -64,7 +64,7 @@ function showConnectionError() {
   el('app').classList.remove('hidden');
   el('tabbar').classList.add('hidden');
   el('europe-toggle-btn').classList.add('hidden');
-  setHeaderChrome({ showBack: false, title: 'Concert tracker' });
+  setHeaderChrome({ showBack: false, isBrand: true });
   showScreen('screen-connection-error');
 }
 
@@ -139,7 +139,14 @@ async function loadDataAndShowApp() {
   el('onboarding').classList.add('hidden');
   el('app').classList.remove('hidden');
   await updateHeaderBadge();
-  goToTab(currentTab);
+  // Only (re)establish the base screen when we're not already deeper in the
+  // navigation stack (e.g. tapping "Refresh now" inside Settings shouldn't
+  // bounce back out to the Concerts tab). Use replaceState rather than push
+  // so this always sits at the bottom of the back-gesture stack.
+  if (currentScreen === 'main') {
+    history.replaceState({ tab: currentTab, screen: 'main' }, '');
+    goToTab(currentTab, { fromHistory: true });
+  }
 }
 
 async function updateHeaderBadge() {
@@ -157,7 +164,7 @@ async function updateHeaderBadge() {
 }
 
 function wireHeader() {
-  el('header-icon').innerHTML = icon('ticketStub');
+  el('header-icon').innerHTML = icon('calendarBrand');
   el('back-btn').innerHTML = icon('back');
   el('settings-btn').innerHTML = icon('settings');
   el('europe-toggle-btn').textContent = 'EU';
@@ -165,7 +172,7 @@ function wireHeader() {
 
   el('back-btn').addEventListener('click', () => {
     if (currentScreen === 'settings' || currentScreen === 'profile') {
-      goToTab(currentTab);
+      history.back();
     }
   });
   el('settings-btn').addEventListener('click', () => showSettingsScreen());
@@ -175,10 +182,27 @@ function wireHeader() {
     await chrome.storage.local.set({ europeOnly });
     if (currentTab === 'concerts' && currentScreen === 'main') renderConcertsScreen();
   });
+
+  // Android/Chrome's system back gesture (and hardware/on-screen back
+  // button) fires 'popstate' in a standalone PWA rather than exiting a
+  // screen the way it does in a regular browser tab. Route it through the
+  // same navigation functions the UI's own back button and tab bar use, so
+  // swiping back steps through in-app screens instead of closing the app.
+  window.addEventListener('popstate', (ev) => {
+    const state = ev.state;
+    if (!state) return;
+    if (state.screen === 'profile' && state.bandId) {
+      openProfile(state.bandId, { fromHistory: true });
+    } else if (state.screen === 'settings') {
+      showSettingsScreen({ fromHistory: true });
+    } else {
+      goToTab(state.tab || currentTab, { fromHistory: true });
+    }
+  });
 }
 
 const TAB_ICONS = { concerts: 'music', myconcerts: 'ticketStub', mybands: 'users' };
-const TAB_TITLES = { concerts: 'Concert tracker', myconcerts: 'My Concerts', mybands: 'My Bands' };
+const TAB_TITLES = { concerts: 'ConcertDates', myconcerts: 'My Concerts', mybands: 'My Bands' };
 const TAB_SCREENS = { concerts: 'screen-concerts', myconcerts: 'screen-myconcerts', mybands: 'screen-mybands' };
 
 function wireTabs() {
@@ -188,24 +212,30 @@ function wireTabs() {
   });
 }
 
-function setHeaderChrome({ showBack, title }) {
+function setHeaderChrome({ showBack, title, isBrand = false }) {
   el('back-btn').classList.toggle('hidden', !showBack);
   el('settings-btn').classList.toggle('hidden', showBack);
   el('header-icon').classList.toggle('hidden', showBack);
-  el('header-title').textContent = title;
+  const titleEl = el('header-title');
+  if (isBrand) {
+    titleEl.innerHTML = '<span class="brand-blue">CONCERT</span>DATES';
+  } else {
+    titleEl.textContent = title;
+  }
 }
 
-function goToTab(tab) {
+function goToTab(tab, { fromHistory = false } = {}) {
   currentTab = tab;
   currentScreen = 'main';
   el('tabbar').classList.remove('hidden');
   el('tabbar').querySelectorAll('.tabitem').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
-  setHeaderChrome({ showBack: false, title: TAB_TITLES[tab] || 'Concert tracker' });
+  setHeaderChrome({ showBack: false, title: TAB_TITLES[tab] || 'ConcertDates', isBrand: tab === 'concerts' });
   el('europe-toggle-btn').classList.toggle('hidden', tab !== 'concerts');
   showScreen(TAB_SCREENS[tab] || 'screen-concerts');
   if (tab === 'concerts') renderConcertsScreen();
   else if (tab === 'myconcerts') renderMyConcertsScreen();
   else renderMyBandsScreen();
+  if (!fromHistory) history.pushState({ tab, screen: 'main' }, '');
 }
 
 function showScreen(id) {
@@ -264,7 +294,7 @@ function renderConcertsScreen() {
           <p class="row-sub">${dateStr} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
           <p class="row-km">${formatKm(c.distanceKm)} away</p>
         </div>`;
-  });
+  }, { showCount: true });
 
   container.querySelectorAll('.row-card').forEach((row) => {
     row.addEventListener('click', () => openProfile(row.dataset.bandId));
@@ -319,16 +349,13 @@ function renderMyConcertsScreen() {
 
 function myConcertRowHtml(c, isPast) {
   return `
-    <div class="row-card clickable${isPast ? ' is-past' : ''}" data-band-id="${c.bandId}">
+    <div class="row-card clickable has-corner-delete${isPast ? ' is-past' : ''}" data-band-id="${c.bandId}">
       <div class="row-top">
         <div class="row-title-group">
           <span class="row-name">${escapeHtml(c.bandName)}</span>
           ${isPast ? `<span class="pill pill-attended">${icon('check')} Attended</span>` : ''}
         </div>
-        <div class="row-actions">
-          <button class="icon-btn remove-going-btn" data-concert-id="${c.id}" aria-label="Remove">${icon('trash')}</button>
-          <span class="row-chevron">${icon('chevronRight')}</span>
-        </div>
+        <span class="row-chevron">${icon('chevronRight')}</span>
       </div>
       <p class="row-sub">${formatDate(c.date, c.time)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
       ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
@@ -337,6 +364,7 @@ function myConcertRowHtml(c, isPast) {
         <summary>Venue details<span class="details-chevron">${icon('chevronDown')}</span></summary>
         <a class="venue-address-text" href="${escapeAttr(buildGoogleMapsUrl(c))}" target="_blank" rel="noopener"><span class="map-pin-icon">${icon('mapPin')}</span>${escapeHtml(c.venueAddress)}</a>
       </details>` : ''}
+      <button class="icon-btn remove-going-btn delete-corner-btn" data-concert-id="${c.id}" aria-label="Remove">${icon('trash')}</button>
     </div>`;
 }
 
@@ -409,7 +437,7 @@ async function onAddPastConcert() {
     venue, venueAddress: venueAddress || null, city, country: country || null,
     date, time: null, distanceKm: null,
     articleUrl: null, ticketUrl: null, ticketRetailerVerified: false,
-    isNew: false, foundAt: new Date().toISOString(), eventPassed: false,
+    isNew: false, foundAt: new Date().toISOString(),
     attending: true, manuallyAdded: true,
   };
   concerts.push(concert);
@@ -586,15 +614,15 @@ function stripTransient(list) {
 
 /* ---------------- Band profile screen ---------------- */
 
-function openProfile(bandId) {
+function openProfile(bandId, { fromHistory = false } = {}) {
   activeProfileBandId = bandId;
   currentScreen = 'profile';
   const band = bands.find((b) => b.id === bandId);
   setHeaderChrome({ showBack: true, title: band ? band.name : 'Band' });
   el('europe-toggle-btn').classList.add('hidden');
-  el('tabbar').classList.add('hidden');
   showScreen('screen-profile');
   renderProfileScreen(bandId);
+  if (!fromHistory) history.pushState({ tab: currentTab, screen: 'profile', bandId }, '');
 }
 
 function renderProfileScreen(bandId) {
@@ -722,13 +750,13 @@ function linkIconBtn(url, name) {
 
 /* ---------------- Settings screen ---------------- */
 
-function showSettingsScreen() {
+function showSettingsScreen({ fromHistory = false } = {}) {
   currentScreen = 'settings';
   setHeaderChrome({ showBack: true, title: 'Settings' });
   el('europe-toggle-btn').classList.add('hidden');
-  el('tabbar').classList.add('hidden');
   showScreen('screen-settings');
   renderSettingsScreen();
+  if (!fromHistory) history.pushState({ tab: currentTab, screen: 'settings' }, '');
 }
 
 async function renderSettingsScreen() {
@@ -808,7 +836,7 @@ async function renderSettingsScreen() {
     el('recheck-btn').textContent = 'Refreshing…';
     try {
       await loadDataAndShowApp();
-      showSettingsScreen();
+      showSettingsScreen({ fromHistory: true });
       el('recheck-btn').textContent = 'Refreshed.';
     } catch {
       el('recheck-btn').textContent = 'Could not refresh — check connection.';
