@@ -204,6 +204,13 @@ function wireHeader() {
 const TAB_ICONS = { concerts: 'music', myconcerts: 'ticketStub', mybands: 'users' };
 const TAB_TITLES = { concerts: 'ConcertDates', myconcerts: 'My Concerts', mybands: 'My Bands' };
 const TAB_SCREENS = { concerts: 'screen-concerts', myconcerts: 'screen-myconcerts', mybands: 'screen-mybands' };
+// Two-tone brand header markup per root tab (first part blue, rest white),
+// matching the CONCERTDATES treatment.
+const TAB_BRAND_HTML = {
+  concerts: '<span class="brand-blue">CONCERT</span>DATES',
+  myconcerts: '<span class="brand-blue">MY</span>CONCERTS',
+  mybands: '<span class="brand-blue">MY</span>BANDS',
+};
 
 function wireTabs() {
   el('tabbar').querySelectorAll('.tabitem').forEach((btn) => {
@@ -212,13 +219,13 @@ function wireTabs() {
   });
 }
 
-function setHeaderChrome({ showBack, title, isBrand = false }) {
+function setHeaderChrome({ showBack, title, isBrand = false, brandHtml }) {
   el('back-btn').classList.toggle('hidden', !showBack);
   el('settings-btn').classList.toggle('hidden', showBack);
   el('header-icon').classList.toggle('hidden', showBack);
   const titleEl = el('header-title');
   if (isBrand) {
-    titleEl.innerHTML = '<span class="brand-blue">CONCERT</span>DATES';
+    titleEl.innerHTML = brandHtml || '<span class="brand-blue">CONCERT</span>DATES';
   } else {
     titleEl.textContent = title;
   }
@@ -229,7 +236,7 @@ function goToTab(tab, { fromHistory = false } = {}) {
   currentScreen = 'main';
   el('tabbar').classList.remove('hidden');
   el('tabbar').querySelectorAll('.tabitem').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
-  setHeaderChrome({ showBack: false, title: TAB_TITLES[tab] || 'ConcertDates', isBrand: tab === 'concerts' });
+  setHeaderChrome({ showBack: false, title: TAB_TITLES[tab] || 'ConcertDates', isBrand: true, brandHtml: TAB_BRAND_HTML[tab] });
   el('europe-toggle-btn').classList.toggle('hidden', tab !== 'concerts');
   showScreen(TAB_SCREENS[tab] || 'screen-concerts');
   if (tab === 'concerts') renderConcertsScreen();
