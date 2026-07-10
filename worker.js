@@ -7,11 +7,17 @@
 //      and Secrets > Add > Secret) — this is the token you'll also paste
 //      into the app itself when connecting.
 //
-// It only ever serves three fixed files — bands.json, concerts.json, and
-// news.json — and refuses everything else. GET reads a file; PUT overwrites
-// it. Both require the Authorization: Bearer <API_TOKEN> header.
+// It only ever serves four fixed files — bands.json, concerts.json,
+// news.json, and apiUsage.json — and refuses everything else. GET reads a
+// file; PUT overwrites it. Both require the Authorization: Bearer
+// <API_TOKEN> header.
+//
+// apiUsage.json is written by the weekly GitHub Actions research pipeline
+// (not by this app) to record how many calls it made to each free-tier API
+// (Ticketmaster/Tavily/Groq) that run, so the app's Settings screen can show
+// usage against each service's free-tier cap.
 
-const ALLOWED_FILES = new Set(['bands.json', 'concerts.json', 'news.json']);
+const ALLOWED_FILES = new Set(['bands.json', 'concerts.json', 'news.json', 'apiUsage.json']);
 
 function corsHeaders() {
   return {
