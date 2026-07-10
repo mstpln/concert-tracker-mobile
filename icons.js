@@ -54,6 +54,11 @@ const ICONS = {
   // noise at this small size.
   calendarBrand:
     '<svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="16" rx="3"/><line x1="3" y1="9" x2="21" y2="9"/><rect x="7" y="2.5" width="2" height="4" rx="1" fill="currentColor" stroke="none"/><rect x="15" y="2.5" width="2" height="4" rx="1" fill="currentColor" stroke="none"/><rect x="15" y="12" width="3" height="3" rx="0.5" fill="#024ddf" stroke="none"/></svg>',
+  // Header "Nearby" filter button glyph, next to the EU pill. Simple outline
+  // pin — same visual language as the settings gear/back chevron — sized to
+  // 16x16 for the 32x32 #app-header icon-btn.
+  nearbyPin:
+    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.5 7-11.5A7 7 0 0 0 5 9.5C5 14.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg>',
 };
 
 function icon(name) {

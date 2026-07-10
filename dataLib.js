@@ -32,7 +32,6 @@ function dlSlugify(name) {
 }
 
 function dlIsUpcoming(concert) {
-  if (concert.eventPassed) return false;
   if (!concert.date) return true;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -89,6 +88,24 @@ const DL_EUROPE_COUNTRIES = new Set([
 function dlIsEuropeCountry(country) {
   if (!country) return false;
   return DL_EUROPE_COUNTRIES.has(String(country).trim().toLowerCase());
+}
+
+// "Nearby" filter for the Concerts tab. This is deliberately country+distance
+// rather than a single km radius: from southern Sweden, the German Baltic
+// coast (e.g. Rügen, ~90-115km away) is actually closer than the far corners
+// of Skåne (~120-150km away), so a plain radius can't tell "nearby Sweden"
+// apart from "nearby Germany". Scoping each distance cap to a specific
+// country avoids that entirely.
+const DL_NEARBY_RULES = [
+  { country: 'sweden', maxKm: 150 },
+  { country: 'denmark', maxKm: 80 },
+];
+
+function dlIsNearby(concert) {
+  if (!concert || !concert.country || typeof concert.distanceKm !== 'number') return false;
+  const country = String(concert.country).trim().toLowerCase();
+  const rule = DL_NEARBY_RULES.find((r) => r.country === country);
+  return !!rule && concert.distanceKm <= rule.maxKm;
 }
 
 function dlAllUpcomingForBand(concerts, bandId) {

@@ -131,6 +131,9 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 }
 #app-header .icon-btn.active#europe-toggle-btn { border-color: var(--accent); }
 
+#nearby-toggle-btn { border: 1px solid rgba(255,255,255,0.25); }
+#app-header .icon-btn.active#nearby-toggle-btn { border-color: var(--accent); }
+
 .pill {
   font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px;
   background: var(--accent-bg); color: var(--accent);

@@ -17,6 +17,7 @@ let currentScreen = 'main'; // 'main' | 'profile' | 'settings'
 let activeProfileBandId = null;
 let editingBandId = null;
 let europeOnly = false;
+let nearbyOnly = false;
 let inactivityYears = 3;
 let hideInactiveBands = false;
 
@@ -26,8 +27,10 @@ const SEED_BANDS = [];
 const SEED_CONCERTS = [];
 
 async function init() {
-  const { europeOnly: savedEuropeOnly = true } = await chrome.storage.local.get('europeOnly');
+  const { europeOnly: savedEuropeOnly = true, nearbyOnly: savedNearbyOnly = false } =
+    await chrome.storage.local.get(['europeOnly', 'nearbyOnly']);
   europeOnly = !!savedEuropeOnly;
+  nearbyOnly = !!savedNearbyOnly && !europeOnly; // filters are mutually exclusive
   const { inactivityYears: savedInactivityYears = 3, hideInactiveBands: savedHideInactive = false } =
     await chrome.storage.local.get(['inactivityYears', 'hideInactiveBands']);
   inactivityYears = Number(savedInactivityYears) || 3;
@@ -64,6 +67,7 @@ function showConnectionError() {
   el('app').classList.remove('hidden');
   el('tabbar').classList.add('hidden');
   el('europe-toggle-btn').classList.add('hidden');
+  el('nearby-toggle-btn').classList.add('hidden');
   setHeaderChrome({ showBack: false, isBrand: true });
   showScreen('screen-connection-error');
 }
@@ -169,6 +173,8 @@ function wireHeader() {
   el('settings-btn').innerHTML = icon('settings');
   el('europe-toggle-btn').textContent = 'EU';
   el('europe-toggle-btn').classList.toggle('active', europeOnly);
+  el('nearby-toggle-btn').innerHTML = icon('nearbyPin');
+  el('nearby-toggle-btn').classList.toggle('active', nearbyOnly);
 
   el('back-btn').addEventListener('click', () => {
     if (currentScreen === 'settings' || currentScreen === 'profile') {
@@ -178,8 +184,18 @@ function wireHeader() {
   el('settings-btn').addEventListener('click', () => showSettingsScreen());
   el('europe-toggle-btn').addEventListener('click', async () => {
     europeOnly = !europeOnly;
+    if (europeOnly) nearbyOnly = false; // EU and Nearby are mutually exclusive
     el('europe-toggle-btn').classList.toggle('active', europeOnly);
-    await chrome.storage.local.set({ europeOnly });
+    el('nearby-toggle-btn').classList.toggle('active', nearbyOnly);
+    await chrome.storage.local.set({ europeOnly, nearbyOnly });
+    if (currentTab === 'concerts' && currentScreen === 'main') renderConcertsScreen();
+  });
+  el('nearby-toggle-btn').addEventListener('click', async () => {
+    nearbyOnly = !nearbyOnly;
+    if (nearbyOnly) europeOnly = false; // EU and Nearby are mutually exclusive
+    el('nearby-toggle-btn').classList.toggle('active', nearbyOnly);
+    el('europe-toggle-btn').classList.toggle('active', europeOnly);
+    await chrome.storage.local.set({ europeOnly, nearbyOnly });
     if (currentTab === 'concerts' && currentScreen === 'main') renderConcertsScreen();
   });
 
@@ -238,6 +254,7 @@ function goToTab(tab, { fromHistory = false } = {}) {
   el('tabbar').querySelectorAll('.tabitem').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   setHeaderChrome({ showBack: false, title: TAB_TITLES[tab] || 'ConcertDates', isBrand: true, brandHtml: TAB_BRAND_HTML[tab] });
   el('europe-toggle-btn').classList.toggle('hidden', tab !== 'concerts');
+  el('nearby-toggle-btn').classList.toggle('hidden', tab !== 'concerts');
   showScreen(TAB_SCREENS[tab] || 'screen-concerts');
   if (tab === 'concerts') renderConcertsScreen();
   else if (tab === 'myconcerts') renderMyConcertsScreen();
@@ -281,9 +298,15 @@ function renderConcertsScreen() {
   const container = el('screen-concerts');
   let nearest = dlNearestPerBand(concerts).filter((c) => bands.some((b) => b.id === c.bandId));
   if (europeOnly) nearest = nearest.filter((c) => dlIsEuropeCountry(c.country));
+  else if (nearbyOnly) nearest = nearest.filter((c) => dlIsNearby(c));
 
   if (nearest.length === 0) {
-    container.innerHTML = `<p class="screen-empty">${europeOnly ? 'No upcoming European concerts right now.' : "No upcoming concerts yet. They'll show up here after the next scheduled check."}</p>`;
+    const emptyMsg = europeOnly
+      ? 'No upcoming European concerts right now.'
+      : nearbyOnly
+        ? 'No upcoming concerts near you right now.'
+        : "No upcoming concerts yet. They'll show up here after the next scheduled check.";
+    container.innerHTML = `<p class="screen-empty">${emptyMsg}</p>`;
     return;
   }
 
@@ -627,6 +650,7 @@ function openProfile(bandId, { fromHistory = false } = {}) {
   const band = bands.find((b) => b.id === bandId);
   setHeaderChrome({ showBack: true, title: band ? band.name : 'Band' });
   el('europe-toggle-btn').classList.add('hidden');
+  el('nearby-toggle-btn').classList.add('hidden');
   showScreen('screen-profile');
   renderProfileScreen(bandId);
   if (!fromHistory) history.pushState({ tab: currentTab, screen: 'profile', bandId }, '');
@@ -761,6 +785,7 @@ function showSettingsScreen({ fromHistory = false } = {}) {
   currentScreen = 'settings';
   setHeaderChrome({ showBack: true, title: 'Settings' });
   el('europe-toggle-btn').classList.add('hidden');
+  el('nearby-toggle-btn').classList.add('hidden');
   showScreen('screen-settings');
   renderSettingsScreen();
   if (!fromHistory) history.pushState({ tab: currentTab, screen: 'settings' }, '');
