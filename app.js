@@ -12,6 +12,8 @@
 let remote = null;
 let bands = [];
 let concerts = [];
+let news = [];
+let newsLastOpenedAt = null;
 let currentTab = 'concerts';
 let currentScreen = 'main'; // 'main' | 'profile' | 'settings'
 let activeProfileBandId = null;
@@ -31,6 +33,7 @@ const el = (id) => document.getElementById(id);
 
 const SEED_BANDS = [];
 const SEED_CONCERTS = [];
+const SEED_NEWS = [];
 
 async function init() {
   const { europeOnly: savedEuropeOnly = true, nearbyOnly: savedNearbyOnly = false } =
@@ -41,6 +44,8 @@ async function init() {
     await chrome.storage.local.get(['inactivityYears', 'hideInactiveBands']);
   inactivityYears = Number(savedInactivityYears) || 3;
   hideInactiveBands = !!savedHideInactive;
+  const { newsLastOpenedAt: savedNewsLastOpenedAt = null } = await chrome.storage.local.get('newsLastOpenedAt');
+  newsLastOpenedAt = savedNewsLastOpenedAt;
 
   wireOnboarding();
   wireHeader();
@@ -132,6 +137,7 @@ function wireOnboarding() {
       if (existingBands === null) {
         await dlWriteJsonFile(candidate, 'bands.json', SEED_BANDS);
         await dlWriteJsonFile(candidate, 'concerts.json', SEED_CONCERTS);
+        await dlWriteJsonFile(candidate, 'news.json', SEED_NEWS);
       }
       rsSaveConnection(candidate);
       remote = candidate;
@@ -146,9 +152,11 @@ function wireOnboarding() {
 async function loadDataAndShowApp() {
   bands = await dlReadJsonFile(remote, 'bands.json', []);
   concerts = await dlReadJsonFile(remote, 'concerts.json', []);
+  news = await dlReadJsonFile(remote, 'news.json', []);
   el('onboarding').classList.add('hidden');
   el('app').classList.remove('hidden');
   await updateHeaderBadge();
+  updateNewsBadge();
   // Only (re)establish the base screen when we're not already deeper in the
   // navigation stack (e.g. tapping "Refresh now" inside Settings shouldn't
   // bounce back out to the Concerts tab). Use replaceState rather than push
@@ -171,6 +179,21 @@ async function updateHeaderBadge() {
   } else {
     pill.classList.add('hidden');
   }
+}
+
+// News unread indicator — a single red dot on the News tab icon, not a
+// per-article count. It clears as soon as the News tab is opened (not per
+// article read), so it only ever means "something new arrived since you
+// last looked at this tab".
+function updateNewsBadge() {
+  const hasUnread = news.some((n) => !newsLastOpenedAt || n.foundAt > newsLastOpenedAt);
+  el('news-unread-dot')?.classList.toggle('hidden', !hasUnread);
+}
+
+async function markNewsSeen() {
+  newsLastOpenedAt = new Date().toISOString();
+  await chrome.storage.local.set({ newsLastOpenedAt });
+  updateNewsBadge();
 }
 
 function wireHeader() {
@@ -223,15 +246,17 @@ function wireHeader() {
   });
 }
 
-const TAB_ICONS = { concerts: 'music', myconcerts: 'ticketStub', mybands: 'users' };
-const TAB_TITLES = { concerts: 'ConcertDates', myconcerts: 'My Concerts', mybands: 'My Bands' };
-const TAB_SCREENS = { concerts: 'screen-concerts', myconcerts: 'screen-myconcerts', mybands: 'screen-mybands' };
+const TAB_ICONS = { concerts: 'music', myconcerts: 'ticketStub', mybands: 'users', news: 'newsArticle' };
+const TAB_TITLES = { concerts: 'ConcertDates', myconcerts: 'My Concerts', mybands: 'My Bands', news: 'News' };
+const TAB_SCREENS = { concerts: 'screen-concerts', myconcerts: 'screen-myconcerts', mybands: 'screen-mybands', news: 'screen-news' };
 // Two-tone brand header markup per root tab (first part blue, rest white),
-// matching the CONCERTDATES treatment.
+// matching the CONCERTDATES treatment. "News" has no natural two-part split,
+// so it's rendered plain (no highlighted segment).
 const TAB_BRAND_HTML = {
   concerts: '<span class="brand-blue">CONCERT</span>DATES',
   myconcerts: '<span class="brand-blue">MY</span>CONCERTS',
   mybands: '<span class="brand-blue">MY</span>BANDS',
+  news: 'NEWS',
 };
 
 function wireTabs() {
@@ -264,12 +289,16 @@ function goToTab(tab, { fromHistory = false } = {}) {
   showScreen(TAB_SCREENS[tab] || 'screen-concerts');
   if (tab === 'concerts') renderConcertsScreen();
   else if (tab === 'myconcerts') renderMyConcertsScreen();
-  else renderMyBandsScreen();
+  else if (tab === 'mybands') renderMyBandsScreen();
+  else if (tab === 'news') {
+    renderNewsScreen();
+    markNewsSeen();
+  }
   if (!fromHistory) history.pushState({ tab, screen: 'main' }, '');
 }
 
 function showScreen(id) {
-  ['screen-concerts', 'screen-myconcerts', 'screen-mybands', 'screen-profile', 'screen-settings', 'screen-connection-error'].forEach((s) => {
+  ['screen-concerts', 'screen-myconcerts', 'screen-mybands', 'screen-news', 'screen-profile', 'screen-settings', 'screen-connection-error'].forEach((s) => {
     el(s).classList.toggle('hidden', s !== id);
   });
   // All screens share one scrollable container (#content), so without this
@@ -659,6 +688,55 @@ async function onAddBand() {
 
 function stripTransient(list) {
   return list.map(({ _enriching, ...rest }) => rest);
+}
+
+/* ---------------- News tab ---------------- */
+
+// Category metadata: label shown as the card's kicker, and which CSS
+// variable supplies its color. Colors themselves live in app.css (they
+// differ between light/dark mode) — see --news-concert/--news-album/
+// --news-ticket/--news-hiatus.
+const NEWS_CATEGORIES = {
+  concert: { label: 'Concert announcement', varName: '--news-concert' },
+  album: { label: 'New album', varName: '--news-album' },
+  ticket: { label: 'Tickets on sale', varName: '--news-ticket' },
+  hiatus: { label: 'Band news', varName: '--news-hiatus' },
+};
+
+function renderNewsScreen() {
+  const container = el('screen-news');
+  const sorted = [...news].sort((a, b) => (b.foundAt || '').localeCompare(a.foundAt || ''));
+
+  if (sorted.length === 0) {
+    container.innerHTML = `<p class="screen-empty">No news yet. Concert and album announcements, ticket on-sale dates, and band status updates for the acts you track will show up here.</p>`;
+    return;
+  }
+
+  container.innerHTML = sorted.map(newsCardHtml).join('');
+}
+
+function newsCardHtml(n) {
+  const cat = NEWS_CATEGORIES[n.category] || { label: 'News', varName: '--news-hiatus' };
+  const metaParts = [n.bandName, formatShortDate(n.date), n.sourceName].filter(Boolean);
+  return `
+    <div class="news-card">
+      <span class="news-card-bar" style="background:var(${cat.varName})"></span>
+      <p class="news-kicker" style="color:var(${cat.varName})">${escapeHtml(cat.label.toUpperCase())}</p>
+      ${n.sourceUrl
+        ? `<a class="news-headline-link" href="${escapeAttr(n.sourceUrl)}" target="_blank" rel="noopener"><p class="news-headline">${escapeHtml(n.headline)}</p></a>`
+        : `<p class="news-headline">${escapeHtml(n.headline)}</p>`}
+      <p class="news-meta">${escapeHtml(metaParts.join(' · '))}</p>
+    </div>`;
+}
+
+function formatShortDate(dateStr) {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  } catch {
+    return '';
+  }
 }
 
 /* ---------------- Band profile screen ---------------- */
