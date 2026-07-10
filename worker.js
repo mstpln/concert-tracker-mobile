@@ -7,11 +7,11 @@
 //      and Secrets > Add > Secret) — this is the token you'll also paste
 //      into the app itself when connecting.
 //
-// It only ever serves two fixed files — bands.json and concerts.json — and
-// refuses everything else. GET reads a file; PUT overwrites it. Both
-// require the Authorization: Bearer <API_TOKEN> header.
+// It only ever serves three fixed files — bands.json, concerts.json, and
+// news.json — and refuses everything else. GET reads a file; PUT overwrites
+// it. Both require the Authorization: Bearer <API_TOKEN> header.
 
-const ALLOWED_FILES = new Set(['bands.json', 'concerts.json']);
+const ALLOWED_FILES = new Set(['bands.json', 'concerts.json', 'news.json']);
 
 function corsHeaders() {
   return {

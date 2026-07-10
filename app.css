@@ -15,6 +15,16 @@
   --inactive: #40495c;
   --inactive-bg: #eceef1;
   --radius: 8px;
+  /* News category colors — kept within the app's own black/grey/white/blue
+     palette rather than introducing new hues. Concert and album share the
+     blue family (album a shade deeper); ticket and hiatus are a light/dark
+     grey pair. Light-mode values are tuned for contrast on a white card —
+     see the dark override below for the (brighter/lighter) values used on
+     dark surfaces. */
+  --news-concert: #0b57d0;
+  --news-album: #06266b;
+  --news-ticket: #55575c;
+  --news-hiatus: #8a8c90;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -29,6 +39,10 @@
     --accent-bg: #12203f;
     --inactive: #b7c0cf;
     --inactive-bg: #2a2f38;
+    --news-concert: #7fb0ff;
+    --news-album: #3b7bf0;
+    --news-ticket: #eceef1;
+    --news-hiatus: #6b7178;
   }
 }
 
@@ -262,6 +276,11 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .tabitem.active { color: var(--accent); }
 .tab-icon { display: flex; }
 .tab-icon svg { width: 21px; height: 21px; }
+.tab-icon-wrap { position: relative; display: flex; }
+.tab-unread-dot {
+  position: absolute; top: -2px; right: -5px; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--danger); border: 1.5px solid var(--surface);
+}
 
 /* Profile screen */
 .profile-header { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
@@ -307,6 +326,24 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 }
 .venue-address-text:hover { color: var(--accent); text-decoration: underline; }
 .venue-address-text .map-pin-icon { flex-shrink: 0; margin-top: 2px; }
+
+/* News tab */
+.news-card {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 12px 12px 18px; margin-bottom: 8px; background: var(--surface);
+}
+.news-card-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+.news-kicker {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .03em; margin: 0 0 4px;
+}
+.news-headline-link { text-decoration: none; }
+.news-headline {
+  font-size: 14px; font-weight: 600; margin: 0 0 4px; line-height: 1.35; color: var(--text);
+}
+.news-headline-link:hover .news-headline { text-decoration: underline; }
+.news-meta { font-size: 12px; color: var(--text-muted); margin: 0; }
 
 /* Settings */
 .settings-field { margin-bottom: 14px; }
