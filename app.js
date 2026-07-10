@@ -16,7 +16,7 @@ let news = [];
 let apiUsage = null;
 let newsLastOpenedAt = null;
 let currentTab = 'concerts';
-let currentScreen = 'main'; // 'main' | 'profile' | 'settings'
+let currentScreen = 'main'; // 'main' | 'profile' | 'settings' | 'connection-error' (only reachable pre-navigation)
 let activeProfileBandId = null;
 let editingBandId = null;
 let europeOnly = false;
@@ -39,14 +39,16 @@ const SEED_NEWS = [];
 // The weekly research pipeline's three provider keys live only as GitHub
 // Actions secrets — by design, secret values can never be read back once
 // saved, so there's no way for this app to fetch them live. This is a
-// small static record of what was saved and when, filled in once at setup
-// time (matching the masked-key + added-date pattern used for the Groq key
-// above). If a key is ever rotated, update the masked/addedAt values here
+// small static record of what was saved, filled in once at setup time.
+// Deliberately has no "added" date: an earlier version of this record
+// stamped all three keys with the date this code was last edited (not the
+// real secret-creation date, which isn't knowable), which was misleading —
+// see QA pass notes. If a key is ever rotated, update the masked value here
 // to match.
 const RESEARCH_KEY_METADATA = {
-  ticketmaster: { label: 'Ticketmaster API key', masked: 'iS4B••••••••sraA', addedAt: '2026-07-10' },
-  tavily: { label: 'Tavily API key', masked: 'tvly••••••••yzt0', addedAt: '2026-07-10' },
-  groq: { label: 'Groq API key (research pipeline)', masked: 'gsk_••••••••rhcu', addedAt: '2026-07-10' },
+  ticketmaster: { label: 'Ticketmaster API key', masked: 'iS4B••••••••sraA' },
+  tavily: { label: 'Tavily API key', masked: 'tvly••••••••yzt0' },
+  groq: { label: 'Groq API key (research pipeline)', masked: 'gsk_••••••••rhcu' },
 };
 
 async function init() {
@@ -186,7 +188,7 @@ async function loadDataAndShowApp() {
 
 async function updateHeaderBadge() {
   const { seenIds = [] } = await chrome.storage.local.get('seenIds');
-  const unseenNew = concerts.filter((c) => c.isNew && dlIsUpcoming(c) && !seenIds.includes(c.id));
+  const unseenNew = dlUnnotified(concerts, seenIds);
   const pill = el('new-badge');
   if (unseenNew.length > 0) {
     pill.textContent = `${unseenNew.length} new`;
@@ -392,7 +394,13 @@ function renderConcertsScreen() {
 
 function renderMyConcertsScreen() {
   const container = el('screen-myconcerts');
-  const { upcoming, past } = dlMyConcerts(concerts);
+  // Same guard as renderConcertsScreen: a concert whose band was removed via
+  // the My Bands trash button has no matching entry in `bands` anymore (band
+  // removal only rewrites bands.json, never concerts.json). Without this
+  // filter a "going"/"attended" concert for a deleted band would still show
+  // up here, and tapping it would dead-end on openProfile's "Band not found."
+  const liveConcerts = concerts.filter((c) => bands.some((b) => b.id === c.bandId));
+  const { upcoming, past } = dlMyConcerts(liveConcerts);
 
   const bandOptions = [...bands]
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -806,7 +814,13 @@ function renderProfileScreen(bandId) {
 
   const metaParts = [band.genre, [band.origin, band.formedYear ? `formed ${band.formedYear}` : null].filter(Boolean).join(', ')].filter(Boolean);
   if (activity.lastDate) {
-    metaParts.push(`${activity.status === 'active' && activity.lastDate > new Date() ? 'next show' : 'last show'} ${activity.lastYear}`);
+    // activity.lastDate is always normalized to midnight, so comparing it
+    // against `new Date()` (current time-of-day) mislabels a show happening
+    // later today as "last show" instead of "next show" for most of the
+    // day. Compare against today's midnight instead for a date-only check.
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    metaParts.push(`${activity.status === 'active' && activity.lastDate >= todayMidnight ? 'next show' : 'last show'} ${activity.lastYear}`);
   }
 
   const socialButtons = [];
@@ -1068,17 +1082,16 @@ function usageBarRowHtml(label, used, cap) {
 }
 
 // Renders the read-only "Research pipeline" block in Settings: which
-// provider keys are configured (masked, with the date each was added —
-// GitHub Actions secrets can't be read back, so this is a static record,
-// see RESEARCH_KEY_METADATA above) and how much of each free tier this
-// week's run has used, sourced from apiUsage.json (written by
-// scripts/research.js, never by this app).
+// provider keys are configured (masked — GitHub Actions secrets can't be
+// read back, so this is a static record, see RESEARCH_KEY_METADATA above)
+// and how much of each free tier this week's run has used, sourced from
+// apiUsage.json (written by scripts/research.js, never by this app).
 function researchPipelineSectionHtml() {
   const keyRows = Object.values(RESEARCH_KEY_METADATA)
     .map(
       (k) => `
         <p class="muted" style="font-size:11px;margin:0 0 3px">
-          ${escapeHtml(k.label)}: <strong>${escapeHtml(k.masked)}</strong> · added ${escapeHtml(formatSettingsDate(k.addedAt))}
+          ${escapeHtml(k.label)}: <strong>${escapeHtml(k.masked)}</strong>
         </p>`
     )
     .join('');
@@ -1236,7 +1249,13 @@ async function callGroq(prompt, apiKey) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
+        // llama-3.1-8b-instant was deprecated by Groq on 2026-06-17 (same
+        // wave as llama-3.3-70b-versatile, which the research pipeline in
+        // scripts/lib/config.js hit and migrated away from — this
+        // client-side call site uses a separate, personal Groq key and was
+        // missed until this QA pass). openai/gpt-oss-20b is Groq's
+        // recommended lightweight replacement.
+        model: 'openai/gpt-oss-20b',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.2, max_tokens: 300,
       }),
@@ -1285,10 +1304,17 @@ function clean(v) {
 
 function formatDate(dateStr, timeStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00:00');
-  const opts = { weekday: 'short', day: 'numeric', month: 'short' };
-  const s = d.toLocaleDateString('en-GB', opts);
-  return timeStr ? `${s}, ${timeStr}` : s;
+  try {
+    const d = new Date(dateStr + 'T00:00:00');
+    const opts = { weekday: 'short', day: 'numeric', month: 'short' };
+    const s = d.toLocaleDateString('en-GB', opts);
+    // Ticketmaster's localTime comes through as HH:mm:ss — trim any
+    // seconds component so rows show "18:30" instead of "18:30:00".
+    const shortTime = timeStr ? timeStr.slice(0, 5) : null;
+    return shortTime ? `${s}, ${shortTime}` : s;
+  } catch {
+    return '';
+  }
 }
 
 function formatKm(km) {

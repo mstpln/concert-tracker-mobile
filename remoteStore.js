@@ -62,10 +62,7 @@ async function dlWriteJsonFile(remote, filename, data) {
 
 // Minimal chrome.storage.local-shaped shim backed by localStorage, so the
 // rest of the app (copied from the extension's popup.js) can keep calling
-// chrome.storage.local.get/set/remove exactly as before. chrome.runtime is
-// also stubbed as a harmless no-op — there's no background service worker
-// in this build (no alarms/notifications yet), so any leftover
-// chrome.runtime.sendMessage calls just do nothing instead of throwing.
+// chrome.storage.local.get/set/remove exactly as before.
 window.chrome = window.chrome || {};
 window.chrome.storage = {
   local: {
@@ -95,4 +92,3 @@ window.chrome.storage = {
     },
   },
 };
-window.chrome.runtime = { sendMessage: () => {} };
