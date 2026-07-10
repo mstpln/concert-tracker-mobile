@@ -21,7 +21,7 @@ const ticketmaster = require('./lib/ticketmaster');
 const tavily = require('./lib/tavily');
 const groq = require('./lib/groq');
 const geocode = require('./lib/geocode');
-const { slugify, isValidFullDate, daysAgo, truncate } = require('./lib/util');
+const { slugify, isValidFullDate, daysAgo, truncate, todayIso } = require('./lib/util');
 const config = require('./lib/config');
 
 const NEWS_CATEGORIES = new Set(['concert', 'album', 'ticket', 'hiatus']);
@@ -54,23 +54,29 @@ async function fetchTourDatesViaTavily(band, usage) {
     .map((r, i) => `[${i}] ${r.title}\nURL: ${r.url}\n${truncate(r.content, SNIPPET_MAX_CHARS)}`)
     .join('\n\n');
 
+  const today = todayIso();
   const systemPrompt = [
-    'You extract confirmed upcoming concert dates for a specific band from search-result snippets.',
+    'You extract confirmed UPCOMING (not past) concert dates for a specific band from search-result snippets.',
+    `Today's date is ${today}. This is critical: search results often describe shows that have ALREADY HAPPENED (tour recaps, reviews, "last night" reporting) — only include a show if its date is on or after today's date. When in doubt about whether a show is in the past, leave it out.`,
     'Rules:',
     '- Only include a show if the source explicitly states a full calendar date including the YEAR.',
     '- If a date has no explicit year stated anywhere in the text, DO NOT GUESS OR INFER a year — omit that show entirely.',
+    `- If the date is before ${today}, omit it — this tool only tracks upcoming shows, never past ones.`,
     '- Only include shows for the exact band named by the user, not support acts, tribute bands, or unrelated artists.',
     '- Respond with a JSON object: {"shows": [{"venue": "", "city": "", "country": "", "date": "YYYY-MM-DD", "sourceUrl": ""}]}',
     '- If nothing qualifies, respond with {"shows": []}.',
   ].join('\n');
 
-  const userPrompt = `Band: ${band.name}\n\nSearch results:\n${snippets}`;
+  const userPrompt = `Band: ${band.name}\nToday's date: ${today}\n\nSearch results:\n${snippets}`;
 
   const parsed = await groq.chatJson(systemPrompt, userPrompt, usage, {
     estimatedTokens: TOUR_DATE_ESTIMATED_TOKENS,
   });
   const shows = Array.isArray(parsed?.shows) ? parsed.shows : [];
-  const valid = shows.filter((s) => isValidFullDate(s.date) && s.venue);
+  // Defensive filter, independent of what the model was told: never trust
+  // the LLM alone to enforce "upcoming only" — this is the second layer of
+  // whatever the merge-time check in main() also does.
+  const valid = shows.filter((s) => isValidFullDate(s.date) && s.venue && s.date >= today);
 
   // Sequential, not Promise.all — geocode.js rate-limits itself to 1
   // req/sec per Nominatim's usage policy, so concurrent calls would just
@@ -166,18 +172,29 @@ async function main() {
     UsageTracker.load(),
   ]);
 
+  const todayStr = todayIso();
   const existingConcertIds = new Set(concerts.map((c) => c.id));
   const existingConcertKeys = new Set(concerts.map(concertKey));
   const existingNewsKeys = new Set(news.map(newsKey));
+
+  // Rotate the starting point each run — see the comment on `rotation` in
+  // usageTracker.js. Ticketmaster is cheap and always covers every band
+  // regardless of order, but the Tavily/Groq-gated news step can run out
+  // of budget partway through; rotating means that cutoff lands somewhere
+  // different each week instead of always excluding the same tail-end
+  // bands.
+  const rotationOffset = bands.length > 0 ? usage.state.rotation.nextBandIndex % bands.length : 0;
+  const orderedBands = [...bands.slice(rotationOffset), ...bands.slice(0, rotationOffset)];
 
   const newConcerts = [];
   const newNews = [];
   let bandsProcessed = 0;
   let ticketmasterHits = 0;
   let tavilyFallbackUsed = 0;
+  let newsAttemptCount = 0;
   let newsBudgetExhaustedNoted = false;
 
-  for (const band of bands) {
+  for (const band of orderedBands) {
     bandsProcessed += 1;
 
     // ---- Tour dates: Ticketmaster first ----
@@ -202,6 +219,14 @@ async function main() {
 
     for (const c of candidates) {
       if (existingConcertIds.has(c.id) || existingConcertKeys.has(concertKey(c))) continue;
+      // Third, final layer of the upcoming-only guarantee — independent of
+      // Ticketmaster's own filtering and of what the Tavily/Groq fallback
+      // was told. Nothing with a past date is ever written, regardless of
+      // where it came from or what bug either upstream source might have.
+      if (!c.date || c.date < todayStr) {
+        usage.note(`Dropped past-dated candidate for "${c.bandName}": ${c.date} at ${c.venue} (source: ${c.ticketRetailerVerified ? 'Ticketmaster' : 'Tavily/Groq'})`);
+        continue;
+      }
       existingConcertIds.add(c.id);
       existingConcertKeys.add(concertKey(c));
       newConcerts.push(c);
@@ -209,6 +234,7 @@ async function main() {
 
     // ---- News: one combined Tavily search + Groq classification ----
     if (usage.canCallTavily() && usage.canCallGroq(NEWS_ESTIMATED_TOKENS)) {
+      newsAttemptCount += 1;
       try {
         const items = await fetchNewsForBand(band, usage);
         for (const n of items) {
@@ -241,10 +267,20 @@ async function main() {
     await worker.writeJson('news.json', [...news, ...freshNews]);
   }
 
+  // Advance the rotation by exactly how many bands actually got a news
+  // attempt this run — if the budget ran out early, that's fewer than
+  // bands.length, so next week picks up right where this run left off
+  // instead of restarting from the same spot.
+  if (bands.length > 0) {
+    usage.state.rotation.nextBandIndex = (rotationOffset + newsAttemptCount) % bands.length;
+  }
+
   usage.finishRun({
     bandsProcessed,
     ticketmasterHits,
     tavilyFallbackUsed,
+    newsAttemptCount,
+    rotationOffset,
     concertsAdded: newConcerts.length,
     newsAdded: freshNews.length,
     status: 'ok',
@@ -252,7 +288,7 @@ async function main() {
   await usage.save();
 
   console.log(
-    `Done. Bands processed: ${bandsProcessed}, new concerts: ${newConcerts.length}, new news items: ${freshNews.length}.`
+    `Done. Bands processed: ${bandsProcessed}, new concerts: ${newConcerts.length}, new news items: ${freshNews.length}, news attempted: ${newsAttemptCount}/${bands.length} (started at index ${rotationOffset}).`
   );
   console.log(
     `Usage this run — Ticketmaster: ${usage.state.ticketmaster.callsThisRun}, Tavily: ${usage.state.tavily.callsThisRun} (month total: ${usage.state.tavily.callsThisMonth}/${usage.state.tavily.monthlyCap}), Groq: ${usage.state.groq.callsThisRun} calls / ${usage.state.groq.tokensThisRun} tokens.`
