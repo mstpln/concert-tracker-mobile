@@ -16,7 +16,7 @@ let news = [];
 let apiUsage = null;
 let newsLastOpenedAt = null;
 let currentTab = 'concerts';
-let currentScreen = 'main'; // 'main' | 'profile' | 'settings' | 'connection-error' (only reachable pre-navigation)
+let currentScreen = 'main'; // 'main' | 'profile' | 'settings' | 'stats' | 'connection-error' (only reachable pre-navigation)
 let activeProfileBandId = null;
 let editingBandId = null;
 let europeOnly = false;
@@ -225,7 +225,7 @@ function wireHeader() {
   el('nearby-toggle-btn').classList.toggle('active', nearbyOnly);
 
   el('back-btn').addEventListener('click', () => {
-    if (currentScreen === 'settings' || currentScreen === 'profile') {
+    if (currentScreen === 'settings' || currentScreen === 'profile' || currentScreen === 'stats') {
       history.back();
     }
   });
@@ -259,6 +259,8 @@ function wireHeader() {
       openProfile(state.bandId, { fromHistory: true });
     } else if (state.screen === 'settings') {
       showSettingsScreen({ fromHistory: true });
+    } else if (state.screen === 'stats') {
+      openStatsScreen({ fromHistory: true });
     } else {
       goToTab(state.tab || currentTab, { fromHistory: true });
     }
@@ -317,7 +319,7 @@ function goToTab(tab, { fromHistory = false } = {}) {
 }
 
 function showScreen(id) {
-  ['screen-concerts', 'screen-myconcerts', 'screen-mybands', 'screen-news', 'screen-profile', 'screen-settings', 'screen-connection-error'].forEach((s) => {
+  ['screen-concerts', 'screen-myconcerts', 'screen-mybands', 'screen-news', 'screen-profile', 'screen-settings', 'screen-stats', 'screen-connection-error'].forEach((s) => {
     el(s).classList.toggle('hidden', s !== id);
   });
   // All screens share one scrollable container (#content), so without this
@@ -409,6 +411,10 @@ function renderMyConcertsScreen() {
 
   let html = '';
 
+  // Stats teaser only once there's at least one past show to summarize —
+  // otherwise it'd just be a row of zeroes above an empty list.
+  if (past.length > 0) html += statsTeaserHtml(dlConcertStats(past));
+
   if (upcoming.length === 0 && past.length === 0) {
     html += `<p class="screen-empty">No concerts saved yet. Tap "I'm going" on a band's page to add one, or backlog a past show below.</p>`;
   } else {
@@ -446,6 +452,18 @@ function renderMyConcertsScreen() {
   wireMyConcertsHandlers(container);
 }
 
+function statsTeaserHtml(stats) {
+  return `
+    <div class="stats-teaser-card">
+      <div class="stats-teaser-row">
+        <div class="stats-teaser-item"><span class="stats-teaser-value">${stats.totalShows.toLocaleString()}</span><span class="stats-teaser-label">shows</span></div>
+        <div class="stats-teaser-item"><span class="stats-teaser-value">${stats.countries.toLocaleString()}</span><span class="stats-teaser-label">countries</span></div>
+        <div class="stats-teaser-item"><span class="stats-teaser-value">${stats.kmTraveled.toLocaleString()}</span><span class="stats-teaser-label">km traveled</span></div>
+      </div>
+      <button type="button" id="stats-teaser-cta" class="stats-teaser-footer">See your full stats${icon('chevronRight')}</button>
+    </div>`;
+}
+
 function myConcertRowHtml(c, isPast) {
   return `
     <div class="row-card clickable has-corner-delete${isPast ? ' is-past' : ''}" data-band-id="${c.bandId}">
@@ -463,7 +481,64 @@ function myConcertRowHtml(c, isPast) {
         <summary>Venue details<span class="details-chevron">${icon('chevronDown')}</span></summary>
         <a class="venue-address-text" href="${escapeAttr(buildGoogleMapsUrl(c))}" target="_blank" rel="noopener"><span class="map-pin-icon">${icon('mapPin')}</span>${escapeHtml(c.venueAddress)}</a>
       </details>` : ''}
+      ${isPast ? concertReviewHtml(c) : ''}
       <button class="icon-btn remove-going-btn delete-corner-btn" data-concert-id="${c.id}" aria-label="Remove">${icon('trash')}</button>
+    </div>`;
+}
+
+// Rating (1-5), notes and an optional photo-album link, only ever shown for
+// past + attended concerts — never upcoming "going" shows. Two states: once
+// any of the three fields has been filled in, they're always visible on the
+// card (rating + full notes text + photo link, no expand needed); until
+// then, a collapsed "Add rating, notes & photo" accordion holds the entry
+// form so it doesn't clutter the ~1000+ already-logged historical shows
+// that will likely never get rated.
+function dlHasReview(c) {
+  return !!(c.rating || c.notes || c.photoUrl);
+}
+
+function concertReviewHtml(c) {
+  if (dlHasReview(c)) {
+    return `
+      <div class="review-block concert-review">
+        ${starsHtml(c.rating)}
+        ${c.notes ? `<p class="review-notes">${escapeHtml(c.notes)}</p>` : ''}
+        ${c.photoUrl ? `<a class="review-photo-link" href="${escapeAttr(c.photoUrl)}" target="_blank" rel="noopener">${icon('link')}Photos</a>` : ''}
+        <details class="review-edit-toggle">
+          <summary>Edit rating &amp; notes<span class="details-chevron">${icon('chevronDown')}</span></summary>
+          ${reviewFormHtml(c)}
+        </details>
+      </div>`;
+  }
+  return `
+    <details class="review-block review-add-toggle">
+      <summary>Add rating, notes &amp; photo<span class="details-chevron">${icon('chevronDown')}</span></summary>
+      ${reviewFormHtml(c)}
+    </details>`;
+}
+
+function starsHtml(rating, { interactive = false } = {}) {
+  const r = Number(rating) || 0;
+  let html = interactive ? `<span class="star-picker" data-rating="${r}">` : `<span class="stars-display">`;
+  for (let i = 1; i <= 5; i++) {
+    const filled = i <= r;
+    html += interactive
+      ? `<button type="button" class="star-btn${filled ? ' filled' : ''}" data-value="${i}" aria-label="${i} star${i > 1 ? 's' : ''}">${icon(filled ? 'starFill' : 'star')}</button>`
+      : `<span class="star-btn${filled ? ' filled' : ''}">${icon(filled ? 'starFill' : 'star')}</span>`;
+  }
+  return html + '</span>';
+}
+
+// Larger textarea than the app's other free-text inputs (rows="4"), since
+// this is meant to hold an actual few-sentence review rather than a single
+// line like the "Add a band"/"Add a past concert" forms.
+function reviewFormHtml(c) {
+  return `
+    <div class="review-form">
+      ${starsHtml(c.rating, { interactive: true })}
+      <textarea class="review-notes-input" rows="4" placeholder="What did you think of this show?">${escapeHtml(c.notes || '')}</textarea>
+      <input type="url" class="review-photo-input" value="${escapeAttr(c.photoUrl || '')}" placeholder="Google Photos link (optional)" />
+      <button type="button" class="btn-primary review-save-btn" data-concert-id="${escapeAttr(c.id)}">Save</button>
     </div>`;
 }
 
@@ -476,10 +551,11 @@ function buildGoogleMapsUrl(c) {
 
 function wireMyConcertsHandlers(container) {
   container.querySelector('#past-concert-submit')?.addEventListener('click', onAddPastConcert);
+  container.querySelector('#stats-teaser-cta')?.addEventListener('click', () => openStatsScreen());
 
   container.querySelectorAll('.row-card[data-band-id]').forEach((row) => {
     row.addEventListener('click', (ev) => {
-      if (ev.target.closest('.icon-btn') || ev.target.closest('.venue-details')) return;
+      if (ev.target.closest('.icon-btn') || ev.target.closest('.venue-details') || ev.target.closest('.review-block')) return;
       openProfile(row.dataset.bandId);
     });
   });
@@ -496,6 +572,45 @@ function wireMyConcertsHandlers(container) {
       } else {
         c.attending = false;
       }
+      await dlWriteJsonFile(remote, 'concerts.json', concerts);
+      renderMyConcertsScreen();
+    });
+  });
+
+  // Rating stars: clicking one just updates the pending value + visual fill
+  // in place — the actual write happens once via the Save button below, so
+  // stars/notes/photo link all land in a single dlWriteJsonFile call rather
+  // than racing each other.
+  container.querySelectorAll('.star-picker').forEach((picker) => {
+    picker.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.star-btn');
+      if (!btn) return;
+      ev.stopPropagation();
+      const value = Number(btn.dataset.value);
+      picker.dataset.rating = String(value);
+      picker.querySelectorAll('.star-btn').forEach((b) => {
+        const filled = Number(b.dataset.value) <= value;
+        b.classList.toggle('filled', filled);
+        b.innerHTML = icon(filled ? 'starFill' : 'star');
+      });
+    });
+  });
+
+  container.querySelectorAll('.review-save-btn').forEach((btn) => {
+    btn.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const concertId = btn.dataset.concertId;
+      const c = concerts.find((x) => x.id === concertId);
+      if (!c) return;
+      const form = btn.closest('.review-form');
+      const picker = form.querySelector('.star-picker');
+      const rating = picker ? Number(picker.dataset.rating) || null : null;
+      const notes = form.querySelector('.review-notes-input').value.trim();
+      let photoUrl = form.querySelector('.review-photo-input').value.trim();
+      if (photoUrl && !/^https?:\/\//i.test(photoUrl)) photoUrl = 'https://' + photoUrl;
+      c.rating = rating || null;
+      c.notes = notes || null;
+      c.photoUrl = photoUrl || null;
       await dlWriteJsonFile(remote, 'concerts.json', concerts);
       renderMyConcertsScreen();
     });
@@ -952,6 +1067,64 @@ async function toggleAttending(concertId) {
 
 function linkIconBtn(url, name) {
   return `<a class="icon-btn" style="border:1px solid var(--border-strong)" href="${escapeAttr(url)}" target="_blank" rel="noopener">${icon(name)}</a>`;
+}
+
+/* ---------------- Stats screen ---------------- */
+
+function openStatsScreen({ fromHistory = false } = {}) {
+  currentScreen = 'stats';
+  setHeaderChrome({ showBack: true, title: 'Your stats' });
+  el('europe-toggle-btn').classList.add('hidden');
+  el('nearby-toggle-btn').classList.add('hidden');
+  showScreen('screen-stats');
+  renderStatsScreen();
+  if (!fromHistory) history.pushState({ tab: currentTab, screen: 'stats' }, '');
+}
+
+function renderStatsScreen() {
+  const container = el('screen-stats');
+  const liveConcerts = concerts.filter((c) => bands.some((b) => b.id === c.bandId));
+  const { past } = dlMyConcerts(liveConcerts);
+
+  if (past.length === 0) {
+    container.innerHTML = `<p class="screen-empty">No past concerts logged yet — your stats will show up here once you've attended a few shows.</p>`;
+    return;
+  }
+
+  const stats = dlConcertStats(past);
+  const kmCaveat = stats.knownDistanceCount < stats.totalShows
+    ? `<br><span class="stats-kpi-caveat">from ${stats.knownDistanceCount} of ${stats.totalShows} shows</span>`
+    : '';
+
+  container.innerHTML = `
+    <div class="stats-kpi-grid">
+      <div class="stats-kpi-tile"><span class="stats-kpi-value">${stats.totalShows.toLocaleString()}</span><span class="stats-kpi-label">shows attended</span></div>
+      <div class="stats-kpi-tile"><span class="stats-kpi-value">${stats.countries.toLocaleString()}</span><span class="stats-kpi-label">countries</span></div>
+      <div class="stats-kpi-tile"><span class="stats-kpi-value">${stats.kmTraveled.toLocaleString()}</span><span class="stats-kpi-label">km traveled${kmCaveat}</span></div>
+      ${stats.busiestYear ? `<div class="stats-kpi-tile"><span class="stats-kpi-value">${escapeHtml(stats.busiestYear.year)}</span><span class="stats-kpi-label">busiest year, ${stats.busiestYear.count} shows</span></div>` : ''}
+      ${stats.longestGap ? `<div class="stats-kpi-tile"><span class="stats-kpi-value">${formatGapLabel(stats.longestGap.days)}</span><span class="stats-kpi-label">longest gap</span></div>` : ''}
+      ${stats.firstShow ? `<div class="stats-kpi-tile"><span class="stats-kpi-value">${escapeHtml((stats.firstShow.date || '').slice(0, 4))}</span><span class="stats-kpi-label">first show, ${escapeHtml(stats.firstShow.bandName)}</span></div>` : ''}
+    </div>
+    ${stats.topArtists.length > 0 ? `
+      <p class="section-label">Seen more than once</p>
+      <div class="stats-list-card">
+        ${stats.topArtists.map((a) => `<div class="stats-list-row"><span>${escapeHtml(a.bandName)}</span><span class="stats-list-value">${a.count}</span></div>`).join('')}
+      </div>` : ''}
+    ${stats.mostVisitedVenue ? `
+      <p class="section-label">Most-visited venue</p>
+      <div class="stats-list-card">
+        <div class="stats-list-row"><span>${escapeHtml(stats.mostVisitedVenue.venue)}${stats.mostVisitedVenue.city ? ', ' + escapeHtml(stats.mostVisitedVenue.city) : ''}</span><span class="stats-list-value">${stats.mostVisitedVenue.count}</span></div>
+      </div>` : ''}
+  `;
+}
+
+// Longest-gap-between-shows label: years once it's a year or more (one
+// decimal, e.g. "3.5 yrs"), months while it's under a year, days below a
+// month — whichever unit reads most naturally at that size.
+function formatGapLabel(days) {
+  if (days >= 365) return `${(days / 365.25).toFixed(1)} yrs`;
+  if (days >= 30) return `${Math.round(days / 30)} mo`;
+  return `${Math.round(days)} days`;
 }
 
 /* ---------------- Settings screen ---------------- */

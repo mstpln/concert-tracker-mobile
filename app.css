@@ -369,3 +369,75 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .usage-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
 
 .settings-version { text-align: center; color: var(--text-muted); font-size: 11px; margin: 18px 0 4px; }
+
+/* Concert rating, notes & photo link (My Concerts, past shows only). Stars
+   use --accent (the app's one blue) for the filled state and --border-strong
+   for the unfilled state — no new hues introduced, same grey/white/black/
+   blue palette as the rest of the app. */
+.review-block { margin-top: 10px; }
+.stars-display, .star-picker { display: inline-flex; gap: 2px; }
+.star-btn { background: none; border: none; padding: 1px; display: flex; color: var(--border-strong); }
+.star-picker .star-btn { cursor: pointer; }
+.star-btn.filled { color: var(--accent); }
+.review-notes { color: var(--text-secondary); font-size: 13px; line-height: 1.5; margin: 6px 0 0; }
+.review-photo-link {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 6px;
+  font-size: 12.5px; color: var(--accent); text-decoration: none;
+}
+.review-photo-link:hover { text-decoration: underline; }
+.review-edit-toggle, .review-add-toggle { margin-top: 8px; }
+.review-edit-toggle summary, .review-add-toggle summary {
+  cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text-secondary);
+  display: inline-flex; align-items: center; gap: 4px; list-style: none;
+}
+.review-edit-toggle summary:hover, .review-add-toggle summary:hover { color: var(--text); }
+.review-edit-toggle summary::-webkit-details-marker, .review-add-toggle summary::-webkit-details-marker { display: none; }
+.review-edit-toggle summary::marker, .review-add-toggle summary::marker { content: ''; }
+.review-edit-toggle .details-chevron, .review-add-toggle .details-chevron { display: flex; transition: transform 0.15s ease; }
+.review-edit-toggle[open] .details-chevron, .review-add-toggle[open] .details-chevron { transform: rotate(180deg); }
+.review-form { margin-top: 8px; }
+.review-form .star-picker { margin-bottom: 8px; }
+.review-form .star-picker .star-btn svg { width: 20px; height: 20px; }
+.review-notes-input {
+  width: 100%; font-family: inherit; font-size: 13px; padding: 9px 10px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); margin-bottom: 8px; resize: vertical;
+}
+.review-notes-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+/* Stats teaser card (top of My Concerts) */
+.stats-teaser-card {
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); margin-bottom: 16px; overflow: hidden;
+}
+.stats-teaser-row { display: flex; justify-content: space-between; padding: 14px 16px; text-align: center; }
+.stats-teaser-item { display: flex; flex-direction: column; flex: 1; }
+.stats-teaser-value { font-weight: 700; font-size: 17px; }
+.stats-teaser-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.stats-teaser-footer {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  background: var(--surface-muted); border: none; border-top: 1px solid var(--border);
+  padding: 9px 16px; font-size: 12.5px; font-weight: 500; color: var(--text-secondary);
+}
+.stats-teaser-footer:hover { color: var(--text); }
+.stats-teaser-footer svg { color: var(--text-muted); }
+
+/* Full stats screen */
+.stats-kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px; }
+.stats-kpi-tile {
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  padding: 12px; display: flex; flex-direction: column;
+}
+.stats-kpi-value { font-weight: 700; font-size: 20px; }
+.stats-kpi-label { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; line-height: 1.4; }
+.stats-kpi-caveat { font-size: 10px; color: var(--text-muted); }
+.stats-list-card {
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  padding: 4px 12px; margin-bottom: 4px;
+}
+.stats-list-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 0; font-size: 13.5px; border-top: 1px solid var(--border);
+}
+.stats-list-row:first-child { border-top: none; }
+.stats-list-value { color: var(--accent); font-weight: 600; }

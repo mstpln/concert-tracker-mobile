@@ -172,3 +172,99 @@ function dlMyConcerts(concerts) {
   const past = mine.filter((c) => !dlIsUpcoming(c)).sort((a, b) => new Date(b.date) - new Date(a.date));
   return { upcoming, past };
 }
+
+// Aggregate "fun facts" for the stats screen. Takes the same `past` array
+// dlMyConcerts already returns (past date + attending === true, both
+// guaranteed) — never counts upcoming "going" shows that haven't happened.
+//
+// distanceKm is read from each concert rather than recomputed here: it's
+// already stored per-concert (from Smygehamn, the fixed home base used
+// everywhere else in the app — the Concerts tab's "203 km away" labels and
+// the Nearby filter both rely on the same field). Manually-backlogged past
+// concerts (added via the "Add a past concert" form) never got a distance
+// computed, so distanceKm is null for a real chunk of the ~1000+ show
+// history — kmTraveled quietly skips those rather than treating null as 0,
+// and knownDistanceCount says how many shows the total is actually based on
+// so the UI can caveat it instead of silently under-counting.
+function dlConcertStats(attendedPast) {
+  const totalShows = attendedPast.length;
+
+  const countrySet = new Set();
+  for (const c of attendedPast) {
+    if (c.country) countrySet.add(String(c.country).trim().toLowerCase());
+  }
+
+  let kmTraveled = 0;
+  let knownDistanceCount = 0;
+  for (const c of attendedPast) {
+    if (typeof c.distanceKm === 'number' && !Number.isNaN(c.distanceKm)) {
+      kmTraveled += c.distanceKm;
+      knownDistanceCount += 1;
+    }
+  }
+
+  const yearCounts = new Map();
+  for (const c of attendedPast) {
+    const year = (c.date || '').slice(0, 4);
+    if (!year) continue;
+    yearCounts.set(year, (yearCounts.get(year) || 0) + 1);
+  }
+  let busiestYear = null;
+  for (const [year, count] of yearCounts) {
+    if (!busiestYear || count > busiestYear.count || (count === busiestYear.count && year > busiestYear.year)) {
+      busiestYear = { year, count };
+    }
+  }
+
+  const sortedByDate = [...attendedPast].filter((c) => c.date).sort((a, b) => new Date(a.date) - new Date(b.date));
+  let longestGap = null;
+  for (let i = 1; i < sortedByDate.length; i++) {
+    const days = (new Date(sortedByDate[i].date) - new Date(sortedByDate[i - 1].date)) / (1000 * 60 * 60 * 24);
+    if (!longestGap || days > longestGap.days) {
+      longestGap = { days: Math.round(days), fromDate: sortedByDate[i - 1].date, toDate: sortedByDate[i].date };
+    }
+  }
+  const firstShow = sortedByDate[0] || null;
+
+  // Ties broken by most recently seen — the most natural reading of "which
+  // of these tied artists is more front-of-mind right now".
+  const artistCounts = new Map();
+  for (const c of attendedPast) {
+    const existing = artistCounts.get(c.bandId) || { bandId: c.bandId, bandName: c.bandName, count: 0, lastDate: null };
+    existing.count += 1;
+    if (c.date && (!existing.lastDate || c.date > existing.lastDate)) existing.lastDate = c.date;
+    artistCounts.set(c.bandId, existing);
+  }
+  const topArtists = [...artistCounts.values()]
+    .filter((a) => a.count >= 2)
+    .sort((a, b) => b.count - a.count || (b.lastDate || '').localeCompare(a.lastDate || ''))
+    .slice(0, 3);
+
+  const venueCounts = new Map();
+  for (const c of attendedPast) {
+    if (!c.venue) continue;
+    const key = `${c.venue}|${c.city || ''}`;
+    const existing = venueCounts.get(key) || { venue: c.venue, city: c.city, count: 0, lastDate: null };
+    existing.count += 1;
+    if (c.date && (!existing.lastDate || c.date > existing.lastDate)) existing.lastDate = c.date;
+    venueCounts.set(key, existing);
+  }
+  let mostVisitedVenue = null;
+  for (const v of venueCounts.values()) {
+    if (!mostVisitedVenue || v.count > mostVisitedVenue.count || (v.count === mostVisitedVenue.count && (v.lastDate || '') > (mostVisitedVenue.lastDate || ''))) {
+      mostVisitedVenue = v;
+    }
+  }
+
+  return {
+    totalShows,
+    countries: countrySet.size,
+    kmTraveled: Math.round(kmTraveled),
+    knownDistanceCount,
+    busiestYear,
+    longestGap,
+    firstShow,
+    topArtists,
+    mostVisitedVenue,
+  };
+}
