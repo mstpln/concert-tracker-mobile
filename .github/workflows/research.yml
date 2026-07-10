@@ -1,0 +1,37 @@
+name: Weekly concert & news research
+
+on:
+  schedule:
+    # 01:00 UTC every Thursday — lands at ~02:00-03:00 Swedish local time
+    # (CET/CEST), depending on daylight saving. Running overnight means the
+    # slow, deliberately-throttled pace (the pipeline paces Groq calls to
+    # stay safely under its free-tier rate limits, so a full run can take a
+    # couple of hours) never competes with anything and finishes long
+    # before morning. GitHub Actions cron can run a few minutes late at
+    # busy times — that's fine for a weekly job.
+    - cron: '0 1 * * 4'
+  workflow_dispatch: {} # lets you trigger a run manually from the Actions tab, for testing
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    # Generous ceiling — the pipeline throttles itself well within this,
+    # this just stops GitHub from killing a legitimately slow, safe run.
+    timeout-minutes: 300
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run research pipeline
+        env:
+          TICKETMASTER_API_KEY: ${{ secrets.TICKETMASTER_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
+          CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
+        run: node scripts/research.js
