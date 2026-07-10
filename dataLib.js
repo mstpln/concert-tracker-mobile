@@ -115,7 +115,8 @@ function dlAllUpcomingForBand(concerts, bandId) {
 }
 
 // Diff against previously-notified ids. Returns the list of concerts that
-// are new (isNew flag from Claude's run) and haven't been notified yet.
+// are new (isNew flag set by the research pipeline's run) and haven't been
+// notified yet.
 function dlUnnotified(concerts, alreadyNotifiedIds) {
   const seen = new Set(alreadyNotifiedIds || []);
   return concerts.filter((c) => c.isNew && dlIsUpcoming(c) && !seen.has(c.id));
