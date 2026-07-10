@@ -140,7 +140,7 @@ async function fetchNewsForBand(band, usage) {
     'If nothing qualifies, respond with {"items": []}.',
   ].join('\n');
 
-  const userPrompt = `Band: ${band.name}\nToday's date: ${new Date().toISOString().slice(0, 10)}\n\nSearch results:\n${snippets}`;
+  const userPrompt = `Band: ${band.name}\nToday's date: ${todayIso()}\n\nSearch results:\n${snippets}`;
 
   const parsed = await groq.chatJson(systemPrompt, userPrompt, usage, {
     estimatedTokens: NEWS_ESTIMATED_TOKENS,
@@ -162,6 +162,10 @@ async function fetchNewsForBand(band, usage) {
     }));
 }
 
+// Shared with the top-level .catch() below so a failed run's real,
+// already-recorded API usage doesn't get lost — see the comment there.
+let sharedUsage = null;
+
 async function main() {
   console.log('Concert Tracker research pipeline starting…');
 
@@ -171,8 +175,8 @@ async function main() {
     worker.readJson('news.json', []),
     UsageTracker.load(),
   ]);
+  sharedUsage = usage;
 
-  const todayStr = todayIso();
   const existingConcertIds = new Set(concerts.map((c) => c.id));
   const existingConcertKeys = new Set(concerts.map(concertKey));
   const existingNewsKeys = new Set(news.map(newsKey));
@@ -223,7 +227,12 @@ async function main() {
       // Ticketmaster's own filtering and of what the Tavily/Groq fallback
       // was told. Nothing with a past date is ever written, regardless of
       // where it came from or what bug either upstream source might have.
-      if (!c.date || c.date < todayStr) {
+      // Recomputed fresh on every candidate rather than once at the top of
+      // main(): a full run can take hours (see research.yml's 300-minute
+      // timeout and the deliberate Groq TPM throttling), so a date snapshot
+      // taken at run-start could be stale by the time later bands are
+      // processed, right on a UTC-midnight boundary.
+      if (!c.date || c.date < todayIso()) {
         usage.note(`Dropped past-dated candidate for "${c.bandName}": ${c.date} at ${c.venue} (source: ${c.ticketRetailerVerified ? 'Ticketmaster' : 'Tavily/Groq'})`);
         continue;
       }
@@ -255,10 +264,16 @@ async function main() {
     }
   }
 
-  // Drop anything that somehow ended up stale relative to the documented
-  // ~14 day recency window before writing (belt-and-suspenders; foundAt is
-  // always "now" so this should never trigger in practice).
-  const freshNews = newNews.filter((n) => daysAgo(n.foundAt) <= config.NEWS_RECENCY_DAYS);
+  // Drop anything whose own reported event date is older than the
+  // documented recency window — a belt-and-suspenders backstop behind the
+  // classification prompt's "ignore anything older than ~21 days"
+  // instruction. This used to compare against `n.foundAt` instead of
+  // `n.date`, which is always "now" (set at creation, a few lines above) —
+  // so the check could never actually drop anything; found during a QA
+  // pass. Items with no explicit date (n.date === null) are left as-is,
+  // since there's nothing to judge staleness against and the mandatory-date
+  // policy already means "no date" was a deliberate, not accidental, gap.
+  const freshNews = newNews.filter((n) => !n.date || daysAgo(n.date) <= config.NEWS_RECENCY_DAYS);
 
   if (newConcerts.length > 0) {
     await worker.writeJson('concerts.json', [...concerts, ...newConcerts]);
@@ -298,7 +313,18 @@ async function main() {
 main().catch(async (e) => {
   console.error('Pipeline failed:', e);
   try {
-    const usage = await UsageTracker.load();
+    // Reuse the same UsageTracker instance main() was mutating, if it got
+    // far enough to create one — NOT a fresh UsageTracker.load(). Reloading
+    // here used to silently discard every real Ticketmaster/Tavily/Groq
+    // call the failed run had already made: the freshly-reloaded instance
+    // has callsThisRun zeroed and callsToday/callsThisMonth/tokensToday
+    // exactly as they were before this run started, so the saved lastRun
+    // summary for an errored run would show 0 calls no matter how far the
+    // pipeline actually got — and, worse, next week's run would believe it
+    // has more free-tier budget left than it actually does, since the real
+    // usage from this run was never persisted. Only fall back to a fresh
+    // load if main() crashed before it even got as far as creating one.
+    const usage = sharedUsage || (await UsageTracker.load());
     usage.finishRun({ status: 'error', error: e.message });
     await usage.save();
   } catch (saveErr) {
