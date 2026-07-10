@@ -353,8 +353,25 @@ function renderMyConcertsScreen() {
     .map((b) => `<option value="${escapeAttr(b.id)}">${escapeHtml(b.name)}</option>`)
     .join('');
 
-  let html = `
-    <div class="row-card add-band-card">
+  let html = '';
+
+  if (upcoming.length === 0 && past.length === 0) {
+    html += `<p class="screen-empty">No concerts saved yet. Tap "I'm going" on a band's page to add one, or backlog a past show below.</p>`;
+  } else {
+    if (upcoming.length > 0) {
+      html += `<p class="section-label" style="margin-top:0">Upcoming concerts</p>`;
+      html += renderWithYearDividers(upcoming, (c) => myConcertRowHtml(c, false), { showCount: true });
+    }
+    if (past.length > 0) {
+      html += `<p class="section-label">Past concerts</p>`;
+      html += renderWithYearDividers(past, (c) => myConcertRowHtml(c, true), { showCount: true });
+    }
+  }
+
+  // Placed after the lists rather than above them — it's an occasional-use
+  // form, not something to lead with every time this tab is opened.
+  html += `
+    <div class="row-card add-band-card" style="margin-top:18px">
       <p class="section-label" style="margin-top:0">Add a past concert</p>
       <select id="past-concert-band">
         <option value="">Select a band…</option>
@@ -370,19 +387,6 @@ function renderMyConcertsScreen() {
       <button id="past-concert-submit" class="btn-primary btn-block">${icon('plus')}Add past concert</button>
       <p id="past-concert-error" class="error hidden" style="color:var(--danger);font-size:11.5px;margin:6px 0 0"></p>
     </div>`;
-
-  if (upcoming.length === 0 && past.length === 0) {
-    html += `<p class="screen-empty">No concerts saved yet. Tap "I'm going" on a band's page to add one, or backlog a past show above.</p>`;
-  } else {
-    if (upcoming.length > 0) {
-      html += `<p class="section-label">Upcoming concerts</p>`;
-      html += renderWithYearDividers(upcoming, (c) => myConcertRowHtml(c, false), { showCount: true });
-    }
-    if (past.length > 0) {
-      html += `<p class="section-label">Past concerts</p>`;
-      html += renderWithYearDividers(past, (c) => myConcertRowHtml(c, true), { showCount: true });
-    }
-  }
 
   container.innerHTML = html;
   wireMyConcertsHandlers(container);
@@ -505,13 +509,6 @@ function renderMyBandsScreen() {
     <div class="filter-row">
       <span class="filter-label">Hide inactive bands</span>
       <button id="hide-inactive-toggle" class="toggle-pill${hideInactiveBands ? ' active' : ''}">${hideInactiveBands ? 'On' : 'Off'}</button>
-    </div>
-    <div class="row-card add-band-card">
-      <p class="section-label" style="margin-top:0">Add a band</p>
-      <input type="text" id="add-band-name" placeholder="Band name" />
-      <input type="url" id="add-band-url" placeholder="Official band URL (optional)" />
-      <button id="add-band-submit" class="btn-primary btn-block">${icon('plus')}Add band</button>
-      <p id="add-band-error" class="error hidden" style="color:var(--danger);font-size:11.5px;margin:6px 0 0"></p>
     </div>`;
 
   let lastLetter = '';
@@ -552,8 +549,19 @@ function renderMyBandsScreen() {
   }
 
   if (sorted.length === 0) {
-    html += `<p class="screen-empty">${hideInactiveBands ? 'No active bands to show — turn off the filter above to see them all.' : 'No bands yet — add your first one above.'}</p>`;
+    html += `<p class="screen-empty">${hideInactiveBands ? 'No active bands to show — turn off the filter above to see them all.' : 'No bands yet — add your first one below.'}</p>`;
   }
+
+  // Placed after the list, same as "Add a past concert" on My Concerts —
+  // an occasional-use form shouldn't be the first thing you see here.
+  html += `
+    <div class="row-card add-band-card" style="margin-top:18px">
+      <p class="section-label" style="margin-top:0">Add a band</p>
+      <input type="text" id="add-band-name" placeholder="Band name" />
+      <input type="url" id="add-band-url" placeholder="Official band URL (optional)" />
+      <button id="add-band-submit" class="btn-primary btn-block">${icon('plus')}Add band</button>
+      <p id="add-band-error" class="error hidden" style="color:var(--danger);font-size:11.5px;margin:6px 0 0"></p>
+    </div>`;
 
   container.innerHTML = html;
   wireMyBandsHandlers(container);
