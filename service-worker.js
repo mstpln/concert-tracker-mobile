@@ -6,7 +6,7 @@
 // never see stale bands/concerts. Bump CACHE_NAME when you change any of
 // the shell files below, so old installs pick up the update.
 
-const CACHE_NAME = 'concert-tracker-shell-v7';
+const CACHE_NAME = 'concert-tracker-shell-v8';
 const SHELL_FILES = [
   './',
   './index.html',
