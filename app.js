@@ -960,18 +960,20 @@ async function renderSettingsScreen() {
   }
   const container = el('screen-settings');
   const savedKeyInfo = groqApiKey
-    ? `<p class="muted" style="font-size:12px;margin:0 0 8px">
-         Current key: <strong>${escapeHtml(maskApiKey(groqApiKey))}</strong>
+    ? `<p class="muted" style="font-size:11.5px;margin:0 0 8px">
+         <strong>${escapeHtml(maskApiKey(groqApiKey))}</strong>
          ${groqApiKeyAddedAt ? ` · added ${escapeHtml(formatSettingsDate(groqApiKeyAddedAt))}` : ''}
        </p>`
     : '';
   container.innerHTML = `
-    <div class="settings-field">
-      <label>Connection</label>
-      <p class="muted" style="font-size:12px;margin:0 0 8px">${escapeHtml(remote?.endpoint || 'Not connected')}${remote?.token ? ` · ${escapeHtml(maskApiKey(remote.token))}` : ''}</p>
+    <p class="section-label">Connection</p>
+    <div class="settings-card">
+      <p class="muted" style="font-size:11.5px;margin:0 0 8px">${escapeHtml(remote?.endpoint || 'Not connected')}${remote?.token ? ` · ${escapeHtml(maskApiKey(remote.token))}` : ''}</p>
       <button id="change-connection-btn" class="btn-secondary">Change connection</button>
     </div>
-    <div class="settings-field">
+
+    <p class="section-label">Band info lookups</p>
+    <div class="settings-card">
       <label>Groq API key (optional)</label>
       ${savedKeyInfo}
       <input type="password" id="groq-key-input" value="" placeholder="${groqApiKey ? 'Enter a new key to replace it' : 'For faster, more reliable band-info lookups'}" />
@@ -982,7 +984,9 @@ async function renderSettingsScreen() {
       </div>
       <span id="groq-save-status" class="settings-hint"></span>
     </div>
-    <div class="settings-field">
+
+    <p class="section-label">Display</p>
+    <div class="settings-card">
       <label>Inactive after</label>
       <div style="display:flex;align-items:center;gap:8px">
         <input type="number" id="inactivity-years-input" class="narrow-input" min="1" max="10" step="1" value="${inactivityYears}" />
@@ -990,11 +994,10 @@ async function renderSettingsScreen() {
       </div>
       <p class="settings-hint">Bands past this get an "Inactive" flag in My Bands and on their profile. Updates automatically as new tour dates come in.</p>
     </div>
-    <div class="settings-field">
-      <button id="recheck-btn" class="btn-secondary btn-block">Refresh now</button>
-      <p class="settings-hint">Re-fetches bands.json/concerts.json from your Worker. Doesn't run new research — that happens automatically once a week (GitHub Actions), and writes to the same storage.</p>
-    </div>
+
     ${researchPipelineSectionHtml()}
+
+    <p class="settings-version">ConcertDates ${escapeHtml(typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?')}</p>
   `;
 
   el('change-connection-btn').addEventListener('click', () => {
@@ -1042,6 +1045,28 @@ async function renderSettingsScreen() {
   });
 }
 
+// Where the GitHub Actions workflow lives — used only for an external
+// "View pipeline runs" link. There's deliberately no way to trigger a run
+// from inside the app: doing that would require a GitHub token with
+// write access embedded in this public, client-side static site, which
+// would be readable by anyone. Opening the Actions tab (gated by your own
+// GitHub login) is the safe equivalent of a "run now" button.
+const RESEARCH_PIPELINE_ACTIONS_URL = 'https://github.com/mstpln/concert-tracker-mobile/actions/workflows/research.yml';
+
+function usageBarRowHtml(label, used, cap) {
+  const u = Number(used) || 0;
+  const c = Number(cap) || 1;
+  const pct = Math.min(100, Math.max(0, (u / c) * 100));
+  return `
+    <div class="usage-bar-row">
+      <div class="usage-bar-label-row">
+        <span>${escapeHtml(label)}</span>
+        <span>${u.toLocaleString()} / ${c.toLocaleString()}</span>
+      </div>
+      <div class="usage-bar-track"><div class="usage-bar-fill" style="width:${pct}%"></div></div>
+    </div>`;
+}
+
 // Renders the read-only "Research pipeline" block in Settings: which
 // provider keys are configured (masked, with the date each was added —
 // GitHub Actions secrets can't be read back, so this is a static record,
@@ -1052,18 +1077,26 @@ function researchPipelineSectionHtml() {
   const keyRows = Object.values(RESEARCH_KEY_METADATA)
     .map(
       (k) => `
-        <p class="muted" style="font-size:12px;margin:0 0 4px">
+        <p class="muted" style="font-size:11px;margin:0 0 3px">
           ${escapeHtml(k.label)}: <strong>${escapeHtml(k.masked)}</strong> · added ${escapeHtml(formatSettingsDate(k.addedAt))}
         </p>`
     )
     .join('');
 
+  const actionButtons = `
+    <div class="show-buttons" style="margin-top:10px">
+      <button id="recheck-btn" class="btn-secondary">Refresh now</button>
+      <a id="view-pipeline-runs-btn" class="btn-secondary" href="${escapeAttr(RESEARCH_PIPELINE_ACTIONS_URL)}" target="_blank" rel="noopener">View pipeline runs</a>
+    </div>
+    <p class="settings-hint">Refresh re-fetches your data now. Research runs automatically once a week — view pipeline runs opens GitHub to check on or manually trigger one.</p>`;
+
   if (!apiUsage) {
     return `
-      <div class="settings-field">
-        <label>Research pipeline</label>
+      <p class="section-label">Research pipeline</p>
+      <div class="settings-card">
         ${keyRows}
-        <p class="settings-hint">No usage data yet — this fills in after the weekly GitHub Actions run has run at least once.</p>
+        <p class="settings-hint" style="margin-top:6px">No usage data yet — this fills in after the weekly GitHub Actions run has run at least once.</p>
+        <div class="settings-card-divider">${actionButtons}</div>
       </div>`;
   }
 
@@ -1072,37 +1105,29 @@ function researchPipelineSectionHtml() {
   const gq = apiUsage.groq || {};
   const lastRun = apiUsage.lastRun || null;
 
-  const usageRows = [
-    tm.callsToday != null
-      ? `Ticketmaster: ${tm.callsToday.toLocaleString()} / ${(tm.freeTierDailyLimit ?? 5000).toLocaleString()} calls today`
-      : null,
-    tv.callsThisMonth != null
-      ? `Tavily: ${tv.callsThisMonth.toLocaleString()} / ${(tv.freeTierMonthlyLimit ?? 1000).toLocaleString()} credits this month`
-      : null,
-    gq.callsToday != null
-      ? `Groq: ${gq.callsToday.toLocaleString()} / ${(gq.freeTierDailyRequestLimit ?? 1000).toLocaleString()} requests, ${(
-          gq.tokensToday ?? 0
-        ).toLocaleString()} / ${(gq.freeTierTpdLimit ?? 200000).toLocaleString()} tokens today`
-      : null,
-  ]
-    .filter(Boolean)
-    .map((line) => `<p class="muted" style="font-size:12px;margin:0 0 4px">${escapeHtml(line)}</p>`)
-    .join('');
+  const bars =
+    usageBarRowHtml('Ticketmaster (today)', tm.callsToday, tm.freeTierDailyLimit ?? 5000) +
+    usageBarRowHtml('Tavily (this month)', tv.callsThisMonth, tv.freeTierMonthlyLimit ?? 1000) +
+    usageBarRowHtml('Groq requests (today)', gq.callsToday, gq.freeTierDailyRequestLimit ?? 1000) +
+    usageBarRowHtml('Groq tokens (today)', gq.tokensToday ?? 0, gq.freeTierTpdLimit ?? 200000);
 
   const lastRunHtml = lastRun
     ? `<p class="settings-hint" style="margin-top:8px">
-         Last run: ${escapeHtml(formatSettingsDate(lastRun.finishedAt))} · ${escapeHtml(lastRun.status || 'unknown')}
+         Last run ${escapeHtml(formatSettingsDate(lastRun.finishedAt))} · ${escapeHtml(lastRun.status || 'unknown')}
          · ${lastRun.bandsProcessed ?? 0} bands checked, ${lastRun.concertsAdded ?? 0} new concerts, ${lastRun.newsAdded ?? 0} new news items.
        </p>`
     : '';
 
   return `
-    <div class="settings-field">
-      <label>Research pipeline</label>
+    <p class="section-label">Research pipeline</p>
+    <div class="settings-card">
       ${keyRows}
-      <div style="margin-top:8px">${usageRows}</div>
-      ${lastRunHtml}
-      <p class="settings-hint" style="margin-top:8px">All three services have hard-coded usage caps set well below their free tier, so this can never incur a charge.</p>
+      <div class="settings-card-divider">
+        ${bars}
+        ${lastRunHtml}
+        <p class="settings-hint" style="margin-top:8px">All three services have hard-coded usage caps set well below their free tier, so this can never incur a charge.</p>
+      </div>
+      <div class="settings-card-divider">${actionButtons}</div>
     </div>`;
 }
 
