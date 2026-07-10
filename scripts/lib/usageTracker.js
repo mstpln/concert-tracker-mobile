@@ -45,6 +45,15 @@ function freshState() {
       tokensToday: 0,
       tokensThisRun: 0,
     },
+    // Which band index the news-research loop should start from this run.
+    // Since the Groq daily token budget can run out partway through the
+    // band list (it did, on the very first live run — 149,959/150,000
+    // tokens used, news skipped for whichever bands came after that
+    // point), always starting from index 0 would mean the same tail-end
+    // bands never get a news check, week after week. Rotating the start
+    // point means the budget cutoff lands on a different part of the list
+    // each run, so coverage evens out over several weeks instead.
+    rotation: { nextBandIndex: 0 },
     lastRun: null,
   };
 }
@@ -71,6 +80,9 @@ class UsageTracker {
     if (!state.ticketmaster) state.ticketmaster = freshState().ticketmaster;
     if (!state.tavily) state.tavily = freshState().tavily;
     if (!state.groq) state.groq = freshState().groq;
+    if (!state.rotation || typeof state.rotation.nextBandIndex !== 'number') {
+      state.rotation = { nextBandIndex: 0 };
+    }
 
     if (state.ticketmaster.dayOfCounts !== today) {
       state.ticketmaster.dayOfCounts = today;

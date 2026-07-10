@@ -43,6 +43,15 @@ async function fetchUpcomingEvents(band, usage) {
   url.searchParams.set('classificationName', 'Music');
   url.searchParams.set('sort', 'date,asc');
   url.searchParams.set('size', '20');
+  // Defensive, even though Ticketmaster appears to already exclude past
+  // events by default without this: explicitly ask for events from right
+  // now onward, in the yyyy-MM-ddTHH:mm:ssZ format their API requires. This
+  // is belt-and-suspenders alongside the two other upcoming-only checks
+  // (the Tavily/Groq fallback prompt, and the final merge-time filter in
+  // research.js) — three independent layers, since a real live run already
+  // showed one of those layers alone wasn't enough (the Tavily/Groq path
+  // let 30 past-dated shows through before this was added).
+  url.searchParams.set('startDateTime', new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'));
 
   let res;
   try {
