@@ -23,6 +23,12 @@ async function chatJson(systemPrompt, userPrompt, usage, { estimatedTokens = 150
   }
   await usage.waitForGroqSlot(estimatedTokens);
 
+  // Recorded before the request goes out, not after — see the comment on
+  // recordGroqAttempt() in usageTracker.js. A failed/errored call below
+  // still consumed a real request against Groq's quota, so it must still
+  // count here even though we return null.
+  usage.recordGroqAttempt();
+
   let res;
   try {
     res = await fetch(`${config.GROQ.baseUrl}/chat/completions`, {
@@ -52,7 +58,7 @@ async function chatJson(systemPrompt, userPrompt, usage, { estimatedTokens = 150
   }
 
   const data = await res.json();
-  usage.recordGroqCall(data?.usage?.total_tokens);
+  usage.recordGroqTokens(data?.usage?.total_tokens);
 
   const raw = data?.choices?.[0]?.message?.content;
   if (!raw) return null;
