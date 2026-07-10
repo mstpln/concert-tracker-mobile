@@ -185,6 +185,23 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 }
 .section-label:first-child { margin-top: 0; }
 
+/* Section header + filter buttons (e.g. band page "Upcoming shows"), same
+   look as the header's EU/Nearby buttons. Extra top/bottom margin vs. a
+   plain .section-label so the 32px-tall buttons have room to breathe. */
+.section-label-row { display: flex; align-items: center; justify-content: space-between; margin: 6px 0 14px; gap: 8px; }
+.section-label-row .section-label { margin: 0; }
+.section-label-filters { display: flex; gap: 8px; flex-shrink: 0; }
+.section-label-filters .icon-btn { color: var(--text); }
+.section-label-filters .icon-btn.active { background: var(--accent); color: var(--on-accent); }
+#profile-europe-toggle-btn {
+  width: auto; min-width: 34px; padding: 0 8px;
+  font-size: 11px; font-weight: 700; letter-spacing: .02em;
+  border: 1px solid var(--border-strong);
+}
+#profile-nearby-toggle-btn { border: 1px solid var(--border-strong); }
+.section-label-filters .icon-btn.active#profile-europe-toggle-btn,
+.section-label-filters .icon-btn.active#profile-nearby-toggle-btn { border-color: var(--accent); }
+
 .year-divider {
   display: flex; align-items: center; gap: 8px;
   font-size: 12.5px; color: var(--text-secondary);
@@ -259,7 +276,7 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .profile-meta { color: var(--text-muted); font-size: 12.5px; margin: 2px 0 0; }
 .profile-links { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
 .profile-bio { color: var(--text-secondary); font-size: 13px; line-height: 1.5; margin: 0 0 12px; }
-.profile-divider { border-top: 1px solid var(--border); padding-top: 10px; }
+.profile-divider { border-top: 1px solid var(--border); padding-top: 14px; }
 
 .show-buttons {
   display: flex; justify-content: space-between; align-items: center;

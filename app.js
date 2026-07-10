@@ -18,6 +18,12 @@ let activeProfileBandId = null;
 let editingBandId = null;
 let europeOnly = false;
 let nearbyOnly = false;
+// Band-page filters are intentionally separate from the Concerts tab's
+// europeOnly/nearbyOnly above: they're not persisted, and reset every time
+// a band's page is opened, so browsing one band's tour dates filtered
+// doesn't affect the main Concerts feed (or any other band's page).
+let profileEuropeOnly = false;
+let profileNearbyOnly = false;
 let inactivityYears = 3;
 let hideInactiveBands = false;
 
@@ -647,6 +653,8 @@ function stripTransient(list) {
 function openProfile(bandId, { fromHistory = false } = {}) {
   activeProfileBandId = bandId;
   currentScreen = 'profile';
+  profileEuropeOnly = false;
+  profileNearbyOnly = false;
   const band = bands.find((b) => b.id === bandId);
   setHeaderChrome({ showBack: true, title: band ? band.name : 'Band' });
   el('europe-toggle-btn').classList.add('hidden');
@@ -664,6 +672,9 @@ function renderProfileScreen(bandId) {
     return;
   }
   const shows = dlAllUpcomingForBand(concerts, bandId);
+  let filteredShows = shows;
+  if (profileEuropeOnly) filteredShows = filteredShows.filter((c) => dlIsEuropeCountry(c.country));
+  else if (profileNearbyOnly) filteredShows = filteredShows.filter((c) => dlIsNearby(c));
   const initials = band.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
   const activity = dlBandActivity(band, concerts, inactivityYears);
 
@@ -694,12 +705,36 @@ function renderProfileScreen(bandId) {
     </div>
     ${band.bio ? `<p class="profile-bio">${escapeHtml(band.bio)}</p>` : ''}
     <div class="profile-divider">
-      <p class="section-label" style="margin-top:0">Upcoming shows</p>
-      ${shows.length === 0 ? `<p class="screen-empty" style="padding:16px 0">No upcoming shows tracked yet.</p>` : shows.map(showRowHtml).join('')}
+      <div class="section-label-row">
+        <p class="section-label" style="margin:0">Upcoming shows</p>
+        ${shows.length > 0 ? `
+          <div class="section-label-filters">
+            <button id="profile-nearby-toggle-btn" class="icon-btn${profileNearbyOnly ? ' active' : ''}" aria-label="Show nearby only" title="Show nearby only">${icon('nearbyPin')}</button>
+            <button id="profile-europe-toggle-btn" class="icon-btn${profileEuropeOnly ? ' active' : ''}" aria-label="Show Europe only" title="Show Europe only">EU</button>
+          </div>
+        ` : ''}
+      </div>
+      ${shows.length === 0
+        ? `<p class="screen-empty" style="padding:16px 0">No upcoming shows tracked yet.</p>`
+        : filteredShows.length === 0
+          ? `<p class="screen-empty" style="padding:16px 0">${profileEuropeOnly ? 'No upcoming European shows for this band right now.' : 'No upcoming shows near you for this band right now.'}</p>`
+          : filteredShows.map(showRowHtml).join('')}
     </div>
   `;
 
   container.querySelectorAll('a').forEach((a) => a.addEventListener('click', (ev) => ev.stopPropagation()));
+  container.querySelector('#profile-europe-toggle-btn')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    profileEuropeOnly = !profileEuropeOnly;
+    if (profileEuropeOnly) profileNearbyOnly = false;
+    renderProfileScreen(bandId);
+  });
+  container.querySelector('#profile-nearby-toggle-btn')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    profileNearbyOnly = !profileNearbyOnly;
+    if (profileNearbyOnly) profileEuropeOnly = false;
+    renderProfileScreen(bandId);
+  });
   container.querySelectorAll('.going-btn').forEach((b) => {
     b.addEventListener('click', async () => {
       await toggleAttending(b.dataset.concertId);
