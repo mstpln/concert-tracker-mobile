@@ -154,6 +154,47 @@ function dlBandActivity(band, concerts, thresholdYears, today = new Date()) {
   return { status: yearsAgo >= thresholdYears ? 'inactive' : 'active', lastDate, lastYear };
 }
 
+// Groups the messy, free-text band.genre field (often multi-genre and
+// inconsistently formatted — "Rock, alternative rock" vs "Alternative Rock /
+// Theatrical Rock", inconsistent casing) into a small, stable set of
+// buckets for the My Bands genre filter dropdown only. This never touches
+// band.genre itself — the raw string is untouched and still shown as-is on
+// the band's own profile page and anywhere else in the app (e.g. the stats
+// screen's genre breakdown).
+//
+// A genre string is split on "," and "/" into individual pieces, each piece
+// is tested against every rule below, and a band ends up in every group any
+// of its pieces matches (a band tagged "R&B, pop" lands in both Hip-hop &
+// R&B and Pop — filtering by either should surface it). The one deliberate
+// exclusion: "post-punk"/"post punk" is excluded from the Punk rule so
+// post-punk-revival/indie bands land in Rock rather than the raw punk-scene
+// bucket, which is where they read more naturally.
+const DL_GENRE_GROUP_RULES = [
+  { id: 'rock', label: 'Rock', test: (t) => /rock|new wave|britpop|post[\s-]?punk|psych|grunge|power pop/.test(t) },
+  { id: 'punk', label: 'Punk', test: (t) => (/punk|noise rock/.test(t)) && !/post[\s-]?punk/.test(t) },
+  { id: 'metal', label: 'Metal', test: (t) => /metal|hardcore|thrash/.test(t) },
+  { id: 'hiphop_rnb', label: 'Hip-hop & R&B', test: (t) => /\bhip[\s-]?hop\b|\brap\b|r ?& ?b|\brnb\b|g-?funk/.test(t) },
+  { id: 'pop', label: 'Pop', test: (t) => /\bpop\b/.test(t) },
+  { id: 'folk', label: 'Folk & Singer-songwriter', test: (t) => /\bfolk\b|singer[\s-]?songwriter|americana/.test(t) },
+];
+
+// Display order for the filter dropdown — "Not tagged yet" always last so it
+// reads as a catch-all rather than a "real" genre.
+const DL_GENRE_GROUPS = [...DL_GENRE_GROUP_RULES.map((r) => ({ id: r.id, label: r.label })), { id: 'untagged', label: 'Not tagged yet' }];
+
+function dlGenreGroupsForBand(band) {
+  const raw = (band?.genre || '').trim();
+  if (!raw) return ['untagged'];
+  const tokens = raw.split(/[,/]/).map((t) => t.trim().toLowerCase()).filter(Boolean);
+  const groups = new Set();
+  for (const t of tokens) {
+    for (const rule of DL_GENRE_GROUP_RULES) {
+      if (rule.test(t)) groups.add(rule.id);
+    }
+  }
+  return groups.size ? [...groups] : ['untagged'];
+}
+
 // Every concert the user has marked "I'm going" to (or manually backlogged),
 // split into upcoming (ascending by date) and past (descending — most recent
 // first). This is the only view in the extension that ever shows a past
