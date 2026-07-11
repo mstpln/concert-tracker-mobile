@@ -441,3 +441,35 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 }
 .stats-list-row:first-child { border-top: none; }
 .stats-list-value { color: var(--accent); font-weight: 600; }
+
+/* Genre filter select (My Bands) — the shared input/select rule makes every
+   select full-width by default, which would blow out this compact filter
+   row, so it's constrained back down here. */
+.filter-row select { width: auto; margin-bottom: 0; padding: 4px 8px; font-size: 12px; }
+
+/* Band profile: edit icon next to the name, delete tucked into a low-key
+   "danger zone" at the very bottom of the page instead of sitting next to
+   primary actions — both moved here from icon buttons on every My Bands row. */
+.profile-edit-btn { flex-shrink: 0; color: var(--text-muted); }
+.profile-edit-btn:hover { background: var(--surface-muted); }
+.profile-danger-zone {
+  margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); text-align: center;
+}
+.profile-remove-btn { background: none; border: none; color: var(--danger); font-size: 12.5px; padding: 8px; }
+.profile-remove-btn:hover { text-decoration: underline; }
+
+/* News/Alerts sub-tab switch + alert row */
+.news-subtab-switch {
+  display: flex; border: 1px solid var(--border-strong); border-radius: var(--radius);
+  overflow: hidden; margin-bottom: 14px;
+}
+.news-subtab-btn {
+  flex: 1; text-align: center; padding: 8px; background: none; border: none;
+  color: var(--text-secondary); font-size: 13px; font-weight: 500;
+}
+.news-subtab-btn.active { background: var(--accent); color: var(--on-accent); }
+.alert-row { display: flex; gap: 8px; align-items: flex-start; }
+.alert-icon { color: var(--accent); flex-shrink: 0; margin-top: 2px; display: flex; }
+.alert-title { font-weight: 600; font-size: 14px; margin: 0; }
+.alert-meta { color: var(--text-secondary); font-size: 12.5px; margin: 2px 0 0; }
+.alert-time { color: var(--text-muted); font-size: 11.5px; margin: 2px 0 0; }
