@@ -335,7 +335,7 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
    (still used on the band-profile page's own show list). Still a plain
    clickable link out to Google Maps, just always visible. */
 .venue-address-link {
-  display: block; margin-top: 6px; font-size: 12.5px; color: var(--accent);
+  display: block; margin: 6px 0 4px; font-size: 12.5px; color: #85868a;
   text-decoration: none; line-height: 1.4;
 }
 .venue-address-link:hover { text-decoration: underline; }
