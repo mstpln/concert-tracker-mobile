@@ -702,10 +702,14 @@ function renderMyBandsScreen() {
   let sorted = [...bands].sort((a, b) => a.name.localeCompare(b.name));
   const activityById = new Map(sorted.map((b) => [b.id, dlBandActivity(b, concerts, inactivityYears)]));
   if (hideInactiveBands) sorted = sorted.filter((b) => activityById.get(b.id).status === 'active');
-  if (selectedGenre !== 'all') sorted = sorted.filter((b) => b.genre === selectedGenre);
+  if (selectedGenre !== 'all') sorted = sorted.filter((b) => dlGenreGroupsForBand(b).includes(selectedGenre));
 
-  const genres = [...new Set(bands.map((b) => b.genre).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-  const genreOptionsHtml = genres.map((g) => `<option value="${escapeAttr(g)}"${g === selectedGenre ? ' selected' : ''}>${escapeHtml(g)}</option>`).join('');
+  // Grouped filter (Rock / Punk / Metal / Hip-hop & R&B / Pop / Folk / Not
+  // tagged yet) rather than the ~90 raw, inconsistently-formatted genre
+  // strings — see dlGenreGroupsForBand in dataLib.js. This never touches
+  // band.genre itself, which still shows its original raw value on the
+  // band's own profile page.
+  const genreOptionsHtml = DL_GENRE_GROUPS.map((g) => `<option value="${g.id}"${g.id === selectedGenre ? ' selected' : ''}>${escapeHtml(g.label)}</option>`).join('');
 
   let html = `
     <div class="filter-row">
@@ -868,8 +872,8 @@ function renderNewsScreen() {
   const container = el('screen-news');
   const switchHtml = `
     <div class="news-subtab-switch">
-      <button class="news-subtab-btn${newsSubTab === 'news' ? ' active' : ''}" data-subtab="news">News</button>
       <button class="news-subtab-btn${newsSubTab === 'alerts' ? ' active' : ''}" data-subtab="alerts">Alerts</button>
+      <button class="news-subtab-btn${newsSubTab === 'news' ? ' active' : ''}" data-subtab="news">News</button>
     </div>`;
 
   let bodyHtml;
