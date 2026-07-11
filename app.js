@@ -314,7 +314,13 @@ const TAB_BRAND_HTML = {
 function wireTabs() {
   el('tabbar').querySelectorAll('.tabitem').forEach((btn) => {
     btn.querySelector('.tab-icon').innerHTML = icon(TAB_ICONS[btn.dataset.tab] || 'music');
-    btn.addEventListener('click', () => goToTab(btn.dataset.tab));
+    btn.addEventListener('click', () => {
+      // Tapping the bottom-nav "Alerts" tab should always land on the Alerts
+      // sub-view, not whichever of News/Alerts was last viewed — found via
+      // user report that clicking Alerts opened the News sub-tab instead.
+      if (btn.dataset.tab === 'news') newsSubTab = 'alerts';
+      goToTab(btn.dataset.tab);
+    });
   });
 }
 
