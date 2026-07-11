@@ -581,12 +581,16 @@ function tickCountdownCard() {
   inner.setAttribute('stroke-dashoffset', String(circInner * (1 - innerPct)));
 }
 
-function myConcertRowHtml(c, isPast) {
+// showBandName is turned off only by the band-profile page's own Past
+// concerts section (see renderProfileScreen) — the band name would just
+// repeat the page you're already on there. My Concerts (where a single list
+// mixes every band) always passes the default true.
+function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
   return `
     <div class="row-card clickable has-corner-delete${isPast ? ' is-past' : ''}" data-band-id="${c.bandId}">
       <div class="row-top">
         <div class="row-title-group">
-          <span class="row-name">${escapeHtml(c.bandName)}</span>
+          ${showBandName ? `<span class="row-name">${escapeHtml(c.bandName)}</span>` : ''}
           ${c.type === 'festival' ? `<span class="pill pill-festival">Festival</span>` : ''}
           ${isPast ? `<span class="pill pill-attended">${icon('check')} Attended</span>` : ''}
         </div>
@@ -603,10 +607,10 @@ function myConcertRowHtml(c, isPast) {
     </div>`;
 }
 
-// Venue address — shown directly on both upcoming and past My Concerts rows
-// (unlike the band-profile page's own collapsible "Venue details" toggle,
-// see showRowHtml/buildGoogleMapsUrl below), positioned above "X km away".
-// Still just a plain clickable link out to Google Maps.
+// Venue address — shown directly on My Concerts rows and the band profile
+// page's own Upcoming/Past concerts rows alike (see myConcertRowHtml and
+// profileUpcomingRowHtml below), positioned above "X km away". Still just a
+// plain clickable link out to Google Maps.
 function venueAddressLinkHtml(c) {
   if (!c.venueAddress) return '';
   return `<a class="venue-address-link" href="${escapeAttr(buildGoogleMapsUrl(c))}" target="_blank" rel="noopener">${escapeHtml(c.venueAddress)}</a>`;
@@ -761,7 +765,12 @@ function buildGoogleMapsUrl(c) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
-function wireMyConcertsHandlers(container) {
+// refresh defaults to My Concerts' own re-render; the band-profile page
+// (which reuses this same wiring for its Past concerts cards, see
+// renderProfileScreen) passes its own re-render instead so edits made from
+// a band's page redraw that page rather than jumping the user to My
+// Concerts.
+function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
   container.querySelector('#past-concert-submit')?.addEventListener('click', onAddPastConcert);
   container.querySelector('#stats-teaser-cta')?.addEventListener('click', () => openStatsScreen());
   container.querySelector('#past-concert-year')?.addEventListener('change', () => refreshPastConcertDayOptions(container));
@@ -794,7 +803,7 @@ function wireMyConcertsHandlers(container) {
         c.attending = false;
       }
       await dlWriteJsonFile(remote, 'concerts.json', concerts);
-      renderMyConcertsScreen();
+      refresh();
     });
   });
 
@@ -830,7 +839,7 @@ function wireMyConcertsHandlers(container) {
       c.rating = rating || null;
       c.notes = notes || null;
       await dlWriteJsonFile(remote, 'concerts.json', concerts);
-      renderMyConcertsScreen();
+      refresh();
     });
   });
 
@@ -845,7 +854,7 @@ function wireMyConcertsHandlers(container) {
       if (playlistUrl && !/^https?:\/\//i.test(playlistUrl)) playlistUrl = 'https://' + playlistUrl;
       c.playlistUrl = playlistUrl || null;
       await dlWriteJsonFile(remote, 'concerts.json', concerts);
-      renderMyConcertsScreen();
+      refresh();
     });
   });
 
@@ -860,7 +869,7 @@ function wireMyConcertsHandlers(container) {
       if (photoUrl && !/^https?:\/\//i.test(photoUrl)) photoUrl = 'https://' + photoUrl;
       c.photoUrl = photoUrl || null;
       await dlWriteJsonFile(remote, 'concerts.json', concerts);
-      renderMyConcertsScreen();
+      refresh();
     });
   });
 }
@@ -1270,6 +1279,14 @@ function renderProfileScreen(bandId) {
   let filteredShows = shows;
   if (profileEuropeOnly) filteredShows = filteredShows.filter((c) => dlIsEuropeCountry(c.country));
   else if (profileNearbyOnly) filteredShows = filteredShows.filter((c) => dlIsNearby(c));
+  // Past/attended shows for just this band — same attending+date-passed
+  // definition as dlMyConcerts' "past" bucket, scoped to bandId and sorted
+  // newest-first to match My Concerts. Rendered with the exact same
+  // myConcertRowHtml used there (see below), just without that card's band
+  // name line, which would be redundant on the band's own page.
+  const pastAttended = concerts
+    .filter((c) => c.bandId === bandId && c.attending && !dlIsUpcoming(c))
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
   const initials = band.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
   const activity = dlBandActivity(band, concerts, inactivityYears);
 
@@ -1308,7 +1325,7 @@ function renderProfileScreen(bandId) {
     ${band.bio ? `<p class="profile-bio">${escapeHtml(band.bio)}</p>` : ''}
     <div class="profile-divider">
       <div class="section-label-row">
-        <p class="section-label" style="margin:0">Upcoming shows</p>
+        <p class="section-label" style="margin:0">Upcoming concerts</p>
         ${shows.length > 0 ? `
           <div class="section-label-filters">
             <button id="profile-nearby-toggle-btn" class="icon-btn${profileNearbyOnly ? ' active' : ''}" aria-label="Show nearby only" title="Show nearby only">${icon('nearbyPin')}</button>
@@ -1320,13 +1337,19 @@ function renderProfileScreen(bandId) {
         ? `<p class="screen-empty" style="padding:16px 0">No upcoming shows tracked yet.</p>`
         : filteredShows.length === 0
           ? `<p class="screen-empty" style="padding:16px 0">${profileEuropeOnly ? 'No upcoming European shows for this band right now.' : 'No upcoming shows near you for this band right now.'}</p>`
-          : filteredShows.map(showRowHtml).join('')}
+          : renderWithYearDividers(filteredShows, profileUpcomingRowHtml, { showCount: true })}
     </div>
+    ${pastAttended.length > 0 ? `
+    <div class="profile-divider">
+      <p class="section-label">Past concerts</p>
+      ${renderWithYearDividers(pastAttended, (c) => myConcertRowHtml(c, true, { showBandName: false }), { showCount: true })}
+    </div>` : ''}
     <div class="profile-danger-zone">
       <button class="profile-remove-btn" data-band-id="${escapeAttr(band.id)}">Remove this band</button>
     </div>
   `;
 
+  wireMyConcertsHandlers(container, () => renderProfileScreen(bandId));
   container.querySelectorAll('a').forEach((a) => a.addEventListener('click', (ev) => ev.stopPropagation()));
   container.querySelector('.profile-edit-btn')?.addEventListener('click', () => {
     editingBandId = bandId;
@@ -1359,17 +1382,21 @@ function renderProfileScreen(bandId) {
   });
 }
 
-function showRowHtml(c) {
+// Band profile page, "Upcoming concerts" section. Same address-link/km/
+// playlist-link treatment as My Concerts' cards (myConcertRowHtml) — no
+// band name (redundant on the band's own page) and no chevron/click-through
+// (you're already here) — plus this page's own discovery actions
+// (Article/Tickets/"I'm going"/Add to calendar), which only make sense for
+// shows you haven't necessarily marked as attending yet.
+function profileUpcomingRowHtml(c) {
   const going = !!c.attending;
   return `
     <div class="row-card">
-      <p class="row-name" style="font-size:13px">${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
-      <p class="row-km">${formatDate(c.date, c.time)} · ${formatKm(c.distanceKm)}</p>
-      ${c.venueAddress ? `
-      <details class="venue-details">
-        <summary>Venue details<span class="details-chevron">${icon('chevronDown')}</span></summary>
-        <a class="venue-address-text" href="${escapeAttr(buildGoogleMapsUrl(c))}" target="_blank" rel="noopener"><span class="map-pin-icon">${icon('mapPin')}</span>${escapeHtml(c.venueAddress)}</a>
-      </details>` : ''}
+      ${c.type === 'festival' ? `<div class="row-top"><div class="row-title-group"><span class="pill pill-festival">Festival</span></div></div>` : ''}
+      <p class="row-sub">${formatDate(c.date, c.time)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
+      ${venueAddressLinkHtml(c)}
+      ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
+      ${playlistLinkHtml(c)}
       <div class="show-buttons">
         <div class="show-buttons-group">
           ${c.articleUrl ? `<a class="btn-secondary" href="${escapeAttr(c.articleUrl)}" target="_blank" rel="noopener">${icon('link')}Article</a>` : ''}
