@@ -8,12 +8,20 @@
 //      explicit full date (mandatory-year policy — never guess).
 //   3. One combined Tavily news search + Groq classification into the four
 //      news categories, with the documented relaxed/strict sourcing rules.
+// Then, once per run: check setlist.fm for any attended-past concert that
+// doesn't have a setlist yet (see the "Setlists" section below) — this is
+// what backfills the ~57 already-attended past shows the very first time
+// this runs, and keeps picking up newly-past "going" shows every week after
+// that. There is deliberately no manual/paste-a-link entry path anywhere in
+// the app — setlist data only ever arrives through this automatic run.
 //
 // Every external call is gated through usageTracker so this can never
 // exceed (self-imposed, below-free-tier) hard caps, and every provider
 // call is paced to respect real-time rate limits. New concerts/news are
 // APPENDED ONLY — nothing already in concerts.json/news.json is ever
-// edited or removed by this script.
+// edited or removed by this script (setlist data is the one exception:
+// it fills in `setlist`/`setlistCheckedAt` on an existing concert record
+// in place, since there's nowhere else for it to live).
 
 const worker = require('./lib/workerClient');
 const { UsageTracker } = require('./lib/usageTracker');
@@ -21,8 +29,15 @@ const ticketmaster = require('./lib/ticketmaster');
 const tavily = require('./lib/tavily');
 const groq = require('./lib/groq');
 const geocode = require('./lib/geocode');
+const setlistfm = require('./lib/setlistfm');
 const { slugify, isValidFullDate, daysAgo, truncate, todayIso } = require('./lib/util');
 const config = require('./lib/config');
+
+// How long to wait before re-checking a past-attended show that didn't have
+// a setlist logged last time — setlist.fm is crowd-sourced, so a fan may
+// submit one weeks after the actual show. Not a permanent give-up: cheap
+// enough (one request) to just keep checking periodically forever.
+const SETLIST_RECHECK_DAYS = 30;
 
 const NEWS_CATEGORIES = new Set(['concert', 'album', 'ticket', 'hiatus']);
 
@@ -275,7 +290,49 @@ async function main() {
   // policy already means "no date" was a deliberate, not accidental, gap.
   const freshNews = newNews.filter((n) => !n.date || daysAgo(n.date) <= config.NEWS_RECENCY_DAYS);
 
-  if (newConcerts.length > 0) {
+  // ---- Setlists: setlist.fm, past-attended shows only ----
+  //
+  // Runs once per pipeline run, over the existing `concerts` array (never
+  // over newConcerts — everything research.js discovers is upcoming by
+  // definition, so nothing newly added this run could qualify anyway).
+  // Scope is exactly "attended + already happened + no setlist yet, or not
+  // checked in the last SETLIST_RECHECK_DAYS" — the same 57-ish shows this
+  // was originally scoped to cover, re-derived fresh every run rather than
+  // hardcoded, since that count only grows as more shows get attended and
+  // move into the past. This is also the entire backfill mechanism: the
+  // first run after this ships simply finds every qualifying past show at
+  // once (perRunCap is sized generously enough to cover them all in one
+  // pass) rather than needing a separate one-off script.
+  const today = todayIso();
+  const needsSetlistCheck = concerts.filter((c) => {
+    if (!c.attending || !c.date || c.date >= today) return false;
+    if (c.setlist) return false;
+    if (c.setlistCheckedAt && daysAgo(c.setlistCheckedAt) < SETLIST_RECHECK_DAYS) return false;
+    return true;
+  });
+
+  let setlistChecksAttempted = 0;
+  let setlistsAdded = 0;
+  for (const c of needsSetlistCheck) {
+    if (!usage.canCallSetlistfm()) break;
+    setlistChecksAttempted += 1;
+    try {
+      const result = await setlistfm.findSetlistForShow(c, usage);
+      c.setlistCheckedAt = new Date().toISOString();
+      if (result) {
+        c.setlist = result;
+        setlistsAdded += 1;
+      }
+    } catch (e) {
+      usage.note(`setlist.fm lookup failed for "${c.bandName}" (${c.date}): ${e.message}`);
+      c.setlistCheckedAt = new Date().toISOString();
+    }
+  }
+
+  // One combined write covers both this run's new upcoming concerts
+  // (newConcerts) and any setlist/setlistCheckedAt fields just filled in on
+  // existing records — a single PUT rather than two separate ones.
+  if (newConcerts.length > 0 || setlistChecksAttempted > 0) {
     await worker.writeJson('concerts.json', [...concerts, ...newConcerts]);
   }
   if (freshNews.length > 0) {
@@ -298,6 +355,8 @@ async function main() {
     rotationOffset,
     concertsAdded: newConcerts.length,
     newsAdded: freshNews.length,
+    setlistChecksAttempted,
+    setlistsAdded,
     status: 'ok',
   });
   await usage.save();
@@ -306,7 +365,10 @@ async function main() {
     `Done. Bands processed: ${bandsProcessed}, new concerts: ${newConcerts.length}, new news items: ${freshNews.length}, news attempted: ${newsAttemptCount}/${bands.length} (started at index ${rotationOffset}).`
   );
   console.log(
-    `Usage this run — Ticketmaster: ${usage.state.ticketmaster.callsThisRun}, Tavily: ${usage.state.tavily.callsThisRun} (month total: ${usage.state.tavily.callsThisMonth}/${usage.state.tavily.monthlyCap}), Groq: ${usage.state.groq.callsThisRun} calls / ${usage.state.groq.tokensThisRun} tokens.`
+    `Setlists: checked ${setlistChecksAttempted}/${needsSetlistCheck.length} eligible past shows, found ${setlistsAdded} new setlist(s).`
+  );
+  console.log(
+    `Usage this run — Ticketmaster: ${usage.state.ticketmaster.callsThisRun}, Tavily: ${usage.state.tavily.callsThisRun} (month total: ${usage.state.tavily.callsThisMonth}/${usage.state.tavily.monthlyCap}), Groq: ${usage.state.groq.callsThisRun} calls / ${usage.state.groq.tokensThisRun} tokens, setlist.fm: ${usage.state.setlistfm.callsThisRun} calls.`
   );
 }
 
