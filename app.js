@@ -526,8 +526,11 @@ function countdownCardHtml(nextConcert) {
   const time = nextConcert.time ? nextConcert.time.slice(0, 5) : '00:00';
   const targetIso = `${nextConcert.date}T${time}:00`;
   const { days, hours, minutes, seconds, outerPct, innerPct } = dlCountdownParts(new Date(targetIso));
-  const outerCirc = 150.8;
-  const innerCirc = 100.5;
+  // Ring sized ~1.5x the original 56/24/16 dimensions to match the card's
+  // 50%-taller layout (see .countdown-card in app.css) — circumferences
+  // recomputed for r=36/r=24 rather than reused from the old r=24/r=16 pair.
+  const outerCirc = 226.19;
+  const innerCirc = 150.8;
   const venueLine = [nextConcert.venue, nextConcert.city].filter(Boolean).join(', ');
   return `
     <div class="countdown-card" id="countdown-card" data-target="${escapeAttr(targetIso)}">
@@ -538,12 +541,12 @@ function countdownCardHtml(nextConcert) {
         <p class="countdown-breakdown"><span id="countdown-d">${days}</span>d <span id="countdown-h">${String(hours).padStart(2, '0')}</span>h <span id="countdown-m">${String(minutes).padStart(2, '0')}</span>m <span id="countdown-s">${String(seconds).padStart(2, '0')}</span>s</p>
       </div>
       <div class="countdown-ring-wrap">
-        <svg width="56" height="56" viewBox="0 0 56 56">
-          <circle class="countdown-ring-track" cx="28" cy="28" r="24" fill="none" stroke-width="5"></circle>
-          <circle id="countdown-ring-outer" data-circ="${outerCirc}" cx="28" cy="28" r="24" fill="none" stroke-width="5" stroke-linecap="round" transform="rotate(-90 28 28)" stroke-dasharray="${outerCirc}" stroke-dashoffset="${outerCirc * (1 - outerPct)}"></circle>
-          <circle class="countdown-ring-track" cx="28" cy="28" r="16" fill="none" stroke-width="5"></circle>
-          <circle id="countdown-ring-inner" data-circ="${innerCirc}" cx="28" cy="28" r="16" fill="none" stroke-width="5" stroke-linecap="round" transform="rotate(-90 28 28)" stroke-dasharray="${innerCirc}" stroke-dashoffset="${innerCirc * (1 - innerPct)}"></circle>
-          <text x="28" y="33" text-anchor="middle" id="countdown-ring-day">${days}</text>
+        <svg width="84" height="84" viewBox="0 0 84 84">
+          <circle class="countdown-ring-track" cx="42" cy="42" r="36" fill="none" stroke-width="8"></circle>
+          <circle id="countdown-ring-outer" data-circ="${outerCirc}" cx="42" cy="42" r="36" fill="none" stroke-width="8" stroke-linecap="round" transform="rotate(-90 42 42)" stroke-dasharray="${outerCirc}" stroke-dashoffset="${outerCirc * (1 - outerPct)}"></circle>
+          <circle class="countdown-ring-track" cx="42" cy="42" r="24" fill="none" stroke-width="8"></circle>
+          <circle id="countdown-ring-inner" data-circ="${innerCirc}" cx="42" cy="42" r="24" fill="none" stroke-width="8" stroke-linecap="round" transform="rotate(-90 42 42)" stroke-dasharray="${innerCirc}" stroke-dashoffset="${innerCirc * (1 - innerPct)}"></circle>
+          <text x="42" y="49" text-anchor="middle" id="countdown-ring-day">${days}</text>
         </svg>
       </div>
     </div>`;
@@ -583,16 +586,23 @@ function myConcertRowHtml(c, isPast) {
         <span class="row-chevron">${icon('chevronRight')}</span>
       </div>
       <p class="row-sub">${formatDate(c.date, c.time)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
+      ${venueAddressLinkHtml(c)}
       ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
-      ${c.venueAddress ? `
-      <details class="venue-details">
-        <summary>Venue details<span class="details-chevron">${icon('chevronDown')}</span></summary>
-        <a class="venue-address-text" href="${escapeAttr(buildGoogleMapsUrl(c))}" target="_blank" rel="noopener"><span class="map-pin-icon">${icon('mapPin')}</span>${escapeHtml(c.venueAddress)}</a>
-      </details>` : ''}
       ${playlistLinkHtml(c)}
+      ${isPast ? photoLinkHtml(c) : ''}
+      ${isPast ? setlistBlockHtml(c) : ''}
       ${isPast ? concertReviewHtml(c) : ''}
       <button class="icon-btn remove-going-btn delete-corner-btn" data-concert-id="${c.id}" aria-label="Remove">${icon('trash')}</button>
     </div>`;
+}
+
+// Venue address — shown directly on both upcoming and past My Concerts rows
+// (unlike the band-profile page's own collapsible "Venue details" toggle,
+// see showRowHtml/buildGoogleMapsUrl below), positioned above "X km away".
+// Still just a plain clickable link out to Google Maps.
+function venueAddressLinkHtml(c) {
+  if (!c.venueAddress) return '';
+  return `<a class="venue-address-link" href="${escapeAttr(buildGoogleMapsUrl(c))}" target="_blank" rel="noopener">${escapeHtml(c.venueAddress)}</a>`;
 }
 
 // Playlist link — unlike rating/notes/photo (concertReviewHtml below),
@@ -628,15 +638,70 @@ function playlistFormHtml(c) {
     </div>`;
 }
 
-// Rating (1-5), notes and an optional photo-album link, only ever shown for
-// past + attended concerts — never upcoming "going" shows. Two states: once
-// any of the three fields has been filled in, they're always visible on the
-// card (rating + full notes text + photo link, no expand needed); until
-// then, a collapsed "Add rating, notes & photo" accordion holds the entry
-// form so it doesn't clutter the ~1000+ already-logged historical shows
-// that will likely never get rated.
+// Photos link (My Concerts, past shows only) — decomposed out of the old
+// combined rating+notes+photo review block so it's its own peer element in
+// the requested card order (Playlist, Photos, Setlist, Stars, Notes), rather
+// than nested inside the stars/notes block. Same standalone two-state shape
+// as playlistLinkHtml, using the dedicated `photo` icon rather than the
+// generic `link` glyph.
+function photoLinkHtml(c) {
+  if (c.photoUrl) {
+    return `
+      <div class="photo-block">
+        <a class="photo-link" href="${escapeAttr(c.photoUrl)}" target="_blank" rel="noopener">${icon('photo')}Photos</a>
+        <details class="photo-edit-toggle">
+          <summary>Edit photos link<span class="details-chevron">${icon('chevronDown')}</span></summary>
+          ${photoFormHtml(c)}
+        </details>
+      </div>`;
+  }
+  return `
+    <details class="photo-block photo-add-toggle">
+      <summary>Add photos link<span class="details-chevron">${icon('chevronDown')}</span></summary>
+      ${photoFormHtml(c)}
+    </details>`;
+}
+
+function photoFormHtml(c) {
+  return `
+    <div class="photo-form">
+      <input type="url" class="photo-url-input" value="${escapeAttr(c.photoUrl || '')}" placeholder="Google Photos link" />
+      <button type="button" class="btn-primary photo-save-btn" data-concert-id="${escapeAttr(c.id)}">Save</button>
+    </div>`;
+}
+
+// Setlist (My Concerts, past shows only) — read-only, populated solely by
+// the automatic setlist.fm pipeline (scripts/lib/setlistfm.js, weekly
+// research run — not yet built). Deliberately no manual-entry UI: renders
+// nothing at all until c.setlist.songs exists on a concert record.
+function setlistBlockHtml(c) {
+  if (!c.setlist || !Array.isArray(c.setlist.songs) || c.setlist.songs.length === 0) return '';
+  const songCount = c.setlist.songs.length;
+  const songsHtml = c.setlist.songs
+    .map((s) => {
+      const encoreLabel = s.isEncore ? `<span class="setlist-encore-divider">Encore</span>` : '';
+      const coverTag = s.isCover ? `<span class="setlist-cover-tag">cover</span>` : '';
+      return `${encoreLabel}<li class="setlist-song${s.isCover ? ' setlist-cover' : ''}">${escapeHtml(s.name)}${coverTag}</li>`;
+    })
+    .join('');
+  return `
+    <details class="setlist-block">
+      <summary>${icon('setlistOrdered')}Setlist (${songCount} song${songCount === 1 ? '' : 's'})<span class="details-chevron">${icon('chevronDown')}</span></summary>
+      <ol class="setlist-song-list">${songsHtml}</ol>
+      ${c.setlist.url ? `<a class="setlist-attribution" href="${escapeAttr(c.setlist.url)}" target="_blank" rel="noopener">View on setlist.fm</a>` : ''}
+    </details>`;
+}
+
+// Rating (1-5) and notes, only ever shown for past + attended concerts —
+// never upcoming "going" shows. Two states: once either field has been
+// filled in, they're always visible on the card (rating + full notes text,
+// no expand needed); until then, a collapsed "Add rating & notes" accordion
+// holds the entry form so it doesn't clutter the ~1000+ already-logged
+// historical shows that will likely never get rated. Photos used to live
+// inside this same block/condition — now its own peer element above
+// (photoLinkHtml), so this only ever tracks rating/notes.
 function dlHasReview(c) {
-  return !!(c.rating || c.notes || c.photoUrl);
+  return !!(c.rating || c.notes);
 }
 
 function concertReviewHtml(c) {
@@ -645,7 +710,6 @@ function concertReviewHtml(c) {
       <div class="review-block concert-review">
         ${starsHtml(c.rating)}
         ${c.notes ? `<p class="review-notes">${escapeHtml(c.notes)}</p>` : ''}
-        ${c.photoUrl ? `<a class="review-photo-link" href="${escapeAttr(c.photoUrl)}" target="_blank" rel="noopener">${icon('link')}Photos</a>` : ''}
         <details class="review-edit-toggle">
           <summary>Edit rating &amp; notes<span class="details-chevron">${icon('chevronDown')}</span></summary>
           ${reviewFormHtml(c)}
@@ -654,7 +718,7 @@ function concertReviewHtml(c) {
   }
   return `
     <details class="review-block review-add-toggle">
-      <summary>Add rating, notes &amp; photo<span class="details-chevron">${icon('chevronDown')}</span></summary>
+      <summary>Add rating &amp; notes<span class="details-chevron">${icon('chevronDown')}</span></summary>
       ${reviewFormHtml(c)}
     </details>`;
 }
@@ -679,7 +743,6 @@ function reviewFormHtml(c) {
     <div class="review-form">
       ${starsHtml(c.rating, { interactive: true })}
       <textarea class="review-notes-input" rows="4" placeholder="What did you think of this show?">${escapeHtml(c.notes || '')}</textarea>
-      <input type="url" class="review-photo-input" value="${escapeAttr(c.photoUrl || '')}" placeholder="Google Photos link (optional)" />
       <button type="button" class="btn-primary review-save-btn" data-concert-id="${escapeAttr(c.id)}">Save</button>
     </div>`;
 }
@@ -699,7 +762,14 @@ function wireMyConcertsHandlers(container) {
 
   container.querySelectorAll('.row-card[data-band-id]').forEach((row) => {
     row.addEventListener('click', (ev) => {
-      if (ev.target.closest('.icon-btn') || ev.target.closest('.venue-details') || ev.target.closest('.review-block') || ev.target.closest('.playlist-block')) return;
+      if (
+        ev.target.closest('.icon-btn') ||
+        ev.target.closest('.venue-address-link') ||
+        ev.target.closest('.review-block') ||
+        ev.target.closest('.playlist-block') ||
+        ev.target.closest('.photo-block') ||
+        ev.target.closest('.setlist-block')
+      ) return;
       openProfile(row.dataset.bandId);
     });
   });
@@ -750,11 +820,8 @@ function wireMyConcertsHandlers(container) {
       const picker = form.querySelector('.star-picker');
       const rating = picker ? Number(picker.dataset.rating) || null : null;
       const notes = form.querySelector('.review-notes-input').value.trim();
-      let photoUrl = form.querySelector('.review-photo-input').value.trim();
-      if (photoUrl && !/^https?:\/\//i.test(photoUrl)) photoUrl = 'https://' + photoUrl;
       c.rating = rating || null;
       c.notes = notes || null;
-      c.photoUrl = photoUrl || null;
       await dlWriteJsonFile(remote, 'concerts.json', concerts);
       renderMyConcertsScreen();
     });
@@ -770,6 +837,21 @@ function wireMyConcertsHandlers(container) {
       let playlistUrl = form.querySelector('.playlist-url-input').value.trim();
       if (playlistUrl && !/^https?:\/\//i.test(playlistUrl)) playlistUrl = 'https://' + playlistUrl;
       c.playlistUrl = playlistUrl || null;
+      await dlWriteJsonFile(remote, 'concerts.json', concerts);
+      renderMyConcertsScreen();
+    });
+  });
+
+  container.querySelectorAll('.photo-save-btn').forEach((btn) => {
+    btn.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const concertId = btn.dataset.concertId;
+      const c = concerts.find((x) => x.id === concertId);
+      if (!c) return;
+      const form = btn.closest('.photo-form');
+      let photoUrl = form.querySelector('.photo-url-input').value.trim();
+      if (photoUrl && !/^https?:\/\//i.test(photoUrl)) photoUrl = 'https://' + photoUrl;
+      c.photoUrl = photoUrl || null;
       await dlWriteJsonFile(remote, 'concerts.json', concerts);
       renderMyConcertsScreen();
     });

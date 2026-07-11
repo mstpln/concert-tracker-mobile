@@ -330,6 +330,16 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .venue-address-text:hover { color: var(--accent); text-decoration: underline; }
 .venue-address-text .map-pin-icon { flex-shrink: 0; margin-top: 2px; }
 
+/* My Concerts row address — shown directly (both upcoming and past rows),
+   not behind a "Venue details" expand toggle like .venue-details above
+   (still used on the band-profile page's own show list). Still a plain
+   clickable link out to Google Maps, just always visible. */
+.venue-address-link {
+  display: block; margin-top: 6px; font-size: 12.5px; color: var(--accent);
+  text-decoration: none; line-height: 1.4;
+}
+.venue-address-link:hover { text-decoration: underline; }
+
 /* News tab */
 .news-card {
   position: relative; overflow: hidden;
@@ -388,26 +398,33 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   font-size: 12.5px; color: var(--accent); text-decoration: none;
 }
 .review-photo-link:hover { text-decoration: underline; }
-/* Playlist link (My Concerts, both upcoming and past shows) shares the
-   review block's toggle chrome — same collapsed "Add" / visible-link-plus-
-   "Edit" shape — so the toggle/summary/chevron rules below apply to both
-   .review-* and .playlist-* variants rather than being duplicated. */
-.review-edit-toggle, .review-add-toggle, .playlist-edit-toggle, .playlist-add-toggle { margin-top: 8px; }
+/* Playlist and Photos links (My Concerts) share the review block's toggle
+   chrome — same collapsed "Add" / visible-link-plus-"Edit" shape — so the
+   toggle/summary/chevron rules below apply to .review-*, .playlist-* and
+   .photo-* variants rather than being duplicated three times. */
+.review-edit-toggle, .review-add-toggle, .playlist-edit-toggle, .playlist-add-toggle,
+.photo-edit-toggle, .photo-add-toggle { margin-top: 8px; }
 .review-edit-toggle summary, .review-add-toggle summary,
-.playlist-edit-toggle summary, .playlist-add-toggle summary {
+.playlist-edit-toggle summary, .playlist-add-toggle summary,
+.photo-edit-toggle summary, .photo-add-toggle summary {
   cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text-secondary);
   display: inline-flex; align-items: center; gap: 4px; list-style: none;
 }
 .review-edit-toggle summary:hover, .review-add-toggle summary:hover,
-.playlist-edit-toggle summary:hover, .playlist-add-toggle summary:hover { color: var(--text); }
+.playlist-edit-toggle summary:hover, .playlist-add-toggle summary:hover,
+.photo-edit-toggle summary:hover, .photo-add-toggle summary:hover { color: var(--text); }
 .review-edit-toggle summary::-webkit-details-marker, .review-add-toggle summary::-webkit-details-marker,
-.playlist-edit-toggle summary::-webkit-details-marker, .playlist-add-toggle summary::-webkit-details-marker { display: none; }
+.playlist-edit-toggle summary::-webkit-details-marker, .playlist-add-toggle summary::-webkit-details-marker,
+.photo-edit-toggle summary::-webkit-details-marker, .photo-add-toggle summary::-webkit-details-marker { display: none; }
 .review-edit-toggle summary::marker, .review-add-toggle summary::marker,
-.playlist-edit-toggle summary::marker, .playlist-add-toggle summary::marker { content: ''; }
+.playlist-edit-toggle summary::marker, .playlist-add-toggle summary::marker,
+.photo-edit-toggle summary::marker, .photo-add-toggle summary::marker { content: ''; }
 .review-edit-toggle .details-chevron, .review-add-toggle .details-chevron,
-.playlist-edit-toggle .details-chevron, .playlist-add-toggle .details-chevron { display: flex; transition: transform 0.15s ease; }
+.playlist-edit-toggle .details-chevron, .playlist-add-toggle .details-chevron,
+.photo-edit-toggle .details-chevron, .photo-add-toggle .details-chevron { display: flex; transition: transform 0.15s ease; }
 .review-edit-toggle[open] .details-chevron, .review-add-toggle[open] .details-chevron,
-.playlist-edit-toggle[open] .details-chevron, .playlist-add-toggle[open] .details-chevron { transform: rotate(180deg); }
+.playlist-edit-toggle[open] .details-chevron, .playlist-add-toggle[open] .details-chevron,
+.photo-edit-toggle[open] .details-chevron, .photo-add-toggle[open] .details-chevron { transform: rotate(180deg); }
 .review-form { margin-top: 8px; }
 .review-form .star-picker { margin-bottom: 8px; }
 .review-form .star-picker .star-btn svg { width: 20px; height: 20px; }
@@ -428,6 +445,41 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 }
 .playlist-link:hover { text-decoration: underline; }
 .playlist-form { margin-top: 8px; }
+
+/* Photos block (My Concerts, past shows only) — same standalone shape as
+   Playlist above (own link/edit-toggle, decomposed out of the old
+   rating+notes+photo review block so it can sit in the requested card
+   order: Playlist, Photos, Setlist, Stars, Notes). */
+.photo-block { margin-top: 8px; }
+.photo-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; color: var(--accent); text-decoration: none;
+}
+.photo-link:hover { text-decoration: underline; }
+.photo-form { margin-top: 8px; }
+
+/* Setlist block (My Concerts, past shows only) — read-only display, no
+   manual entry: data arrives solely via the automatic setlist.fm pipeline
+   (see scripts/lib/setlistfm.js). Renders nothing until c.setlist exists. */
+.setlist-block { margin-top: 8px; }
+.setlist-block summary {
+  cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text);
+  display: inline-flex; align-items: center; gap: 6px; list-style: none;
+}
+.setlist-block summary:hover { color: var(--accent); }
+.setlist-block summary::-webkit-details-marker { display: none; }
+.setlist-block summary::marker { content: ''; }
+.setlist-block .details-chevron { display: flex; transition: transform 0.15s ease; margin-left: 2px; }
+.setlist-block[open] .details-chevron { transform: rotate(180deg); }
+.setlist-song-list { margin: 8px 0 0; padding-left: 20px; font-size: 12.5px; color: var(--text-secondary); line-height: 1.6; }
+.setlist-song.setlist-cover { font-style: italic; }
+.setlist-cover-tag { margin-left: 5px; font-size: 10.5px; color: var(--text-muted); font-style: normal; }
+.setlist-encore-divider {
+  display: block; margin: 6px 0 2px; font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted);
+}
+.setlist-attribution { display: inline-block; margin-top: 6px; font-size: 11px; color: var(--text-muted); text-decoration: none; }
+.setlist-attribution:hover { text-decoration: underline; }
 
 /* Stats teaser card (top of My Concerts) */
 .stats-teaser-card {
@@ -454,35 +506,41 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   display: flex; border-radius: 10px; background: var(--header-bg);
   margin-bottom: 16px; overflow: hidden;
 }
-.countdown-info { flex: 1; padding: 14px; min-width: 0; }
-.countdown-label { margin: 0 0 4px; font-size: 12.5px; color: #85868a; }
+/* Enlarged ~50% taller than the original build — this card is meant to draw
+   the eye first when the My Concerts tab opens, so padding, the ring SVG and
+   most text scale up together. "Next up" and the d/h/m/s breakdown stayed
+   small (12px) by request — only the band name/venue and the ring itself
+   needed to read as "bigger", not every line in the card. */
+.countdown-info { flex: 1; padding: 21px; min-width: 0; }
+.countdown-label { margin: 0 0 6px; font-size: 12px; color: #85868a; }
 .countdown-band {
-  margin: 0; font-size: 14px; font-weight: 600; color: var(--header-text);
+  margin: 0; font-size: 20px; font-weight: 700; color: var(--header-text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .countdown-venue {
-  margin: 0; font-size: 11.5px; color: #6f7176;
+  margin: 2px 0 0; font-size: 15px; color: #6f7176;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.countdown-breakdown { margin: 8px 0 0; font-size: 11px; color: #b7b8bb; font-variant-numeric: tabular-nums; }
+.countdown-breakdown { margin: 12px 0 0; font-size: 12px; color: #b7b8bb; font-variant-numeric: tabular-nums; }
 .countdown-ring-wrap {
   position: relative; flex-shrink: 0; display: flex; align-items: center;
-  padding: 10px 14px; border-left: 2px dashed #3a3b3e;
+  padding: 15px 21px; border-left: 2px dashed #3a3b3e;
 }
 /* The two small circles punched into the dashed divider, giving it the
    look of a torn ticket stub — background matches --surface (the page
    behind the card), not the card's own background, since that's what
-   would actually show through a punched hole. */
+   would actually show through a punched hole. Sized up to match the
+   larger card (16px -> 24px, -8px -> -12px offset). */
 .countdown-ring-wrap::before, .countdown-ring-wrap::after {
-  content: ''; position: absolute; left: -8px; width: 16px; height: 16px;
+  content: ''; position: absolute; left: -12px; width: 24px; height: 24px;
   border-radius: 50%; background: var(--surface);
 }
-.countdown-ring-wrap::before { top: -8px; }
-.countdown-ring-wrap::after { bottom: -8px; }
+.countdown-ring-wrap::before { top: -12px; }
+.countdown-ring-wrap::after { bottom: -12px; }
 .countdown-ring-track { stroke: #2c2d30; }
 #countdown-ring-outer { stroke: #4d8dff; }
 #countdown-ring-inner { stroke: #7fb0ff; }
-#countdown-ring-day { fill: #ffffff; font-size: 16px; font-weight: 700; font-family: inherit; }
+#countdown-ring-day { fill: #ffffff; font-size: 22px; font-weight: 700; font-family: inherit; }
 .countdown-empty {
   padding: 16px; text-align: center;
   border: 1px solid var(--border); background: var(--surface);
@@ -490,11 +548,11 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .countdown-empty-text { margin: 0; font-size: 12.5px; color: var(--text-muted); }
 .stats-teaser-footer {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
-  background: var(--surface-muted); border: none; border-top: 1px solid var(--border);
-  padding: 9px 16px; font-size: 12.5px; font-weight: 500; color: var(--text-secondary);
+  background: var(--accent); border: none; border-top: 1px solid var(--border);
+  padding: 9px 16px; font-size: 12.5px; font-weight: 600; color: var(--on-accent);
 }
-.stats-teaser-footer:hover { color: var(--text); }
-.stats-teaser-footer svg { color: var(--text-muted); }
+.stats-teaser-footer:hover { opacity: 0.92; }
+.stats-teaser-footer svg { color: var(--on-accent); }
 
 /* Full stats screen */
 .stats-kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px; }
