@@ -1282,10 +1282,10 @@ function renderStatsScreen() {
       <div class="stats-list-card">
         ${stats.topArtists.map((a) => `<div class="stats-list-row"><span>${escapeHtml(a.bandName)}</span><span class="stats-list-value">${a.count}</span></div>`).join('')}
       </div>` : ''}
-    ${stats.mostVisitedVenue ? `
-      <p class="section-label">Most-visited venue</p>
+    ${stats.topVenues.length > 0 ? `
+      <p class="section-label">Most-visited venues</p>
       <div class="stats-list-card">
-        <div class="stats-list-row"><span>${escapeHtml(stats.mostVisitedVenue.venue)}${stats.mostVisitedVenue.city ? ', ' + escapeHtml(stats.mostVisitedVenue.city) : ''}</span><span class="stats-list-value">${stats.mostVisitedVenue.count}</span></div>
+        ${stats.topVenues.map((v) => `<div class="stats-list-row"><span>${escapeHtml(v.venue)}${v.city ? ', ' + escapeHtml(v.city) : ''}</span><span class="stats-list-value">${v.count}</span></div>`).join('')}
       </div>` : ''}
     ${stats.genreBreakdown.length > 0 ? `
       <p class="section-label">Genres</p>

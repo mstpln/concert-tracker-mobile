@@ -195,6 +195,25 @@ function dlGenreGroupsForBand(band) {
   return groups.size ? [...groups] : ['untagged'];
 }
 
+// Priority order for single-bucket assignment — used only by the stats
+// screen's genre breakdown, never the My Bands filter. Most specific/niche
+// genres win over the broad "Rock" catch-all, so a "punk rock" show is
+// counted once, as Punk, rather than as Rock — Rock is deliberately last
+// since nearly every rock subgenre literally contains the word "rock",
+// making it a poor discriminator when something more specific also matches.
+const DL_GENRE_PRIORITY_ORDER = ['metal', 'punk', 'folk', 'hiphop_rnb', 'pop', 'rock'];
+
+function dlPrimaryGenreGroupForBand(band) {
+  const raw = (band?.genre || '').trim();
+  if (!raw) return 'untagged';
+  const tokens = raw.split(/[,/]/).map((t) => t.trim().toLowerCase()).filter(Boolean);
+  for (const groupId of DL_GENRE_PRIORITY_ORDER) {
+    const rule = DL_GENRE_GROUP_RULES.find((r) => r.id === groupId);
+    if (tokens.some((t) => rule.test(t))) return groupId;
+  }
+  return 'untagged';
+}
+
 // Every concert the user has marked "I'm going" to (or manually backlogged),
 // split into upcoming (ascending by date) and past (descending — most recent
 // first). This is the only view in the extension that ever shows a past
@@ -297,12 +316,9 @@ function dlConcertStats(attendedPast, bands = []) {
     if (c.date && (!existing.lastDate || c.date > existing.lastDate)) existing.lastDate = c.date;
     venueCounts.set(key, existing);
   }
-  let mostVisitedVenue = null;
-  for (const v of venueCounts.values()) {
-    if (!mostVisitedVenue || v.count > mostVisitedVenue.count || (v.count === mostVisitedVenue.count && (v.lastDate || '') > (mostVisitedVenue.lastDate || ''))) {
-      mostVisitedVenue = v;
-    }
-  }
+  const topVenues = [...venueCounts.values()]
+    .sort((a, b) => b.count - a.count || (b.lastDate || '').localeCompare(a.lastDate || ''))
+    .slice(0, 3);
 
   // All 5-star shows, most recent first — deliberately not a forced "top 5"
   // ranking. Once a rating hits the ceiling there's no real distinction left
@@ -354,20 +370,29 @@ function dlConcertStats(attendedPast, bands = []) {
     if (!busiestMonth || count > busiestMonth.count) busiestMonth = { month, count };
   }
 
-  // Genre comes from bands.json's AI-enriched `genre` field, so coverage
-  // depends on how many of your bands actually have one set — percentages
-  // are relative to shows with a known genre, not the full attendedPast
-  // total, so a handful of un-enriched bands don't silently skew the split.
+  // Uses the same grouped genre buckets as the My Bands filter dropdown
+  // (dlGenreGroupsForBand) rather than the raw, free-text band.genre string
+  // — otherwise a show ends up as one of ~90 near-duplicate slices like
+  // "Alternative rock, indie pop" and "Rock, alternative rock" instead of a
+  // handful of readable categories. Unlike the filter (which is deliberately
+  // multi-membership, so a band matching two buckets is findable under
+  // either), the breakdown assigns each show to exactly one bucket via
+  // dlPrimaryGenreGroupForBand's fixed priority order — a breakdown's
+  // percentages need to sum to 100%, which multi-membership would break.
+  // Percentages are relative to shows with a known/classifiable genre, not
+  // the full attendedPast total, so untagged bands don't silently skew it.
   const genreCounts = new Map();
   let withGenre = 0;
   for (const c of attendedPast) {
-    const genre = bandsById.get(c.bandId)?.genre;
-    if (!genre) continue;
+    const band = bandsById.get(c.bandId);
+    const groupId = dlPrimaryGenreGroupForBand(band);
+    if (groupId === 'untagged') continue;
     withGenre += 1;
-    genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
+    genreCounts.set(groupId, (genreCounts.get(groupId) || 0) + 1);
   }
+  const groupLabels = new Map(DL_GENRE_GROUPS.map((g) => [g.id, g.label]));
   const genreBreakdown = [...genreCounts.entries()]
-    .map(([genre, count]) => ({ genre, count, pct: withGenre ? Math.round((count / withGenre) * 100) : 0 }))
+    .map(([groupId, count]) => ({ genre: groupLabels.get(groupId) || groupId, count, pct: withGenre ? Math.round((count / withGenre) * 100) : 0 }))
     .sort((a, b) => b.count - a.count);
 
   // Unique festival trips attended (grouped by Venue+year, same key as the
@@ -390,7 +415,7 @@ function dlConcertStats(attendedPast, bands = []) {
     longestGap,
     firstShow,
     topArtists,
-    mostVisitedVenue,
+    topVenues,
     topRatedShows,
     farthestShow,
     closestShow,
