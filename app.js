@@ -75,6 +75,7 @@ async function init() {
   wireConnectionError();
 
   registerServiceWorker();
+  setInterval(tickCountdownCard, 1000);
 
   const saved = rsGetConnection();
   if (!saved) {
@@ -444,6 +445,11 @@ function renderMyConcertsScreen() {
   // otherwise it'd just be a row of zeroes above an empty list.
   if (past.length > 0) html += statsTeaserHtml(dlConcertStats(past, bands));
 
+  // Countdown to the next "going" show — always rendered (with an empty
+  // state when nothing's upcoming) so it stays in a fixed spot: under the
+  // stats card, above the upcoming/past lists.
+  html += countdownCardHtml(upcoming[0] || null);
+
   if (upcoming.length === 0 && past.length === 0) {
     html += `<p class="screen-empty">No concerts saved yet. Tap "I'm going" on a band's page to add one, or backlog a past show below.</p>`;
   } else {
@@ -503,6 +509,68 @@ function statsTeaserHtml(stats) {
     </div>`;
 }
 
+// Countdown to the next "going" show. Ticket-stub shaped, styled on
+// --header-bg (always dark, same as the app header bar, in both light and
+// dark mode) rather than --surface, so it reads as a distinct "feature"
+// card. The ring math itself lives in dataLib's dlCountdownParts — this
+// just renders whatever it returns and stamps the target datetime onto the
+// card so tickCountdownCard() can recompute it every second without a
+// full re-render.
+function countdownCardHtml(nextConcert) {
+  if (!nextConcert) {
+    return `
+      <div class="countdown-card countdown-empty">
+        <p class="countdown-empty-text">No upcoming concert marked as attending</p>
+      </div>`;
+  }
+  const time = nextConcert.time ? nextConcert.time.slice(0, 5) : '00:00';
+  const targetIso = `${nextConcert.date}T${time}:00`;
+  const { days, hours, minutes, seconds, outerPct, innerPct } = dlCountdownParts(new Date(targetIso));
+  const outerCirc = 150.8;
+  const innerCirc = 100.5;
+  const venueLine = [nextConcert.venue, nextConcert.city].filter(Boolean).join(', ');
+  return `
+    <div class="countdown-card" id="countdown-card" data-target="${escapeAttr(targetIso)}">
+      <div class="countdown-info">
+        <p class="countdown-label">Next up</p>
+        <p class="countdown-band">${escapeHtml(nextConcert.bandName)}</p>
+        <p class="countdown-venue">${escapeHtml(venueLine)}</p>
+        <p class="countdown-breakdown"><span id="countdown-d">${days}</span>d <span id="countdown-h">${String(hours).padStart(2, '0')}</span>h <span id="countdown-m">${String(minutes).padStart(2, '0')}</span>m <span id="countdown-s">${String(seconds).padStart(2, '0')}</span>s</p>
+      </div>
+      <div class="countdown-ring-wrap">
+        <svg width="56" height="56" viewBox="0 0 56 56">
+          <circle class="countdown-ring-track" cx="28" cy="28" r="24" fill="none" stroke-width="5"></circle>
+          <circle id="countdown-ring-outer" data-circ="${outerCirc}" cx="28" cy="28" r="24" fill="none" stroke-width="5" stroke-linecap="round" transform="rotate(-90 28 28)" stroke-dasharray="${outerCirc}" stroke-dashoffset="${outerCirc * (1 - outerPct)}"></circle>
+          <circle class="countdown-ring-track" cx="28" cy="28" r="16" fill="none" stroke-width="5"></circle>
+          <circle id="countdown-ring-inner" data-circ="${innerCirc}" cx="28" cy="28" r="16" fill="none" stroke-width="5" stroke-linecap="round" transform="rotate(-90 28 28)" stroke-dasharray="${innerCirc}" stroke-dashoffset="${innerCirc * (1 - innerPct)}"></circle>
+          <text x="28" y="33" text-anchor="middle" id="countdown-ring-day">${days}</text>
+        </svg>
+      </div>
+    </div>`;
+}
+
+// Runs on a plain always-on interval (started once in init(), see below)
+// rather than being wired to My Concerts' own open/close — el() lookups
+// just miss silently on every other screen, which is cheaper than hooking
+// start/stop into every place the tab can be entered or left.
+function tickCountdownCard() {
+  const card = el('countdown-card');
+  if (!card) return;
+  const target = new Date(card.dataset.target);
+  const { days, hours, minutes, seconds, outerPct, innerPct } = dlCountdownParts(target);
+  el('countdown-d').textContent = days;
+  el('countdown-h').textContent = String(hours).padStart(2, '0');
+  el('countdown-m').textContent = String(minutes).padStart(2, '0');
+  el('countdown-s').textContent = String(seconds).padStart(2, '0');
+  el('countdown-ring-day').textContent = days;
+  const outer = el('countdown-ring-outer');
+  const circOuter = Number(outer.dataset.circ);
+  outer.setAttribute('stroke-dashoffset', String(circOuter * (1 - outerPct)));
+  const inner = el('countdown-ring-inner');
+  const circInner = Number(inner.dataset.circ);
+  inner.setAttribute('stroke-dashoffset', String(circInner * (1 - innerPct)));
+}
+
 function myConcertRowHtml(c, isPast) {
   return `
     <div class="row-card clickable has-corner-delete${isPast ? ' is-past' : ''}" data-band-id="${c.bandId}">
@@ -521,8 +589,42 @@ function myConcertRowHtml(c, isPast) {
         <summary>Venue details<span class="details-chevron">${icon('chevronDown')}</span></summary>
         <a class="venue-address-text" href="${escapeAttr(buildGoogleMapsUrl(c))}" target="_blank" rel="noopener"><span class="map-pin-icon">${icon('mapPin')}</span>${escapeHtml(c.venueAddress)}</a>
       </details>` : ''}
+      ${playlistLinkHtml(c)}
       ${isPast ? concertReviewHtml(c) : ''}
       <button class="icon-btn remove-going-btn delete-corner-btn" data-concert-id="${c.id}" aria-label="Remove">${icon('trash')}</button>
+    </div>`;
+}
+
+// Playlist link — unlike rating/notes/photo (concertReviewHtml below),
+// this is meant for both upcoming and past shows: a pre-show hype playlist
+// is just as useful as a "what we heard" one, so it's its own standalone
+// block rather than living inside the past-only review block. Same two-state
+// shape as the review block (collapsed "Add" toggle vs. always-visible link
+// with an "Edit" toggle), just with a single URL field instead of
+// rating+notes+photo.
+function playlistLinkHtml(c) {
+  if (c.playlistUrl) {
+    return `
+      <div class="playlist-block">
+        <a class="playlist-link" href="${escapeAttr(c.playlistUrl)}" target="_blank" rel="noopener">${icon('music')}Playlist</a>
+        <details class="playlist-edit-toggle">
+          <summary>Edit playlist link<span class="details-chevron">${icon('chevronDown')}</span></summary>
+          ${playlistFormHtml(c)}
+        </details>
+      </div>`;
+  }
+  return `
+    <details class="playlist-block playlist-add-toggle">
+      <summary>Add playlist link<span class="details-chevron">${icon('chevronDown')}</span></summary>
+      ${playlistFormHtml(c)}
+    </details>`;
+}
+
+function playlistFormHtml(c) {
+  return `
+    <div class="playlist-form">
+      <input type="url" class="playlist-url-input" value="${escapeAttr(c.playlistUrl || '')}" placeholder="Spotify or Apple Music playlist link" />
+      <button type="button" class="btn-primary playlist-save-btn" data-concert-id="${escapeAttr(c.id)}">Save</button>
     </div>`;
 }
 
@@ -597,7 +699,7 @@ function wireMyConcertsHandlers(container) {
 
   container.querySelectorAll('.row-card[data-band-id]').forEach((row) => {
     row.addEventListener('click', (ev) => {
-      if (ev.target.closest('.icon-btn') || ev.target.closest('.venue-details') || ev.target.closest('.review-block')) return;
+      if (ev.target.closest('.icon-btn') || ev.target.closest('.venue-details') || ev.target.closest('.review-block') || ev.target.closest('.playlist-block')) return;
       openProfile(row.dataset.bandId);
     });
   });
@@ -653,6 +755,21 @@ function wireMyConcertsHandlers(container) {
       c.rating = rating || null;
       c.notes = notes || null;
       c.photoUrl = photoUrl || null;
+      await dlWriteJsonFile(remote, 'concerts.json', concerts);
+      renderMyConcertsScreen();
+    });
+  });
+
+  container.querySelectorAll('.playlist-save-btn').forEach((btn) => {
+    btn.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const concertId = btn.dataset.concertId;
+      const c = concerts.find((x) => x.id === concertId);
+      if (!c) return;
+      const form = btn.closest('.playlist-form');
+      let playlistUrl = form.querySelector('.playlist-url-input').value.trim();
+      if (playlistUrl && !/^https?:\/\//i.test(playlistUrl)) playlistUrl = 'https://' + playlistUrl;
+      c.playlistUrl = playlistUrl || null;
       await dlWriteJsonFile(remote, 'concerts.json', concerts);
       renderMyConcertsScreen();
     });

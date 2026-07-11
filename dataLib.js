@@ -225,6 +225,30 @@ function dlMyConcerts(concerts) {
   return { upcoming, past };
 }
 
+// Countdown card math (My Concerts, above the upcoming list) for the single
+// soonest concert the user is attending — `upcoming[0]` from dlMyConcerts
+// above, already sorted ascending by date. Two nested rings: outer tracks
+// days-out capped at a 30-day window (so a show booked months ahead just
+// renders as a full circle instead of an unreadably thin sliver), inner
+// tracks the partial day remaining once you're down to the final stretch.
+// Both drain from full towards empty as the show approaches, reaching
+// empty exactly at showtime — a countdown timer running out, not a
+// progress bar filling up. The day count itself is never capped, even
+// though the outer ring's fill is — a show 126 days out still shows "126"
+// in the center, just with the ring maxed at full.
+const DL_COUNTDOWN_MAX_DAYS = 30;
+
+function dlCountdownParts(targetDate, now = new Date()) {
+  const diffMs = Math.max(0, targetDate.getTime() - now.getTime());
+  const days = Math.floor(diffMs / 86400000);
+  const hours = Math.floor((diffMs % 86400000) / 3600000);
+  const minutes = Math.floor((diffMs % 3600000) / 60000);
+  const seconds = Math.floor((diffMs % 60000) / 1000);
+  const outerPct = Math.min(1, diffMs / (DL_COUNTDOWN_MAX_DAYS * 86400000));
+  const innerPct = (hours * 3600 + minutes * 60 + seconds) / 86400;
+  return { days, hours, minutes, seconds, outerPct, innerPct };
+}
+
 // Aggregate "fun facts" for the stats screen. Takes the same `past` array
 // dlMyConcerts already returns (past date + attending === true, both
 // guaranteed) — never counts upcoming "going" shows that haven't happened.

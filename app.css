@@ -388,16 +388,26 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   font-size: 12.5px; color: var(--accent); text-decoration: none;
 }
 .review-photo-link:hover { text-decoration: underline; }
-.review-edit-toggle, .review-add-toggle { margin-top: 8px; }
-.review-edit-toggle summary, .review-add-toggle summary {
+/* Playlist link (My Concerts, both upcoming and past shows) shares the
+   review block's toggle chrome — same collapsed "Add" / visible-link-plus-
+   "Edit" shape — so the toggle/summary/chevron rules below apply to both
+   .review-* and .playlist-* variants rather than being duplicated. */
+.review-edit-toggle, .review-add-toggle, .playlist-edit-toggle, .playlist-add-toggle { margin-top: 8px; }
+.review-edit-toggle summary, .review-add-toggle summary,
+.playlist-edit-toggle summary, .playlist-add-toggle summary {
   cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text-secondary);
   display: inline-flex; align-items: center; gap: 4px; list-style: none;
 }
-.review-edit-toggle summary:hover, .review-add-toggle summary:hover { color: var(--text); }
-.review-edit-toggle summary::-webkit-details-marker, .review-add-toggle summary::-webkit-details-marker { display: none; }
-.review-edit-toggle summary::marker, .review-add-toggle summary::marker { content: ''; }
-.review-edit-toggle .details-chevron, .review-add-toggle .details-chevron { display: flex; transition: transform 0.15s ease; }
-.review-edit-toggle[open] .details-chevron, .review-add-toggle[open] .details-chevron { transform: rotate(180deg); }
+.review-edit-toggle summary:hover, .review-add-toggle summary:hover,
+.playlist-edit-toggle summary:hover, .playlist-add-toggle summary:hover { color: var(--text); }
+.review-edit-toggle summary::-webkit-details-marker, .review-add-toggle summary::-webkit-details-marker,
+.playlist-edit-toggle summary::-webkit-details-marker, .playlist-add-toggle summary::-webkit-details-marker { display: none; }
+.review-edit-toggle summary::marker, .review-add-toggle summary::marker,
+.playlist-edit-toggle summary::marker, .playlist-add-toggle summary::marker { content: ''; }
+.review-edit-toggle .details-chevron, .review-add-toggle .details-chevron,
+.playlist-edit-toggle .details-chevron, .playlist-add-toggle .details-chevron { display: flex; transition: transform 0.15s ease; }
+.review-edit-toggle[open] .details-chevron, .review-add-toggle[open] .details-chevron,
+.playlist-edit-toggle[open] .details-chevron, .playlist-add-toggle[open] .details-chevron { transform: rotate(180deg); }
 .review-form { margin-top: 8px; }
 .review-form .star-picker { margin-bottom: 8px; }
 .review-form .star-picker .star-btn svg { width: 20px; height: 20px; }
@@ -408,6 +418,17 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 }
 .review-notes-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
+/* Playlist block (My Concerts, both upcoming and past). .playlist-form
+   needs no dedicated input styling — .playlist-url-input already gets the
+   app-wide input[type="url"] rule near the top of this file. */
+.playlist-block { margin-top: 8px; }
+.playlist-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; color: var(--accent); text-decoration: none;
+}
+.playlist-link:hover { text-decoration: underline; }
+.playlist-form { margin-top: 8px; }
+
 /* Stats teaser card (top of My Concerts) */
 .stats-teaser-card {
   border: 1px solid var(--border); border-radius: 10px;
@@ -417,6 +438,56 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .stats-teaser-item { display: flex; flex-direction: column; flex: 1; }
 .stats-teaser-value { font-weight: 700; font-size: 17px; }
 .stats-teaser-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* Countdown card (My Concerts, between the stats card and the upcoming
+   list): the next "going" show, ticket-stub shaped, with a dual progress
+   ring on the stub half (see dlCountdownParts in dataLib.js for the
+   day/hour math). Deliberately built on --header-bg rather than --surface
+   — that token is the same literal dark value in both light and dark mode
+   (see app.css :root), so this card always reads as the app's own "feature
+   dark" treatment instead of shifting with the surrounding theme. Colors
+   below are hardcoded (not --text-secondary/--text-muted) for the same
+   reason #app-header's own children use hardcoded rgba() — this card is
+   always dark regardless of system theme, so the mode-flipping text tokens
+   would go unreadable in light mode. */
+.countdown-card {
+  display: flex; border-radius: 10px; background: var(--header-bg);
+  margin-bottom: 16px; overflow: hidden;
+}
+.countdown-info { flex: 1; padding: 14px; min-width: 0; }
+.countdown-label { margin: 0 0 4px; font-size: 12.5px; color: #85868a; }
+.countdown-band {
+  margin: 0; font-size: 14px; font-weight: 600; color: var(--header-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.countdown-venue {
+  margin: 0; font-size: 11.5px; color: #6f7176;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.countdown-breakdown { margin: 8px 0 0; font-size: 11px; color: #b7b8bb; font-variant-numeric: tabular-nums; }
+.countdown-ring-wrap {
+  position: relative; flex-shrink: 0; display: flex; align-items: center;
+  padding: 10px 14px; border-left: 2px dashed #3a3b3e;
+}
+/* The two small circles punched into the dashed divider, giving it the
+   look of a torn ticket stub — background matches --surface (the page
+   behind the card), not the card's own background, since that's what
+   would actually show through a punched hole. */
+.countdown-ring-wrap::before, .countdown-ring-wrap::after {
+  content: ''; position: absolute; left: -8px; width: 16px; height: 16px;
+  border-radius: 50%; background: var(--surface);
+}
+.countdown-ring-wrap::before { top: -8px; }
+.countdown-ring-wrap::after { bottom: -8px; }
+.countdown-ring-track { stroke: #2c2d30; }
+#countdown-ring-outer { stroke: #4d8dff; }
+#countdown-ring-inner { stroke: #7fb0ff; }
+#countdown-ring-day { fill: #ffffff; font-size: 16px; font-weight: 700; font-family: inherit; }
+.countdown-empty {
+  padding: 16px; text-align: center;
+  border: 1px solid var(--border); background: var(--surface);
+}
+.countdown-empty-text { margin: 0; font-size: 12.5px; color: var(--text-muted); }
 .stats-teaser-footer {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
   background: var(--surface-muted); border: none; border-top: 1px solid var(--border);
