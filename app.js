@@ -466,13 +466,23 @@ function renderMyConcertsScreen() {
         <option value="">Select a band…</option>
         ${bandOptions}
       </select>
-      <input type="text" id="past-concert-venue" placeholder="Venue" />
+      <div class="form-row">
+        <input type="text" id="past-concert-venue" placeholder="Venue" />
+        <select id="past-concert-type">
+          <option value="concert">Concert</option>
+          <option value="festival">Festival</option>
+        </select>
+      </div>
       <div class="form-row">
         <input type="text" id="past-concert-city" placeholder="City" />
         <input type="text" id="past-concert-country" placeholder="Country (optional)" />
       </div>
       <input type="text" id="past-concert-address" placeholder="Venue address (optional, for calendar)" />
-      <input type="date" id="past-concert-date" />
+      <div class="form-row date-select-row">
+        <select id="past-concert-year">${pastConcertYearOptionsHtml()}</select>
+        <select id="past-concert-month">${pastConcertMonthOptionsHtml()}</select>
+        <select id="past-concert-day">${pastConcertDayOptionsHtml()}</select>
+      </div>
       <button id="past-concert-submit" class="btn-primary btn-block">${icon('plus')}Add past concert</button>
       <p id="past-concert-error" class="error hidden" style="color:var(--danger);font-size:11.5px;margin:6px 0 0"></p>
     </div>`;
@@ -499,6 +509,7 @@ function myConcertRowHtml(c, isPast) {
       <div class="row-top">
         <div class="row-title-group">
           <span class="row-name">${escapeHtml(c.bandName)}</span>
+          ${c.type === 'festival' ? `<span class="pill pill-festival">Festival</span>` : ''}
           ${isPast ? `<span class="pill pill-attended">${icon('check')} Attended</span>` : ''}
         </div>
         <span class="row-chevron">${icon('chevronRight')}</span>
@@ -646,25 +657,59 @@ function wireMyConcertsHandlers(container) {
   });
 }
 
+// A plain <input type="date"> forces the native calendar picker's
+// month-by-month paging to reach an old year — fine for last month, painful
+// for 2002. Three independent <select>s let you jump straight to any year
+// in one tap instead of paging back decades. Year list is capped at 1960;
+// bump the floor if you ever need to backlog something older.
+function pastConcertYearOptionsHtml() {
+  const currentYear = new Date().getFullYear();
+  let html = '<option value="">Year</option>';
+  for (let y = currentYear; y >= 1960; y--) html += `<option value="${y}">${y}</option>`;
+  return html;
+}
+
+function pastConcertMonthOptionsHtml() {
+  let html = '<option value="">Month</option>';
+  MONTH_NAMES.forEach((name, i) => {
+    const v = String(i + 1).padStart(2, '0');
+    html += `<option value="${v}">${name}</option>`;
+  });
+  return html;
+}
+
+function pastConcertDayOptionsHtml() {
+  let html = '<option value="">Day</option>';
+  for (let d = 1; d <= 31; d++) html += `<option value="${String(d).padStart(2, '0')}">${d}</option>`;
+  return html;
+}
+
 async function onAddPastConcert() {
   const bandSel = el('past-concert-band');
   const venueInput = el('past-concert-venue');
+  const typeSel = el('past-concert-type');
   const cityInput = el('past-concert-city');
   const countryInput = el('past-concert-country');
   const addressInput = el('past-concert-address');
-  const dateInput = el('past-concert-date');
+  const yearSel = el('past-concert-year');
+  const monthSel = el('past-concert-month');
+  const daySel = el('past-concert-day');
   const errEl = el('past-concert-error');
   errEl.classList.add('hidden');
 
   const bandId = bandSel.value;
   const venue = venueInput.value.trim();
+  const type = typeSel.value === 'festival' ? 'festival' : 'concert';
   const city = cityInput.value.trim();
   const country = countryInput.value.trim();
   const venueAddress = addressInput.value.trim();
-  const date = dateInput.value;
+  const year = yearSel.value;
+  const month = monthSel.value;
+  const day = daySel.value;
+  const date = year && month && day ? `${year}-${month}-${day}` : '';
 
   if (!bandId || !venue || !city || !date) {
-    errEl.textContent = 'Band, venue, city and date are required.';
+    errEl.textContent = 'Band, venue, city and date (year, month, day) are required.';
     errEl.classList.remove('hidden');
     return;
   }
@@ -682,16 +727,20 @@ async function onAddPastConcert() {
     articleUrl: null, ticketUrl: null, ticketRetailerVerified: false,
     isNew: false, foundAt: new Date().toISOString(),
     attending: true, manuallyAdded: true,
+    type,
   };
   concerts.push(concert);
   await dlWriteJsonFile(remote, 'concerts.json', concerts);
 
   bandSel.value = '';
   venueInput.value = '';
+  typeSel.value = 'concert';
   cityInput.value = '';
   countryInput.value = '';
   addressInput.value = '';
-  dateInput.value = '';
+  yearSel.value = '';
+  monthSel.value = '';
+  daySel.value = '';
   renderMyConcertsScreen();
 }
 
@@ -1195,6 +1244,7 @@ function renderStatsScreen() {
   if (stats.farthestShow) tiles.push({ value: formatKm(stats.farthestShow.distanceKm), label: `farthest show, ${escapeHtml(stats.farthestShow.bandName)}` });
   if (stats.closestShow) tiles.push({ value: formatKm(stats.closestShow.distanceKm), label: `closest show, ${escapeHtml(stats.closestShow.bandName)}` });
   if (stats.mostVisitedCity) tiles.push({ value: stats.mostVisitedCity.count.toLocaleString(), label: `most-visited city, ${escapeHtml(stats.mostVisitedCity.city)}` });
+  if (stats.festivalsAttended > 0) tiles.push({ value: stats.festivalsAttended.toLocaleString(), label: 'festivals attended' });
   const tilesHtml = tiles.map((t) => `<div class="stats-kpi-tile"><span class="stats-kpi-value">${t.value}</span><span class="stats-kpi-label">${t.label}</span></div>`).join('');
 
   const TOP_RATED_DISPLAY_CAP = 8;

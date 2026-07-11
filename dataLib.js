@@ -228,13 +228,27 @@ function dlConcertStats(attendedPast, bands = []) {
     if (c.country) countrySet.add(String(c.country).trim().toLowerCase());
   }
 
+  // Distance is summed once per physical trip, not once per band seen: a
+  // multi-day festival (concert.type === 'festival') gets its distance
+  // counted a single time per Venue+year, however many bands you saw there
+  // — otherwise a single Roskilde trip where you saw 11 bands would count
+  // that same round-trip distance 11 times over. Regular shows (everything
+  // with no `type` set, or type: 'concert') are summed individually exactly
+  // as before. knownDistanceCount still counts every show with a known
+  // distance (festival or not) — it's a coverage caveat for the UI, separate
+  // from the dedup applied to the sum itself.
   let kmTraveled = 0;
   let knownDistanceCount = 0;
+  const countedFestivalTrips = new Set();
   for (const c of attendedPast) {
-    if (typeof c.distanceKm === 'number' && !Number.isNaN(c.distanceKm)) {
-      kmTraveled += c.distanceKm;
-      knownDistanceCount += 1;
+    if (typeof c.distanceKm !== 'number' || Number.isNaN(c.distanceKm)) continue;
+    knownDistanceCount += 1;
+    if (c.type === 'festival') {
+      const tripKey = `${c.venue || ''}|${(c.date || '').slice(0, 4)}`;
+      if (countedFestivalTrips.has(tripKey)) continue;
+      countedFestivalTrips.add(tripKey);
     }
+    kmTraveled += c.distanceKm;
   }
 
   const yearCounts = new Map();
@@ -356,6 +370,17 @@ function dlConcertStats(attendedPast, bands = []) {
     .map(([genre, count]) => ({ genre, count, pct: withGenre ? Math.round((count / withGenre) * 100) : 0 }))
     .sort((a, b) => b.count - a.count);
 
+  // Unique festival trips attended (grouped by Venue+year, same key as the
+  // kmTraveled dedup above) — e.g. three separate years of Roskilde count
+  // as 3, not as the 24 individual band performances seen across them.
+  const festivalTripKeys = new Set();
+  for (const c of attendedPast) {
+    if (c.type === 'festival') {
+      festivalTripKeys.add(`${c.venue || ''}|${(c.date || '').slice(0, 4)}`);
+    }
+  }
+  const festivalsAttended = festivalTripKeys.size;
+
   return {
     totalShows,
     countries: countrySet.size,
@@ -373,5 +398,6 @@ function dlConcertStats(attendedPast, bands = []) {
     mostVisitedCity,
     busiestMonth,
     genreBreakdown,
+    festivalsAttended,
   };
 }
