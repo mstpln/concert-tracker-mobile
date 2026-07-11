@@ -592,6 +592,8 @@ function buildGoogleMapsUrl(c) {
 function wireMyConcertsHandlers(container) {
   container.querySelector('#past-concert-submit')?.addEventListener('click', onAddPastConcert);
   container.querySelector('#stats-teaser-cta')?.addEventListener('click', () => openStatsScreen());
+  container.querySelector('#past-concert-year')?.addEventListener('change', () => refreshPastConcertDayOptions(container));
+  container.querySelector('#past-concert-month')?.addEventListener('change', () => refreshPastConcertDayOptions(container));
 
   container.querySelectorAll('.row-card[data-band-id]').forEach((row) => {
     row.addEventListener('click', (ev) => {
@@ -678,10 +680,28 @@ function pastConcertMonthOptionsHtml() {
   return html;
 }
 
-function pastConcertDayOptionsHtml() {
+function pastConcertDayOptionsHtml(daysInMonth = 31) {
   let html = '<option value="">Day</option>';
-  for (let d = 1; d <= 31; d++) html += `<option value="${String(d).padStart(2, '0')}">${d}</option>`;
+  for (let d = 1; d <= daysInMonth; d++) html += `<option value="${String(d).padStart(2, '0')}">${d}</option>`;
   return html;
+}
+
+// Rebuilds the Day dropdown to match the selected Year/Month (leap-year
+// aware via `new Date(y, m, 0).getDate()`) so it's impossible to pick a
+// date that doesn't exist, like Feb 31 — falls back to a generic 31-day
+// list until both Year and Month are chosen. Preserves the previously
+// selected day if it's still valid in the new range.
+function refreshPastConcertDayOptions(container) {
+  const yearSel = container.querySelector('#past-concert-year');
+  const monthSel = container.querySelector('#past-concert-month');
+  const daySel = container.querySelector('#past-concert-day');
+  if (!yearSel || !monthSel || !daySel) return;
+  const year = Number(yearSel.value) || null;
+  const month = Number(monthSel.value) || null;
+  const daysInMonth = year && month ? new Date(year, month, 0).getDate() : 31;
+  const previousDay = daySel.value;
+  daySel.innerHTML = pastConcertDayOptionsHtml(daysInMonth);
+  if (previousDay && Number(previousDay) <= daysInMonth) daySel.value = previousDay;
 }
 
 async function onAddPastConcert() {
