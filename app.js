@@ -40,7 +40,7 @@ const SEED_BANDS = [];
 const SEED_CONCERTS = [];
 const SEED_NEWS = [];
 
-// The weekly research pipeline's three provider keys live only as GitHub
+// The weekly research pipeline's provider keys live only as GitHub
 // Actions secrets — by design, secret values can never be read back once
 // saved, so there's no way for this app to fetch them live. This is a
 // small static record of what was saved, filled in once at setup time.
@@ -53,6 +53,7 @@ const RESEARCH_KEY_METADATA = {
   ticketmaster: { label: 'Ticketmaster API key', masked: 'iS4B••••••••sraA' },
   tavily: { label: 'Tavily API key', masked: 'tvly••••••••yzt0' },
   groq: { label: 'Groq API key (research pipeline)', masked: 'gsk_••••••••rhcu' },
+  setlistfm: { label: 'setlist.fm API key', masked: 'lM9u••••••••oLZB' },
 };
 
 async function init() {
@@ -1665,18 +1666,20 @@ function researchPipelineSectionHtml() {
   const tm = apiUsage.ticketmaster || {};
   const tv = apiUsage.tavily || {};
   const gq = apiUsage.groq || {};
+  const sl = apiUsage.setlistfm || {};
   const lastRun = apiUsage.lastRun || null;
 
   const bars =
     usageBarRowHtml('Ticketmaster (today)', tm.callsToday, tm.freeTierDailyLimit ?? 5000) +
     usageBarRowHtml('Tavily (this month)', tv.callsThisMonth, tv.freeTierMonthlyLimit ?? 1000) +
     usageBarRowHtml('Groq requests (today)', gq.callsToday, gq.freeTierDailyRequestLimit ?? 1000) +
-    usageBarRowHtml('Groq tokens (today)', gq.tokensToday ?? 0, gq.freeTierTpdLimit ?? 200000);
+    usageBarRowHtml('Groq tokens (today)', gq.tokensToday ?? 0, gq.freeTierTpdLimit ?? 200000) +
+    usageBarRowHtml('setlist.fm (today)', sl.callsToday, sl.freeTierDailyLimit ?? 1440);
 
   const lastRunHtml = lastRun
     ? `<p class="settings-hint" style="margin-top:8px">
          Last run ${escapeHtml(formatSettingsDate(lastRun.finishedAt))} · ${escapeHtml(lastRun.status || 'unknown')}
-         · ${lastRun.bandsProcessed ?? 0} bands checked, ${lastRun.concertsAdded ?? 0} new concerts, ${lastRun.newsAdded ?? 0} new news items.
+         · ${lastRun.bandsProcessed ?? 0} bands checked, ${lastRun.concertsAdded ?? 0} new concerts, ${lastRun.newsAdded ?? 0} new news items, ${lastRun.setlistsAdded ?? 0} new setlists.
        </p>`
     : '';
 
