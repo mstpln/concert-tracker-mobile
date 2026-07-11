@@ -170,9 +170,9 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .row-card.clickable:hover { border-color: var(--border-strong); }
 .row-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .row-title-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
-.row-name { font-weight: 600; font-size: 14.5px; }
+.row-name { font-weight: 600; font-size: 16.5px; }
 .row-sub { margin: 3px 0 0; color: var(--text-secondary); font-size: 12.5px; }
-.row-km { margin: 2px 0 0; color: var(--accent); font-weight: 600; font-size: 12.5px; }
+.row-km { margin: 2px 0 6px; color: var(--accent); font-weight: 600; font-size: 12.5px; }
 .row-chevron { color: var(--text-muted); display: flex; flex-shrink: 0; }
 .row-actions { display: flex; gap: 6px; align-items: center; }
 .row-actions .icon-btn { color: var(--text-muted); width: 28px; height: 28px; }
@@ -180,7 +180,7 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .row-card.is-past { opacity: 0.72; }
 /* My Concerts: the delete button sits in the card's bottom-right corner
    instead of alongside the chevron up top, so it's not mistaken for part of
-   the row's primary tap target. Extra bottom padding keeps venue-details/
+   the row's primary tap target. Extra bottom padding keeps the address link/
    row-km text from running underneath it. */
 .row-card.has-corner-delete { padding-bottom: 44px; }
 .delete-corner-btn {
@@ -313,27 +313,11 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 }
 .show-buttons svg { width: 16px; height: 16px; }
 
-.venue-details { margin-top: 6px; }
-.venue-details summary {
-  cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text-secondary);
-  display: inline-flex; align-items: center; gap: 4px; list-style: none;
-}
-.venue-details summary:hover { color: var(--text); }
-.venue-details summary::-webkit-details-marker { display: none; }
-.venue-details summary::marker { content: ''; }
-.venue-details .details-chevron { display: flex; transition: transform 0.15s ease; }
-.venue-details[open] .details-chevron { transform: rotate(180deg); }
-.venue-address-text {
-  margin: 5px 0 0; padding-left: 16px; font-size: 12px; color: var(--text-muted);
-  display: flex; align-items: flex-start; gap: 5px; text-decoration: none;
-}
-.venue-address-text:hover { color: var(--accent); text-decoration: underline; }
-.venue-address-text .map-pin-icon { flex-shrink: 0; margin-top: 2px; }
-
-/* My Concerts row address — shown directly (both upcoming and past rows),
-   not behind a "Venue details" expand toggle like .venue-details above
-   (still used on the band-profile page's own show list). Still a plain
-   clickable link out to Google Maps, just always visible. */
+/* Venue address — shown directly on every concert card (My Concerts and
+   the band profile page's Upcoming/Past concerts alike), not behind an
+   expand toggle. Still a plain clickable link out to Google Maps, just
+   always visible. (The old collapsible .venue-details/.venue-address-text
+   toggle this replaced has been removed — nothing renders it anymore.) */
 .venue-address-link {
   display: block; margin: 6px 0 4px; font-size: 12.5px; color: #85868a;
   text-decoration: none; line-height: 1.4;
@@ -441,8 +425,10 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .playlist-block { margin-top: 8px; }
 .playlist-link {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 12.5px; color: var(--accent); text-decoration: none;
+  font-size: 12.5px; color: var(--text); text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
 }
+.playlist-link:hover, .playlist-link:active, .playlist-link:visited { color: var(--text); }
 .playlist-link:hover { text-decoration: underline; }
 .playlist-form { margin-top: 8px; }
 
@@ -453,20 +439,26 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .photo-block { margin-top: 8px; }
 .photo-link {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 12.5px; color: var(--accent); text-decoration: none;
+  font-size: 12.5px; color: var(--text); text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
 }
+.photo-link:hover, .photo-link:active, .photo-link:visited { color: var(--text); }
 .photo-link:hover { text-decoration: underline; }
 .photo-form { margin-top: 8px; }
 
 /* Setlist block (My Concerts, past shows only) — read-only display, no
    manual entry: data arrives solely via the automatic setlist.fm pipeline
-   (see scripts/lib/setlistfm.js). Renders nothing until c.setlist exists. */
+   (see scripts/lib/setlistfm.js). Renders nothing until c.setlist exists.
+   Kept the same neutral white as Playlist/Photos (never turns blue on
+   hover/tap) per the "too many blue parts" design pass — an underline is
+   the only hover feedback now, matching those two links. */
 .setlist-block { margin-top: 8px; }
 .setlist-block summary {
   cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text);
   display: inline-flex; align-items: center; gap: 6px; list-style: none;
+  -webkit-tap-highlight-color: transparent;
 }
-.setlist-block summary:hover { color: var(--accent); }
+.setlist-block summary:hover, .setlist-block summary:active { color: var(--text); text-decoration: underline; }
 .setlist-block summary::-webkit-details-marker { display: none; }
 .setlist-block summary::marker { content: ''; }
 .setlist-block .details-chevron { display: flex; transition: transform 0.15s ease; margin-left: 2px; }
