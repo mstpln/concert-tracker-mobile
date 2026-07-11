@@ -256,6 +256,14 @@ function dlConcertStats(attendedPast, bands = []) {
   // as before. knownDistanceCount still counts every show with a known
   // distance (festival or not) — it's a coverage caveat for the UI, separate
   // from the dedup applied to the sum itself.
+  //
+  // c.distanceKm itself is one-way (home -> venue, same value the Concerts
+  // tab's "203 km away" labels and the Nearby filter use). "km traveled" is
+  // meant to represent actual total travel for the trip, which includes the
+  // way back home too — so each trip's one-way distance is doubled here
+  // before being added to the total. This doubling is applied once per trip
+  // (once per festival Venue+year, once per regular show), matching the
+  // same per-trip dedup as everything else in this loop.
   let kmTraveled = 0;
   let knownDistanceCount = 0;
   const countedFestivalTrips = new Set();
@@ -267,7 +275,7 @@ function dlConcertStats(attendedPast, bands = []) {
       if (countedFestivalTrips.has(tripKey)) continue;
       countedFestivalTrips.add(tripKey);
     }
-    kmTraveled += c.distanceKm;
+    kmTraveled += c.distanceKm * 2;
   }
 
   const yearCounts = new Map();
