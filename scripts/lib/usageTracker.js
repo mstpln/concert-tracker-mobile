@@ -45,6 +45,14 @@ function freshState() {
       tokensToday: 0,
       tokensThisRun: 0,
     },
+    setlistfm: {
+      freeTierDailyLimit: config.SETLISTFM.freeTierDailyLimit,
+      dailyCap: config.SETLISTFM.dailyCap,
+      perRunCap: config.SETLISTFM.perRunCap,
+      dayOfCounts: today,
+      callsToday: 0,
+      callsThisRun: 0,
+    },
     // Which band index the news-research loop should start from this run.
     // Since the Groq daily token budget can run out partway through the
     // band list (it did, on the very first live run — 149,959/150,000
@@ -66,6 +74,7 @@ class UsageTracker {
     this._lastTicketmasterCallAt = 0;
     this._lastTavilyCallAt = 0;
     this._lastGroqCallAt = 0;
+    this._lastSetlistfmCallAt = 0;
     // Stamped here (construction time — right after UsageTracker.load()
     // resolves, at the very start of a run) rather than left unset. An
     // earlier version never assigned this anywhere, so finishRun()'s
@@ -86,6 +95,7 @@ class UsageTracker {
     if (!state.ticketmaster) state.ticketmaster = freshState().ticketmaster;
     if (!state.tavily) state.tavily = freshState().tavily;
     if (!state.groq) state.groq = freshState().groq;
+    if (!state.setlistfm) state.setlistfm = freshState().setlistfm;
     if (!state.rotation || typeof state.rotation.nextBandIndex !== 'number') {
       state.rotation = { nextBandIndex: 0 };
     }
@@ -115,6 +125,11 @@ class UsageTracker {
       perRunCap: config.GROQ.perRunCap,
       safeTpd: config.GROQ.safeTpd,
     });
+    Object.assign(state.setlistfm, {
+      freeTierDailyLimit: config.SETLISTFM.freeTierDailyLimit,
+      dailyCap: config.SETLISTFM.dailyCap,
+      perRunCap: config.SETLISTFM.perRunCap,
+    });
 
     if (state.ticketmaster.dayOfCounts !== today) {
       state.ticketmaster.dayOfCounts = today;
@@ -130,11 +145,16 @@ class UsageTracker {
       state.tavily.monthOfCounts = month;
       state.tavily.callsThisMonth = 0;
     }
+    if (state.setlistfm.dayOfCounts !== today) {
+      state.setlistfm.dayOfCounts = today;
+      state.setlistfm.callsToday = 0;
+    }
     // Always zero the per-run counters at the start of a run.
     state.ticketmaster.callsThisRun = 0;
     state.tavily.callsThisRun = 0;
     state.groq.callsThisRun = 0;
     state.groq.tokensThisRun = 0;
+    state.setlistfm.callsThisRun = 0;
 
     return new UsageTracker(state);
   }
@@ -242,6 +262,23 @@ class UsageTracker {
     this.state.groq.tokensToday += tokens;
   }
 
+  // ---------------- setlist.fm ----------------
+
+  canCallSetlistfm() {
+    const s = this.state.setlistfm;
+    if (s.callsThisRun >= s.perRunCap) return false;
+    if (s.callsToday >= s.dailyCap) return false;
+    return true;
+  }
+
+  async recordSetlistfmCall() {
+    const gap = Date.now() - this._lastSetlistfmCallAt;
+    if (gap < config.SETLISTFM.minDelayMs) await sleep(config.SETLISTFM.minDelayMs - gap);
+    this._lastSetlistfmCallAt = Date.now();
+    this.state.setlistfm.callsThisRun += 1;
+    this.state.setlistfm.callsToday += 1;
+  }
+
   // ---------------- Persistence ----------------
 
   finishRun(summary) {
@@ -252,6 +289,7 @@ class UsageTracker {
       tavilyCalls: this.state.tavily.callsThisRun,
       groqCalls: this.state.groq.callsThisRun,
       groqTokens: this.state.groq.tokensThisRun,
+      setlistfmCalls: this.state.setlistfm.callsThisRun,
       notes: this._notes,
       ...summary,
     };

@@ -20,6 +20,13 @@
 //                                 (a full run's total token usage matters
 //                                 more than any one minute's), so prompts
 //                                 sent to Groq are kept deliberately short.
+//   setlist.fm API             — free (non-commercial use only, per its own
+//                                 terms), max. 2 requests/second and max.
+//                                 1,440 requests/day, straight from the key
+//                                 issued at signup. Unlike the three above,
+//                                 this is a direct structured lookup (no
+//                                 search+LLM step), so per-show cost is a
+//                                 single request, not several.
 //
 // This runs once/week (≈4.33 runs/month), so the real constraint for
 // Tavily is the MONTHLY budget, not the per-run one — a single run must
@@ -80,6 +87,18 @@ module.exports = {
     // Minimum gap between requests — under the real 30 RPM limit (2s) with
     // margin.
     minDelayMs: 2500,
+  },
+
+  SETLISTFM: {
+    apiKeyEnv: 'SETLISTFM_API_KEY',
+    baseUrl: 'https://api.setlist.fm/rest/1.0',
+    freeTierDailyLimit: 1440,
+    // Hard caps, well under the real 1,440/day, 2/sec free-tier limits —
+    // even backfilling every attended-past show in one run stays nowhere
+    // close to either ceiling.
+    dailyCap: 1200,
+    perRunCap: 200,
+    minDelayMs: 600, // under the real 2 req/sec (500ms) with margin
   },
 
   WORKER: {
