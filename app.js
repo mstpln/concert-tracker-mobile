@@ -14,7 +14,8 @@ let bands = [];
 let concerts = [];
 let news = [];
 let apiUsage = null;
-let newsLastOpenedAt = null;
+let alertsLastOpenedAt = null;
+let newsSubTab = 'news'; // 'news' | 'alerts'
 let currentTab = 'concerts';
 let currentScreen = 'main'; // 'main' | 'profile' | 'settings' | 'stats' | 'connection-error' (only reachable pre-navigation)
 let activeProfileBandId = null;
@@ -29,8 +30,11 @@ let profileEuropeOnly = false;
 let profileNearbyOnly = false;
 let inactivityYears = 3;
 let hideInactiveBands = false;
+let selectedGenre = 'all';
 
 const el = (id) => document.getElementById(id);
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const SEED_BANDS = [];
 const SEED_CONCERTS = [];
@@ -60,8 +64,10 @@ async function init() {
     await chrome.storage.local.get(['inactivityYears', 'hideInactiveBands']);
   inactivityYears = Number(savedInactivityYears) || 3;
   hideInactiveBands = !!savedHideInactive;
-  const { newsLastOpenedAt: savedNewsLastOpenedAt = null } = await chrome.storage.local.get('newsLastOpenedAt');
-  newsLastOpenedAt = savedNewsLastOpenedAt;
+  const { selectedGenre: savedSelectedGenre = 'all' } = await chrome.storage.local.get('selectedGenre');
+  selectedGenre = savedSelectedGenre || 'all';
+  const { alertsLastOpenedAt: savedAlertsLastOpenedAt = null } = await chrome.storage.local.get('alertsLastOpenedAt');
+  alertsLastOpenedAt = savedAlertsLastOpenedAt;
 
   wireOnboarding();
   wireHeader();
@@ -174,8 +180,7 @@ async function loadDataAndShowApp() {
   apiUsage = await dlReadJsonFile(remote, 'apiUsage.json', null);
   el('onboarding').classList.add('hidden');
   el('app').classList.remove('hidden');
-  await updateHeaderBadge();
-  updateNewsBadge();
+  updateAlertsBadge();
   // Only (re)establish the base screen when we're not already deeper in the
   // navigation stack (e.g. tapping "Refresh now" inside Settings shouldn't
   // bounce back out to the Concerts tab). Use replaceState rather than push
@@ -186,33 +191,53 @@ async function loadDataAndShowApp() {
   }
 }
 
-async function updateHeaderBadge() {
-  const { seenIds = [] } = await chrome.storage.local.get('seenIds');
-  const unseenNew = dlUnnotified(concerts, seenIds);
-  const pill = el('new-badge');
-  if (unseenNew.length > 0) {
-    pill.textContent = `${unseenNew.length} new`;
-    pill.classList.remove('hidden');
-    const updated = [...new Set([...seenIds, ...unseenNew.map((c) => c.id)])];
-    await chrome.storage.local.set({ seenIds: updated });
-  } else {
-    pill.classList.add('hidden');
-  }
+// Alerts unread indicator — a single red dot on the Alerts tab icon, not a
+// per-item count. It clears specifically when the Alerts sub-view is opened
+// (not just the News tab in general), so it only ever means "a new show
+// arrived since you last actually looked at Alerts". This replaces the old
+// header "X new" pill + seenIds tracking, which covered the exact same
+// concept (newly-discovered concerts) through a separate mechanism that
+// could drift out of sync with this one — one source of truth now instead
+// of two.
+function getAlertItems() {
+  const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+  return concerts
+    .filter((c) => !c.manuallyAdded && c.foundAt && bands.some((b) => b.id === c.bandId))
+    .filter((c) => new Date(c.foundAt).getTime() >= cutoff)
+    .sort((a, b) => (b.foundAt || '').localeCompare(a.foundAt || ''));
 }
 
-// News unread indicator — a single red dot on the News tab icon, not a
-// per-article count. It clears as soon as the News tab is opened (not per
-// article read), so it only ever means "something new arrived since you
-// last looked at this tab".
-function updateNewsBadge() {
-  const hasUnread = news.some((n) => !newsLastOpenedAt || n.foundAt > newsLastOpenedAt);
+function updateAlertsBadge() {
+  const hasUnread = getAlertItems().some((c) => !alertsLastOpenedAt || c.foundAt > alertsLastOpenedAt);
   el('news-unread-dot')?.classList.toggle('hidden', !hasUnread);
 }
 
-async function markNewsSeen() {
-  newsLastOpenedAt = new Date().toISOString();
-  await chrome.storage.local.set({ newsLastOpenedAt });
-  updateNewsBadge();
+async function markAlertsSeen() {
+  alertsLastOpenedAt = new Date().toISOString();
+  await chrome.storage.local.set({ alertsLastOpenedAt });
+  updateAlertsBadge();
+}
+
+function daysAgoLabel(iso) {
+  if (!iso) return '';
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  return `${days} days ago`;
+}
+
+function alertRowHtml(c) {
+  return `
+    <div class="row-card clickable" data-band-id="${escapeAttr(c.bandId)}">
+      <div class="alert-row">
+        <span class="alert-icon">${icon('bell')}</span>
+        <div>
+          <p class="alert-title">New show added</p>
+          <p class="alert-meta">${escapeHtml(c.bandName)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)} · ${formatShortDate(c.date)}</p>
+          <p class="alert-time">${daysAgoLabel(c.foundAt)}</p>
+        </div>
+      </div>
+    </div>`;
 }
 
 function wireHeader() {
@@ -267,17 +292,21 @@ function wireHeader() {
   });
 }
 
-const TAB_ICONS = { concerts: 'music', myconcerts: 'ticketStub', mybands: 'users', news: 'newsArticle' };
-const TAB_TITLES = { concerts: 'ConcertDates', myconcerts: 'My Concerts', mybands: 'My Bands', news: 'News' };
+// The "news" tab id/screen/data-tab are kept as-is internally (renaming
+// every reference would touch a lot of code for a purely cosmetic change) —
+// only the visible icon/label become Alerts. The tab now covers both the
+// original News feed and the new Alerts sub-view (see renderNewsScreen).
+const TAB_ICONS = { concerts: 'music', myconcerts: 'ticketStub', mybands: 'users', news: 'bell' };
+const TAB_TITLES = { concerts: 'ConcertDates', myconcerts: 'My Concerts', mybands: 'My Bands', news: 'Alerts' };
 const TAB_SCREENS = { concerts: 'screen-concerts', myconcerts: 'screen-myconcerts', mybands: 'screen-mybands', news: 'screen-news' };
 // Two-tone brand header markup per root tab (first part blue, rest white),
-// matching the CONCERTDATES treatment. "News" has no natural two-part split,
-// so it's rendered plain (no highlighted segment).
+// matching the CONCERTDATES treatment. "Alerts" has no natural two-part
+// split, so it's rendered plain (no highlighted segment).
 const TAB_BRAND_HTML = {
   concerts: '<span class="brand-blue">CONCERT</span>DATES',
   myconcerts: '<span class="brand-blue">MY</span>CONCERTS',
   mybands: '<span class="brand-blue">MY</span>BANDS',
-  news: 'NEWS',
+  news: 'ALERTS',
 };
 
 function wireTabs() {
@@ -313,7 +342,7 @@ function goToTab(tab, { fromHistory = false } = {}) {
   else if (tab === 'mybands') renderMyBandsScreen();
   else if (tab === 'news') {
     renderNewsScreen();
-    markNewsSeen();
+    if (newsSubTab === 'alerts') markAlertsSeen();
   }
   if (!fromHistory) history.pushState({ tab, screen: 'main' }, '');
 }
@@ -413,7 +442,7 @@ function renderMyConcertsScreen() {
 
   // Stats teaser only once there's at least one past show to summarize —
   // otherwise it'd just be a row of zeroes above an empty list.
-  if (past.length > 0) html += statsTeaserHtml(dlConcertStats(past));
+  if (past.length > 0) html += statsTeaserHtml(dlConcertStats(past, bands));
 
   if (upcoming.length === 0 && past.length === 0) {
     html += `<p class="screen-empty">No concerts saved yet. Tap "I'm going" on a band's page to add one, or backlog a past show below.</p>`;
@@ -673,11 +702,22 @@ function renderMyBandsScreen() {
   let sorted = [...bands].sort((a, b) => a.name.localeCompare(b.name));
   const activityById = new Map(sorted.map((b) => [b.id, dlBandActivity(b, concerts, inactivityYears)]));
   if (hideInactiveBands) sorted = sorted.filter((b) => activityById.get(b.id).status === 'active');
+  if (selectedGenre !== 'all') sorted = sorted.filter((b) => b.genre === selectedGenre);
+
+  const genres = [...new Set(bands.map((b) => b.genre).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const genreOptionsHtml = genres.map((g) => `<option value="${escapeAttr(g)}"${g === selectedGenre ? ' selected' : ''}>${escapeHtml(g)}</option>`).join('');
 
   let html = `
     <div class="filter-row">
       <span class="filter-label">Hide inactive bands</span>
       <button id="hide-inactive-toggle" class="toggle-pill${hideInactiveBands ? ' active' : ''}">${hideInactiveBands ? 'On' : 'Off'}</button>
+    </div>
+    <div class="filter-row">
+      <span class="filter-label">Genre</span>
+      <select id="genre-filter-select">
+        <option value="all"${selectedGenre === 'all' ? ' selected' : ''}>All genres</option>
+        ${genreOptionsHtml}
+      </select>
     </div>`;
 
   let lastLetter = '';
@@ -687,38 +727,27 @@ function renderMyBandsScreen() {
       html += `<p class="section-label">${letter}</p>`;
       lastLetter = letter;
     }
-    if (editingBandId === band.id) {
-      html += `
-        <div class="row-card" data-editing="${band.id}">
-          <input type="text" class="edit-name" value="${escapeAttr(band.name)}" placeholder="Band name" />
-          <input type="url" class="edit-url" value="${escapeAttr(band.officialUrl || '')}" placeholder="Official band URL" />
-          <div class="show-buttons" style="margin-top:8px">
-            <button class="btn-primary edit-save">Save</button>
-            <button class="btn-secondary edit-cancel">Cancel</button>
+    // Edit/delete used to live as icon buttons on this row — moved to the
+    // band's own profile page (edit icon next to the name, delete tucked
+    // away at the bottom as a deliberate "danger zone" so it's not one
+    // accidental tap away from the list). This row is now just a plain,
+    // tappable summary.
+    const activity = activityById.get(band.id);
+    html += `
+      <div class="row-card clickable" data-band-id="${band.id}">
+        <div class="row-top">
+          <div class="row-title-group">
+            <span class="row-name">${escapeHtml(band.name)}${band._enriching ? ' <span class="muted" style="font-weight:400">· fetching info…</span>' : ''}</span>
+            ${activityBadgeHtml(activity)}
           </div>
-        </div>`;
-    } else {
-      const activity = activityById.get(band.id);
-      html += `
-        <div class="row-card clickable" data-band-id="${band.id}">
-          <div class="row-top">
-            <div class="row-title-group">
-              <span class="row-name">${escapeHtml(band.name)}${band._enriching ? ' <span class="muted" style="font-weight:400">· fetching info…</span>' : ''}</span>
-              ${activityBadgeHtml(activity)}
-            </div>
-            <div class="row-actions">
-              <button class="icon-btn edit-btn" data-band-id="${band.id}" aria-label="Edit">${icon('edit')}</button>
-              <button class="icon-btn trash-btn" data-band-id="${band.id}" aria-label="Remove">${icon('trash')}</button>
-              <span class="row-chevron">${icon('chevronRight')}</span>
-            </div>
-          </div>
-          ${activity.status !== 'active' ? `<p class="row-sub">${activity.status === 'unknown' ? 'No concerts on record' : `Last known show · ${activity.lastYear}`}</p>` : ''}
-        </div>`;
-    }
+          <span class="row-chevron">${icon('chevronRight')}</span>
+        </div>
+        ${activity.status !== 'active' ? `<p class="row-sub">${activity.status === 'unknown' ? 'No concerts on record' : `Last known show · ${activity.lastYear}`}</p>` : ''}
+      </div>`;
   }
 
   if (sorted.length === 0) {
-    html += `<p class="screen-empty">${hideInactiveBands ? 'No active bands to show — turn off the filter above to see them all.' : 'No bands yet — add your first one below.'}</p>`;
+    html += `<p class="screen-empty">${hideInactiveBands || selectedGenre !== 'all' ? 'No bands match these filters — adjust them above to see more.' : 'No bands yet — add your first one below.'}</p>`;
   }
 
   // Placed after the list, same as "Add a past concert" on My Concerts —
@@ -749,47 +778,14 @@ function wireMyBandsHandlers(container) {
     await chrome.storage.local.set({ hideInactiveBands });
     renderMyBandsScreen();
   });
+  container.querySelector('#genre-filter-select')?.addEventListener('change', async (ev) => {
+    selectedGenre = ev.target.value;
+    await chrome.storage.local.set({ selectedGenre });
+    renderMyBandsScreen();
+  });
 
   container.querySelectorAll('.row-card[data-band-id]').forEach((row) => {
-    row.addEventListener('click', (ev) => {
-      if (ev.target.closest('.icon-btn')) return;
-      openProfile(row.dataset.bandId);
-    });
-  });
-  container.querySelectorAll('.edit-btn').forEach((b) =>
-    b.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      editingBandId = b.dataset.bandId;
-      renderMyBandsScreen();
-    })
-  );
-  container.querySelectorAll('.trash-btn').forEach((b) =>
-    b.addEventListener('click', async (ev) => {
-      ev.stopPropagation();
-      if (confirm('Remove this band from your list?')) {
-        bands = bands.filter((x) => x.id !== b.dataset.bandId);
-        await dlWriteJsonFile(remote, 'bands.json', bands);
-        renderMyBandsScreen();
-      }
-    })
-  );
-  container.querySelectorAll('[data-editing]').forEach((row) => {
-    const bandId = row.dataset.editing;
-    row.querySelector('.edit-save').addEventListener('click', async () => {
-      const name = row.querySelector('.edit-name').value.trim();
-      const url = row.querySelector('.edit-url').value.trim();
-      if (!name) return;
-      const band = bands.find((x) => x.id === bandId);
-      band.name = name;
-      band.officialUrl = url || null;
-      await dlWriteJsonFile(remote, 'bands.json', bands);
-      editingBandId = null;
-      renderMyBandsScreen();
-    });
-    row.querySelector('.edit-cancel').addEventListener('click', () => {
-      editingBandId = null;
-      renderMyBandsScreen();
-    });
+    row.addEventListener('click', () => openProfile(row.dataset.bandId));
   });
 }
 
@@ -861,16 +857,48 @@ const NEWS_CATEGORIES = {
   hiatus: { label: 'Band news', varName: '--news-hiatus' },
 };
 
+// This screen is now two sub-views under one tab: the original News feed
+// (editorial content from the research pipeline — announcements, albums,
+// tickets, band status) and a new Alerts view (a plain chronological log of
+// "a new show was added" events, derived straight from concerts.json's own
+// foundAt/isNew fields rather than a separately-stored list — see
+// getAlertItems). Switching sub-tabs doesn't change the URL/history stack,
+// same as the EU/Nearby filters elsewhere in the app.
 function renderNewsScreen() {
   const container = el('screen-news');
-  const sorted = [...news].sort((a, b) => (b.foundAt || '').localeCompare(a.foundAt || ''));
+  const switchHtml = `
+    <div class="news-subtab-switch">
+      <button class="news-subtab-btn${newsSubTab === 'news' ? ' active' : ''}" data-subtab="news">News</button>
+      <button class="news-subtab-btn${newsSubTab === 'alerts' ? ' active' : ''}" data-subtab="alerts">Alerts</button>
+    </div>`;
 
-  if (sorted.length === 0) {
-    container.innerHTML = `<p class="screen-empty">No news yet. Concert and album announcements, ticket on-sale dates, and band status updates for the acts you track will show up here.</p>`;
-    return;
+  let bodyHtml;
+  if (newsSubTab === 'alerts') {
+    const alerts = getAlertItems();
+    bodyHtml = alerts.length === 0
+      ? `<p class="screen-empty">No new shows found in the last 90 days.</p>`
+      : alerts.map(alertRowHtml).join('');
+  } else {
+    const sorted = [...news].sort((a, b) => (b.foundAt || '').localeCompare(a.foundAt || ''));
+    bodyHtml = sorted.length === 0
+      ? `<p class="screen-empty">No news yet. Concert and album announcements, ticket on-sale dates, and band status updates for the acts you track will show up here.</p>`
+      : sorted.map(newsCardHtml).join('');
   }
 
-  container.innerHTML = sorted.map(newsCardHtml).join('');
+  container.innerHTML = switchHtml + bodyHtml;
+
+  container.querySelectorAll('.news-subtab-btn').forEach((b) => {
+    b.addEventListener('click', () => {
+      newsSubTab = b.dataset.subtab;
+      renderNewsScreen();
+      if (newsSubTab === 'alerts') markAlertsSeen();
+    });
+  });
+  if (newsSubTab === 'alerts') {
+    container.querySelectorAll('.row-card[data-band-id]').forEach((row) => {
+      row.addEventListener('click', () => openProfile(row.dataset.bandId));
+    });
+  }
 }
 
 function newsCardHtml(n) {
@@ -913,11 +941,50 @@ function openProfile(bandId, { fromHistory = false } = {}) {
   if (!fromHistory) history.pushState({ tab: currentTab, screen: 'profile', bandId }, '');
 }
 
+// Editing a band's name/URL now happens on its own profile page rather than
+// inline in the My Bands list (see QA/design pass — the edit/delete icons on
+// every list row were cluttering a screen you mostly just want to scan).
+function bandEditFormHtml(band) {
+  return `
+    <div class="row-card">
+      <p class="section-label" style="margin-top:0">Edit band</p>
+      <input type="text" class="edit-name" value="${escapeAttr(band.name)}" placeholder="Band name" />
+      <input type="url" class="edit-url" value="${escapeAttr(band.officialUrl || '')}" placeholder="Official band URL" />
+      <div class="show-buttons" style="margin-top:8px">
+        <button class="btn-primary edit-save">Save</button>
+        <button class="btn-secondary edit-cancel">Cancel</button>
+      </div>
+    </div>`;
+}
+
+function wireBandEditForm(container, bandId) {
+  container.querySelector('.edit-save').addEventListener('click', async () => {
+    const name = container.querySelector('.edit-name').value.trim();
+    const url = container.querySelector('.edit-url').value.trim();
+    if (!name) return;
+    const band = bands.find((x) => x.id === bandId);
+    band.name = name;
+    band.officialUrl = url || null;
+    await dlWriteJsonFile(remote, 'bands.json', bands);
+    editingBandId = null;
+    renderProfileScreen(bandId);
+  });
+  container.querySelector('.edit-cancel').addEventListener('click', () => {
+    editingBandId = null;
+    renderProfileScreen(bandId);
+  });
+}
+
 function renderProfileScreen(bandId) {
   const band = bands.find((b) => b.id === bandId);
   const container = el('screen-profile');
   if (!band) {
     container.innerHTML = `<p class="screen-empty">Band not found.</p>`;
+    return;
+  }
+  if (editingBandId === bandId) {
+    container.innerHTML = bandEditFormHtml(band);
+    wireBandEditForm(container, bandId);
     return;
   }
   const shows = dlAllUpcomingForBand(concerts, bandId);
@@ -945,13 +1012,14 @@ function renderProfileScreen(bandId) {
   container.innerHTML = `
     <div class="profile-header">
       <div class="profile-avatar">${band.photoUrl ? `<img src="${escapeAttr(band.photoUrl)}" alt="" />` : initials}</div>
-      <div>
+      <div style="min-width:0;flex:1;">
         <div class="profile-name-row">
           <p class="profile-name">${escapeHtml(band.name)}</p>
           ${activityBadgeHtml(activity)}
         </div>
         ${metaParts.length ? `<p class="profile-meta">${escapeHtml(metaParts.join(' · '))}</p>` : ''}
       </div>
+      <button class="icon-btn profile-edit-btn" data-band-id="${escapeAttr(band.id)}" aria-label="Edit band">${icon('edit')}</button>
     </div>
     ${band._enriching ? `<p class="muted" style="font-size:12px;margin:-4px 0 10px">Fetching band info…</p>` : ''}
     <div class="profile-links">
@@ -975,9 +1043,23 @@ function renderProfileScreen(bandId) {
           ? `<p class="screen-empty" style="padding:16px 0">${profileEuropeOnly ? 'No upcoming European shows for this band right now.' : 'No upcoming shows near you for this band right now.'}</p>`
           : filteredShows.map(showRowHtml).join('')}
     </div>
+    <div class="profile-danger-zone">
+      <button class="profile-remove-btn" data-band-id="${escapeAttr(band.id)}">Remove this band</button>
+    </div>
   `;
 
   container.querySelectorAll('a').forEach((a) => a.addEventListener('click', (ev) => ev.stopPropagation()));
+  container.querySelector('.profile-edit-btn')?.addEventListener('click', () => {
+    editingBandId = bandId;
+    renderProfileScreen(bandId);
+  });
+  container.querySelector('.profile-remove-btn')?.addEventListener('click', async () => {
+    if (confirm('Remove this band from your list?')) {
+      bands = bands.filter((x) => x.id !== bandId);
+      await dlWriteJsonFile(remote, 'bands.json', bands);
+      goToTab('mybands');
+    }
+  });
   container.querySelector('#profile-europe-toggle-btn')?.addEventListener('click', (ev) => {
     ev.stopPropagation();
     profileEuropeOnly = !profileEuropeOnly;
@@ -1091,20 +1173,36 @@ function renderStatsScreen() {
     return;
   }
 
-  const stats = dlConcertStats(past);
+  const stats = dlConcertStats(past, bands);
   const kmCaveat = stats.knownDistanceCount < stats.totalShows
     ? `<br><span class="stats-kpi-caveat">from ${stats.knownDistanceCount} of ${stats.totalShows} shows</span>`
     : '';
 
+  const tiles = [
+    { value: stats.totalShows.toLocaleString(), label: 'shows attended' },
+    { value: stats.countries.toLocaleString(), label: 'countries' },
+    { value: stats.kmTraveled.toLocaleString(), label: `km traveled${kmCaveat}` },
+    { value: stats.totalUniqueArtists.toLocaleString(), label: 'different artists seen' },
+  ];
+  if (stats.busiestYear) tiles.push({ value: escapeHtml(stats.busiestYear.year), label: `busiest year, ${stats.busiestYear.count} shows` });
+  if (stats.busiestMonth) tiles.push({ value: MONTH_NAMES[stats.busiestMonth.month - 1], label: `busiest month, ${stats.busiestMonth.count} shows` });
+  if (stats.longestGap) tiles.push({ value: formatGapLabel(stats.longestGap.days), label: 'longest gap' });
+  if (stats.firstShow) tiles.push({ value: escapeHtml((stats.firstShow.date || '').slice(0, 4)), label: `first show, ${escapeHtml(stats.firstShow.bandName)}` });
+  if (stats.farthestShow) tiles.push({ value: formatKm(stats.farthestShow.distanceKm), label: `farthest show, ${escapeHtml(stats.farthestShow.bandName)}` });
+  if (stats.closestShow) tiles.push({ value: formatKm(stats.closestShow.distanceKm), label: `closest show, ${escapeHtml(stats.closestShow.bandName)}` });
+  if (stats.mostVisitedCity) tiles.push({ value: stats.mostVisitedCity.count.toLocaleString(), label: `most-visited city, ${escapeHtml(stats.mostVisitedCity.city)}` });
+  const tilesHtml = tiles.map((t) => `<div class="stats-kpi-tile"><span class="stats-kpi-value">${t.value}</span><span class="stats-kpi-label">${t.label}</span></div>`).join('');
+
+  const TOP_RATED_DISPLAY_CAP = 8;
+
   container.innerHTML = `
-    <div class="stats-kpi-grid">
-      <div class="stats-kpi-tile"><span class="stats-kpi-value">${stats.totalShows.toLocaleString()}</span><span class="stats-kpi-label">shows attended</span></div>
-      <div class="stats-kpi-tile"><span class="stats-kpi-value">${stats.countries.toLocaleString()}</span><span class="stats-kpi-label">countries</span></div>
-      <div class="stats-kpi-tile"><span class="stats-kpi-value">${stats.kmTraveled.toLocaleString()}</span><span class="stats-kpi-label">km traveled${kmCaveat}</span></div>
-      ${stats.busiestYear ? `<div class="stats-kpi-tile"><span class="stats-kpi-value">${escapeHtml(stats.busiestYear.year)}</span><span class="stats-kpi-label">busiest year, ${stats.busiestYear.count} shows</span></div>` : ''}
-      ${stats.longestGap ? `<div class="stats-kpi-tile"><span class="stats-kpi-value">${formatGapLabel(stats.longestGap.days)}</span><span class="stats-kpi-label">longest gap</span></div>` : ''}
-      ${stats.firstShow ? `<div class="stats-kpi-tile"><span class="stats-kpi-value">${escapeHtml((stats.firstShow.date || '').slice(0, 4))}</span><span class="stats-kpi-label">first show, ${escapeHtml(stats.firstShow.bandName)}</span></div>` : ''}
-    </div>
+    <div class="stats-kpi-grid">${tilesHtml}</div>
+    ${stats.topRatedShows.length > 0 ? `
+      <p class="section-label">Top-rated shows</p>
+      <div class="stats-list-card">
+        ${stats.topRatedShows.slice(0, TOP_RATED_DISPLAY_CAP).map((c) => `<div class="stats-list-row"><span>${escapeHtml(c.bandName)} &middot; ${escapeHtml((c.date || '').slice(0, 4))}</span>${starsHtml(c.rating)}</div>`).join('')}
+        ${stats.topRatedShows.length > TOP_RATED_DISPLAY_CAP ? `<div class="stats-list-row"><span class="muted">+${stats.topRatedShows.length - TOP_RATED_DISPLAY_CAP} more</span></div>` : ''}
+      </div>` : ''}
     ${stats.topArtists.length > 0 ? `
       <p class="section-label">Seen more than once</p>
       <div class="stats-list-card">
@@ -1114,6 +1212,11 @@ function renderStatsScreen() {
       <p class="section-label">Most-visited venue</p>
       <div class="stats-list-card">
         <div class="stats-list-row"><span>${escapeHtml(stats.mostVisitedVenue.venue)}${stats.mostVisitedVenue.city ? ', ' + escapeHtml(stats.mostVisitedVenue.city) : ''}</span><span class="stats-list-value">${stats.mostVisitedVenue.count}</span></div>
+      </div>` : ''}
+    ${stats.genreBreakdown.length > 0 ? `
+      <p class="section-label">Genres</p>
+      <div class="stats-list-card">
+        ${stats.genreBreakdown.map((g) => `<div class="stats-list-row"><span>${escapeHtml(g.genre)}</span><span class="stats-list-value">${g.pct}%</span></div>`).join('')}
       </div>` : ''}
   `;
 }

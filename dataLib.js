@@ -118,14 +118,6 @@ function dlAllUpcomingForBand(concerts, bandId) {
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 }
 
-// Diff against previously-notified ids. Returns the list of concerts that
-// are new (isNew flag set by the research pipeline's run) and haven't been
-// notified yet.
-function dlUnnotified(concerts, alreadyNotifiedIds) {
-  const seen = new Set(alreadyNotifiedIds || []);
-  return concerts.filter((c) => c.isNew && dlIsUpcoming(c) && !seen.has(c.id));
-}
-
 // The later of a band's researched lastKnownConcertDate and the latest date
 // across all of its concerts.json entries (past or future — an upcoming show
 // always counts, even if lastKnownConcertDate hasn't been refreshed since).
@@ -186,8 +178,9 @@ function dlMyConcerts(concerts) {
 // history — kmTraveled quietly skips those rather than treating null as 0,
 // and knownDistanceCount says how many shows the total is actually based on
 // so the UI can caveat it instead of silently under-counting.
-function dlConcertStats(attendedPast) {
+function dlConcertStats(attendedPast, bands = []) {
   const totalShows = attendedPast.length;
+  const bandsById = new Map(bands.map((b) => [b.id, b]));
 
   const countrySet = new Set();
   for (const c of attendedPast) {
@@ -256,6 +249,72 @@ function dlConcertStats(attendedPast) {
     }
   }
 
+  // All 5-star shows, most recent first — deliberately not a forced "top 5"
+  // ranking. Once a rating hits the ceiling there's no real distinction left
+  // between two shows that both got 5 stars, so picking an arbitrary subset
+  // would just be fake precision. The stats screen caps how many it *shows*
+  // (with a "+N more"), but the underlying list here is everything.
+  const topRatedShows = attendedPast
+    .filter((c) => c.rating === 5)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  let farthestShow = null;
+  let closestShow = null;
+  for (const c of attendedPast) {
+    if (typeof c.distanceKm !== 'number' || Number.isNaN(c.distanceKm)) continue;
+    if (!farthestShow || c.distanceKm > farthestShow.distanceKm) farthestShow = c;
+    if (!closestShow || c.distanceKm < closestShow.distanceKm) closestShow = c;
+  }
+
+  const totalUniqueArtists = new Set(attendedPast.map((c) => c.bandId)).size;
+
+  const cityCounts = new Map();
+  for (const c of attendedPast) {
+    if (!c.city) continue;
+    const key = c.city.trim();
+    const existing = cityCounts.get(key) || { city: c.city, count: 0, lastDate: null };
+    existing.count += 1;
+    if (c.date && (!existing.lastDate || c.date > existing.lastDate)) existing.lastDate = c.date;
+    cityCounts.set(key, existing);
+  }
+  let mostVisitedCity = null;
+  for (const v of cityCounts.values()) {
+    if (!mostVisitedCity || v.count > mostVisitedCity.count || (v.count === mostVisitedCity.count && (v.lastDate || '') > (mostVisitedCity.lastDate || ''))) {
+      mostVisitedCity = v;
+    }
+  }
+
+  // Calendar month aggregated across every year (not tied to a specific
+  // year, unlike busiestYear) — "you go to more shows in August than any
+  // other month", regardless of which year each August show happened in.
+  const monthCounts = new Map();
+  for (const c of attendedPast) {
+    if (!c.date) continue;
+    const m = Number(c.date.slice(5, 7));
+    if (!m) continue;
+    monthCounts.set(m, (monthCounts.get(m) || 0) + 1);
+  }
+  let busiestMonth = null;
+  for (const [month, count] of monthCounts) {
+    if (!busiestMonth || count > busiestMonth.count) busiestMonth = { month, count };
+  }
+
+  // Genre comes from bands.json's AI-enriched `genre` field, so coverage
+  // depends on how many of your bands actually have one set — percentages
+  // are relative to shows with a known genre, not the full attendedPast
+  // total, so a handful of un-enriched bands don't silently skew the split.
+  const genreCounts = new Map();
+  let withGenre = 0;
+  for (const c of attendedPast) {
+    const genre = bandsById.get(c.bandId)?.genre;
+    if (!genre) continue;
+    withGenre += 1;
+    genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
+  }
+  const genreBreakdown = [...genreCounts.entries()]
+    .map(([genre, count]) => ({ genre, count, pct: withGenre ? Math.round((count / withGenre) * 100) : 0 }))
+    .sort((a, b) => b.count - a.count);
+
   return {
     totalShows,
     countries: countrySet.size,
@@ -266,5 +325,12 @@ function dlConcertStats(attendedPast) {
     firstShow,
     topArtists,
     mostVisitedVenue,
+    topRatedShows,
+    farthestShow,
+    closestShow,
+    totalUniqueArtists,
+    mostVisitedCity,
+    busiestMonth,
+    genreBreakdown,
   };
 }
