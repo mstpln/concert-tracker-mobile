@@ -176,15 +176,24 @@ const DL_GENRE_GROUP_RULES = [
   { id: 'hiphop_rnb', label: 'Hip-hop & R&B', test: (t) => /\bhip[\s-]?hop\b|\brap\b|r ?& ?b|\brnb\b|g-?funk/.test(t) },
   { id: 'pop', label: 'Pop', test: (t) => /\bpop\b/.test(t) },
   { id: 'folk', label: 'Folk & Singer-songwriter', test: (t) => /\bfolk\b|singer[\s-]?songwriter|americana/.test(t) },
+  // Added when Familjen (genre: "Electronica / Techno") was found to be the
+  // only band in the whole dataset that didn't match any rule above — see
+  // the 'other' fallback comment below for the audit that surfaced this.
+  { id: 'electronic', label: 'Electronic & Dance', test: (t) => /electro|techno|\bhouse\b|\bedm\b|\bdance\b|synth/.test(t) },
 ];
 
-// Display order for the filter dropdown — "Not tagged yet" always last so it
-// reads as a catch-all rather than a "real" genre.
-const DL_GENRE_GROUPS = [...DL_GENRE_GROUP_RULES.map((r) => ({ id: r.id, label: r.label })), { id: 'untagged', label: 'Not tagged yet' }];
+// Single catch-all bucket for both "band has no genre at all" and "band has
+// a genre but it doesn't match any rule above" — deliberately not split into
+// two separate buckets (e.g. "Not tagged yet" vs. "Other") since a live data
+// audit found exactly one case of the latter (Familjen, before the
+// Electronic & Dance rule was added) and one generic fallback is simpler for
+// users to scan than two near-identical ones. Always displayed last in the
+// filter dropdown so it reads as a catch-all rather than a "real" genre.
+const DL_GENRE_GROUPS = [...DL_GENRE_GROUP_RULES.map((r) => ({ id: r.id, label: r.label })), { id: 'other', label: 'Other' }];
 
 function dlGenreGroupsForBand(band) {
   const raw = (band?.genre || '').trim();
-  if (!raw) return ['untagged'];
+  if (!raw) return ['other'];
   const tokens = raw.split(/[,/]/).map((t) => t.trim().toLowerCase()).filter(Boolean);
   const groups = new Set();
   for (const t of tokens) {
@@ -192,7 +201,7 @@ function dlGenreGroupsForBand(band) {
       if (rule.test(t)) groups.add(rule.id);
     }
   }
-  return groups.size ? [...groups] : ['untagged'];
+  return groups.size ? [...groups] : ['other'];
 }
 
 // Priority order for single-bucket assignment — used only by the stats
@@ -201,17 +210,17 @@ function dlGenreGroupsForBand(band) {
 // counted once, as Punk, rather than as Rock — Rock is deliberately last
 // since nearly every rock subgenre literally contains the word "rock",
 // making it a poor discriminator when something more specific also matches.
-const DL_GENRE_PRIORITY_ORDER = ['metal', 'punk', 'folk', 'hiphop_rnb', 'pop', 'rock'];
+const DL_GENRE_PRIORITY_ORDER = ['metal', 'punk', 'folk', 'hiphop_rnb', 'electronic', 'pop', 'rock'];
 
 function dlPrimaryGenreGroupForBand(band) {
   const raw = (band?.genre || '').trim();
-  if (!raw) return 'untagged';
+  if (!raw) return 'other';
   const tokens = raw.split(/[,/]/).map((t) => t.trim().toLowerCase()).filter(Boolean);
   for (const groupId of DL_GENRE_PRIORITY_ORDER) {
     const rule = DL_GENRE_GROUP_RULES.find((r) => r.id === groupId);
     if (tokens.some((t) => rule.test(t))) return groupId;
   }
-  return 'untagged';
+  return 'other';
 }
 
 // Every concert the user has marked "I'm going" to (or manually backlogged),

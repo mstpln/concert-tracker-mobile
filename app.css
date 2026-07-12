@@ -188,6 +188,40 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   color: var(--text-muted);
 }
 .delete-corner-btn:hover { background: var(--surface-muted); }
+/* My Concerts card redesign — scoped entirely to .row-card-mc (only ever
+   added by myConcertRowHtml) so the Concerts tab, My Bands, and the band
+   profile page's own Upcoming section (none of which use this class) are
+   completely unaffected. Splits the card into 3 visually separated groups
+   via .row-divider lines: (1) avatar/name/tour/venue/address/distance,
+   (2) Playlist/Photos/Setlist, (3) star rating + notes (past only). */
+.row-card-mc .row-header { display: flex; gap: 12px; align-items: center; }
+.row-card-mc .row-avatar {
+  width: 84px; height: 84px; border-radius: 50%; background: var(--header-bg);
+  color: var(--accent); display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 20px; flex-shrink: 0; overflow: hidden;
+}
+.row-card-mc .row-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.row-card-mc .row-title-col { flex: 1; min-width: 0; }
+.row-card-mc .row-pill-row { display: flex; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
+.row-card-mc .row-name-line { display: flex; align-items: center; gap: 6px; }
+.row-card-mc .row-name-line .row-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.row-card-mc .row-tour { margin: 2px 0 0; color: var(--text-muted); font-size: 11.5px; }
+/* Equalized rhythm for the date/venue, address and distance rows — the
+   address row gets a touch extra margin below it (9px vs. 6px) to visually
+   compensate for its underline, which otherwise reads as tighter spacing
+   than the identical margin value actually is. */
+.row-card-mc .row-sub { margin: 10px 0 0; }
+.row-card-mc .venue-address-link { margin: 6px 0 0; }
+.row-card-mc .row-km { margin: 9px 0 0; }
+.row-card-mc .row-divider { border-top: 1px solid var(--border); margin: 14px 0; }
+.row-card-mc .row-links-group > *:first-child { margin-top: 0; }
+.row-card-mc .row-divider + .review-block { margin-top: 0; }
+/* Stars enlarged specifically for the past-concert display context (not the
+   interactive picker in the edit form, which keeps its own 20px sizing). */
+.row-card-mc .concert-review .stars-display svg { width: 26px; height: 26px; }
+
 .pill-going { background: var(--accent-bg); color: var(--accent); }
 .pill-attended { background: var(--surface-muted); color: var(--text-secondary); }
 .pill-inactive { background: var(--inactive-bg); color: var(--inactive); }
@@ -199,6 +233,10 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   color: var(--text-muted); font-weight: 600; margin: 14px 0 6px;
 }
 .section-label:first-child { margin-top: 0; }
+/* My Concerts: extra breathing room above "Past concerts" specifically, so
+   it reads as a clear break from the Upcoming list above it rather than
+   just another row in the same list. */
+.section-label-gap-lg { margin-top: 32px; }
 
 /* Section header + filter buttons (e.g. band page "Upcoming shows"), same
    look as the header's EU/Nearby buttons. Extra top/bottom margin vs. a
