@@ -630,11 +630,7 @@ function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
       ${venueAddressLinkHtml(c)}
       ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
       <div class="row-divider"></div>
-      <div class="row-links-group">
-        ${playlistLinkHtml(c)}
-        ${isPast ? photoLinkHtml(c) : ''}
-        ${isPast ? setlistBlockHtml(c) : ''}
-      </div>
+      ${mcLinksRowHtml(c, isPast)}
       ${isPast ? `<div class="row-divider"></div>${concertReviewHtml(c)}` : ''}
       <button class="icon-btn remove-going-btn delete-corner-btn" data-concert-id="${c.id}" aria-label="Remove">${icon('trash')}</button>
     </div>`;
@@ -682,30 +678,11 @@ function playlistFormHtml(c) {
     </div>`;
 }
 
-// Photos link (My Concerts, past shows only) — decomposed out of the old
-// combined rating+notes+photo review block so it's its own peer element in
-// the requested card order (Playlist, Photos, Setlist, Stars, Notes), rather
-// than nested inside the stars/notes block. Same standalone two-state shape
-// as playlistLinkHtml, using the dedicated `photo` icon rather than the
-// generic `link` glyph.
-function photoLinkHtml(c) {
-  if (c.photoUrl) {
-    return `
-      <div class="photo-block">
-        <a class="photo-link" href="${escapeAttr(c.photoUrl)}" target="_blank" rel="noopener">${icon('photo')}Photos</a>
-        <details class="photo-edit-toggle">
-          <summary>Edit photos link<span class="details-chevron">${icon('chevronDown')}</span></summary>
-          ${photoFormHtml(c)}
-        </details>
-      </div>`;
-  }
-  return `
-    <details class="photo-block photo-add-toggle">
-      <summary>Add photos link<span class="details-chevron">${icon('chevronDown')}</span></summary>
-      ${photoFormHtml(c)}
-    </details>`;
-}
-
+// Photo entry form — the actual input+Save pair, reused directly by the new
+// My Concerts links row below (mcLinksRowHtml). photoLinkHtml() used to wrap
+// this in its own standalone <details> block; that wrapper is gone (see the
+// My Concerts links row comment below for why), but this form generator is
+// still exactly what gets shown once the Photos panel is opened.
 function photoFormHtml(c) {
   return `
     <div class="photo-form">
@@ -714,13 +691,60 @@ function photoFormHtml(c) {
     </div>`;
 }
 
+// --- My Concerts links row (Playlist / Photos / Setlist) -------------------
+// Scoped entirely to myConcertRowHtml (My Concerts screen, plus the band
+// profile page's own Past concerts section, which reuses myConcertRowHtml
+// as-is) — NOT used by profileUpcomingRowHtml, which deliberately keeps the
+// older stacked playlistLinkHtml() block since that page is out of scope
+// for this redesign.
+//
+// Why this exists: Playlist/Photos/Setlist used to each be an independent
+// full-width <details> block, which is why they rendered stacked underneath
+// each other instead of side by side like the approved mockup. A native
+// <details> can't have its <summary> sit in one flex row while its expanded
+// content escapes to a shared full-width area below a second row — the
+// content always renders as a direct descendant of its own <details> box.
+// So instead this builds two aligned flex rows (a link/trigger row, then a
+// short Edit/Add row underneath it) plus a set of full-width panel <div>s
+// that a small click handler (see wireMyConcertsHandlers) shows and hides
+// directly, rather than relying on <details>/<summary>.
+function mcLinkFieldConfig(kind) {
+  return kind === 'playlist'
+    ? { field: 'playlistUrl', iconName: 'music', label: 'Playlist', formFn: playlistFormHtml }
+    : { field: 'photoUrl', iconName: 'photo', label: 'Photos', formFn: photoFormHtml };
+}
+
+// Row 1 cell: the real link once a URL exists (opens it in a new tab, same
+// as before); otherwise a muted, non-clickable label so the column still
+// holds its place and every card's columns line up while scrolling.
+function mcLinkTriggerCellHtml(kind, c) {
+  const cfg = mcLinkFieldConfig(kind);
+  const url = c[cfg.field];
+  if (url) {
+    return `<a class="link-trigger" href="${escapeAttr(url)}" target="_blank" rel="noopener">${icon(cfg.iconName)}${cfg.label}</a>`;
+  }
+  return `<span class="link-trigger is-empty">${icon(cfg.iconName)}${cfg.label}</span>`;
+}
+
+// Row 2 cell: a short Edit/Add toggle sitting directly under its matching
+// row-1 cell — replaces the old, too-long-to-share-a-row "Edit playlist
+// link"/"Add photos link" wording.
+function mcLinkEditCellHtml(kind, c) {
+  const cfg = mcLinkFieldConfig(kind);
+  const hasUrl = !!c[cfg.field];
+  return `<button type="button" class="link-edit-btn" data-toggle-panel="${kind}" data-concert-id="${escapeAttr(c.id)}">${hasUrl ? 'Edit' : 'Add'}<span class="details-chevron">${icon('chevronDown')}</span></button>`;
+}
+
 // Setlist (My Concerts, past shows only) — read-only, populated solely by
-// the automatic setlist.fm pipeline (scripts/lib/setlistfm.js, weekly
-// research run — not yet built). Deliberately no manual-entry UI: renders
-// nothing at all until c.setlist.songs exists on a concert record.
-function setlistBlockHtml(c) {
-  if (!c.setlist || !Array.isArray(c.setlist.songs) || c.setlist.songs.length === 0) return '';
+// the automatic setlist.fm pipeline (scripts/lib/setlistfm.js). Has no row-2
+// counterpart since there's nothing to edit — its row-1 cell IS its own
+// open/close toggle, matching how it behaved before this restructure.
+function mcSetlistTriggerCellHtml(c) {
   const songCount = c.setlist.songs.length;
+  return `<button type="button" class="link-trigger setlist-trigger" data-toggle-panel="setlist" data-concert-id="${escapeAttr(c.id)}">${icon('setlistOrdered')}Setlist (${songCount} song${songCount === 1 ? '' : 's'})<span class="details-chevron">${icon('chevronDown')}</span></button>`;
+}
+
+function mcSetlistPanelContentHtml(c) {
   const songsHtml = c.setlist.songs
     .map((s) => {
       const encoreLabel = s.isEncore ? `<span class="setlist-encore-divider">Encore</span>` : '';
@@ -729,11 +753,32 @@ function setlistBlockHtml(c) {
     })
     .join('');
   return `
-    <details class="setlist-block">
-      <summary>${icon('setlistOrdered')}Setlist (${songCount} song${songCount === 1 ? '' : 's'})<span class="details-chevron">${icon('chevronDown')}</span></summary>
-      <ol class="setlist-song-list">${songsHtml}</ol>
-      ${c.setlist.url ? `<a class="setlist-attribution" href="${escapeAttr(c.setlist.url)}" target="_blank" rel="noopener">View on setlist.fm</a>` : ''}
-    </details>`;
+    <ol class="setlist-song-list">${songsHtml}</ol>
+    ${c.setlist.url ? `<a class="setlist-attribution" href="${escapeAttr(c.setlist.url)}" target="_blank" rel="noopener">View on setlist.fm</a>` : ''}`;
+}
+
+// Assembles the two rows plus the hidden full-width panels described above.
+// Only one panel is ever open at a time per card (see wireMyConcertsHandlers)
+// — opening a different one closes whichever was already open, so the card
+// never has to show two expanded panels stacked at once.
+function mcLinksRowHtml(c, isPast) {
+  const hasSetlist = isPast && c.setlist && Array.isArray(c.setlist.songs) && c.setlist.songs.length > 0;
+  return `
+    <div class="row-links-group" data-open="">
+      <div class="row-links-row">
+        ${mcLinkTriggerCellHtml('playlist', c)}
+        ${isPast ? mcLinkTriggerCellHtml('photo', c) : ''}
+        ${hasSetlist ? mcSetlistTriggerCellHtml(c) : ''}
+      </div>
+      <div class="row-edit-row">
+        ${mcLinkEditCellHtml('playlist', c)}
+        ${isPast ? mcLinkEditCellHtml('photo', c) : ''}
+        ${hasSetlist ? '<span class="row-edit-spacer"></span>' : ''}
+      </div>
+      <div class="expand-panel" data-panel="playlist" hidden>${playlistFormHtml(c)}</div>
+      ${isPast ? `<div class="expand-panel" data-panel="photo" hidden>${photoFormHtml(c)}</div>` : ''}
+      ${hasSetlist ? `<div class="expand-panel" data-panel="setlist" hidden>${mcSetlistPanelContentHtml(c)}</div>` : ''}
+    </div>`;
 }
 
 // Rating (1-5) and notes, only ever shown for past + attended concerts —
@@ -815,11 +860,33 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
         ev.target.closest('.icon-btn') ||
         ev.target.closest('.venue-address-link') ||
         ev.target.closest('.review-block') ||
-        ev.target.closest('.playlist-block') ||
-        ev.target.closest('.photo-block') ||
-        ev.target.closest('.setlist-block')
+        ev.target.closest('.row-links-group')
       ) return;
       openProfile(row.dataset.bandId);
+    });
+  });
+
+  // Playlist/Photos/Setlist row (see mcLinksRowHtml) — tapping a trigger or
+  // an Edit/Add button shows the matching full-width panel below both rows;
+  // only one panel stays open at a time per card.
+  container.querySelectorAll('[data-toggle-panel]').forEach((btn) => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const group = btn.closest('.row-links-group');
+      if (!group) return;
+      const which = btn.dataset.togglePanel;
+      const target = group.querySelector(`.expand-panel[data-panel="${which}"]`);
+      if (!target) return;
+      const isOpening = target.hidden;
+      group.querySelectorAll('.expand-panel').forEach((p) => { p.hidden = true; });
+      group.querySelectorAll('[data-toggle-panel]').forEach((b) => b.classList.remove('is-open'));
+      if (isOpening) {
+        target.hidden = false;
+        btn.classList.add('is-open');
+        group.dataset.open = which;
+      } else {
+        group.dataset.open = '';
+      }
     });
   });
 

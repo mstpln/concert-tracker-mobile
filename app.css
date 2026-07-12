@@ -216,8 +216,36 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .row-card-mc .venue-address-link { margin: 6px 0 0; }
 .row-card-mc .row-km { margin: 9px 0 0; }
 .row-card-mc .row-divider { border-top: 1px solid var(--border); margin: 14px 0; }
-.row-card-mc .row-links-group > *:first-child { margin-top: 0; }
 .row-card-mc .row-divider + .review-block { margin-top: 0; }
+/* Playlist/Photos/Setlist links row (see mcLinksRowHtml in app.js) — two
+   aligned flex rows (link/trigger row, then a short Edit/Add row under it)
+   so the three sit side by side instead of stacking underneath each other.
+   Setlist's column is wider (flex: 1.3) since "Setlist (24 songs)" is the
+   longest label; the Edit row's spacer under it uses the same ratio so the
+   two rows' columns stay aligned even though Setlist has no row-2 control. */
+.row-card-mc .row-links-row, .row-card-mc .row-edit-row { display: flex; gap: 10px; }
+.row-card-mc .row-edit-row { margin-top: 6px; }
+.row-card-mc .row-links-row > *, .row-card-mc .row-edit-row > * { flex: 1; min-width: 0; }
+.row-card-mc .row-links-row > .setlist-trigger, .row-card-mc .row-edit-row > .row-edit-spacer { flex: 1.3; }
+.row-card-mc .link-trigger {
+  display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--text);
+  text-decoration: none; background: none; border: none; padding: 0; margin: 0;
+  font-family: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.row-card-mc a.link-trigger:hover, .row-card-mc a.link-trigger:active, .row-card-mc a.link-trigger:visited { color: var(--text); }
+.row-card-mc a.link-trigger:hover { text-decoration: underline; }
+.row-card-mc .link-trigger.is-empty { color: var(--text-muted); cursor: default; }
+.row-card-mc .link-edit-btn {
+  display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-muted);
+  background: none; border: none; padding: 0; margin: 0; font-family: inherit;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.row-card-mc .link-edit-btn:hover, .row-card-mc .link-edit-btn.is-open { color: var(--text); }
+.row-card-mc [data-toggle-panel] .details-chevron { display: flex; margin-left: 2px; transition: transform 0.15s ease; }
+.row-card-mc [data-toggle-panel].is-open .details-chevron { transform: rotate(180deg); }
+.row-card-mc .expand-panel { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.row-card-mc .expand-panel .playlist-form, .row-card-mc .expand-panel .photo-form { margin-top: 0; }
 /* Stars enlarged specifically for the past-concert display context (not the
    interactive picker in the edit form, which keeps its own 20px sizing). */
 .row-card-mc .concert-review .stars-display svg { width: 26px; height: 26px; }
