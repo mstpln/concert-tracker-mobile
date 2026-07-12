@@ -288,7 +288,7 @@ function dlCompactNumber(n) {
   return `${rounded}k`;
 }
 
-function dlConcertStats(attendedPast, bands = []) {
+function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
   const totalShows = attendedPast.length;
   const bandsById = new Map(bands.map((b) => [b.id, b]));
 
@@ -329,22 +329,29 @@ function dlConcertStats(attendedPast, bands = []) {
   }
 
   // Ticket cost. totalSpend sums ticketPrice*ticketQuantity across every show
-  // that has a price entered; knownSpendCount says how many shows that's
-  // based on (most of the ~1000+ show history predates this feature and will
-  // never have a price, same coverage-caveat pattern as
-  // kmTraveled/knownDistanceCount above). averageTicketPrice is the mean
-  // *per-ticket* price across every ticket bought, not per-show — so a
-  // 2-ticket night isn't double-weighted against a 1-ticket night when
-  // averaging.
+  // (past AND upcoming-going, see upcomingGoing param) that has a price
+  // entered — tickets already bought for a future show are real money spent,
+  // so they count toward the running total the same as a past show would.
+  // knownSpendCount says how many shows (past+upcoming combined) that's based
+  // on; knownSpendCountPast is the past-only subset, used for the "from X of
+  // Y shows" caveat against totalShows (which is past-only) so that caveat
+  // never reads oddly if upcoming shows happen to have more prices entered
+  // than past ones. averageTicketPrice is the mean *per-ticket* price across
+  // every ticket bought, not per-show — so a 2-ticket night isn't
+  // double-weighted against a 1-ticket night when averaging.
   let totalSpend = 0;
   let knownSpendCount = 0;
+  let knownSpendCountPast = 0;
   let totalTicketsWithPrice = 0;
-  for (const c of attendedPast) {
+  for (const c of [...attendedPast, ...upcomingGoing]) {
     if (typeof c.ticketPrice !== 'number' || Number.isNaN(c.ticketPrice)) continue;
     const qty = c.ticketQuantity || 1;
     totalSpend += c.ticketPrice * qty;
     totalTicketsWithPrice += qty;
     knownSpendCount += 1;
+  }
+  for (const c of attendedPast) {
+    if (typeof c.ticketPrice === 'number' && !Number.isNaN(c.ticketPrice)) knownSpendCountPast += 1;
   }
   const averageTicketPrice = totalTicketsWithPrice ? Math.round(totalSpend / totalTicketsWithPrice) : null;
 
@@ -491,6 +498,7 @@ function dlConcertStats(attendedPast, bands = []) {
     knownDistanceCount,
     totalSpend: Math.round(totalSpend),
     knownSpendCount,
+    knownSpendCountPast,
     averageTicketPrice,
     busiestYear,
     longestGap,

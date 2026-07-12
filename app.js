@@ -31,6 +31,7 @@ let profileNearbyOnly = false;
 let inactivityYears = 3;
 let hideInactiveBands = false;
 let selectedGenre = 'all';
+let mutedOnly = false;
 
 const el = (id) => document.getElementById(id);
 
@@ -67,6 +68,8 @@ async function init() {
   hideInactiveBands = !!savedHideInactive;
   const { selectedGenre: savedSelectedGenre = 'all' } = await chrome.storage.local.get('selectedGenre');
   selectedGenre = savedSelectedGenre || 'all';
+  const { mutedOnly: savedMutedOnly = false } = await chrome.storage.local.get('mutedOnly');
+  mutedOnly = !!savedMutedOnly;
   const { alertsLastOpenedAt: savedAlertsLastOpenedAt = null } = await chrome.storage.local.get('alertsLastOpenedAt');
   alertsLastOpenedAt = savedAlertsLastOpenedAt;
 
@@ -205,6 +208,10 @@ function getAlertItems() {
   const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
   return concerts
     .filter((c) => !c.manuallyAdded && c.foundAt && bands.some((b) => b.id === c.bandId))
+    // Muting a band suppresses its "new show added" alerts too, not just the
+    // Concerts tab discovery feed — see dlNearestPerBand's caller below for
+    // the matching filter on that side.
+    .filter((c) => !bands.find((b) => b.id === c.bandId)?.muted)
     .filter((c) => new Date(c.foundAt).getTime() >= cutoff)
     .sort((a, b) => (b.foundAt || '').localeCompare(a.foundAt || ''));
 }
@@ -397,7 +404,13 @@ function renderWithYearDividers(items, rowRenderer, { showCount = false } = {}) 
 
 function renderConcertsScreen() {
   const container = el('screen-concerts');
-  let nearest = dlNearestPerBand(concerts).filter((c) => bands.some((b) => b.id === c.bandId));
+  // A muted band's own profile page still shows its upcoming shows normally
+  // (see renderProfileScreen/dlAllUpcomingForBand, untouched by mute) — this
+  // filter only strips muted bands out of the aggregate discovery feed here.
+  let nearest = dlNearestPerBand(concerts).filter((c) => {
+    const band = bands.find((b) => b.id === c.bandId);
+    return !!band && !band.muted;
+  });
   if (europeOnly) nearest = nearest.filter((c) => dlIsEuropeCountry(c.country));
   else if (nearbyOnly) nearest = nearest.filter((c) => dlIsNearby(c));
 
@@ -452,8 +465,10 @@ function renderMyConcertsScreen() {
   let html = '';
 
   // Stats teaser only once there's at least one past show to summarize —
-  // otherwise it'd just be a row of zeroes above an empty list.
-  if (past.length > 0) html += statsTeaserHtml(dlConcertStats(past, bands));
+  // otherwise it'd just be a row of zeroes above an empty list. `upcoming`
+  // is passed through too so tickets already bought for a not-yet-happened
+  // show count toward the spend/average stats (see dlConcertStats).
+  if (past.length > 0) html += statsTeaserHtml(dlConcertStats(past, bands, upcoming));
 
   // Countdown to the next "going" show — always rendered (with an empty
   // state when nothing's upcoming) so it stays in a fixed spot: under the
@@ -536,15 +551,45 @@ function countdownCardHtml(nextConcert) {
   }
   const time = nextConcert.time ? nextConcert.time.slice(0, 5) : '00:00';
   const targetIso = `${nextConcert.date}T${time}:00`;
+  const venueLine = [nextConcert.venue, nextConcert.city].filter(Boolean).join(', ');
+
+  // Show-day state: swaps the day-countdown ring for a solid disc + ticket
+  // glyph and drops the d/h/m/s breakdown (there's nothing meaningful left
+  // to count down to a day granularity) in favor of a "Get directions"
+  // action — the actual show start time isn't reliably known (Ticketmaster
+  // doesn't always supply it, and there's no separate "doors" field at all),
+  // so this deliberately never claims a start time. Compared by calendar
+  // date (local), not diffMs, so it stays in this state all day even after
+  // the nominal target time has passed.
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  if (nextConcert.date === todayStr) {
+    return `
+      <div class="countdown-card countdown-card-today" id="countdown-card" data-target="${escapeAttr(targetIso)}" data-today="true">
+        <div class="countdown-info">
+          <p class="countdown-label">Show today</p>
+          <p class="countdown-band">${escapeHtml(nextConcert.bandName)}</p>
+          <p class="countdown-venue">${escapeHtml(venueLine)}</p>
+          <a class="countdown-directions-btn" href="${escapeAttr(buildGoogleMapsUrl(nextConcert))}" target="_blank" rel="noopener">${icon('mapPin')}Get directions</a>
+        </div>
+        <div class="countdown-ring-wrap">
+          <svg width="84" height="84" viewBox="0 0 84 84">
+            <circle cx="42" cy="42" r="38" fill="#f2c230"></circle>
+            <path d="M30 34a4 4 0 0 1 4-4h16a4 4 0 0 1 4 4v3a3 3 0 0 0 0 6v3a4 4 0 0 1-4 4H34a4 4 0 0 1-4-4v-3a3 3 0 0 0 0-6z" fill="none" stroke="#1c1400" stroke-width="2.4"></path>
+            <line x1="42" y1="33" x2="42" y2="51" stroke="#1c1400" stroke-width="2.2" stroke-dasharray="3 3"></line>
+          </svg>
+        </div>
+      </div>`;
+  }
+
   const { days, hours, minutes, seconds, outerPct, innerPct } = dlCountdownParts(new Date(targetIso));
   // Ring sized ~1.5x the original 56/24/16 dimensions to match the card's
   // 50%-taller layout (see .countdown-card in app.css) — circumferences
   // recomputed for r=36/r=24 rather than reused from the old r=24/r=16 pair.
   const outerCirc = 226.19;
   const innerCirc = 150.8;
-  const venueLine = [nextConcert.venue, nextConcert.city].filter(Boolean).join(', ');
   return `
-    <div class="countdown-card" id="countdown-card" data-target="${escapeAttr(targetIso)}">
+    <div class="countdown-card" id="countdown-card" data-target="${escapeAttr(targetIso)}" data-today="false">
       <div class="countdown-info">
         <p class="countdown-label">Next up</p>
         <p class="countdown-band">${escapeHtml(nextConcert.bandName)}</p>
@@ -569,7 +614,7 @@ function countdownCardHtml(nextConcert) {
 // start/stop into every place the tab can be entered or left.
 function tickCountdownCard() {
   const card = el('countdown-card');
-  if (!card) return;
+  if (!card || card.dataset.today === 'true') return;
   const target = new Date(card.dataset.target);
   const { days, hours, minutes, seconds, outerPct, innerPct } = dlCountdownParts(target);
   el('countdown-d').textContent = days;
@@ -633,6 +678,7 @@ function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
       <p class="row-sub">${formatDate(c.date, c.time)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
       ${venueAddressLinkHtml(c)}
       ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
+      ${ticketCostBlockHtml(c)}
       <div class="row-divider"></div>
       ${mcLinksRowHtml(c, isPast)}
       ${isPast ? `<div class="row-divider"></div>${concertReviewHtml(c)}` : ''}
@@ -795,17 +841,18 @@ function mcLinksRowHtml(c, isPast) {
 // no expand needed); until then, a collapsed "Add rating & notes" accordion
 // holds the entry form so it doesn't clutter the ~1000+ already-logged
 // historical shows that will likely never get rated. Photos used to live
-// inside this same block/condition — now its own peer element above
-// (photoLinkHtml), so this only ever tracks rating/notes.
+// inside this same block/condition, and ticket cost briefly did too — both
+// are now their own standalone peer elements (photoLinkHtml, ticketCostBlockHtml
+// below), so this only ever tracks rating/notes.
 function dlHasReview(c) {
-  return !!(c.rating || c.notes || c.ticketPrice);
+  return !!(c.rating || c.notes);
 }
 
 // Ticket cost display line — shows the total actually paid for the show
 // (price * quantity), with a "· 2 tickets" note when more than one ticket
 // was bought (e.g. going with a partner) so the total doesn't read as a
 // single-ticket price. Returns null when no cost has been entered, so
-// concertReviewHtml can skip the line entirely rather than showing "0 kr".
+// ticketCostBlockHtml can skip the line entirely rather than showing "0 kr".
 function dlTicketCostLabel(c) {
   if (!c.ticketPrice) return null;
   const qty = c.ticketQuantity || 1;
@@ -814,23 +861,66 @@ function dlTicketCostLabel(c) {
   return qty > 1 ? `${totalLabel} · ${qty} tickets` : totalLabel;
 }
 
-function concertReviewHtml(c) {
+// Ticket cost — its own standalone block, entirely separate from the
+// rating/notes review below it, and shown on BOTH upcoming and past cards
+// (rating/notes stays past-only, since you can't review a show you haven't
+// been to yet, but money spent on a ticket is just as real before the show
+// as after it). Same collapsed-"Add"/visible-plus-"Edit" shape as the
+// Playlist block above.
+function ticketCostBlockHtml(c) {
   const costLabel = dlTicketCostLabel(c);
+  if (costLabel) {
+    return `
+      <div class="ticket-cost-block">
+        <p class="review-cost">${icon('ticket')}<span>${escapeHtml(costLabel)}</span></p>
+        <details class="ticket-cost-edit-toggle">
+          <summary>Edit ticket cost<span class="details-chevron">${icon('chevronDown')}</span></summary>
+          ${ticketCostFormHtml(c)}
+        </details>
+      </div>`;
+  }
+  return `
+    <details class="ticket-cost-block ticket-cost-add-toggle">
+      <summary>Add ticket cost<span class="details-chevron">${icon('chevronDown')}</span></summary>
+      ${ticketCostFormHtml(c)}
+    </details>`;
+}
+
+function ticketCostFormHtml(c) {
+  return `
+    <div class="ticket-cost-form">
+      <div class="review-cost-row">
+        <label class="review-cost-field">
+          <span class="review-cost-label">Ticket price</span>
+          <span class="review-cost-input-wrap">
+            <input type="number" class="ticket-price-input" min="0" step="1" inputmode="numeric" placeholder="0" value="${c.ticketPrice ? escapeAttr(c.ticketPrice) : ''}" />
+            <span class="review-cost-suffix">kr</span>
+          </span>
+        </label>
+        <label class="review-cost-field review-qty-field">
+          <span class="review-cost-label">Tickets</span>
+          <input type="number" class="ticket-qty-input" min="1" step="1" inputmode="numeric" value="${escapeAttr(c.ticketQuantity || 1)}" />
+        </label>
+      </div>
+      <button type="button" class="btn-primary ticket-cost-save-btn" data-concert-id="${escapeAttr(c.id)}">Save</button>
+    </div>`;
+}
+
+function concertReviewHtml(c) {
   if (dlHasReview(c)) {
     return `
       <div class="review-block concert-review">
         ${c.rating ? starsHtml(c.rating) : ''}
         ${c.notes ? `<p class="review-notes">${escapeHtml(c.notes)}</p>` : ''}
-        ${costLabel ? `<p class="review-cost">${icon('ticket')}<span>${escapeHtml(costLabel)}</span></p>` : ''}
         <details class="review-edit-toggle">
-          <summary>Edit rating, notes &amp; cost<span class="details-chevron">${icon('chevronDown')}</span></summary>
+          <summary>Edit rating &amp; notes<span class="details-chevron">${icon('chevronDown')}</span></summary>
           ${reviewFormHtml(c)}
         </details>
       </div>`;
   }
   return `
     <details class="review-block review-add-toggle">
-      <summary>Add rating, notes &amp; cost<span class="details-chevron">${icon('chevronDown')}</span></summary>
+      <summary>Add rating &amp; notes<span class="details-chevron">${icon('chevronDown')}</span></summary>
       ${reviewFormHtml(c)}
     </details>`;
 }
@@ -855,19 +945,6 @@ function reviewFormHtml(c) {
     <div class="review-form">
       ${starsHtml(c.rating, { interactive: true })}
       <textarea class="review-notes-input" rows="4" placeholder="What did you think of this show?">${escapeHtml(c.notes || '')}</textarea>
-      <div class="review-cost-row">
-        <label class="review-cost-field">
-          <span class="review-cost-label">Ticket price</span>
-          <span class="review-cost-input-wrap">
-            <input type="number" class="review-price-input" min="0" step="1" inputmode="numeric" placeholder="0" value="${c.ticketPrice ? escapeAttr(c.ticketPrice) : ''}" />
-            <span class="review-cost-suffix">kr</span>
-          </span>
-        </label>
-        <label class="review-cost-field review-qty-field">
-          <span class="review-cost-label">Tickets</span>
-          <input type="number" class="review-qty-input" min="1" step="1" inputmode="numeric" value="${escapeAttr(c.ticketQuantity || 1)}" />
-        </label>
-      </div>
       <button type="button" class="btn-primary review-save-btn" data-concert-id="${escapeAttr(c.id)}">Save</button>
     </div>`;
 }
@@ -896,6 +973,7 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
         ev.target.closest('.icon-btn') ||
         ev.target.closest('.venue-address-link') ||
         ev.target.closest('.review-block') ||
+        ev.target.closest('.ticket-cost-block') ||
         ev.target.closest('.row-links-group')
       ) return;
       openProfile(row.dataset.bandId);
@@ -972,11 +1050,26 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
       const picker = form.querySelector('.star-picker');
       const rating = picker ? Number(picker.dataset.rating) || null : null;
       const notes = form.querySelector('.review-notes-input').value.trim();
-      const priceRaw = form.querySelector('.review-price-input').value;
-      const qtyRaw = form.querySelector('.review-qty-input').value;
-      const ticketPrice = priceRaw !== '' ? Number(priceRaw) || null : null;
       c.rating = rating || null;
       c.notes = notes || null;
+      await dlWriteJsonFile(remote, 'concerts.json', concerts);
+      refresh();
+    });
+  });
+
+  // Ticket cost — separate save action from rating/notes above (see
+  // ticketCostBlockHtml/ticketCostFormHtml), used on both upcoming and past
+  // cards, unlike the review form which is past-only.
+  container.querySelectorAll('.ticket-cost-save-btn').forEach((btn) => {
+    btn.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const concertId = btn.dataset.concertId;
+      const c = concerts.find((x) => x.id === concertId);
+      if (!c) return;
+      const form = btn.closest('.ticket-cost-form');
+      const priceRaw = form.querySelector('.ticket-price-input').value;
+      const qtyRaw = form.querySelector('.ticket-qty-input').value;
+      const ticketPrice = priceRaw !== '' ? Number(priceRaw) || null : null;
       c.ticketPrice = ticketPrice;
       c.ticketQuantity = ticketPrice ? (Number(qtyRaw) || 1) : null;
       await dlWriteJsonFile(remote, 'concerts.json', concerts);
@@ -1129,6 +1222,9 @@ function renderMyBandsScreen() {
   const activityById = new Map(sorted.map((b) => [b.id, dlBandActivity(b, concerts, inactivityYears)]));
   if (hideInactiveBands) sorted = sorted.filter((b) => activityById.get(b.id).status === 'active');
   if (selectedGenre !== 'all') sorted = sorted.filter((b) => dlGenreGroupsForBand(b).includes(selectedGenre));
+  // Lets you find muted bands again to unmute them, without hunting through
+  // the whole list — parallel to "Hide inactive bands" above.
+  if (mutedOnly) sorted = sorted.filter((b) => b.muted);
 
   // Grouped filter (Rock / Punk / Metal / Hip-hop & R&B / Pop / Folk / Not
   // tagged yet) rather than the ~90 raw, inconsistently-formatted genre
@@ -1147,6 +1243,10 @@ function renderMyBandsScreen() {
     <div class="filter-row">
       <span class="filter-label">Hide inactive bands</span>
       <button id="hide-inactive-toggle" class="toggle-pill${hideInactiveBands ? ' active' : ''}">${hideInactiveBands ? 'On' : 'Off'}</button>
+    </div>
+    <div class="filter-row">
+      <span class="filter-label">Show muted only</span>
+      <button id="muted-filter-toggle" class="toggle-pill${mutedOnly ? ' active' : ''}">${mutedOnly ? 'On' : 'Off'}</button>
     </div>
     <div class="filter-row">
       <span class="filter-label">Genre</span>
@@ -1183,7 +1283,7 @@ function renderMyBandsScreen() {
   }
 
   if (sorted.length === 0) {
-    html += `<p class="screen-empty">${hideInactiveBands || selectedGenre !== 'all' ? 'No bands match these filters — adjust them above to see more.' : 'No bands yet — add your first one below.'}</p>`;
+    html += `<p class="screen-empty">${hideInactiveBands || selectedGenre !== 'all' || mutedOnly ? 'No bands match these filters — adjust them above to see more.' : 'No bands yet — add your first one below.'}</p>`;
   }
 
   // Placed after the list, same as "Add a past concert" on My Concerts —
@@ -1212,6 +1312,11 @@ function wireMyBandsHandlers(container) {
   container.querySelector('#hide-inactive-toggle')?.addEventListener('click', async () => {
     hideInactiveBands = !hideInactiveBands;
     await chrome.storage.local.set({ hideInactiveBands });
+    renderMyBandsScreen();
+  });
+  container.querySelector('#muted-filter-toggle')?.addEventListener('click', async () => {
+    mutedOnly = !mutedOnly;
+    await chrome.storage.local.set({ mutedOnly });
     renderMyBandsScreen();
   });
   container.querySelector('#genre-filter-select')?.addEventListener('change', async (ev) => {
@@ -1464,6 +1569,7 @@ function renderProfileScreen(bandId) {
         ${metaParts.length ? `<p class="profile-meta">${escapeHtml(metaParts.join(' · '))}</p>` : ''}
       </div>
       <button class="icon-btn profile-favorite-btn${band.favorite ? ' is-favorite' : ''}" data-band-id="${escapeAttr(band.id)}" aria-label="${band.favorite ? 'Remove from favorites' : 'Add to favorites'}">${icon(band.favorite ? 'heartFill' : 'heart')}</button>
+      <button class="icon-btn profile-mute-btn${band.muted ? ' is-muted' : ''}" data-band-id="${escapeAttr(band.id)}" aria-label="${band.muted ? 'Unmute band' : 'Mute band'}" title="${band.muted ? 'Unmute — show this band’s upcoming shows on the Concerts tab and Alerts again' : 'Mute — hide this band’s upcoming shows from the Concerts tab and Alerts'}">${icon(band.muted ? 'bellOff' : 'bell')}</button>
       <button class="icon-btn profile-edit-btn" data-band-id="${escapeAttr(band.id)}" aria-label="Edit band">${icon('edit')}</button>
     </div>
     ${band._enriching ? `<p class="muted" style="font-size:12px;margin:-4px 0 10px">Fetching band info…</p>` : ''}
@@ -1506,6 +1612,11 @@ function renderProfileScreen(bandId) {
   });
   container.querySelector('.profile-favorite-btn')?.addEventListener('click', async () => {
     band.favorite = !band.favorite;
+    await dlWriteJsonFile(remote, 'bands.json', bands);
+    renderProfileScreen(bandId);
+  });
+  container.querySelector('.profile-mute-btn')?.addEventListener('click', async () => {
+    band.muted = !band.muted;
     await dlWriteJsonFile(remote, 'bands.json', bands);
     renderProfileScreen(bandId);
   });
@@ -1626,14 +1737,14 @@ function openStatsScreen({ fromHistory = false } = {}) {
 function renderStatsScreen() {
   const container = el('screen-stats');
   const liveConcerts = concerts.filter((c) => bands.some((b) => b.id === c.bandId));
-  const { past } = dlMyConcerts(liveConcerts);
+  const { past, upcoming } = dlMyConcerts(liveConcerts);
 
   if (past.length === 0) {
     container.innerHTML = `<p class="screen-empty">No past concerts logged yet — your stats will show up here once you've attended a few shows.</p>`;
     return;
   }
 
-  const stats = dlConcertStats(past, bands);
+  const stats = dlConcertStats(past, bands, upcoming);
   const kmCaveat = stats.knownDistanceCount < stats.totalShows
     ? `<br><span class="stats-kpi-caveat">from ${stats.knownDistanceCount} of ${stats.totalShows} shows</span>`
     : '';
@@ -1653,8 +1764,8 @@ function renderStatsScreen() {
   if (stats.mostVisitedCity) tiles.push({ value: stats.mostVisitedCity.count.toLocaleString(), label: `most-visited city, ${escapeHtml(stats.mostVisitedCity.city)}` });
   if (stats.festivalsAttended > 0) tiles.push({ value: stats.festivalsAttended.toLocaleString(), label: 'festivals attended' });
   if (stats.knownSpendCount > 0) {
-    const spendCaveat = stats.knownSpendCount < stats.totalShows
-      ? `<br><span class="stats-kpi-caveat">from ${stats.knownSpendCount} of ${stats.totalShows} shows</span>`
+    const spendCaveat = stats.knownSpendCountPast < stats.totalShows
+      ? `<br><span class="stats-kpi-caveat">from ${stats.knownSpendCountPast} of ${stats.totalShows} past shows</span>`
       : '';
     tiles.push({ value: `${stats.totalSpend.toLocaleString()} kr`, label: `spent on tickets, all time${spendCaveat}` });
     tiles.push({ value: `${stats.averageTicketPrice.toLocaleString()} kr`, label: 'average ticket price' });
