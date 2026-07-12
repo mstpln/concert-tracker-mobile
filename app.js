@@ -465,7 +465,7 @@ function renderMyConcertsScreen() {
       html += renderWithYearDividers(upcoming, (c) => myConcertRowHtml(c, false), { showCount: true });
     }
     if (past.length > 0) {
-      html += `<p class="section-label">Past concerts</p>`;
+      html += `<p class="section-label section-label-gap-lg">Past concerts</p>`;
       html += renderWithYearDividers(past, (c) => myConcertRowHtml(c, true), { showCount: true });
     }
   }
@@ -581,28 +581,61 @@ function tickCountdownCard() {
   inner.setAttribute('stroke-dashoffset', String(circInner * (1 - innerPct)));
 }
 
+// Band avatar for My Concerts cards only (see myConcertRowHtml below) —
+// mirrors the band profile page's own .profile-avatar treatment exactly
+// (real photo when band.photoUrl exists, else initials), just bigger (84px,
+// matching the countdown ring). Deliberately never called for the Concerts
+// tab or a band's own profile page — those already show/imply the band
+// identity, so the avatar would be redundant there. That's why this is only
+// invoked when showBandName is true below.
+function rowAvatarHtml(bandId) {
+  const band = bands.find((b) => b.id === bandId);
+  if (!band) return '';
+  const initials = band.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  return `<div class="row-avatar">${band.photoUrl ? `<img src="${escapeAttr(band.photoUrl)}" alt="" />` : initials}</div>`;
+}
+
 // showBandName is turned off only by the band-profile page's own Past
-// concerts section (see renderProfileScreen) — the band name would just
-// repeat the page you're already on there. My Concerts (where a single list
-// mixes every band) always passes the default true.
+// concerts section (see renderProfileScreen) — the band name (and avatar)
+// would just repeat the page you're already on there. My Concerts (where a
+// single list mixes every band) always passes the default true.
+//
+// Card is split into three visually separated groups (divider lines
+// between each): (1) avatar/name/tour/date/venue/address/distance,
+// (2) Playlist/Photos/Setlist, (3) star rating + notes (past only) — see
+// the .row-card-mc rules in app.css. The Festival/Attended pills sit on
+// their own row above the band name (rather than sharing its line) so a
+// long band name never crowds them.
 function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
+  const tourName = isPast ? c.setlist?.tourName : null;
+  const showPillRow = c.type === 'festival' || isPast;
   return `
-    <div class="row-card clickable has-corner-delete${isPast ? ' is-past' : ''}" data-band-id="${c.bandId}">
-      <div class="row-top">
-        <div class="row-title-group">
-          ${showBandName ? `<span class="row-name">${escapeHtml(c.bandName)}</span>` : ''}
-          ${c.type === 'festival' ? `<span class="pill pill-festival">Festival</span>` : ''}
-          ${isPast ? `<span class="pill pill-attended">${icon('check')} Attended</span>` : ''}
+    <div class="row-card-mc row-card clickable has-corner-delete${isPast ? ' is-past' : ''}" data-band-id="${c.bandId}">
+      <div class="row-header">
+        ${showBandName ? rowAvatarHtml(c.bandId) : ''}
+        <div class="row-title-col">
+          ${showPillRow ? `
+          <div class="row-pill-row">
+            ${c.type === 'festival' ? `<span class="pill pill-festival">Festival</span>` : ''}
+            ${isPast ? `<span class="pill pill-attended">${icon('check')} Attended</span>` : ''}
+          </div>` : ''}
+          <div class="row-name-line">
+            <span class="row-name">${showBandName ? escapeHtml(c.bandName) : ''}</span>
+            <span class="row-chevron">${icon('chevronRight')}</span>
+          </div>
+          ${tourName ? `<p class="row-tour">${escapeHtml(tourName)}</p>` : ''}
         </div>
-        <span class="row-chevron">${icon('chevronRight')}</span>
       </div>
       <p class="row-sub">${formatDate(c.date, c.time)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
       ${venueAddressLinkHtml(c)}
       ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
-      ${playlistLinkHtml(c)}
-      ${isPast ? photoLinkHtml(c) : ''}
-      ${isPast ? setlistBlockHtml(c) : ''}
-      ${isPast ? concertReviewHtml(c) : ''}
+      <div class="row-divider"></div>
+      <div class="row-links-group">
+        ${playlistLinkHtml(c)}
+        ${isPast ? photoLinkHtml(c) : ''}
+        ${isPast ? setlistBlockHtml(c) : ''}
+      </div>
+      ${isPast ? `<div class="row-divider"></div>${concertReviewHtml(c)}` : ''}
       <button class="icon-btn remove-going-btn delete-corner-btn" data-concert-id="${c.id}" aria-label="Remove">${icon('trash')}</button>
     </div>`;
 }
