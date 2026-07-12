@@ -227,12 +227,20 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .row-card-mc .row-edit-row { margin-top: 6px; }
 .row-card-mc .row-links-row > *, .row-card-mc .row-edit-row > * { flex: 1; min-width: 0; }
 .row-card-mc .row-links-row > .setlist-trigger, .row-card-mc .row-edit-row > .row-edit-spacer { flex: 1.3; }
+/* The label lives in its own .link-trigger-label span so IT truncates with
+   an ellipsis on narrow phones — the leading icon svg and (for Setlist) the
+   trailing .details-chevron are flex-shrink:0 so they never get clipped.
+   Before this split, overflow/ellipsis sat on the whole button, which is
+   what was silently cutting off the Setlist chevron on real (narrower than
+   this sandbox's test viewport) phone widths. */
 .row-card-mc .link-trigger {
   display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--text);
   text-decoration: none; background: none; border: none; padding: 0; margin: 0;
   font-family: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0; overflow: hidden;
 }
+.row-card-mc .link-trigger > svg { flex-shrink: 0; }
+.row-card-mc .link-trigger-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-card-mc a.link-trigger:hover, .row-card-mc a.link-trigger:active, .row-card-mc a.link-trigger:visited { color: var(--text); }
 .row-card-mc a.link-trigger:hover { text-decoration: underline; }
 .row-card-mc .link-trigger.is-empty { color: var(--text-muted); cursor: default; }
@@ -539,15 +547,28 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .setlist-attribution { display: inline-block; margin-top: 6px; font-size: 11px; color: var(--text-muted); text-decoration: none; }
 .setlist-attribution:hover { text-decoration: underline; }
 
-/* Stats teaser card (top of My Concerts) */
+/* Total band count (top of My Bands, above the filter rows) — a lightweight
+   inline stat rather than a card, since it's only one number; echoes the
+   stats teaser's bold-number + muted-label language for consistency. */
+.bands-total-header { margin: 0 0 14px; font-size: 12.5px; color: var(--text-secondary); }
+.bands-total-value { font-weight: 700; font-size: 15px; color: var(--text); }
+
+/* Stats teaser card (top of My Concerts) — background is var(--header-bg),
+   the same always-dark literal the countdown card below it uses (not
+   var(--surface), which flips light/dark), so the two cards read as one
+   consistent dark "feature" pairing. Because --header-bg doesn't flip, the
+   number/label text colors below are hardcoded literals too (matching the
+   countdown card's own hardcoded #fff/#85868a treatment) rather than
+   var(--text)/var(--text-muted) — those flip to near-black in light mode
+   and would go invisible against this always-dark background. */
 .stats-teaser-card {
-  border: 1px solid var(--border); border-radius: 10px;
-  background: var(--surface); margin-bottom: 16px; overflow: hidden;
+  border-radius: 10px;
+  background: var(--header-bg); margin-bottom: 16px; overflow: hidden;
 }
 .stats-teaser-row { display: flex; justify-content: space-between; padding: 14px 16px; text-align: center; }
 .stats-teaser-item { display: flex; flex-direction: column; flex: 1; }
-.stats-teaser-value { font-weight: 700; font-size: 17px; }
-.stats-teaser-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.stats-teaser-value { font-weight: 700; font-size: 17px; color: var(--header-text); }
+.stats-teaser-label { font-size: 11px; color: #85868a; margin-top: 2px; }
 
 /* Countdown card (My Concerts, between the stats card and the upcoming
    list): the next "going" show, ticket-stub shaped, with a dual progress
@@ -606,7 +627,7 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .countdown-empty-text { margin: 0; font-size: 12.5px; color: var(--text-muted); }
 .stats-teaser-footer {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
-  background: var(--accent); border: none; border-top: 1px solid var(--border);
+  background: var(--accent); border: none; border-top: 1px solid #2c2d30;
   padding: 9px 16px; font-size: 12.5px; font-weight: 600; color: var(--on-accent);
 }
 .stats-teaser-footer:hover { opacity: 0.92; }

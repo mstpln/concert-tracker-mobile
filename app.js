@@ -720,10 +720,14 @@ function mcLinkFieldConfig(kind) {
 function mcLinkTriggerCellHtml(kind, c) {
   const cfg = mcLinkFieldConfig(kind);
   const url = c[cfg.field];
+  // Label text lives in its own span so IT alone truncates with an ellipsis
+  // on narrow phones — the leading icon and (for Setlist, see
+  // mcSetlistTriggerCellHtml) the trailing chevron are flex-shrink:0 in CSS
+  // so they're never the part that gets clipped off.
   if (url) {
-    return `<a class="link-trigger" href="${escapeAttr(url)}" target="_blank" rel="noopener">${icon(cfg.iconName)}${cfg.label}</a>`;
+    return `<a class="link-trigger" href="${escapeAttr(url)}" target="_blank" rel="noopener">${icon(cfg.iconName)}<span class="link-trigger-label">${cfg.label}</span></a>`;
   }
-  return `<span class="link-trigger is-empty">${icon(cfg.iconName)}${cfg.label}</span>`;
+  return `<span class="link-trigger is-empty">${icon(cfg.iconName)}<span class="link-trigger-label">${cfg.label}</span></span>`;
 }
 
 // Row 2 cell: a short Edit/Add toggle sitting directly under its matching
@@ -741,7 +745,7 @@ function mcLinkEditCellHtml(kind, c) {
 // open/close toggle, matching how it behaved before this restructure.
 function mcSetlistTriggerCellHtml(c) {
   const songCount = c.setlist.songs.length;
-  return `<button type="button" class="link-trigger setlist-trigger" data-toggle-panel="setlist" data-concert-id="${escapeAttr(c.id)}">${icon('setlistOrdered')}Setlist (${songCount} song${songCount === 1 ? '' : 's'})<span class="details-chevron">${icon('chevronDown')}</span></button>`;
+  return `<button type="button" class="link-trigger setlist-trigger" data-toggle-panel="setlist" data-concert-id="${escapeAttr(c.id)}">${icon('setlistOrdered')}<span class="link-trigger-label">Setlist (${songCount} song${songCount === 1 ? '' : 's'})</span><span class="details-chevron">${icon('chevronDown')}</span></button>`;
 }
 
 function mcSetlistPanelContentHtml(c) {
@@ -1084,6 +1088,7 @@ async function onAddPastConcert() {
 function renderMyBandsScreen() {
   const container = el('screen-mybands');
   let sorted = [...bands].sort((a, b) => a.name.localeCompare(b.name));
+  const totalBandCount = bands.length;
   const activityById = new Map(sorted.map((b) => [b.id, dlBandActivity(b, concerts, inactivityYears)]));
   if (hideInactiveBands) sorted = sorted.filter((b) => activityById.get(b.id).status === 'active');
   if (selectedGenre !== 'all') sorted = sorted.filter((b) => dlGenreGroupsForBand(b).includes(selectedGenre));
@@ -1095,7 +1100,13 @@ function renderMyBandsScreen() {
   // band's own profile page.
   const genreOptionsHtml = DL_GENRE_GROUPS.map((g) => `<option value="${g.id}"${g.id === selectedGenre ? ' selected' : ''}>${escapeHtml(g.label)}</option>`).join('');
 
+  // Total count of ALL bands (not the filtered/sorted list below, which
+  // shrinks when "Hide inactive" or a genre filter is active) — echoes the
+  // bold-number-plus-muted-label language used by the stats teaser card on
+  // My Concerts, just as a single inline stat rather than a whole card,
+  // since there's only one number to show here.
   let html = `
+    <p class="bands-total-header"><span class="bands-total-value">${totalBandCount.toLocaleString()}</span> bands in your collection</p>
     <div class="filter-row">
       <span class="filter-label">Hide inactive bands</span>
       <button id="hide-inactive-toggle" class="toggle-pill${hideInactiveBands ? ' active' : ''}">${hideInactiveBands ? 'On' : 'Off'}</button>
