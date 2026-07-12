@@ -97,6 +97,14 @@ const ICONS = {
   // this tab covers both the News feed and the new "show added" alerts.
   bell:
     '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+  // Mute-band toggle (band profile header). Bell-off reads as "silence
+  // future alerts from this band" — chosen over eye-off/speaker-mute since
+  // it pairs directly with the plain `bell` glyph already used for Alerts,
+  // making clear this only affects the alert/discovery side, not deleting
+  // or hiding the band itself. Same single-color, outline-only treatment as
+  // heart/star — currentColor, no new hue.
+  bellOff:
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18 8a6 6 0 0 0-9.33-5"/><path d="M6.26 6.26A6 6 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 12.5V8"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
 };
 
 function icon(name) {

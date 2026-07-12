@@ -372,6 +372,10 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
    only signal, no blue accent, per explicit design direction, so this stays
    a single rule rather than a .is-favorite color override. */
 .profile-favorite-btn { color: var(--text-secondary); }
+/* Mute-band toggle. Same single-color treatment as favorite above — bell vs
+   bell-off is the only signal, no accent color swap, so a muted band's
+   button doesn't read as an "error" or "warning" state. */
+.profile-mute-btn { color: var(--text-secondary); }
 .profile-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .profile-name { font-weight: 700; font-size: 16px; margin: 0; }
 .profile-meta { color: var(--text-muted); font-size: 12.5px; margin: 2px 0 0; }
@@ -456,9 +460,12 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .star-picker .star-btn { cursor: pointer; }
 .star-btn.filled { color: var(--accent); }
 .review-notes { color: var(--text-secondary); font-size: 13px; line-height: 1.5; margin: 6px 0 0; }
-/* Ticket cost display line (filled state). Extra bottom margin (vs the 6px
-   used elsewhere in this block) is deliberate — gives the cost line more
-   breathing room before the "Edit rating, notes & cost" toggle row below it. */
+/* Ticket cost — its own standalone block (ticketCostBlockHtml in app.js),
+   separate from the rating/notes review above, shown on both upcoming and
+   past cards. Extra bottom margin (vs the 6px used elsewhere in this file)
+   is deliberate — gives the cost line more breathing room before the "Edit
+   ticket cost" toggle row below it. */
+.ticket-cost-block { margin-top: 10px; }
 .review-cost {
   display: flex; align-items: center; gap: 5px;
   color: var(--accent); font-size: 12.5px; margin: 6px 0 14px;
@@ -471,32 +478,39 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .review-photo-link:hover { text-decoration: underline; }
 /* Playlist and Photos links (My Concerts) share the review block's toggle
    chrome — same collapsed "Add" / visible-link-plus-"Edit" shape — so the
-   toggle/summary/chevron rules below apply to .review-*, .playlist-* and
-   .photo-* variants rather than being duplicated three times. */
+   toggle/summary/chevron rules below apply to .review-*, .playlist-*,
+   .photo-* and .ticket-cost-* variants rather than being duplicated four
+   times. */
 .review-edit-toggle, .review-add-toggle, .playlist-edit-toggle, .playlist-add-toggle,
-.photo-edit-toggle, .photo-add-toggle { margin-top: 8px; }
+.photo-edit-toggle, .photo-add-toggle, .ticket-cost-edit-toggle, .ticket-cost-add-toggle { margin-top: 8px; }
 .review-edit-toggle summary, .review-add-toggle summary,
 .playlist-edit-toggle summary, .playlist-add-toggle summary,
-.photo-edit-toggle summary, .photo-add-toggle summary {
+.photo-edit-toggle summary, .photo-add-toggle summary,
+.ticket-cost-edit-toggle summary, .ticket-cost-add-toggle summary {
   cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text-secondary);
   display: inline-flex; align-items: center; gap: 4px; list-style: none;
 }
 .review-edit-toggle summary:hover, .review-add-toggle summary:hover,
 .playlist-edit-toggle summary:hover, .playlist-add-toggle summary:hover,
-.photo-edit-toggle summary:hover, .photo-add-toggle summary:hover { color: var(--text); }
+.photo-edit-toggle summary:hover, .photo-add-toggle summary:hover,
+.ticket-cost-edit-toggle summary:hover, .ticket-cost-add-toggle summary:hover { color: var(--text); }
 .review-edit-toggle summary::-webkit-details-marker, .review-add-toggle summary::-webkit-details-marker,
 .playlist-edit-toggle summary::-webkit-details-marker, .playlist-add-toggle summary::-webkit-details-marker,
-.photo-edit-toggle summary::-webkit-details-marker, .photo-add-toggle summary::-webkit-details-marker { display: none; }
+.photo-edit-toggle summary::-webkit-details-marker, .photo-add-toggle summary::-webkit-details-marker,
+.ticket-cost-edit-toggle summary::-webkit-details-marker, .ticket-cost-add-toggle summary::-webkit-details-marker { display: none; }
 .review-edit-toggle summary::marker, .review-add-toggle summary::marker,
 .playlist-edit-toggle summary::marker, .playlist-add-toggle summary::marker,
-.photo-edit-toggle summary::marker, .photo-add-toggle summary::marker { content: ''; }
+.photo-edit-toggle summary::marker, .photo-add-toggle summary::marker,
+.ticket-cost-edit-toggle summary::marker, .ticket-cost-add-toggle summary::marker { content: ''; }
 .review-edit-toggle .details-chevron, .review-add-toggle .details-chevron,
 .playlist-edit-toggle .details-chevron, .playlist-add-toggle .details-chevron,
-.photo-edit-toggle .details-chevron, .photo-add-toggle .details-chevron { display: flex; transition: transform 0.15s ease; }
+.photo-edit-toggle .details-chevron, .photo-add-toggle .details-chevron,
+.ticket-cost-edit-toggle .details-chevron, .ticket-cost-add-toggle .details-chevron { display: flex; transition: transform 0.15s ease; }
 .review-edit-toggle[open] .details-chevron, .review-add-toggle[open] .details-chevron,
 .playlist-edit-toggle[open] .details-chevron, .playlist-add-toggle[open] .details-chevron,
-.photo-edit-toggle[open] .details-chevron, .photo-add-toggle[open] .details-chevron { transform: rotate(180deg); }
-.review-form { margin-top: 8px; }
+.photo-edit-toggle[open] .details-chevron, .photo-add-toggle[open] .details-chevron,
+.ticket-cost-edit-toggle[open] .details-chevron, .ticket-cost-add-toggle[open] .details-chevron { transform: rotate(180deg); }
+.review-form, .ticket-cost-form { margin-top: 8px; }
 .review-form .star-picker { margin-bottom: 8px; }
 .review-form .star-picker .star-btn svg { width: 20px; height: 20px; }
 .review-notes-input {
@@ -661,6 +675,21 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   border: 1px solid var(--border); background: var(--surface);
 }
 .countdown-empty-text { margin: 0; font-size: 12.5px; color: var(--text-muted); }
+/* Show-day state (countdownCardHtml's isToday branch) — replaces the
+   d/h/m/s breakdown with a "Get directions" action, since there's nothing
+   meaningful left to count down to a day granularity and the actual show
+   start time isn't reliably known. Yellow is a deliberate one-off exception
+   to the app's grey/white/black/blue palette, scoped ONLY to this ring —
+   every other element on the card (button, text) stays within the existing
+   palette. */
+.countdown-directions-btn {
+  margin-top: 10px; display: inline-flex; align-items: center; gap: 6px;
+  background: #1c1d1f; border: 1px solid #343537; color: #fff;
+  font-size: 11.5px; font-weight: 600; padding: 7px 12px; border-radius: 8px;
+  text-decoration: none; -webkit-tap-highlight-color: transparent;
+}
+.countdown-directions-btn:hover { background: #232427; }
+.countdown-directions-btn svg { flex-shrink: 0; }
 .stats-teaser-footer {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
   background: var(--accent); border: none; border-top: 1px solid #2c2d30;
