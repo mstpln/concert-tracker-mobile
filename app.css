@@ -367,6 +367,11 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   font-weight: 700; font-size: 16px; flex-shrink: 0; overflow: hidden;
 }
 .profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+/* Favorite-band toggle. Deliberately the same color in both the outline
+   (not favorited) and filled (favorited) states — outline vs solid is the
+   only signal, no blue accent, per explicit design direction, so this stays
+   a single rule rather than a .is-favorite color override. */
+.profile-favorite-btn { color: var(--text-secondary); }
 .profile-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .profile-name { font-weight: 700; font-size: 16px; margin: 0; }
 .profile-meta { color: var(--text-muted); font-size: 12.5px; margin: 2px 0 0; }
@@ -451,6 +456,14 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .star-picker .star-btn { cursor: pointer; }
 .star-btn.filled { color: var(--accent); }
 .review-notes { color: var(--text-secondary); font-size: 13px; line-height: 1.5; margin: 6px 0 0; }
+/* Ticket cost display line (filled state). Extra bottom margin (vs the 6px
+   used elsewhere in this block) is deliberate — gives the cost line more
+   breathing room before the "Edit rating, notes & cost" toggle row below it. */
+.review-cost {
+  display: flex; align-items: center; gap: 5px;
+  color: var(--accent); font-size: 12.5px; margin: 6px 0 14px;
+}
+.review-cost svg { flex-shrink: 0; }
 .review-photo-link {
   display: inline-flex; align-items: center; gap: 5px; margin-top: 6px;
   font-size: 12.5px; color: var(--accent); text-decoration: none;
@@ -492,6 +505,21 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   background: var(--surface); color: var(--text); margin-bottom: 8px; resize: vertical;
 }
 .review-notes-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.review-cost-row { display: flex; gap: 10px; margin-bottom: 8px; }
+.review-cost-field { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.review-qty-field { flex: 0 0 68px; }
+.review-cost-label { font-size: 11px; color: var(--text-muted); }
+.review-cost-input-wrap { position: relative; display: flex; align-items: center; }
+.review-price-input, .review-qty-input {
+  width: 100%; font-family: inherit; font-size: 13px; padding: 9px 10px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--surface); color: var(--text);
+}
+.review-cost-input-wrap .review-price-input { padding-right: 32px; }
+.review-cost-suffix {
+  position: absolute; right: 10px; font-size: 12px; color: var(--text-muted); pointer-events: none;
+}
+.review-price-input:focus, .review-qty-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 /* Playlist block (My Concerts, both upcoming and past). .playlist-form
    needs no dedicated input styling — .playlist-url-input already gets the
@@ -566,9 +594,17 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   background: var(--header-bg); margin-bottom: 16px; overflow: hidden;
 }
 .stats-teaser-row { display: flex; justify-content: space-between; padding: 14px 16px; text-align: center; }
-.stats-teaser-item { display: flex; flex-direction: column; flex: 1; }
-.stats-teaser-value { font-weight: 700; font-size: 17px; color: var(--header-text); }
+.stats-teaser-item { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.stats-teaser-value { font-weight: 700; font-size: 17px; color: var(--header-text); white-space: nowrap; }
 .stats-teaser-label { font-size: 11px; color: #85868a; margin-top: 2px; }
+/* 4-up variant (shows/countries/traveled/spent) needs slightly smaller type
+   and tighter side padding than the original 3-up row to fit a 4th column
+   without wrapping — "traveled" and "spent" are pre-abbreviated ("34.2k km")
+   in app.js specifically so this stays stable even as the real numbers grow
+   into 6+ figures. */
+.stats-teaser-row-4up { padding: 14px 12px; }
+.stats-teaser-row-4up .stats-teaser-value { font-size: 16px; }
+.stats-teaser-row-4up .stats-teaser-label { font-size: 10.5px; }
 
 /* Countdown card (My Concerts, between the stats card and the upcoming
    list): the next "going" show, ticket-stub shaped, with a dual progress
@@ -681,6 +717,17 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .news-subtab-btn.active { background: var(--accent); color: var(--on-accent); }
 .alert-row { display: flex; gap: 8px; align-items: flex-start; }
 .alert-icon { color: var(--accent); flex-shrink: 0; margin-top: 2px; display: flex; }
+.alert-row-body { min-width: 0; flex: 1; }
 .alert-title { font-weight: 600; font-size: 14px; margin: 0; }
 .alert-meta { color: var(--text-secondary); font-size: 12.5px; margin: 2px 0 0; }
 .alert-time { color: var(--text-muted); font-size: 11.5px; margin: 2px 0 0; }
+/* Favorite-band badge on Alerts rows — top-right of the card, same single
+   grey used by the profile favorite toggle (no blue), so a favorited band's
+   alert is easy to spot while scanning down the list. .row-card already has
+   position:relative, so this just needs to place itself. has-favorite
+   reserves a little extra right-side space in the row body so the title
+   text never runs under the badge. */
+.row-card.has-favorite .alert-row-body { padding-right: 22px; }
+.alert-favorite-badge {
+  position: absolute; top: 12px; right: 12px; display: flex; color: var(--text-secondary);
+}

@@ -271,6 +271,23 @@ function dlCountdownParts(targetDate, now = new Date()) {
 // history — kmTraveled quietly skips those rather than treating null as 0,
 // and knownDistanceCount says how many shows the total is actually based on
 // so the UI can caveat it instead of silently under-counting.
+// Compact number formatting ("34.2k", "241k") for the front-page stats
+// teaser row specifically — that row has to fit 4 metrics side by side on a
+// phone width, so "traveled" and "spent" (the two values that can grow
+// large) get abbreviated there to keep the row stable regardless of how big
+// the real numbers get. The full stats page keeps exact numbers (more room,
+// and precision matters more on a dedicated stats screen); this helper is
+// only used for the teaser row. One decimal under 100k for a bit of
+// precision, whole numbers at 100k+ to stay short.
+function dlCompactNumber(n) {
+  if (typeof n !== 'number' || Number.isNaN(n)) return '0';
+  const abs = Math.abs(n);
+  if (abs < 1000) return String(Math.round(n));
+  const val = n / 1000;
+  const rounded = abs < 100000 ? Math.round(val * 10) / 10 : Math.round(val);
+  return `${rounded}k`;
+}
+
 function dlConcertStats(attendedPast, bands = []) {
   const totalShows = attendedPast.length;
   const bandsById = new Map(bands.map((b) => [b.id, b]));
@@ -310,6 +327,26 @@ function dlConcertStats(attendedPast, bands = []) {
     }
     kmTraveled += c.distanceKm * 2;
   }
+
+  // Ticket cost. totalSpend sums ticketPrice*ticketQuantity across every show
+  // that has a price entered; knownSpendCount says how many shows that's
+  // based on (most of the ~1000+ show history predates this feature and will
+  // never have a price, same coverage-caveat pattern as
+  // kmTraveled/knownDistanceCount above). averageTicketPrice is the mean
+  // *per-ticket* price across every ticket bought, not per-show — so a
+  // 2-ticket night isn't double-weighted against a 1-ticket night when
+  // averaging.
+  let totalSpend = 0;
+  let knownSpendCount = 0;
+  let totalTicketsWithPrice = 0;
+  for (const c of attendedPast) {
+    if (typeof c.ticketPrice !== 'number' || Number.isNaN(c.ticketPrice)) continue;
+    const qty = c.ticketQuantity || 1;
+    totalSpend += c.ticketPrice * qty;
+    totalTicketsWithPrice += qty;
+    knownSpendCount += 1;
+  }
+  const averageTicketPrice = totalTicketsWithPrice ? Math.round(totalSpend / totalTicketsWithPrice) : null;
 
   const yearCounts = new Map();
   for (const c of attendedPast) {
@@ -452,6 +489,9 @@ function dlConcertStats(attendedPast, bands = []) {
     countries: countrySet.size,
     kmTraveled: Math.round(kmTraveled),
     knownDistanceCount,
+    totalSpend: Math.round(totalSpend),
+    knownSpendCount,
+    averageTicketPrice,
     busiestYear,
     longestGap,
     firstShow,
