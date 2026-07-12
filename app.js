@@ -229,11 +229,14 @@ function daysAgoLabel(iso) {
 }
 
 function alertRowHtml(c) {
+  const band = bands.find((b) => b.id === c.bandId);
+  const isFavorite = !!band?.favorite;
   return `
-    <div class="row-card clickable" data-band-id="${escapeAttr(c.bandId)}">
+    <div class="row-card clickable${isFavorite ? ' has-favorite' : ''}" data-band-id="${escapeAttr(c.bandId)}">
+      ${isFavorite ? `<span class="alert-favorite-badge" aria-label="Favorite band">${icon('heartFill')}</span>` : ''}
       <div class="alert-row">
         <span class="alert-icon">${icon('bell')}</span>
-        <div>
+        <div class="alert-row-body">
           <p class="alert-title">New show added</p>
           <p class="alert-meta">${escapeHtml(c.bandName)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)} · ${formatShortDate(c.date)}</p>
           <p class="alert-time">${daysAgoLabel(c.foundAt)}</p>
@@ -507,10 +510,11 @@ function renderMyConcertsScreen() {
 function statsTeaserHtml(stats) {
   return `
     <div class="stats-teaser-card">
-      <div class="stats-teaser-row">
+      <div class="stats-teaser-row stats-teaser-row-4up">
         <div class="stats-teaser-item"><span class="stats-teaser-value">${stats.totalShows.toLocaleString()}</span><span class="stats-teaser-label">shows</span></div>
         <div class="stats-teaser-item"><span class="stats-teaser-value">${stats.countries.toLocaleString()}</span><span class="stats-teaser-label">countries</span></div>
-        <div class="stats-teaser-item"><span class="stats-teaser-value">${stats.kmTraveled.toLocaleString()}</span><span class="stats-teaser-label">km traveled</span></div>
+        <div class="stats-teaser-item"><span class="stats-teaser-value">${dlCompactNumber(stats.kmTraveled)} km</span><span class="stats-teaser-label">traveled</span></div>
+        <div class="stats-teaser-item"><span class="stats-teaser-value">${dlCompactNumber(stats.totalSpend)} kr</span><span class="stats-teaser-label">spent</span></div>
       </div>
       <button type="button" id="stats-teaser-cta" class="stats-teaser-footer">See your full stats${icon('chevronRight')}</button>
     </div>`;
@@ -794,24 +798,39 @@ function mcLinksRowHtml(c, isPast) {
 // inside this same block/condition — now its own peer element above
 // (photoLinkHtml), so this only ever tracks rating/notes.
 function dlHasReview(c) {
-  return !!(c.rating || c.notes);
+  return !!(c.rating || c.notes || c.ticketPrice);
+}
+
+// Ticket cost display line — shows the total actually paid for the show
+// (price * quantity), with a "· 2 tickets" note when more than one ticket
+// was bought (e.g. going with a partner) so the total doesn't read as a
+// single-ticket price. Returns null when no cost has been entered, so
+// concertReviewHtml can skip the line entirely rather than showing "0 kr".
+function dlTicketCostLabel(c) {
+  if (!c.ticketPrice) return null;
+  const qty = c.ticketQuantity || 1;
+  const total = c.ticketPrice * qty;
+  const totalLabel = `${total.toLocaleString('sv-SE')} kr`;
+  return qty > 1 ? `${totalLabel} · ${qty} tickets` : totalLabel;
 }
 
 function concertReviewHtml(c) {
+  const costLabel = dlTicketCostLabel(c);
   if (dlHasReview(c)) {
     return `
       <div class="review-block concert-review">
-        ${starsHtml(c.rating)}
+        ${c.rating ? starsHtml(c.rating) : ''}
         ${c.notes ? `<p class="review-notes">${escapeHtml(c.notes)}</p>` : ''}
+        ${costLabel ? `<p class="review-cost">${icon('ticket')}<span>${escapeHtml(costLabel)}</span></p>` : ''}
         <details class="review-edit-toggle">
-          <summary>Edit rating &amp; notes<span class="details-chevron">${icon('chevronDown')}</span></summary>
+          <summary>Edit rating, notes &amp; cost<span class="details-chevron">${icon('chevronDown')}</span></summary>
           ${reviewFormHtml(c)}
         </details>
       </div>`;
   }
   return `
     <details class="review-block review-add-toggle">
-      <summary>Add rating &amp; notes<span class="details-chevron">${icon('chevronDown')}</span></summary>
+      <summary>Add rating, notes &amp; cost<span class="details-chevron">${icon('chevronDown')}</span></summary>
       ${reviewFormHtml(c)}
     </details>`;
 }
@@ -836,6 +855,19 @@ function reviewFormHtml(c) {
     <div class="review-form">
       ${starsHtml(c.rating, { interactive: true })}
       <textarea class="review-notes-input" rows="4" placeholder="What did you think of this show?">${escapeHtml(c.notes || '')}</textarea>
+      <div class="review-cost-row">
+        <label class="review-cost-field">
+          <span class="review-cost-label">Ticket price</span>
+          <span class="review-cost-input-wrap">
+            <input type="number" class="review-price-input" min="0" step="1" inputmode="numeric" placeholder="0" value="${c.ticketPrice ? escapeAttr(c.ticketPrice) : ''}" />
+            <span class="review-cost-suffix">kr</span>
+          </span>
+        </label>
+        <label class="review-cost-field review-qty-field">
+          <span class="review-cost-label">Tickets</span>
+          <input type="number" class="review-qty-input" min="1" step="1" inputmode="numeric" value="${escapeAttr(c.ticketQuantity || 1)}" />
+        </label>
+      </div>
       <button type="button" class="btn-primary review-save-btn" data-concert-id="${escapeAttr(c.id)}">Save</button>
     </div>`;
 }
@@ -940,8 +972,13 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
       const picker = form.querySelector('.star-picker');
       const rating = picker ? Number(picker.dataset.rating) || null : null;
       const notes = form.querySelector('.review-notes-input').value.trim();
+      const priceRaw = form.querySelector('.review-price-input').value;
+      const qtyRaw = form.querySelector('.review-qty-input').value;
+      const ticketPrice = priceRaw !== '' ? Number(priceRaw) || null : null;
       c.rating = rating || null;
       c.notes = notes || null;
+      c.ticketPrice = ticketPrice;
+      c.ticketQuantity = ticketPrice ? (Number(qtyRaw) || 1) : null;
       await dlWriteJsonFile(remote, 'concerts.json', concerts);
       refresh();
     });
@@ -1426,6 +1463,7 @@ function renderProfileScreen(bandId) {
         </div>
         ${metaParts.length ? `<p class="profile-meta">${escapeHtml(metaParts.join(' · '))}</p>` : ''}
       </div>
+      <button class="icon-btn profile-favorite-btn${band.favorite ? ' is-favorite' : ''}" data-band-id="${escapeAttr(band.id)}" aria-label="${band.favorite ? 'Remove from favorites' : 'Add to favorites'}">${icon(band.favorite ? 'heartFill' : 'heart')}</button>
       <button class="icon-btn profile-edit-btn" data-band-id="${escapeAttr(band.id)}" aria-label="Edit band">${icon('edit')}</button>
     </div>
     ${band._enriching ? `<p class="muted" style="font-size:12px;margin:-4px 0 10px">Fetching band info…</p>` : ''}
@@ -1464,6 +1502,11 @@ function renderProfileScreen(bandId) {
   container.querySelectorAll('a').forEach((a) => a.addEventListener('click', (ev) => ev.stopPropagation()));
   container.querySelector('.profile-edit-btn')?.addEventListener('click', () => {
     editingBandId = bandId;
+    renderProfileScreen(bandId);
+  });
+  container.querySelector('.profile-favorite-btn')?.addEventListener('click', async () => {
+    band.favorite = !band.favorite;
+    await dlWriteJsonFile(remote, 'bands.json', bands);
     renderProfileScreen(bandId);
   });
   container.querySelector('.profile-remove-btn')?.addEventListener('click', async () => {
@@ -1609,6 +1652,13 @@ function renderStatsScreen() {
   if (stats.closestShow) tiles.push({ value: formatKm(stats.closestShow.distanceKm), label: `closest show, ${escapeHtml(stats.closestShow.bandName)}` });
   if (stats.mostVisitedCity) tiles.push({ value: stats.mostVisitedCity.count.toLocaleString(), label: `most-visited city, ${escapeHtml(stats.mostVisitedCity.city)}` });
   if (stats.festivalsAttended > 0) tiles.push({ value: stats.festivalsAttended.toLocaleString(), label: 'festivals attended' });
+  if (stats.knownSpendCount > 0) {
+    const spendCaveat = stats.knownSpendCount < stats.totalShows
+      ? `<br><span class="stats-kpi-caveat">from ${stats.knownSpendCount} of ${stats.totalShows} shows</span>`
+      : '';
+    tiles.push({ value: `${stats.totalSpend.toLocaleString()} kr`, label: `spent on tickets, all time${spendCaveat}` });
+    tiles.push({ value: `${stats.averageTicketPrice.toLocaleString()} kr`, label: 'average ticket price' });
+  }
   const tilesHtml = tiles.map((t) => `<div class="stats-kpi-tile"><span class="stats-kpi-value">${t.value}</span><span class="stats-kpi-label">${t.label}</span></div>`).join('');
 
   const TOP_RATED_DISPLAY_CAP = 8;
