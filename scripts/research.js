@@ -30,6 +30,7 @@ const tavily = require('./lib/tavily');
 const groq = require('./lib/groq');
 const geocode = require('./lib/geocode');
 const setlistfm = require('./lib/setlistfm');
+const spotify = require('./lib/spotify');
 const { slugify, isValidFullDate, daysAgo, truncate, todayIso } = require('./lib/util');
 const config = require('./lib/config');
 
@@ -329,10 +330,35 @@ async function main() {
     }
   }
 
-  // One combined write covers both this run's new upcoming concerts
-  // (newConcerts) and any setlist/setlistCheckedAt fields just filled in on
-  // existing records — a single PUT rather than two separate ones.
-  if (newConcerts.length > 0 || setlistChecksAttempted > 0) {
+  // ---- Spotify links: one track link per original (non-cover) setlist song ----
+  //
+  // Scans every concert (not just ones touched this run) that has a setlist
+  // with at least one non-cover song not yet checked — this is deliberately
+  // the SAME mechanism for ongoing weekly maintenance and the one-time
+  // historical backfill: the first run after this ships finds every
+  // already-attended show's setlist at once, and every run after that only
+  // finds the handful of newly-added setlists. Covers are never looked up —
+  // the user only wants links for a band's own songs.
+  let spotifyConcertsProcessed = 0;
+  let spotifyLinksAdded = 0;
+  const needsSpotifyCheck = concerts.filter(
+    (c) => c.setlist && Array.isArray(c.setlist.songs) && c.setlist.songs.some((s) => !s.isCover && !s.spotifyChecked)
+  );
+  for (const c of needsSpotifyCheck) {
+    if (!usage.canCallSpotify()) break;
+    spotifyConcertsProcessed += 1;
+    try {
+      spotifyLinksAdded += await spotify.resolveSongLinks(c.setlist.songs, c.bandName, usage);
+    } catch (e) {
+      usage.note(`Spotify song-link resolution failed for "${c.bandName}" (${c.date}): ${e.message}`);
+    }
+  }
+
+  // One combined write covers this run's new upcoming concerts
+  // (newConcerts), any setlist/setlistCheckedAt fields just filled in on
+  // existing records, and any spotifyUrl/spotifyChecked fields just filled
+  // in on setlist songs — a single PUT rather than three separate ones.
+  if (newConcerts.length > 0 || setlistChecksAttempted > 0 || spotifyConcertsProcessed > 0) {
     await worker.writeJson('concerts.json', [...concerts, ...newConcerts]);
   }
   if (freshNews.length > 0) {
@@ -357,6 +383,8 @@ async function main() {
     newsAdded: freshNews.length,
     setlistChecksAttempted,
     setlistsAdded,
+    spotifyConcertsProcessed,
+    spotifyLinksAdded,
     status: 'ok',
   });
   await usage.save();
@@ -368,7 +396,10 @@ async function main() {
     `Setlists: checked ${setlistChecksAttempted}/${needsSetlistCheck.length} eligible past shows, found ${setlistsAdded} new setlist(s).`
   );
   console.log(
-    `Usage this run — Ticketmaster: ${usage.state.ticketmaster.callsThisRun}, Tavily: ${usage.state.tavily.callsThisRun} (month total: ${usage.state.tavily.callsThisMonth}/${usage.state.tavily.monthlyCap}), Groq: ${usage.state.groq.callsThisRun} calls / ${usage.state.groq.tokensThisRun} tokens, setlist.fm: ${usage.state.setlistfm.callsThisRun} calls.`
+    `Spotify: processed ${spotifyConcertsProcessed}/${needsSpotifyCheck.length} eligible concerts, added ${spotifyLinksAdded} new song link(s).`
+  );
+  console.log(
+    `Usage this run — Ticketmaster: ${usage.state.ticketmaster.callsThisRun}, Tavily: ${usage.state.tavily.callsThisRun} (month total: ${usage.state.tavily.callsThisMonth}/${usage.state.tavily.monthlyCap}), Groq: ${usage.state.groq.callsThisRun} calls / ${usage.state.groq.tokensThisRun} tokens, setlist.fm: ${usage.state.setlistfm.callsThisRun} calls, Spotify: ${usage.state.spotify.callsThisRun} calls.`
   );
 }
 
