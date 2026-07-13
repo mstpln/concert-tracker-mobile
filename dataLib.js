@@ -314,44 +314,93 @@ function dlCompactNumber(n) {
   return `${rounded}k`;
 }
 
+// Groups attended concerts into physical "visits" to a venue, so a co-headline
+// bill or a multi-day festival counts once, not once per band seen. Two
+// concerts at the same venue always merge into one visit when they're on the
+// exact same date (e.g. Queens of the Stone Age + System of a Down playing
+// the same bill/date). Concerts on consecutive-but-different dates only merge
+// when they're festival shows (a multi-day festival like Roskilde) — a band
+// playing two separate non-festival nights back-to-back at the same venue
+// still counts as two visits. This replaces the older "same venue + same
+// year" dedup (used only for festivals' kmTraveled/festivalsAttended), which
+// was both too coarse — any two festival editions in the same calendar year
+// at a venue would have collapsed together — and missed the same-day,
+// different-bill case for regular (non-festival) shows entirely. Concerts
+// missing a date can't be reliably clustered, so each becomes its own
+// singleton visit rather than being dropped or merged incorrectly.
+function dlVenueVisits(concerts) {
+  const byVenue = new Map();
+  for (const c of concerts) {
+    if (!c.venue) continue;
+    const key = `${c.venue}|${c.city || ''}`;
+    if (!byVenue.has(key)) byVenue.set(key, []);
+    byVenue.get(key).push(c);
+  }
+
+  const visits = [];
+  for (const list of byVenue.values()) {
+    const dated = list.filter((c) => c.date).sort((a, b) => new Date(a.date) - new Date(b.date));
+    const undated = list.filter((c) => !c.date);
+
+    let cluster = null;
+    for (const c of dated) {
+      if (cluster) {
+        const last = cluster.concerts[cluster.concerts.length - 1];
+        const dayDiff = Math.round((new Date(c.date) - new Date(last.date)) / 86400000);
+        const bothFestival = c.type === 'festival' && last.type === 'festival';
+        if (dayDiff === 0 || (dayDiff === 1 && bothFestival)) {
+          cluster.concerts.push(c);
+          continue;
+        }
+      }
+      cluster = { venue: c.venue, city: c.city, concerts: [c] };
+      visits.push(cluster);
+    }
+    for (const c of undated) {
+      visits.push({ venue: c.venue, city: c.city, concerts: [c] });
+    }
+  }
+
+  for (const v of visits) {
+    v.lastDate = v.concerts[v.concerts.length - 1].date || null;
+    v.isFestival = v.concerts.every((c) => c.type === 'festival');
+    const withDist = v.concerts.find((c) => typeof c.distanceKm === 'number' && !Number.isNaN(c.distanceKm));
+    v.representativeDistanceKm = withDist ? withDist.distanceKm : null;
+  }
+  return visits;
+}
+
 function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
   const totalShows = attendedPast.length;
   const bandsById = new Map(bands.map((b) => [b.id, b]));
+  // Computed once, shared by kmTraveled, topVenues, and festivalsAttended
+  // below — see dlVenueVisits for the clustering rules.
+  const visits = dlVenueVisits(attendedPast);
 
   const countrySet = new Set();
   for (const c of attendedPast) {
     if (c.country) countrySet.add(String(c.country).trim().toLowerCase());
   }
 
-  // Distance is summed once per physical trip, not once per band seen: a
-  // multi-day festival (concert.type === 'festival') gets its distance
-  // counted a single time per Venue+year, however many bands you saw there
-  // — otherwise a single Roskilde trip where you saw 11 bands would count
-  // that same round-trip distance 11 times over. Regular shows (everything
-  // with no `type` set, or type: 'concert') are summed individually exactly
-  // as before. knownDistanceCount still counts every show with a known
+  // Distance is summed once per physical visit (see dlVenueVisits above), not
+  // once per band seen — otherwise a single Roskilde trip where you saw 11
+  // bands would count that same round-trip distance 11 times over.
+  // knownDistanceCount still counts every individual show with a known
   // distance (festival or not) — it's a coverage caveat for the UI, separate
   // from the dedup applied to the sum itself.
   //
   // c.distanceKm itself is one-way (home -> venue, same value the Concerts
   // tab's "203 km away" labels and the Nearby filter use). "km traveled" is
-  // meant to represent actual total travel for the trip, which includes the
-  // way back home too — so each trip's one-way distance is doubled here
-  // before being added to the total. This doubling is applied once per trip
-  // (once per festival Venue+year, once per regular show), matching the
-  // same per-trip dedup as everything else in this loop.
+  // meant to represent actual total travel, which includes the way back home
+  // too — so each visit's one-way distance is doubled here before being added
+  // to the total.
   let kmTraveled = 0;
   let knownDistanceCount = 0;
-  const countedFestivalTrips = new Set();
   for (const c of attendedPast) {
-    if (typeof c.distanceKm !== 'number' || Number.isNaN(c.distanceKm)) continue;
-    knownDistanceCount += 1;
-    if (c.type === 'festival') {
-      const tripKey = `${c.venue || ''}|${(c.date || '').slice(0, 4)}`;
-      if (countedFestivalTrips.has(tripKey)) continue;
-      countedFestivalTrips.add(tripKey);
-    }
-    kmTraveled += c.distanceKm * 2;
+    if (typeof c.distanceKm === 'number' && !Number.isNaN(c.distanceKm)) knownDistanceCount += 1;
+  }
+  for (const v of visits) {
+    if (typeof v.representativeDistanceKm === 'number') kmTraveled += v.representativeDistanceKm * 2;
   }
 
   // Ticket cost. totalSpend sums ticketPrice*ticketQuantity across every show
@@ -418,18 +467,19 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
     .sort((a, b) => b.count - a.count || (b.lastDate || '').localeCompare(a.lastDate || ''))
     .slice(0, 3);
 
-  const venueCounts = new Map();
-  for (const c of attendedPast) {
-    if (!c.venue) continue;
-    const key = `${c.venue}|${c.city || ''}`;
-    const existing = venueCounts.get(key) || { venue: c.venue, city: c.city, count: 0, lastDate: null };
+  // Counts visits (see dlVenueVisits), not individual concert rows — a
+  // co-headline bill or a multi-day festival counts once, not once per band.
+  const venueVisitCounts = new Map();
+  for (const v of visits) {
+    const key = `${v.venue}|${v.city || ''}`;
+    const existing = venueVisitCounts.get(key) || { venue: v.venue, city: v.city, count: 0, lastDate: null };
     existing.count += 1;
-    if (c.date && (!existing.lastDate || c.date > existing.lastDate)) existing.lastDate = c.date;
-    venueCounts.set(key, existing);
+    if (v.lastDate && (!existing.lastDate || v.lastDate > existing.lastDate)) existing.lastDate = v.lastDate;
+    venueVisitCounts.set(key, existing);
   }
-  const topVenues = [...venueCounts.values()]
+  const topVenues = [...venueVisitCounts.values()]
     .sort((a, b) => b.count - a.count || (b.lastDate || '').localeCompare(a.lastDate || ''))
-    .slice(0, 3);
+    .slice(0, 5);
 
   // All 5-star shows, most recent first — deliberately not a forced "top 5"
   // ranking. Once a rating hits the ceiling there's no real distinction left
@@ -446,6 +496,26 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
     if (typeof c.distanceKm !== 'number' || Number.isNaN(c.distanceKm)) continue;
     if (!farthestShow || c.distanceKm > farthestShow.distanceKm) farthestShow = c;
     if (!closestShow || c.distanceKm < closestShow.distanceKm) closestShow = c;
+  }
+
+  // Cheapest/priciest ticket — per-ticket price (not total for the night),
+  // past shows only, same pool as farthest/closest above. A show marked Free
+  // (ticketPrice: 0, see the Free toggle) is a legitimate cheapest-ticket
+  // candidate, not skipped.
+  let cheapestTicket = null;
+  let priciestTicket = null;
+  for (const c of attendedPast) {
+    if (typeof c.ticketPrice !== 'number' || Number.isNaN(c.ticketPrice)) continue;
+    if (!cheapestTicket || c.ticketPrice < cheapestTicket.ticketPrice) cheapestTicket = c;
+    if (!priciestTicket || c.ticketPrice > priciestTicket.ticketPrice) priciestTicket = c;
+  }
+
+  // Longest setlist on record (setlist.fm data, past shows only).
+  let longestSetlist = null;
+  for (const c of attendedPast) {
+    const songCount = c.setlist?.songs?.length || 0;
+    if (songCount === 0) continue;
+    if (!longestSetlist || songCount > longestSetlist.setlist.songs.length) longestSetlist = c;
   }
 
   const totalUniqueArtists = new Set(attendedPast.map((c) => c.bandId)).size;
@@ -506,16 +576,10 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
     .map(([groupId, count]) => ({ genre: groupLabels.get(groupId) || groupId, count, pct: withGenre ? Math.round((count / withGenre) * 100) : 0 }))
     .sort((a, b) => b.count - a.count);
 
-  // Unique festival trips attended (grouped by Venue+year, same key as the
-  // kmTraveled dedup above) — e.g. three separate years of Roskilde count
-  // as 3, not as the 24 individual band performances seen across them.
-  const festivalTripKeys = new Set();
-  for (const c of attendedPast) {
-    if (c.type === 'festival') {
-      festivalTripKeys.add(`${c.venue || ''}|${(c.date || '').slice(0, 4)}`);
-    }
-  }
-  const festivalsAttended = festivalTripKeys.size;
+  // Unique festival visits attended (see dlVenueVisits above) — e.g. three
+  // separate years of Roskilde count as 3, not as the 24 individual band
+  // performances seen across them.
+  const festivalsAttended = visits.filter((v) => v.isFestival).length;
 
   return {
     totalShows,
@@ -534,6 +598,9 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
     topRatedShows,
     farthestShow,
     closestShow,
+    cheapestTicket,
+    priciestTicket,
+    longestSetlist,
     totalUniqueArtists,
     mostVisitedCity,
     busiestMonth,

@@ -66,6 +66,11 @@ const RESEARCH_KEY_METADATA = {
   tavily: { label: 'Tavily API key', masked: 'tvly••••••••yzt0' },
   groq: { label: 'Groq API key (research pipeline)', masked: 'gsk_••••••••rhcu' },
   setlistfm: { label: 'setlist.fm API key', masked: 'lM9u••••••••oLZB' },
+  // No masked digits here — unlike the keys above, this app never saw the
+  // real Client ID/Secret values (they were entered directly into GitHub
+  // Actions secrets by hand, per the "never enter API keys on your behalf"
+  // rule), so there's nothing real to mask. This just confirms they're set.
+  spotify: { label: 'Spotify Client ID & Secret', masked: 'configured via GitHub secrets' },
 };
 
 async function init() {
@@ -557,13 +562,20 @@ function concertsListHtml() {
 // Concerts discovery feed above, not narrowed to personal attendance.
 function venuesSubTabHtml() {
   const liveConcerts = concerts.filter((c) => bands.some((b) => b.id === c.bandId));
-  let groups = dlVenueGroups(liveConcerts);
+  const allGroups = dlVenueGroups(liveConcerts);
+  const totalVenueCount = allGroups.length;
+  let groups = allGroups;
 
   if (venuesEuropeOnly) groups = groups.filter((g) => g.concerts.some((c) => dlIsEuropeCountry(c.country)));
   else if (venuesNearbyOnly) groups = groups.filter((g) => g.concerts.some(dlIsNearby));
   // "Past Concerts" is scoped to shows the user personally attended, per the
   // user's explicit clarification — not just any already-happened date.
   if (venuesPastOnly) groups = groups.filter((g) => g.concerts.some((c) => c.attending && !dlIsUpcoming(c)));
+
+  // Total header — same design/copy pattern as My Bands' "145 bands in your
+  // collection" (bands-total-header/bands-total-value), always the
+  // unfiltered count, not affected by the EU/Nearby/Past Concerts filters.
+  const totalHeader = `<p class="bands-total-header"><span class="bands-total-value">${totalVenueCount.toLocaleString()}</span> venues in your collection</p>`;
 
   const filterRow = `
     <div class="section-label-filters" style="margin-bottom:14px">
@@ -573,7 +585,7 @@ function venuesSubTabHtml() {
     </div>`;
 
   if (groups.length === 0) {
-    return filterRow + `<p class="screen-empty">No venues match these filters yet.</p>`;
+    return totalHeader + filterRow + `<p class="screen-empty">No venues match these filters yet.</p>`;
   }
 
   const rows = groups.map((g) => `
@@ -586,7 +598,7 @@ function venuesSubTabHtml() {
       <p class="row-km">${g.concerts.length} ${g.concerts.length === 1 ? 'show' : 'shows'} on record</p>
     </div>`).join('');
 
-  return filterRow + rows;
+  return totalHeader + filterRow + rows;
 }
 
 function wireVenuesSubTab(container) {
@@ -1010,7 +1022,11 @@ function mcLinkEditCellHtml(kind, c) {
 // open/close toggle, matching how it behaved before this restructure.
 function mcSetlistTriggerCellHtml(c) {
   const songCount = c.setlist.songs.length;
-  return `<button type="button" class="link-trigger setlist-trigger" data-toggle-panel="setlist" data-concert-id="${escapeAttr(c.id)}">${icon('setlistOrdered')}<span class="link-trigger-label">Setlist (${songCount} song${songCount === 1 ? '' : 's'})</span><span class="details-chevron">${icon('chevronDown')}</span></button>`;
+  // Deliberately just the count, not "N songs" — at real phone widths (tested
+  // down to 375px) the word "songs" pushed the label past the column's
+  // available width and got ellipsis-truncated, sometimes eating into the
+  // chevron too. The chevron itself is untouched.
+  return `<button type="button" class="link-trigger setlist-trigger" data-toggle-panel="setlist" data-concert-id="${escapeAttr(c.id)}">${icon('setlistOrdered')}<span class="link-trigger-label">Setlist (${songCount})</span><span class="details-chevron">${icon('chevronDown')}</span></button>`;
 }
 
 function mcSetlistPanelContentHtml(c) {
@@ -1018,7 +1034,17 @@ function mcSetlistPanelContentHtml(c) {
     .map((s) => {
       const encoreLabel = s.isEncore ? `<span class="setlist-encore-divider">Encore</span>` : '';
       const coverTag = s.isCover ? `<span class="setlist-cover-tag">cover</span>` : '';
-      return `${encoreLabel}<li class="setlist-song${s.isCover ? ' setlist-cover' : ''}">${escapeHtml(s.name)}${coverTag}</li>`;
+      // Only an original (non-cover) song with a resolved Spotify link becomes
+      // clickable — the song title itself is the link (no icon), per the
+      // chosen UI variant. Covers are never linked (setlist.fm only tells us
+      // a song IS a cover, not who the original artist is, and the user only
+      // wants links for the band's own songs). A song that was checked but
+      // had no confident match just renders as plain text, same as a cover.
+      const nameHtml =
+        !s.isCover && s.spotifyUrl
+          ? `<a class="setlist-song-link" href="${escapeAttr(s.spotifyUrl)}" target="_blank" rel="noopener">${escapeHtml(s.name)}</a>`
+          : escapeHtml(s.name);
+      return `${encoreLabel}<li class="setlist-song${s.isCover ? ' setlist-cover' : ''}">${nameHtml}${coverTag}</li>`;
     })
     .join('');
   return `
@@ -1989,6 +2015,15 @@ function openStatsScreen({ fromHistory = false } = {}) {
   if (!fromHistory) history.pushState({ tab: currentTab, screen: 'stats' }, '');
 }
 
+// Small "extra detail" line under a stat tile's label, for tiles that pick a
+// single specific show — venue + year, so seeing the same band more than
+// once doesn't leave you guessing which show a tile is actually about.
+function venueYearCaveat(c) {
+  const year = (c.date || '').slice(0, 4);
+  const parts = [c.venue, year].filter(Boolean);
+  return parts.length ? `<br><span class="stats-kpi-caveat">${escapeHtml(parts.join(', '))}</span>` : '';
+}
+
 function renderStatsScreen() {
   const container = el('screen-stats');
   const liveConcerts = concerts.filter((c) => bands.some((b) => b.id === c.bandId));
@@ -2004,33 +2039,73 @@ function renderStatsScreen() {
     ? `<br><span class="stats-kpi-caveat">from ${stats.knownDistanceCount} of ${stats.totalShows} shows</span>`
     : '';
 
-  const tiles = [
+  // Headline row — the same 4 always-shown overview numbers as before,
+  // ungrouped, at the very top.
+  const summaryTiles = [
     { value: stats.totalShows.toLocaleString(), label: 'shows attended' },
     { value: stats.countries.toLocaleString(), label: 'countries' },
     { value: stats.kmTraveled.toLocaleString(), label: `km traveled${kmCaveat}` },
     { value: stats.totalUniqueArtists.toLocaleString(), label: 'different artists seen' },
   ];
-  if (stats.busiestYear) tiles.push({ value: escapeHtml(stats.busiestYear.year), label: `busiest year, ${stats.busiestYear.count} shows` });
-  if (stats.busiestMonth) tiles.push({ value: MONTH_NAMES[stats.busiestMonth.month - 1], label: `busiest month, ${stats.busiestMonth.count} shows` });
-  if (stats.longestGap) tiles.push({ value: formatGapLabel(stats.longestGap.days), label: 'longest gap' });
-  if (stats.firstShow) tiles.push({ value: escapeHtml((stats.firstShow.date || '').slice(0, 4)), label: `first show, ${escapeHtml(stats.firstShow.bandName)}` });
-  if (stats.farthestShow) tiles.push({ value: formatKm(stats.farthestShow.distanceKm), label: `farthest show, ${escapeHtml(stats.farthestShow.bandName)}` });
-  if (stats.closestShow) tiles.push({ value: formatKm(stats.closestShow.distanceKm), label: `closest show, ${escapeHtml(stats.closestShow.bandName)}` });
-  if (stats.mostVisitedCity) tiles.push({ value: stats.mostVisitedCity.count.toLocaleString(), label: `most-visited city, ${escapeHtml(stats.mostVisitedCity.city)}` });
-  if (stats.festivalsAttended > 0) tiles.push({ value: stats.festivalsAttended.toLocaleString(), label: 'festivals attended' });
+
+  // Everything else groups into labeled sections instead of one flat grid,
+  // now that there are enough tiles for a flat list to feel like a wall.
+  const milestoneTiles = [];
+  if (stats.firstShow) {
+    // Leads with "years of concert-going" (headline number) rather than the
+    // literal first-show year — the specific show is demoted to the detail
+    // line below, replacing the old plain "first show, [Band]" tile with a
+    // single combined card instead of two separate ones.
+    const yearsAgo = Math.floor((Date.now() - new Date(stats.firstShow.date + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+    const year = (stats.firstShow.date || '').slice(0, 4);
+    const detailParts = [stats.firstShow.bandName, stats.firstShow.venue, year].filter(Boolean).join(', ');
+    milestoneTiles.push({
+      value: yearsAgo.toLocaleString(),
+      label: `years of concert-going${detailParts ? `<br><span class="stats-kpi-caveat">first: ${escapeHtml(detailParts)}</span>` : ''}`,
+    });
+  }
+  if (stats.festivalsAttended > 0) milestoneTiles.push({ value: stats.festivalsAttended.toLocaleString(), label: 'festivals attended' });
+
+  const habitTiles = [];
+  if (stats.busiestYear) habitTiles.push({ value: escapeHtml(stats.busiestYear.year), label: `busiest year, ${stats.busiestYear.count} shows` });
+  if (stats.busiestMonth) habitTiles.push({ value: MONTH_NAMES[stats.busiestMonth.month - 1], label: `busiest month, ${stats.busiestMonth.count} shows` });
+  if (stats.mostVisitedCity) habitTiles.push({ value: stats.mostVisitedCity.count.toLocaleString(), label: `most-visited city, ${escapeHtml(stats.mostVisitedCity.city)}` });
+
+  // "Extremes" — every tile that's really about one specific record-holding
+  // show. Kept as adjacent opposite-pairs (farthest/closest, cheapest/
+  // priciest) so the 2-column grid visually pairs them.
+  const extremeTiles = [];
+  if (stats.farthestShow) extremeTiles.push({ value: formatKm(stats.farthestShow.distanceKm), label: `farthest show, ${escapeHtml(stats.farthestShow.bandName)}${venueYearCaveat(stats.farthestShow)}` });
+  if (stats.closestShow) extremeTiles.push({ value: formatKm(stats.closestShow.distanceKm), label: `closest show, ${escapeHtml(stats.closestShow.bandName)}${venueYearCaveat(stats.closestShow)}` });
+  if (stats.cheapestTicket) {
+    const priceLabel = stats.cheapestTicket.ticketPrice === 0 ? 'Free' : `${stats.cheapestTicket.ticketPrice.toLocaleString()} kr`;
+    extremeTiles.push({ value: priceLabel, label: `cheapest ticket, ${escapeHtml(stats.cheapestTicket.bandName)}${venueYearCaveat(stats.cheapestTicket)}` });
+  }
+  if (stats.priciestTicket) extremeTiles.push({ value: `${stats.priciestTicket.ticketPrice.toLocaleString()} kr`, label: `priciest ticket, ${escapeHtml(stats.priciestTicket.bandName)}${venueYearCaveat(stats.priciestTicket)}` });
+  if (stats.longestSetlist) extremeTiles.push({ value: stats.longestSetlist.setlist.songs.length.toLocaleString(), label: `longest setlist, ${escapeHtml(stats.longestSetlist.bandName)}${venueYearCaveat(stats.longestSetlist)}` });
+  if (stats.longestGap) extremeTiles.push({ value: formatGapLabel(stats.longestGap.days), label: 'longest gap' });
+
+  const moneyTiles = [];
   if (stats.knownSpendCount > 0) {
     const spendCaveat = stats.knownSpendCountPast < stats.totalShows
       ? `<br><span class="stats-kpi-caveat">from ${stats.knownSpendCountPast} of ${stats.totalShows} past shows</span>`
       : '';
-    tiles.push({ value: `${stats.totalSpend.toLocaleString()} kr`, label: `spent on tickets, all time${spendCaveat}` });
-    tiles.push({ value: `${stats.averageTicketPrice.toLocaleString()} kr`, label: 'average ticket price' });
+    moneyTiles.push({ value: `${stats.totalSpend.toLocaleString()} kr`, label: `spent on tickets, all time${spendCaveat}` });
+    moneyTiles.push({ value: `${stats.averageTicketPrice.toLocaleString()} kr`, label: 'average ticket price' });
   }
-  const tilesHtml = tiles.map((t) => `<div class="stats-kpi-tile"><span class="stats-kpi-value">${t.value}</span><span class="stats-kpi-label">${t.label}</span></div>`).join('');
+
+  const tileHtml = (t) => `<div class="stats-kpi-tile"><span class="stats-kpi-value">${t.value}</span><span class="stats-kpi-label">${t.label}</span></div>`;
+  const gridHtml = (arr) => `<div class="stats-kpi-grid">${arr.map(tileHtml).join('')}</div>`;
+  const sectionHtml = (label, arr) => (arr.length > 0 ? `<p class="section-label">${escapeHtml(label)}</p>${gridHtml(arr)}` : '');
 
   const TOP_RATED_DISPLAY_CAP = 8;
 
   container.innerHTML = `
-    <div class="stats-kpi-grid">${tilesHtml}</div>
+    ${gridHtml(summaryTiles)}
+    ${sectionHtml('Milestones', milestoneTiles)}
+    ${sectionHtml('Habits', habitTiles)}
+    ${sectionHtml('Extremes', extremeTiles)}
+    ${sectionHtml('Money', moneyTiles)}
     ${stats.topRatedShows.length > 0 ? `
       <p class="section-label">Top-rated shows</p>
       <div class="stats-list-card">
@@ -2342,6 +2417,7 @@ function researchPipelineSectionHtml() {
   const tv = apiUsage.tavily || {};
   const gq = apiUsage.groq || {};
   const sl = apiUsage.setlistfm || {};
+  const sp = apiUsage.spotify || {};
   const lastRun = apiUsage.lastRun || null;
 
   const bars =
@@ -2349,12 +2425,13 @@ function researchPipelineSectionHtml() {
     usageBarRowHtml('Tavily (this month)', tv.callsThisMonth, tv.freeTierMonthlyLimit ?? 1000) +
     usageBarRowHtml('Groq requests (today)', gq.callsToday, gq.freeTierDailyRequestLimit ?? 1000) +
     usageBarRowHtml('Groq tokens (today)', gq.tokensToday ?? 0, gq.freeTierTpdLimit ?? 200000) +
-    usageBarRowHtml('setlist.fm (today)', sl.callsToday, sl.freeTierDailyLimit ?? 1440);
+    usageBarRowHtml('setlist.fm (today)', sl.callsToday, sl.freeTierDailyLimit ?? 1440) +
+    usageBarRowHtml('Spotify (today)', sp.callsToday, sp.dailyCap ?? 6000);
 
   const lastRunHtml = lastRun
     ? `<p class="settings-hint" style="margin-top:8px">
          Last run ${escapeHtml(formatSettingsDate(lastRun.finishedAt))} · ${escapeHtml(lastRun.status || 'unknown')}
-         · ${lastRun.bandsProcessed ?? 0} bands checked, ${lastRun.concertsAdded ?? 0} new concerts, ${lastRun.newsAdded ?? 0} new news items, ${lastRun.setlistsAdded ?? 0} new setlists.
+         · ${lastRun.bandsProcessed ?? 0} bands checked, ${lastRun.concertsAdded ?? 0} new concerts, ${lastRun.newsAdded ?? 0} new news items, ${lastRun.setlistsAdded ?? 0} new setlists, ${lastRun.spotifyLinksAdded ?? 0} new song links.
        </p>`
     : '';
 
@@ -2365,7 +2442,7 @@ function researchPipelineSectionHtml() {
       <div class="settings-card-divider">
         ${bars}
         ${lastRunHtml}
-        <p class="settings-hint" style="margin-top:8px">All three services have hard-coded usage caps set well below their free tier, so this can never incur a charge.</p>
+        <p class="settings-hint" style="margin-top:8px">All these services have hard-coded usage caps set well below their free tier (or, for Spotify, well below what it takes to trip its own rate limiting), so this can never incur a charge.</p>
       </div>
       <div class="settings-card-divider">${actionButtons}</div>
     </div>`;

@@ -610,8 +610,14 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .setlist-block .details-chevron { display: flex; transition: transform 0.15s ease; margin-left: 2px; }
 .setlist-block[open] .details-chevron { transform: rotate(180deg); }
 .setlist-song-list { margin: 8px 0 0; padding-left: 20px; font-size: 12.5px; color: var(--text-secondary); line-height: 1.6; }
+/* Extra vertical padding per row (on top of line-height) so a linked song
+   title has a comfortably large, well-separated tap target — enough room to
+   hit the right song's link without the risk of catching its neighbor's. */
+.setlist-song { padding: 3px 0; }
 .setlist-song.setlist-cover { font-style: italic; }
 .setlist-cover-tag { margin-left: 5px; font-size: 10.5px; color: var(--text-muted); font-style: normal; }
+.setlist-song-link { color: var(--accent); text-decoration: none; }
+.setlist-song-link:hover, .setlist-song-link:active { text-decoration: underline; }
 .setlist-encore-divider {
   display: block; margin: 6px 0 2px; font-size: 10.5px; font-weight: 700;
   text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted);
