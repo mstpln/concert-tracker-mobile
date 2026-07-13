@@ -1068,9 +1068,19 @@ function dlHasReview(c) {
 // was bought (e.g. going with a partner) so the total doesn't read as a
 // single-ticket price. Returns null when no cost has been entered, so
 // ticketCostBlockHtml can skip the line entirely rather than showing "0 kr".
+// A ticketPrice of exactly 0 means "marked free" (see the Free toggle in
+// ticketCostFormHtml) — deliberately distinct from ticketPrice being
+// missing/null, which means no cost has been entered at all. Free shows
+// still count as a "known" price for the average-ticket-price calculation
+// in dlConcertStats (0 is a valid number there, not skipped), so marking a
+// free show is what lets it pull the average down instead of being quietly
+// left out.
 function dlTicketCostLabel(c) {
-  if (!c.ticketPrice) return null;
+  if (typeof c.ticketPrice !== 'number' || Number.isNaN(c.ticketPrice)) return null;
   const qty = c.ticketQuantity || 1;
+  if (c.ticketPrice === 0) {
+    return qty > 1 ? `Free · ${qty} tickets` : 'Free';
+  }
   const total = c.ticketPrice * qty;
   const totalLabel = `${total.toLocaleString('sv-SE')} kr`;
   return qty > 1 ? `${totalLabel} · ${qty} tickets` : totalLabel;
@@ -1102,13 +1112,19 @@ function ticketCostBlockHtml(c) {
 }
 
 function ticketCostFormHtml(c) {
+  const isFree = c.ticketPrice === 0;
+  const hasPrice = typeof c.ticketPrice === 'number' && !Number.isNaN(c.ticketPrice);
   return `
     <div class="ticket-cost-form">
+      <div class="ticket-cost-free-row">
+        <span class="review-cost-label">Ticket cost</span>
+        <button type="button" class="toggle-pill ticket-cost-free-toggle${isFree ? ' active' : ''}">${isFree ? icon('check') + ' Free' : 'Free'}</button>
+      </div>
       <div class="review-cost-row">
         <label class="review-cost-field">
-          <span class="review-cost-label">Ticket price</span>
+          <span class="review-cost-label">Price</span>
           <span class="review-cost-input-wrap">
-            <input type="number" class="ticket-price-input" min="0" step="1" inputmode="numeric" placeholder="0" value="${c.ticketPrice ? escapeAttr(c.ticketPrice) : ''}" />
+            <input type="number" class="ticket-price-input" min="0" step="1" inputmode="numeric" placeholder="0" value="${hasPrice ? escapeAttr(c.ticketPrice) : ''}" ${isFree ? 'disabled' : ''} />
             <span class="review-cost-suffix">kr</span>
           </span>
         </label>
@@ -1117,6 +1133,7 @@ function ticketCostFormHtml(c) {
           <input type="number" class="ticket-qty-input" min="1" step="1" inputmode="numeric" value="${escapeAttr(c.ticketQuantity || 1)}" />
         </label>
       </div>
+      <p class="ticket-cost-free-hint${isFree ? '' : ' hidden'}">Counted as 0 kr in your average ticket price.</p>
       <button type="button" class="btn-primary ticket-cost-save-btn" data-concert-id="${escapeAttr(c.id)}">Save</button>
     </div>`;
 }
@@ -1284,11 +1301,34 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
       const form = btn.closest('.ticket-cost-form');
       const priceRaw = form.querySelector('.ticket-price-input').value;
       const qtyRaw = form.querySelector('.ticket-qty-input').value;
-      const ticketPrice = priceRaw !== '' ? Number(priceRaw) || null : null;
+      // Read as a plain Number() + isNaN check, not `Number(x) || null` — the
+      // old `||` version silently turned a genuine 0 price into null, which
+      // would have broken the new Free toggle (0 kr) the same way.
+      const parsedPrice = priceRaw !== '' ? Number(priceRaw) : null;
+      const ticketPrice = parsedPrice === null || Number.isNaN(parsedPrice) ? null : parsedPrice;
       c.ticketPrice = ticketPrice;
-      c.ticketQuantity = ticketPrice ? (Number(qtyRaw) || 1) : null;
+      c.ticketQuantity = ticketPrice !== null ? (Number(qtyRaw) || 1) : null;
       await dlWriteJsonFile(remote, 'concerts.json', concerts);
       refresh();
+    });
+  });
+
+  // Free toggle — a plain client-side flip of the price input's value/
+  // disabled state before Save is pressed (no data write here). Marking a
+  // show free sets the price to 0 and disables the field; toggling back off
+  // clears it to blank so the user can enter a real price again.
+  container.querySelectorAll('.ticket-cost-free-toggle').forEach((btn) => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const form = btn.closest('.ticket-cost-form');
+      const priceInput = form.querySelector('.ticket-price-input');
+      const hint = form.querySelector('.ticket-cost-free-hint');
+      const nowFree = !btn.classList.contains('active');
+      btn.classList.toggle('active', nowFree);
+      btn.innerHTML = nowFree ? `${icon('check')} Free` : 'Free';
+      priceInput.disabled = nowFree;
+      priceInput.value = nowFree ? '0' : '';
+      hint?.classList.toggle('hidden', !nowFree);
     });
   });
 

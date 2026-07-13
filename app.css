@@ -490,6 +490,12 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
    is deliberate — gives the cost line more breathing room before the "Edit
    ticket cost" toggle row below it. */
 .ticket-cost-block { margin-top: 10px; }
+/* Free toggle (ticketCostFormHtml) — reuses the existing .toggle-pill look
+   (same shape as the My Bands "Hide inactive bands" toggle) rather than
+   inventing a new control style. */
+.ticket-cost-free-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.ticket-cost-free-toggle { display: inline-flex; align-items: center; gap: 4px; }
+.ticket-cost-free-hint { font-size: 11px; color: var(--text-muted); margin: -4px 0 8px; }
 .review-cost {
   display: flex; align-items: center; gap: 5px;
   color: var(--accent); font-size: 12.5px; margin: 6px 0 14px;
