@@ -28,46 +28,84 @@ function apiKey() {
 // at all. Tribute/cover acts routinely reuse the original band's exact name
 // as a substring, so they need an explicit exclusion rather than relying on
 // the substring check to somehow reject them.
-const TRIBUTE_ACT_PATTERN = /\b(tribute|cover\s*band|coverband|revival|allstars|allstar|experience|reunion|homage)\b/i;
+//
+// A second, distinct round of real mismatches found in production data
+// (2026-07-13 QA pass) showed this single keyword list wasn't enough:
+//   - "Green Days" (a real Newcastle-based Green Day tribute act) slipped
+//     through because plain substring matching doesn't care about word
+//     boundaries — normalized("green day") is a substring of
+//     normalized("green days") even though "Days" is a different word, not
+//     a formatting variant of "Day". Fixed below by requiring containment
+//     to happen on a whole-word boundary (namesMatchNormalized).
+//   - "Ultimate Coldplay", "The Eminem Experience", and "Not Green Day" all
+//     slipped through even with the OLD keyword list, because none of
+//     "ultimate"/"not" were in it, and word-boundary matching alone doesn't
+//     help here — "Ultimate Coldplay" contains "Coldplay" as a legitimately
+//     whole-word-bounded substring, structurally identical to a legitimate
+//     case like "Coldplay: Music of the Spheres Tour". The only way to tell
+//     these apart is the specific qualifier word, so the keyword list below
+//     was expanded with the common tribute/parody-naming vocabulary
+//     ("not", "ultimate", "definitive", "totally", "unofficial", etc).
+//   - These were caught in that QA pass by their ticketUrl literally
+//     spelling it out ("not-green-day-tickets", "ultimate-coldplay-tickets",
+//     "the-eminem-experience-in-london"), which is why the check below also
+//     runs against event.name/event.url, not just the attraction name —
+//     tribute nights are frequently sold under a bundled festival/event
+//     title ("Christmas Rocks Day 4", "When We Were Punk '26", "Inbetween
+//     Days") that says nothing tribute-flavored in the attraction name
+//     itself but gives it away in the event title or URL slug.
+//
+// None of this makes the check bulletproof — creative tribute-act names
+// ("No Way Sis" for Oasis) that don't contain the real band's name at all
+// are excluded automatically (good), but a sufficiently creative name that
+// both contains the real band's name AND isn't in this keyword list could
+// still slip through. Treat this as a strong reduction in false positives,
+// not a guarantee — if another one is spotted, add its qualifier word here.
+const TRIBUTE_ACT_PATTERN =
+  /\b(tribute|tributes|cover\s*band|coverband|revival|allstars?|experience|reunion|homage|ultimate|definitive|definitely|totally|simply|absolutely|unofficial|salut(e|ing)|remembering|celebrating|bootleg|counterfeit|replica|not|almost|nearly)\b/i;
 
-// Second real bug, found during a full data-integrity audit on 2026-07-11:
-// the substring-containment rule in namesMatch() below is far too loose for
-// short/common band names. Swedish band "Kent" (normalized "kent", 4 chars)
-// matched against American country artist "Corey Kent" (normalized
-// "coreykent") because "coreykent".includes("kent") is true — a completely
-// unrelated artist who just happens to have "Kent" as part of their name.
-// This let ~10 fake upcoming US-fairground shows onto Kent's page, even
-// though Kent (the Swedish band) split up and stopped touring in 2023.
-// Fix: for short normalized names (< SHORT_NAME_THRESHOLD chars) or names
-// that are a single common word, require an EXACT normalized match instead
-// of substring containment in either direction. Substring containment is
-// only safe for longer, more distinctive names where an unrelated artist
-// coincidentally containing the whole string is far less likely
-// ("Motorhead" vs "The Motorhead Band", say).
-const SHORT_NAME_THRESHOLD = 8;
+// Whole-word-boundary-aware containment: true if `needle` appears in
+// `haystack` as a run of whole words, bounded by spaces (or the start/end
+// of the string) on both sides — NOT glued onto a longer word. This is what
+// distinguishes "green day: saviours tour" (contains "green day" followed
+// by a space — legitimate tour-title suffix) from "green days" (contains
+// "green day" followed immediately by "s" — a different word, not a
+// formatting variant).
+function containsWholeWords(haystack, needle) {
+  if (!needle) return false;
+  const idx = haystack.indexOf(needle);
+  if (idx === -1) return false;
+  const before = idx === 0 || haystack[idx - 1] === ' ';
+  const afterIdx = idx + needle.length;
+  const after = afterIdx === haystack.length || haystack[afterIdx] === ' ';
+  return before && after;
+}
 
-// Third real bug, found in the same audit: promoters running tribute nights
-// / cover-act shows routinely tag the *attraction* with the real band's
-// exact name (so fans searching for the real band find the tribute event),
-// while the word "tribute" only appears in the event's own title/URL slug
-// (e.g. event.name = "Kashmir - A Tribute to Led Zeppelin", attraction.name
-// = "Kashmir"). Checking TRIBUTE_ACT_PATTERN only against attraction.name
-// missed these entirely. Fix: also reject the whole event if the pattern
-// matches the top-level event.name, not just each attraction's name.
-function namesMatch(bandName, attractionName) {
-  if (TRIBUTE_ACT_PATTERN.test(attractionName || '')) return false;
-  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-  const a = norm(bandName);
-  const b = norm(attractionName);
-  if (!a || !b) return false;
-  if (a === b) return true;
-  if (a.length < SHORT_NAME_THRESHOLD || b.length < SHORT_NAME_THRESHOLD) {
-    // Short/common names: substring containment is too easily satisfied by
-    // an unrelated artist (e.g. "Kent" inside "Corey Kent"). Require exact
-    // match only.
+// Like the old norm(), but replaces stripped punctuation with a space
+// instead of deleting it outright, so word boundaries survive
+// normalization (needed by containsWholeWords above). Multiple spaces are
+// collapsed and the result trimmed.
+function normWords(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function namesMatch(bandName, attractionName, eventName, eventUrl) {
+  if (
+    TRIBUTE_ACT_PATTERN.test(attractionName || '') ||
+    TRIBUTE_ACT_PATTERN.test(eventName || '') ||
+    TRIBUTE_ACT_PATTERN.test((eventUrl || '').replace(/[-_/]/g, ' '))
+  ) {
     return false;
   }
-  return a.includes(b) || b.includes(a);
+  const a = normWords(bandName);
+  const b = normWords(attractionName);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return containsWholeWords(b, a) || containsWholeWords(a, b);
 }
 
 // Returns an array of raw candidate concerts (not yet deduped against
@@ -84,7 +122,15 @@ async function fetchUpcomingEvents(band, usage) {
   url.searchParams.set('keyword', band.name);
   url.searchParams.set('classificationName', 'Music');
   url.searchParams.set('sort', 'date,asc');
-  url.searchParams.set('size', '20');
+  // Raised from 20 to 100 (2026-07): a band with 20+ near-term shows before
+  // a later tour leg (e.g. Eagles of Death Metal's 21 North American dates
+  // preceding their European leg) silently truncated the page before ever
+  // reaching the later shows, and since Ticketmaster DID return some
+  // results, the Tavily/Groq fallback in research.js never fired to catch
+  // the gap. 100 gives 5x headroom over any realistic full tour. No cost
+  // implication — Ticketmaster bills per request, not per page size, so
+  // this is still exactly one API call per band either way.
+  url.searchParams.set('size', '100');
   // Defensive, even though Ticketmaster appears to already exclude past
   // events by default without this: explicitly ask for events from right
   // now onward, in the yyyy-MM-ddTHH:mm:ssZ format their API requires. This
@@ -112,14 +158,8 @@ async function fetchUpcomingEvents(band, usage) {
 
   const results = [];
   for (const event of events) {
-    // Reject tribute/cover-act events even when the promoter has tagged the
-    // attraction with the real band's exact name and the "tribute" wording
-    // only shows up in the event's own title (see comment on
-    // TRIBUTE_ACT_PATTERN above).
-    if (TRIBUTE_ACT_PATTERN.test(event?.name || '')) continue;
-
     const attractions = event?._embedded?.attractions || [];
-    const matched = attractions.some((a) => namesMatch(band.name, a.name));
+    const matched = attractions.some((a) => namesMatch(band.name, a.name, event.name, event.url));
     if (!matched) continue;
 
     const localDate = event?.dates?.start?.localDate;
