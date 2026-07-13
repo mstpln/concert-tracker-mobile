@@ -53,6 +53,13 @@ function freshState() {
       callsToday: 0,
       callsThisRun: 0,
     },
+    spotify: {
+      dailyCap: config.SPOTIFY.dailyCap,
+      perRunCap: config.SPOTIFY.perRunCap,
+      dayOfCounts: today,
+      callsToday: 0,
+      callsThisRun: 0,
+    },
     // Which band index the news-research loop should start from this run.
     // Since the Groq daily token budget can run out partway through the
     // band list (it did, on the very first live run — 149,959/150,000
@@ -75,6 +82,7 @@ class UsageTracker {
     this._lastTavilyCallAt = 0;
     this._lastGroqCallAt = 0;
     this._lastSetlistfmCallAt = 0;
+    this._lastSpotifyCallAt = 0;
     // Stamped here (construction time — right after UsageTracker.load()
     // resolves, at the very start of a run) rather than left unset. An
     // earlier version never assigned this anywhere, so finishRun()'s
@@ -96,6 +104,7 @@ class UsageTracker {
     if (!state.tavily) state.tavily = freshState().tavily;
     if (!state.groq) state.groq = freshState().groq;
     if (!state.setlistfm) state.setlistfm = freshState().setlistfm;
+    if (!state.spotify) state.spotify = freshState().spotify;
     if (!state.rotation || typeof state.rotation.nextBandIndex !== 'number') {
       state.rotation = { nextBandIndex: 0 };
     }
@@ -130,6 +139,10 @@ class UsageTracker {
       dailyCap: config.SETLISTFM.dailyCap,
       perRunCap: config.SETLISTFM.perRunCap,
     });
+    Object.assign(state.spotify, {
+      dailyCap: config.SPOTIFY.dailyCap,
+      perRunCap: config.SPOTIFY.perRunCap,
+    });
 
     if (state.ticketmaster.dayOfCounts !== today) {
       state.ticketmaster.dayOfCounts = today;
@@ -149,12 +162,17 @@ class UsageTracker {
       state.setlistfm.dayOfCounts = today;
       state.setlistfm.callsToday = 0;
     }
+    if (state.spotify.dayOfCounts !== today) {
+      state.spotify.dayOfCounts = today;
+      state.spotify.callsToday = 0;
+    }
     // Always zero the per-run counters at the start of a run.
     state.ticketmaster.callsThisRun = 0;
     state.tavily.callsThisRun = 0;
     state.groq.callsThisRun = 0;
     state.groq.tokensThisRun = 0;
     state.setlistfm.callsThisRun = 0;
+    state.spotify.callsThisRun = 0;
 
     return new UsageTracker(state);
   }
@@ -279,6 +297,23 @@ class UsageTracker {
     this.state.setlistfm.callsToday += 1;
   }
 
+  // ---------------- Spotify ----------------
+
+  canCallSpotify() {
+    const s = this.state.spotify;
+    if (s.callsThisRun >= s.perRunCap) return false;
+    if (s.callsToday >= s.dailyCap) return false;
+    return true;
+  }
+
+  async recordSpotifyCall() {
+    const gap = Date.now() - this._lastSpotifyCallAt;
+    if (gap < config.SPOTIFY.minDelayMs) await sleep(config.SPOTIFY.minDelayMs - gap);
+    this._lastSpotifyCallAt = Date.now();
+    this.state.spotify.callsThisRun += 1;
+    this.state.spotify.callsToday += 1;
+  }
+
   // ---------------- Persistence ----------------
 
   finishRun(summary) {
@@ -290,6 +325,7 @@ class UsageTracker {
       groqCalls: this.state.groq.callsThisRun,
       groqTokens: this.state.groq.tokensThisRun,
       setlistfmCalls: this.state.setlistfm.callsThisRun,
+      spotifyCalls: this.state.spotify.callsThisRun,
       notes: this._notes,
       ...summary,
     };
