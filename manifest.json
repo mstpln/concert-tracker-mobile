@@ -1,6 +1,6 @@
 {
-  "name": "ConcertDates",
-  "short_name": "ConcertD",
+  "name": "The Live Vault",
+  "short_name": "LiveVault",
   "description": "Personal concert tracker — bands, tour dates, and shows you're attending.",
   "start_url": "./index.html",
   "scope": "./",

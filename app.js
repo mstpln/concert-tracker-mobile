@@ -438,6 +438,7 @@ function goToTab(tab, { fromHistory = false } = {}) {
   el('tabbar').classList.remove('hidden');
   el('tabbar').querySelectorAll('.tabitem').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   setHeaderChrome({ showBack: false, title: TAB_TITLES[tab] || 'ConcertDates', isBrand: true, brandHtml: TAB_BRAND_HTML[tab] });
+  el('header-icon').innerHTML = icon(TAB_ICONS[tab] || 'music');
   el('europe-toggle-btn').classList.toggle('hidden', tab !== 'concerts');
   el('nearby-toggle-btn').classList.toggle('hidden', tab !== 'concerts');
   showScreen(TAB_SCREENS[tab] || 'screen-concerts');
@@ -2286,7 +2287,7 @@ async function renderSettingsScreen() {
 
     ${researchPipelineSectionHtml()}
 
-    <p class="settings-version">ConcertDates ${escapeHtml(typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?')}</p>
+    <p class="settings-version">LiveVault ${escapeHtml(typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?')}</p>
   `;
 
   el('change-connection-btn').addEventListener('click', () => {
