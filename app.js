@@ -66,11 +66,15 @@ const RESEARCH_KEY_METADATA = {
   tavily: { label: 'Tavily API key', masked: 'tvly••••••••yzt0' },
   groq: { label: 'Groq API key (research pipeline)', masked: 'gsk_••••••••rhcu' },
   setlistfm: { label: 'setlist.fm API key', masked: 'lM9u••••••••oLZB' },
-  // No masked digits here — unlike the keys above, this app never saw the
-  // real Client ID/Secret values (they were entered directly into GitHub
-  // Actions secrets by hand, per the "never enter API keys on your behalf"
-  // rule), so there's nothing real to mask. This just confirms they're set.
-  spotify: { label: 'Spotify Client ID & Secret', masked: 'configured via GitHub secrets' },
+  // Client ID: no masked digits — this app never saw the real value (it was
+  // entered directly into GitHub Actions secrets by hand, per the "never
+  // enter API keys on your behalf" rule), so there's nothing real to mask.
+  spotifyClientId: { label: 'Spotify Client ID', masked: 'configured via GitHub secrets' },
+  // Client Secret: unlike the other keys above, the real add-date IS known
+  // here (2026-07-13, this build) rather than guessed — so, unlike the
+  // no-date policy those follow (see the QA-pass note above), it's included
+  // here since it's actually accurate.
+  spotifyClientSecret: { label: 'Spotify Client Secret', masked: 'cafa••••••••ff48 (added 2026-07-13)' },
 };
 
 async function init() {
@@ -2039,8 +2043,9 @@ function renderStatsScreen() {
     ? `<br><span class="stats-kpi-caveat">from ${stats.knownDistanceCount} of ${stats.totalShows} shows</span>`
     : '';
 
-  // Headline row — the same 4 always-shown overview numbers as before,
-  // ungrouped, at the very top.
+  // Headline row — the same 4 always-shown overview numbers as before, now
+  // under their own "Overview" label at the very top, matching the other
+  // labeled sections below instead of standing alone unlabeled.
   const summaryTiles = [
     { value: stats.totalShows.toLocaleString(), label: 'shows attended' },
     { value: stats.countries.toLocaleString(), label: 'countries' },
@@ -2078,8 +2083,9 @@ function renderStatsScreen() {
   if (stats.farthestShow) extremeTiles.push({ value: formatKm(stats.farthestShow.distanceKm), label: `farthest show, ${escapeHtml(stats.farthestShow.bandName)}${venueYearCaveat(stats.farthestShow)}` });
   if (stats.closestShow) extremeTiles.push({ value: formatKm(stats.closestShow.distanceKm), label: `closest show, ${escapeHtml(stats.closestShow.bandName)}${venueYearCaveat(stats.closestShow)}` });
   if (stats.cheapestTicket) {
-    const priceLabel = stats.cheapestTicket.ticketPrice === 0 ? 'Free' : `${stats.cheapestTicket.ticketPrice.toLocaleString()} kr`;
-    extremeTiles.push({ value: priceLabel, label: `cheapest ticket, ${escapeHtml(stats.cheapestTicket.bandName)}${venueYearCaveat(stats.cheapestTicket)}` });
+    // dataLib.js's cheapestTicket is scoped to PAID shows only (Free is
+    // excluded there on purpose), so this is always a real kr amount, never 0.
+    extremeTiles.push({ value: `${stats.cheapestTicket.ticketPrice.toLocaleString()} kr`, label: `cheapest ticket, ${escapeHtml(stats.cheapestTicket.bandName)}${venueYearCaveat(stats.cheapestTicket)}` });
   }
   if (stats.priciestTicket) extremeTiles.push({ value: `${stats.priciestTicket.ticketPrice.toLocaleString()} kr`, label: `priciest ticket, ${escapeHtml(stats.priciestTicket.bandName)}${venueYearCaveat(stats.priciestTicket)}` });
   if (stats.longestSetlist) extremeTiles.push({ value: stats.longestSetlist.setlist.songs.length.toLocaleString(), label: `longest setlist, ${escapeHtml(stats.longestSetlist.bandName)}${venueYearCaveat(stats.longestSetlist)}` });
@@ -2101,7 +2107,7 @@ function renderStatsScreen() {
   const TOP_RATED_DISPLAY_CAP = 8;
 
   container.innerHTML = `
-    ${gridHtml(summaryTiles)}
+    ${sectionHtml('Overview', summaryTiles)}
     ${sectionHtml('Milestones', milestoneTiles)}
     ${sectionHtml('Habits', habitTiles)}
     ${sectionHtml('Extremes', extremeTiles)}

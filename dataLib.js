@@ -499,14 +499,17 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
   }
 
   // Cheapest/priciest ticket — per-ticket price (not total for the night),
-  // past shows only, same pool as farthest/closest above. A show marked Free
-  // (ticketPrice: 0, see the Free toggle) is a legitimate cheapest-ticket
-  // candidate, not skipped.
+  // past shows only, same pool as farthest/closest above. Free shows
+  // (ticketPrice: 0, see the Free toggle) still count as a known price for
+  // averageTicketPrice above, but a Free show isn't an interesting answer to
+  // "what's the cheapest ticket you've bought" — that tile is scoped to
+  // shows you actually paid for, so Free is deliberately excluded here and
+  // cheapestTicket becomes the cheapest PAID ticket instead.
   let cheapestTicket = null;
   let priciestTicket = null;
   for (const c of attendedPast) {
     if (typeof c.ticketPrice !== 'number' || Number.isNaN(c.ticketPrice)) continue;
-    if (!cheapestTicket || c.ticketPrice < cheapestTicket.ticketPrice) cheapestTicket = c;
+    if (c.ticketPrice > 0 && (!cheapestTicket || c.ticketPrice < cheapestTicket.ticketPrice)) cheapestTicket = c;
     if (!priciestTicket || c.ticketPrice > priciestTicket.ticketPrice) priciestTicket = c;
   }
 
