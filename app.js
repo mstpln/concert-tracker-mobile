@@ -32,6 +32,17 @@ let inactivityYears = 3;
 let hideInactiveBands = false;
 let selectedGenre = 'all';
 let mutedOnly = false;
+// Venues sub-tab (Concerts tab). Not persisted across reloads, same as
+// newsSubTab above — always starts back on the plain Concerts list.
+let concertsSubTab = 'concerts'; // 'concerts' | 'venues'
+let venuesNearbyOnly = false;
+let venuesEuropeOnly = false;
+// Scoped exactly as clarified with the user: concerts at these venues that
+// are in the past AND were attended by me (the same set My Concerts' "Past
+// concerts" list uses), not just any already-happened date regardless of
+// attendance.
+let venuesPastOnly = false;
+let activeVenueKey = null;
 
 const el = (id) => document.getElementById(id);
 
@@ -70,6 +81,14 @@ async function init() {
   selectedGenre = savedSelectedGenre || 'all';
   const { mutedOnly: savedMutedOnly = false } = await chrome.storage.local.get('mutedOnly');
   mutedOnly = !!savedMutedOnly;
+  const {
+    venuesNearbyOnly: savedVenuesNearby = false,
+    venuesEuropeOnly: savedVenuesEurope = false,
+    venuesPastOnly: savedVenuesPast = false,
+  } = await chrome.storage.local.get(['venuesNearbyOnly', 'venuesEuropeOnly', 'venuesPastOnly']);
+  venuesNearbyOnly = !!savedVenuesNearby && !savedVenuesEurope;
+  venuesEuropeOnly = !!savedVenuesEurope;
+  venuesPastOnly = !!savedVenuesPast;
   const { alertsLastOpenedAt: savedAlertsLastOpenedAt = null } = await chrome.storage.local.get('alertsLastOpenedAt');
   alertsLastOpenedAt = savedAlertsLastOpenedAt;
 
@@ -204,16 +223,48 @@ async function loadDataAndShowApp() {
 // concept (newly-discovered concerts) through a separate mechanism that
 // could drift out of sync with this one — one source of truth now instead
 // of two.
+// "Tour Announcement Summary": dates discovered in the same research run
+// for the same band (identical bandId+foundAt) are collapsed into one
+// batch card instead of flooding the list with one row per date — a 26-date
+// tour used to mean 26 near-identical "New show added" rows. A band with
+// only one new date still gets its own plain row, unchanged from before.
 function getAlertItems() {
   const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
-  return concerts
+  const raw = concerts
     .filter((c) => !c.manuallyAdded && c.foundAt && bands.some((b) => b.id === c.bandId))
     // Muting a band suppresses its "new show added" alerts too, not just the
     // Concerts tab discovery feed — see dlNearestPerBand's caller below for
     // the matching filter on that side.
     .filter((c) => !bands.find((b) => b.id === c.bandId)?.muted)
-    .filter((c) => new Date(c.foundAt).getTime() >= cutoff)
-    .sort((a, b) => (b.foundAt || '').localeCompare(a.foundAt || ''));
+    .filter((c) => new Date(c.foundAt).getTime() >= cutoff);
+
+  const byBatch = new Map();
+  for (const c of raw) {
+    const key = `${c.bandId}|${c.foundAt}`;
+    if (!byBatch.has(key)) byBatch.set(key, []);
+    byBatch.get(key).push(c);
+  }
+
+  const items = [];
+  for (const group of byBatch.values()) {
+    if (group.length === 1) {
+      items.push(group[0]);
+      continue;
+    }
+    const sorted = [...group].sort((a, b) => new Date(a.date) - new Date(b.date));
+    items.push({
+      isBatch: true,
+      bandId: sorted[0].bandId,
+      bandName: sorted[0].bandName,
+      foundAt: sorted[0].foundAt,
+      count: sorted.length,
+      nearbyCount: sorted.filter(dlIsNearby).length,
+      europeCount: sorted.filter((c) => dlIsEuropeCountry(c.country)).length,
+      firstDate: sorted[0].date,
+      lastDate: sorted[sorted.length - 1].date,
+    });
+  }
+  return items.sort((a, b) => (b.foundAt || '').localeCompare(a.foundAt || ''));
 }
 
 function updateAlertsBadge() {
@@ -235,9 +286,33 @@ function daysAgoLabel(iso) {
   return `${days} days ago`;
 }
 
-function alertRowHtml(c) {
-  const band = bands.find((b) => b.id === c.bandId);
+function alertRowHtml(item) {
+  const band = bands.find((b) => b.id === item.bandId);
   const isFavorite = !!band?.favorite;
+
+  if (item.isBatch) {
+    const rangeLabel = item.firstDate === item.lastDate
+      ? formatShortDate(item.firstDate)
+      : `${formatShortDate(item.firstDate)}–${formatShortDate(item.lastDate)}`;
+    const breakdownParts = [];
+    if (item.nearbyCount > 0) breakdownParts.push(`${item.nearbyCount} nearby`);
+    if (item.europeCount > 0) breakdownParts.push(`${item.europeCount} in Europe`);
+    const breakdown = breakdownParts.length ? ` · ${breakdownParts.join(', ')}` : '';
+    return `
+      <div class="row-card clickable${isFavorite ? ' has-favorite' : ''}" data-band-id="${escapeAttr(item.bandId)}">
+        ${isFavorite ? `<span class="alert-favorite-badge" aria-label="Favorite band">${icon('heartFill')}</span>` : ''}
+        <div class="alert-row">
+          <span class="alert-icon">${icon('bell')}</span>
+          <div class="alert-row-body">
+            <p class="alert-title">New tour announced · ${escapeHtml(item.bandName)}</p>
+            <p class="alert-meta">${item.count} new dates${breakdown} · ${rangeLabel}</p>
+            <p class="alert-time">${daysAgoLabel(item.foundAt)}</p>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  const c = item;
   return `
     <div class="row-card clickable${isFavorite ? ' has-favorite' : ''}" data-band-id="${escapeAttr(c.bandId)}">
       ${isFavorite ? `<span class="alert-favorite-badge" aria-label="Favorite band">${icon('heartFill')}</span>` : ''}
@@ -262,7 +337,7 @@ function wireHeader() {
   el('nearby-toggle-btn').classList.toggle('active', nearbyOnly);
 
   el('back-btn').addEventListener('click', () => {
-    if (currentScreen === 'settings' || currentScreen === 'profile' || currentScreen === 'stats') {
+    if (currentScreen === 'settings' || currentScreen === 'profile' || currentScreen === 'stats' || currentScreen === 'venue-detail') {
       history.back();
     }
   });
@@ -294,6 +369,8 @@ function wireHeader() {
     if (!state) return;
     if (state.screen === 'profile' && state.bandId) {
       openProfile(state.bandId, { fromHistory: true });
+    } else if (state.screen === 'venue-detail' && state.venueKey) {
+      openVenueDetail(state.venueKey, { fromHistory: true });
     } else if (state.screen === 'settings') {
       showSettingsScreen({ fromHistory: true });
     } else if (state.screen === 'stats') {
@@ -366,7 +443,7 @@ function goToTab(tab, { fromHistory = false } = {}) {
 }
 
 function showScreen(id) {
-  ['screen-concerts', 'screen-myconcerts', 'screen-mybands', 'screen-news', 'screen-profile', 'screen-settings', 'screen-stats', 'screen-connection-error'].forEach((s) => {
+  ['screen-concerts', 'screen-myconcerts', 'screen-mybands', 'screen-news', 'screen-profile', 'screen-venue-detail', 'screen-settings', 'screen-stats', 'screen-connection-error'].forEach((s) => {
     el(s).classList.toggle('hidden', s !== id);
   });
   // All screens share one scrollable container (#content), so without this
@@ -402,8 +479,41 @@ function renderWithYearDividers(items, rowRenderer, { showCount = false } = {}) 
   return html;
 }
 
+// The Concerts tab is now two sub-views under one tab (same pattern as the
+// Alerts/News switch on the "news" tab): the original discovery feed
+// (nearest upcoming show per band) and a new Venues directory grouped
+// across every venue in the database. Switching sub-tabs doesn't change the
+// URL/history stack, same as the EU/Nearby filters elsewhere in the app.
 function renderConcertsScreen() {
   const container = el('screen-concerts');
+  el('nearby-toggle-btn').classList.toggle('hidden', concertsSubTab !== 'concerts');
+  el('europe-toggle-btn').classList.toggle('hidden', concertsSubTab !== 'concerts');
+
+  const switchHtml = `
+    <div class="news-subtab-switch">
+      <button class="news-subtab-btn${concertsSubTab === 'concerts' ? ' active' : ''}" data-subtab="concerts">Concerts</button>
+      <button class="news-subtab-btn${concertsSubTab === 'venues' ? ' active' : ''}" data-subtab="venues">Venues</button>
+    </div>`;
+
+  container.innerHTML = switchHtml + (concertsSubTab === 'venues' ? venuesSubTabHtml() : concertsListHtml());
+
+  container.querySelectorAll('.news-subtab-btn').forEach((b) => {
+    b.addEventListener('click', () => {
+      concertsSubTab = b.dataset.subtab;
+      renderConcertsScreen();
+    });
+  });
+
+  if (concertsSubTab === 'venues') {
+    wireVenuesSubTab(container);
+  } else {
+    container.querySelectorAll('.row-card[data-band-id]').forEach((row) => {
+      row.addEventListener('click', () => openProfile(row.dataset.bandId));
+    });
+  }
+}
+
+function concertsListHtml() {
   // A muted band's own profile page still shows its upcoming shows normally
   // (see renderProfileScreen/dlAllUpcomingForBand, untouched by mute) — this
   // filter only strips muted bands out of the aggregate discovery feed here.
@@ -420,11 +530,10 @@ function renderConcertsScreen() {
       : nearbyOnly
         ? 'No upcoming concerts near you right now.'
         : "No upcoming concerts yet. They'll show up here after the next scheduled check.";
-    container.innerHTML = `<p class="screen-empty">${emptyMsg}</p>`;
-    return;
+    return `<p class="screen-empty">${emptyMsg}</p>`;
   }
 
-  container.innerHTML = renderWithYearDividers(nearest, (c) => {
+  return renderWithYearDividers(nearest, (c) => {
     const dateStr = formatDate(c.date, c.time);
     return `
         <div class="row-card clickable" data-band-id="${c.bandId}">
@@ -439,8 +548,114 @@ function renderConcertsScreen() {
           <p class="row-km">${formatKm(c.distanceKm)} away</p>
         </div>`;
   }, { showCount: true });
+}
 
-  container.querySelectorAll('.row-card').forEach((row) => {
+/* ---------------- Venues sub-tab ---------------- */
+
+// Scope confirmed with the user: every concert on record for any tracked
+// band (past or upcoming, attending or not) — the same breadth as the
+// Concerts discovery feed above, not narrowed to personal attendance.
+function venuesSubTabHtml() {
+  const liveConcerts = concerts.filter((c) => bands.some((b) => b.id === c.bandId));
+  let groups = dlVenueGroups(liveConcerts);
+
+  if (venuesEuropeOnly) groups = groups.filter((g) => g.concerts.some((c) => dlIsEuropeCountry(c.country)));
+  else if (venuesNearbyOnly) groups = groups.filter((g) => g.concerts.some(dlIsNearby));
+  // "Past Concerts" is scoped to shows the user personally attended, per the
+  // user's explicit clarification — not just any already-happened date.
+  if (venuesPastOnly) groups = groups.filter((g) => g.concerts.some((c) => c.attending && !dlIsUpcoming(c)));
+
+  const filterRow = `
+    <div class="section-label-filters" style="margin-bottom:14px">
+      <button id="venues-nearby-toggle-btn" class="icon-btn${venuesNearbyOnly ? ' active' : ''}" aria-label="Show nearby only" title="Show nearby only">${icon('nearbyPin')}</button>
+      <button id="venues-europe-toggle-btn" class="icon-btn${venuesEuropeOnly ? ' active' : ''}" aria-label="Show Europe only" title="Show Europe only">EU</button>
+      <button id="venues-past-toggle-btn" class="icon-btn${venuesPastOnly ? ' active' : ''}" aria-label="Show only venues I've been to" title="Show only venues I've been to">Past Concerts</button>
+    </div>`;
+
+  if (groups.length === 0) {
+    return filterRow + `<p class="screen-empty">No venues match these filters yet.</p>`;
+  }
+
+  const rows = groups.map((g) => `
+    <div class="row-card clickable" data-venue-key="${escapeAttr(g.key)}">
+      <div class="row-top">
+        <div class="row-title-group"><span class="row-name">${escapeHtml(g.venue)}</span></div>
+        <span class="row-chevron">${icon('chevronRight')}</span>
+      </div>
+      <p class="row-sub">${escapeHtml(g.city)}${g.country ? ', ' + escapeHtml(g.country) : ''}</p>
+      <p class="row-km">${g.concerts.length} ${g.concerts.length === 1 ? 'show' : 'shows'} on record</p>
+    </div>`).join('');
+
+  return filterRow + rows;
+}
+
+function wireVenuesSubTab(container) {
+  container.querySelector('#venues-nearby-toggle-btn')?.addEventListener('click', async () => {
+    venuesNearbyOnly = !venuesNearbyOnly;
+    if (venuesNearbyOnly) venuesEuropeOnly = false; // EU and Nearby are mutually exclusive
+    await chrome.storage.local.set({ venuesNearbyOnly, venuesEuropeOnly });
+    renderConcertsScreen();
+  });
+  container.querySelector('#venues-europe-toggle-btn')?.addEventListener('click', async () => {
+    venuesEuropeOnly = !venuesEuropeOnly;
+    if (venuesEuropeOnly) venuesNearbyOnly = false; // EU and Nearby are mutually exclusive
+    await chrome.storage.local.set({ venuesNearbyOnly, venuesEuropeOnly });
+    renderConcertsScreen();
+  });
+  container.querySelector('#venues-past-toggle-btn')?.addEventListener('click', async () => {
+    venuesPastOnly = !venuesPastOnly;
+    await chrome.storage.local.set({ venuesPastOnly });
+    renderConcertsScreen();
+  });
+  container.querySelectorAll('.row-card[data-venue-key]').forEach((row) => {
+    row.addEventListener('click', () => openVenueDetail(row.dataset.venueKey));
+  });
+}
+
+function openVenueDetail(key, { fromHistory = false } = {}) {
+  activeVenueKey = key;
+  currentScreen = 'venue-detail';
+  const liveConcerts = concerts.filter((c) => bands.some((b) => b.id === c.bandId));
+  const group = dlVenueGroups(liveConcerts).find((g) => g.key === key);
+  setHeaderChrome({ showBack: true, title: group ? group.venue : 'Venue' });
+  el('europe-toggle-btn').classList.add('hidden');
+  el('nearby-toggle-btn').classList.add('hidden');
+  showScreen('screen-venue-detail');
+  renderVenueDetailScreen(key);
+  if (!fromHistory) history.pushState({ tab: currentTab, screen: 'venue-detail', venueKey: key }, '');
+}
+
+// Full concert history at a single venue — every band that's ever played
+// there, past and upcoming alike, tapping through to that band's own
+// profile (same drill-down the Concerts tab and Alerts list already use).
+function renderVenueDetailScreen(key) {
+  const container = el('screen-venue-detail');
+  const liveConcerts = concerts.filter((c) => bands.some((b) => b.id === c.bandId));
+  const group = dlVenueGroups(liveConcerts).find((g) => g.key === key);
+  if (!group) {
+    container.innerHTML = `<p class="screen-empty">Venue not found.</p>`;
+    return;
+  }
+  const sorted = [...group.concerts].sort((a, b) => new Date(b.date) - new Date(a.date));
+  container.innerHTML = `
+    <p class="section-label" style="margin-top:0">${escapeHtml(group.city)}${group.country ? ', ' + escapeHtml(group.country) : ''}</p>
+    ${renderWithYearDividers(sorted, (c) => {
+      const dateStr = formatDate(c.date, c.time);
+      const isPast = !dlIsUpcoming(c);
+      return `
+        <div class="row-card clickable${isPast ? ' is-past' : ''}" data-band-id="${escapeAttr(c.bandId)}">
+          <div class="row-top">
+            <div class="row-title-group">
+              <span class="row-name">${escapeHtml(c.bandName)}</span>
+              ${c.attending ? `<span class="pill ${isPast ? 'pill-attended' : 'pill-going'}">${icon('check')} ${isPast ? 'Attended' : 'Going'}</span>` : ''}
+            </div>
+            <span class="row-chevron">${icon('chevronRight')}</span>
+          </div>
+          <p class="row-sub">${dateStr}</p>
+        </div>`;
+    }, { showCount: true })}
+  `;
+  container.querySelectorAll('.row-card[data-band-id]').forEach((row) => {
     row.addEventListener('click', () => openProfile(row.dataset.bandId));
   });
 }
@@ -1809,6 +2024,77 @@ function formatGapLabel(days) {
   return `${Math.round(days)} days`;
 }
 
+/* ---------------- Data export (Settings) ---------------- */
+
+function todayStamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function toCsvValue(v) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object') v = JSON.stringify(v);
+  const s = String(v);
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+// Column set is derived from whatever keys actually appear across the
+// records rather than a hand-maintained list, so this never silently drops
+// a field (ticketPrice, setlist, playlistUrl, etc.) as the data model
+// evolves.
+function arrayToCsv(rows) {
+  const keys = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+  const lines = [keys.map(toCsvValue).join(',')];
+  for (const r of rows) lines.push(keys.map((k) => toCsvValue(r[k])).join(','));
+  return lines.join('\r\n');
+}
+
+function downloadTextFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function exportDataAsCsv() {
+  downloadTextFile(`bands-${todayStamp()}.csv`, arrayToCsv(bands), 'text/csv');
+  downloadTextFile(`concerts-${todayStamp()}.csv`, arrayToCsv(concerts), 'text/csv');
+}
+
+// The Excel export loads SheetJS from a CDN on demand (only when this
+// button is actually clicked) rather than bundling it, so the app's normal
+// offline-first load path is completely unaffected — this is the one
+// deliberate exception to the "no external CDN" rule in icons.js's header
+// comment, scoped to an optional, occasional export action rather than core
+// UI. A real .xlsx (not an HTML-table trick) so it opens cleanly with two
+// proper sheet tabs and no "format doesn't match extension" warning.
+let xlsxLibPromise = null;
+function loadXlsxLib() {
+  if (window.XLSX) return Promise.resolve();
+  if (xlsxLibPromise) return xlsxLibPromise;
+  xlsxLibPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Failed to load Excel export library'));
+    document.head.appendChild(s);
+  });
+  return xlsxLibPromise;
+}
+
+async function exportDataAsExcel() {
+  await loadXlsxLib();
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bands), 'Bands');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(concerts), 'Concerts');
+  XLSX.writeFile(wb, `concert-tracker-export-${todayStamp()}.xlsx`);
+}
+
 /* ---------------- Settings screen ---------------- */
 
 function showSettingsScreen({ fromHistory = false } = {}) {
@@ -1845,7 +2131,10 @@ async function renderSettingsScreen() {
     <div class="settings-card">
       <label>Groq API key (optional)</label>
       ${savedKeyInfo}
-      <input type="password" id="groq-key-input" value="" placeholder="${groqApiKey ? 'Enter a new key to replace it' : 'For faster, more reliable band-info lookups'}" />
+      <div class="password-field-wrap">
+        <input type="password" id="groq-key-input" value="" placeholder="${groqApiKey ? 'Enter a new key to replace it' : 'For faster, more reliable band-info lookups'}" />
+        <button type="button" id="groq-key-toggle-visibility" class="icon-btn password-toggle-btn" aria-label="Show key" title="Show key"></button>
+      </div>
       <p class="settings-hint">Used to fill in genre, bio and links when you add a band. Leave blank to use a free fallback (slower, less reliable).</p>
       <div class="show-buttons" style="margin-top:8px">
         <button id="save-groq-key" class="btn-primary">Save</button>
@@ -1862,6 +2151,16 @@ async function renderSettingsScreen() {
         <span class="muted" style="font-size:12px">years with no known or upcoming shows</span>
       </div>
       <p class="settings-hint">Bands past this get an "Inactive" flag in My Bands and on their profile. Updates automatically as new tour dates come in.</p>
+    </div>
+
+    <p class="section-label">Data export</p>
+    <div class="settings-card">
+      <p class="settings-hint" style="margin-top:0">Export your bands, concerts, ratings, notes, ticket costs and setlists.</p>
+      <div class="show-buttons" style="margin-top:8px">
+        <button id="export-csv-btn" class="btn-secondary">Export CSV</button>
+        <button id="export-excel-btn" class="btn-secondary">Export Excel</button>
+      </div>
+      <span id="export-status" class="settings-hint"></span>
     </div>
 
     ${researchPipelineSectionHtml()}
@@ -1889,6 +2188,37 @@ async function renderSettingsScreen() {
   el('remove-groq-key')?.addEventListener('click', async () => {
     await chrome.storage.local.remove(['groqApiKey', 'groqApiKeyAddedAt']);
     renderSettingsScreen();
+  });
+
+  const groqKeyToggleBtn = el('groq-key-toggle-visibility');
+  groqKeyToggleBtn.innerHTML = icon('eye');
+  let groqKeyVisible = false;
+  groqKeyToggleBtn.addEventListener('click', () => {
+    groqKeyVisible = !groqKeyVisible;
+    el('groq-key-input').type = groqKeyVisible ? 'text' : 'password';
+    groqKeyToggleBtn.innerHTML = icon(groqKeyVisible ? 'eyeOff' : 'eye');
+    groqKeyToggleBtn.setAttribute('aria-label', groqKeyVisible ? 'Hide key' : 'Show key');
+    groqKeyToggleBtn.setAttribute('title', groqKeyVisible ? 'Hide key' : 'Show key');
+  });
+
+  el('export-csv-btn').addEventListener('click', () => {
+    exportDataAsCsv();
+    el('export-status').textContent = 'CSV files downloading…';
+    setTimeout(() => (el('export-status').textContent = ''), 2000);
+  });
+
+  el('export-excel-btn').addEventListener('click', async () => {
+    const btn = el('export-excel-btn');
+    const original = btn.textContent;
+    btn.textContent = 'Preparing…';
+    try {
+      await exportDataAsExcel();
+    } catch (e) {
+      el('export-status').textContent = "Couldn't load the Excel export — check your connection, or use Export CSV instead.";
+      setTimeout(() => (el('export-status').textContent = ''), 4000);
+    } finally {
+      btn.textContent = original;
+    }
   });
 
   el('inactivity-years-input').addEventListener('change', async (ev) => {

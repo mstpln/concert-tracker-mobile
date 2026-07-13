@@ -291,6 +291,20 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .section-label-filters .icon-btn.active#profile-europe-toggle-btn,
 .section-label-filters .icon-btn.active#profile-nearby-toggle-btn { border-color: var(--accent); }
 
+/* Venues sub-tab filter pills (Concerts tab) — same shape as the band
+   profile's own EU/Nearby filter buttons above, plus a third "Past
+   Concerts" text pill (scoped to shows the user attended, not just any
+   past date — see venuesSubTabHtml). */
+#venues-europe-toggle-btn, #venues-past-toggle-btn {
+  width: auto; min-width: 34px; padding: 0 10px;
+  font-size: 11px; font-weight: 700; letter-spacing: .02em;
+  border: 1px solid var(--border-strong);
+}
+#venues-nearby-toggle-btn { border: 1px solid var(--border-strong); }
+.section-label-filters .icon-btn.active#venues-europe-toggle-btn,
+.section-label-filters .icon-btn.active#venues-past-toggle-btn,
+.section-label-filters .icon-btn.active#venues-nearby-toggle-btn { border-color: var(--accent); }
+
 .year-divider {
   display: flex; align-items: center; gap: 8px;
   font-size: 12.5px; color: var(--text-secondary);
@@ -449,6 +463,16 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .usage-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
 
 .settings-version { text-align: center; color: var(--text-muted); font-size: 11px; margin: 18px 0 4px; }
+
+/* Show/hide toggle for the Groq key field — a long key is easy to mistype
+   blind behind a password mask, so this lets it be verified before saving. */
+.password-field-wrap { position: relative; }
+.password-field-wrap input { padding-right: 40px; }
+.password-toggle-btn {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted);
+}
+.password-toggle-btn:hover { background: var(--surface-muted); }
 
 /* Concert rating, notes & photo link (My Concerts, past shows only). Stars
    use --accent (the app's one blue) for the filled state and --border-strong
