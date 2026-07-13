@@ -101,6 +101,26 @@ module.exports = {
     minDelayMs: 600, // under the real 2 req/sec (500ms) with margin
   },
 
+  // Spotify Web API (Client Credentials flow — app-only, resolves a track
+  // link per original setlist song). Unlike the four providers above,
+  // Spotify doesn't publish a fixed free-tier request cap: it throttles
+  // dynamically via HTTP 429 + Retry-After instead of a documented
+  // requests/day number. The caps below are a defensive safety valve (so a
+  // single run can never run away indefinitely), not a real ceiling —
+  // spotify.js's 429 handling is the actual enforcement mechanism.
+  SPOTIFY: {
+    clientIdEnv: 'SPOTIFY_CLIENT_ID',
+    clientSecretEnv: 'SPOTIFY_CLIENT_SECRET',
+    tokenUrl: 'https://accounts.spotify.com/api/token',
+    searchUrl: 'https://api.spotify.com/v1/search',
+    // Sized generously enough to resolve the full historical backfill (every
+    // original song across every already-attended setlist) in a single run,
+    // while still being a bounded, defensive cap rather than "unlimited".
+    dailyCap: 6000,
+    perRunCap: 4000,
+    minDelayMs: 150,
+  },
+
   WORKER: {
     endpointEnv: 'CF_WORKER_ENDPOINT',
     tokenEnv: 'CF_WORKER_TOKEN',
