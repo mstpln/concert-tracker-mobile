@@ -105,6 +105,13 @@ const ICONS = {
   // heart/star — currentColor, no new hue.
   bellOff:
     '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18 8a6 6 0 0 0-9.33-5"/><path d="M6.26 6.26A6 6 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 12.5V8"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
+  // Show/hide toggle for the Groq API key password field in Settings (long
+  // key, easy to mistype blind) — plain eye / eye-with-slash pair, same
+  // single-color outline treatment as every other icon here.
+  eye:
+    '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>',
+  eyeOff:
+    '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.4 17.4A11 11 0 0 1 12 19c-7 0-11-7-11-7a19.6 19.6 0 0 1 4.6-5.4"/><path d="M9.9 5.2A8.6 8.6 0 0 1 12 5c7 0 11 7 11 7a19.4 19.4 0 0 1-2.2 3.1"/><path d="M14.1 14.1a3 3 0 1 1-4.2-4.2"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
 };
 
 function icon(name) {

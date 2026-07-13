@@ -118,6 +118,32 @@ function dlAllUpcomingForBand(concerts, bandId) {
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 }
 
+// Groups every concert on record (any tracked band, past or upcoming,
+// attending or not) by venue+city for the Concerts tab's Venues sub-tab.
+// Unlike dlConcertStats' topVenues (attended-past only, a personal-history
+// highlight for the stats screen), this is a directory of every venue in
+// the whole database — the Venues tab's own scope, confirmed with the user
+// as "every concert on record" rather than just what you've attended.
+// Sorted alphabetically by venue name, per the user's chosen default sort.
+function dlVenueGroups(concerts) {
+  const byKey = new Map();
+  for (const c of concerts) {
+    if (!c.venue) continue;
+    const key = `${c.venue}|${c.city || ''}`;
+    let group = byKey.get(key);
+    if (!group) {
+      group = { key, venue: c.venue, city: c.city || '', country: c.country || '', concerts: [] };
+      byKey.set(key, group);
+    }
+    group.concerts.push(c);
+    // Some historical entries for the same venue are missing country (e.g.
+    // manually backlogged past shows) — fall back to whichever record does
+    // have it rather than leaving the group's country blank.
+    if (!group.country && c.country) group.country = c.country;
+  }
+  return [...byKey.values()].sort((a, b) => a.venue.localeCompare(b.venue));
+}
+
 // The later of a band's researched lastKnownConcertDate and the latest date
 // across all of its concerts.json entries (past or future — an upcoming show
 // always counts, even if lastKnownConcertDate hasn't been refreshed since).
