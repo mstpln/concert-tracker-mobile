@@ -78,7 +78,7 @@ async function fetchTourDatesViaTavily(band, usage) {
     '- Only include a show if the source explicitly states a full calendar date including the YEAR.',
     '- If a date has no explicit year stated anywhere in the text, DO NOT GUESS OR INFER a year — omit that show entirely.',
     `- If the date is before ${today}, omit it — this tool only tracks upcoming shows, never past ones.`,
-    '- Only include shows for the exact band named by the user, not support acts, tribute bands, or unrelated artists.',
+    '- Only include shows for the exact band named by the user, not support acts, or unrelated artists. Watch especially for tribute/cover/parody acts that reuse the real band\'s name with an extra qualifier word — e.g. "Ultimate <band>", "<band> Tribute", "Not <band>", "The <band> Experience" — these are impersonator acts, not the real band, even though the name looks similar. If the billing includes any such qualifier, or the event is part of an obvious multi-act tribute/nostalgia festival, leave it out.',
     '- Respond with a JSON object: {"shows": [{"venue": "", "city": "", "country": "", "date": "YYYY-MM-DD", "sourceUrl": ""}]}',
     '- If nothing qualifies, respond with {"shows": []}.',
   ].join('\n');
@@ -225,13 +225,36 @@ async function main() {
       usage.note(`Ticketmaster lookup failed for "${band.name}": ${e.message}`);
     }
 
-    if (candidates.length > 0) {
-      ticketmasterHits += 1;
-    } else if (usage.canCallTavily() && usage.canCallGroq(TOUR_DATE_ESTIMATED_TOKENS)) {
-      // ---- Fallback: Tavily + Groq, only when Ticketmaster found nothing ----
+    if (candidates.length > 0) ticketmasterHits += 1;
+
+    // ---- Supplement: Tavily + Groq, ALWAYS attempted (budget permitting) ----
+    //
+    // Used to be an `else if` — only run when Ticketmaster found literally
+    // nothing for the band. Changed 2026-07-13 after a real gap: a band on
+    // a genuine world tour (The Strokes, 2026) had Ticketmaster return a
+    // full page of North American dates (so candidates.length > 0), which
+    // skipped this fallback entirely — silently dropping 11 real shows that
+    // were sold through non-Ticketmaster channels Ticketmaster's own
+    // Discovery API doesn't cover for this act (Japanese festival dates
+    // sold via local promoters, several European arena dates). Ticketmaster
+    // returning *some* results for a band is no guarantee it returned *all*
+    // of them, so this now always runs as a supplement, not a replacement —
+    // dedup below (existingConcertIds/existingConcertKeys) already makes it
+    // safe to run both sources and merge, since anything Ticketmaster
+    // already found here gets skipped as a duplicate rather than double
+    // counted. This does mean Tavily/Groq budget gets spent on every band
+    // with tour-date activity instead of only the ones Ticketmaster missed
+    // entirely — acceptable, since the per-run/monthly caps already bound
+    // the worst case, and the existing "budget exhausted" path below simply
+    // means some bands go without a news check that particular week rather
+    // than anything ever exceeding a free-tier limit.
+    if (usage.canCallTavily() && usage.canCallGroq(TOUR_DATE_ESTIMATED_TOKENS)) {
       try {
-        candidates = await fetchTourDatesViaTavily(band, usage);
-        if (candidates.length > 0) tavilyFallbackUsed += 1;
+        const supplemental = await fetchTourDatesViaTavily(band, usage);
+        if (supplemental.length > 0) {
+          tavilyFallbackUsed += 1;
+          candidates = candidates.concat(supplemental);
+        }
       } catch (e) {
         usage.note(`Tavily/Groq tour-date fallback failed for "${band.name}": ${e.message}`);
       }
