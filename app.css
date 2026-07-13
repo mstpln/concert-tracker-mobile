@@ -118,13 +118,23 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   display: flex; flex-direction: column;
 }
 
+.brand-banner {
+  box-sizing: border-box; height: 60px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: #024ddf; color: #ffffff;
+  font-family: 'Gill Sans', 'Gill Sans MT', 'Gill Sans Nova', sans-serif;
+  font-weight: 700; font-size: 19px; letter-spacing: 2px;
+}
+
 #app-header {
+  box-sizing: border-box; height: 60px; flex-shrink: 0;
   display: flex; align-items: center; gap: 8px;
   padding: 14px 16px;
   background: var(--header-bg); color: var(--header-text);
 }
 .header-brand { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
 .header-icon, .header-icon svg { display: flex; }
+.header-icon svg { width: 20px; height: 20px; }
 .header-title { font-weight: 600; font-size: 15px; flex: 1; letter-spacing: 0.2px; }
 .brand-blue { color: var(--accent); }
 
@@ -728,7 +738,7 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .countdown-directions-btn svg { flex-shrink: 0; }
 .stats-teaser-footer {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
-  background: var(--accent); border: none; border-top: 1px solid #2c2d30;
+  background: #4d8dff; border: none; border-top: 1px solid #2c2d30;
   padding: 9px 16px; font-size: 12.5px; font-weight: 600; color: var(--on-accent);
 }
 .stats-teaser-footer:hover { opacity: 0.92; }
