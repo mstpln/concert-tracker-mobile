@@ -124,6 +124,12 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   background: #024ddf; color: #ffffff;
   font-family: 'Gill Sans', 'Gill Sans MT', 'Gill Sans Nova', sans-serif;
   font-weight: 700; font-size: 19px; letter-spacing: 2px;
+  /* Gill Sans has no heavier weight than Bold on most systems, so bumping
+     font-weight past 700 has no visual effect. A thin stroke matching the
+     fill color reliably thickens the letterforms regardless of what weights
+     the installed font actually has. */
+  -webkit-text-stroke: 0.6px #ffffff;
+  text-stroke: 0.6px #ffffff;
 }
 
 #app-header {
