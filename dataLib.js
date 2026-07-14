@@ -382,6 +382,18 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
     if (c.country) countrySet.add(String(c.country).trim().toLowerCase());
   }
 
+  // Unique venues/cities — simple distinct counts, unaffected by the
+  // trip-vs-row distinction below since a Set already dedups regardless of
+  // how many bands you saw at the same venue/city. Venue key includes city
+  // (matches topVenues' key below) so two different venues that happen to
+  // share a name in different cities aren't conflated into one.
+  const venueKeySet = new Set();
+  const citySet = new Set();
+  for (const c of attendedPast) {
+    if (c.venue) venueKeySet.add(`${c.venue.trim().toLowerCase()}|${(c.city || '').trim().toLowerCase()}`);
+    if (c.city) citySet.add(c.city.trim().toLowerCase());
+  }
+
   // Distance is summed once per physical visit (see dlVenueVisits above), not
   // once per band seen — otherwise a single Roskilde trip where you saw 11
   // bands would count that same round-trip distance 11 times over.
@@ -430,9 +442,66 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
   }
   const averageTicketPrice = totalTicketsWithPrice ? Math.round(totalSpend / totalTicketsWithPrice) : null;
 
-  const yearCounts = new Map();
-  for (const c of attendedPast) {
+  // % of past concerts with a ticket price logged. Deliberately per-show
+  // (matches knownSpendCountPast above), not per-trip — ticket price is
+  // entered per concert already (each band's share of a festival ticket is
+  // split across its rows manually), so a row-level percentage already
+  // reflects reality without needing trip-based dedup.
+  const pctWithTicketPrice = totalShows ? Math.round((knownSpendCountPast / totalShows) * 100) : 0;
+
+  // Per-year ticket spend — same past+upcoming pool as totalSpend above, and
+  // same per-row basis as pctWithTicketPrice (not trip-deduped) for the same
+  // reason: split festival prices already sum correctly row-by-row.
+  const yearSpend = new Map();
+  for (const c of [...attendedPast, ...upcomingGoing]) {
+    if (typeof c.ticketPrice !== 'number' || Number.isNaN(c.ticketPrice)) continue;
     const year = (c.date || '').slice(0, 4);
+    if (!year) continue;
+    const qty = c.ticketQuantity || 1;
+    const existing = yearSpend.get(year) || { year, total: 0, count: 0 };
+    existing.total += c.ticketPrice * qty;
+    existing.count += 1;
+    yearSpend.set(year, existing);
+  }
+  let highestSpendYear = null;
+  let lowestSpendYear = null;
+  const spendYears = [...yearSpend.values()];
+  for (const y of spendYears) {
+    if (!highestSpendYear || y.total > highestSpendYear.total) highestSpendYear = y;
+    if (!lowestSpendYear || y.total < lowestSpendYear.total) lowestSpendYear = y;
+  }
+  // A single year of data makes "lowest" a meaningless restatement of
+  // "highest" — only show both once there are at least two distinct years.
+  if (spendYears.length < 2) lowestSpendYear = null;
+
+  // Overall average rating + % of past concerts rated — both per-show, same
+  // basis as the rest of the ratings-related stats (you rate each concert
+  // individually, per the app's existing rating flow).
+  let ratingSum = 0;
+  let ratedCount = 0;
+  for (const c of attendedPast) {
+    if (typeof c.rating === 'number' && !Number.isNaN(c.rating)) {
+      ratingSum += c.rating;
+      ratedCount += 1;
+    }
+  }
+  const overallAverageRating = ratedCount ? Math.round((ratingSum / ratedCount) * 10) / 10 : null;
+  const pctWithRating = totalShows ? Math.round((ratedCount / totalShows) * 100) : 0;
+
+  // Total songs heard live — summed per-show (setlist.fm data), same as
+  // longestSetlist below.
+  let totalSongsHeardLive = 0;
+  for (const c of attendedPast) {
+    totalSongsHeardLive += c.setlist?.songs?.length || 0;
+  }
+
+  // Busiest year counts trips (see dlVenueVisits above), not individual
+  // concert rows — a multi-band festival day, or a multi-day festival,
+  // counts once, not once per band seen. Consistent with the
+  // kmTraveled/topVenues/festivalsAttended trip-based fix above.
+  const yearCounts = new Map();
+  for (const v of visits) {
+    const year = (v.lastDate || '').slice(0, 4);
     if (!year) continue;
     yearCounts.set(year, (yearCounts.get(year) || 0) + 1);
   }
@@ -452,6 +521,13 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
     }
   }
   const firstShow = sortedByDate[0] || null;
+  // Most recent past show, and how long ago that was — the "time since last
+  // concert" tile. Reuses sortedByDate (already sorted ascending) rather than
+  // re-sorting.
+  const lastShow = sortedByDate.length ? sortedByDate[sortedByDate.length - 1] : null;
+  const daysSinceLastShow = lastShow
+    ? Math.round((Date.now() - new Date(lastShow.date + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24))
+    : null;
 
   // Ties broken by most recently seen — the most natural reading of "which
   // of these tied artists is more front-of-mind right now".
@@ -523,13 +599,15 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
 
   const totalUniqueArtists = new Set(attendedPast.map((c) => c.bandId)).size;
 
+  // Trip-based, same reasoning as busiestYear above — a festival day (or
+  // multi-day festival) visiting a city counts once, not once per band.
   const cityCounts = new Map();
-  for (const c of attendedPast) {
-    if (!c.city) continue;
-    const key = c.city.trim();
-    const existing = cityCounts.get(key) || { city: c.city, count: 0, lastDate: null };
+  for (const v of visits) {
+    if (!v.city) continue;
+    const key = v.city.trim();
+    const existing = cityCounts.get(key) || { city: v.city, count: 0, lastDate: null };
     existing.count += 1;
-    if (c.date && (!existing.lastDate || c.date > existing.lastDate)) existing.lastDate = c.date;
+    if (v.lastDate && (!existing.lastDate || v.lastDate > existing.lastDate)) existing.lastDate = v.lastDate;
     cityCounts.set(key, existing);
   }
   let mostVisitedCity = null;
@@ -540,12 +618,13 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
   }
 
   // Calendar month aggregated across every year (not tied to a specific
-  // year, unlike busiestYear) — "you go to more shows in August than any
-  // other month", regardless of which year each August show happened in.
+  // year, unlike busiestYear) — "you go to more trips in August than any
+  // other month", regardless of which year each August trip happened in.
+  // Trip-based, same reasoning as busiestYear above.
   const monthCounts = new Map();
-  for (const c of attendedPast) {
-    if (!c.date) continue;
-    const m = Number(c.date.slice(5, 7));
+  for (const v of visits) {
+    if (!v.lastDate) continue;
+    const m = Number(v.lastDate.slice(5, 7));
     if (!m) continue;
     monthCounts.set(m, (monthCounts.get(m) || 0) + 1);
   }
@@ -587,15 +666,26 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
   return {
     totalShows,
     countries: countrySet.size,
+    uniqueVenues: venueKeySet.size,
+    uniqueCities: citySet.size,
     kmTraveled: Math.round(kmTraveled),
     knownDistanceCount,
     totalSpend: Math.round(totalSpend),
     knownSpendCount,
     knownSpendCountPast,
+    pctWithTicketPrice,
+    highestSpendYear,
+    lowestSpendYear,
     averageTicketPrice,
+    overallAverageRating,
+    ratedCount,
+    pctWithRating,
+    totalSongsHeardLive,
     busiestYear,
     longestGap,
     firstShow,
+    lastShow,
+    daysSinceLastShow,
     topArtists,
     topVenues,
     topRatedShows,

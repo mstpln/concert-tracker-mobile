@@ -2035,23 +2035,26 @@ function renderStatsScreen() {
   const { past, upcoming } = dlMyConcerts(liveConcerts);
 
   if (past.length === 0) {
-    container.innerHTML = `<p class="screen-empty">No past concerts logged yet — your stats will show up here once you've attended a few shows.</p>`;
+    container.innerHTML = `<p class="screen-empty">No past concerts logged yet — your stats will show up here once you've attended a few concerts.</p>`;
     return;
   }
 
   const stats = dlConcertStats(past, bands, upcoming);
   const kmCaveat = stats.knownDistanceCount < stats.totalShows
-    ? `<br><span class="stats-kpi-caveat">from ${stats.knownDistanceCount} of ${stats.totalShows} shows</span>`
+    ? `<br><span class="stats-kpi-caveat">from ${stats.knownDistanceCount} of ${stats.totalShows} concerts</span>`
     : '';
 
-  // Headline row — the same 4 always-shown overview numbers as before, now
-  // under their own "Overview" label at the very top, matching the other
-  // labeled sections below instead of standing alone unlabeled.
+  // Headline row — the same always-shown overview numbers as before, plus
+  // unique venues/cities, all under their own "Overview" label at the very
+  // top, matching the other labeled sections below instead of standing alone
+  // unlabeled.
   const summaryTiles = [
-    { value: stats.totalShows.toLocaleString(), label: 'shows attended' },
+    { value: stats.totalShows.toLocaleString(), label: 'concerts attended' },
     { value: stats.countries.toLocaleString(), label: 'countries' },
     { value: stats.kmTraveled.toLocaleString(), label: `km traveled${kmCaveat}` },
     { value: stats.totalUniqueArtists.toLocaleString(), label: 'different artists seen' },
+    { value: stats.uniqueVenues.toLocaleString(), label: 'unique venues' },
+    { value: stats.uniqueCities.toLocaleString(), label: 'unique cities' },
   ];
 
   // Everything else groups into labeled sections instead of one flat grid,
@@ -2071,18 +2074,26 @@ function renderStatsScreen() {
     });
   }
   if (stats.festivalsAttended > 0) milestoneTiles.push({ value: stats.festivalsAttended.toLocaleString(), label: 'festivals attended' });
+  if (stats.totalSongsHeardLive > 0) milestoneTiles.push({ value: stats.totalSongsHeardLive.toLocaleString(), label: 'songs heard live' });
+  if (stats.daysSinceLastShow !== null) {
+    const lastShowDetail = [stats.lastShow.bandName, stats.lastShow.venue].filter(Boolean).join(', ');
+    milestoneTiles.push({
+      value: formatGapLabel(stats.daysSinceLastShow),
+      label: `since your last concert${lastShowDetail ? `<br><span class="stats-kpi-caveat">${escapeHtml(lastShowDetail)}</span>` : ''}`,
+    });
+  }
 
   const habitTiles = [];
-  if (stats.busiestYear) habitTiles.push({ value: escapeHtml(stats.busiestYear.year), label: `busiest year, ${stats.busiestYear.count} shows` });
-  if (stats.busiestMonth) habitTiles.push({ value: MONTH_NAMES[stats.busiestMonth.month - 1], label: `busiest month, ${stats.busiestMonth.count} shows` });
+  if (stats.busiestYear) habitTiles.push({ value: escapeHtml(stats.busiestYear.year), label: `busiest year, ${stats.busiestYear.count} trips` });
+  if (stats.busiestMonth) habitTiles.push({ value: MONTH_NAMES[stats.busiestMonth.month - 1], label: `busiest month, ${stats.busiestMonth.count} trips` });
   if (stats.mostVisitedCity) habitTiles.push({ value: stats.mostVisitedCity.count.toLocaleString(), label: `most-visited city, ${escapeHtml(stats.mostVisitedCity.city)}` });
 
   // "Extremes" — every tile that's really about one specific record-holding
   // show. Kept as adjacent opposite-pairs (farthest/closest, cheapest/
   // priciest) so the 2-column grid visually pairs them.
   const extremeTiles = [];
-  if (stats.farthestShow) extremeTiles.push({ value: formatKm(stats.farthestShow.distanceKm), label: `farthest show, ${escapeHtml(stats.farthestShow.bandName)}${venueYearCaveat(stats.farthestShow)}` });
-  if (stats.closestShow) extremeTiles.push({ value: formatKm(stats.closestShow.distanceKm), label: `closest show, ${escapeHtml(stats.closestShow.bandName)}${venueYearCaveat(stats.closestShow)}` });
+  if (stats.farthestShow) extremeTiles.push({ value: formatKm(stats.farthestShow.distanceKm), label: `farthest concert, ${escapeHtml(stats.farthestShow.bandName)}${venueYearCaveat(stats.farthestShow)}` });
+  if (stats.closestShow) extremeTiles.push({ value: formatKm(stats.closestShow.distanceKm), label: `closest concert, ${escapeHtml(stats.closestShow.bandName)}${venueYearCaveat(stats.closestShow)}` });
   if (stats.cheapestTicket) {
     // dataLib.js's cheapestTicket is scoped to PAID shows only (Free is
     // excluded there on purpose), so this is always a real kr amount, never 0.
@@ -2095,11 +2106,33 @@ function renderStatsScreen() {
   const moneyTiles = [];
   if (stats.knownSpendCount > 0) {
     const spendCaveat = stats.knownSpendCountPast < stats.totalShows
-      ? `<br><span class="stats-kpi-caveat">from ${stats.knownSpendCountPast} of ${stats.totalShows} past shows</span>`
+      ? `<br><span class="stats-kpi-caveat">from ${stats.knownSpendCountPast} of ${stats.totalShows} past concerts</span>`
       : '';
     moneyTiles.push({ value: `${stats.totalSpend.toLocaleString()} kr`, label: `spent on tickets, all time${spendCaveat}` });
     moneyTiles.push({ value: `${stats.averageTicketPrice.toLocaleString()} kr`, label: 'average ticket price' });
+    moneyTiles.push({ value: `${stats.pctWithTicketPrice}%`, label: 'of concerts with a price logged' });
   }
+  if (stats.highestSpendYear) {
+    moneyTiles.push({
+      value: `${stats.highestSpendYear.total.toLocaleString()} kr`,
+      label: `highest-spend year, ${stats.highestSpendYear.year}<br><span class="stats-kpi-caveat">${stats.highestSpendYear.count} concert${stats.highestSpendYear.count === 1 ? '' : 's'}</span>`,
+    });
+  }
+  if (stats.lowestSpendYear) {
+    moneyTiles.push({
+      value: `${stats.lowestSpendYear.total.toLocaleString()} kr`,
+      label: `lowest-spend year, ${stats.lowestSpendYear.year}<br><span class="stats-kpi-caveat">${stats.lowestSpendYear.count} concert${stats.lowestSpendYear.count === 1 ? '' : 's'}</span>`,
+    });
+  }
+
+  // "Ratings" — a new section pairing overall average rating with rating
+  // coverage, both per-concert (see dlConcertStats comments).
+  const ratingTiles = [];
+  if (stats.overallAverageRating !== null) ratingTiles.push({ value: stats.overallAverageRating.toFixed(1), label: 'average rating' });
+  ratingTiles.push({
+    value: `${stats.pctWithRating}%`,
+    label: `of concerts rated${stats.ratedCount < stats.totalShows ? `<br><span class="stats-kpi-caveat">${stats.ratedCount} of ${stats.totalShows} concerts</span>` : ''}`,
+  });
 
   const tileHtml = (t) => `<div class="stats-kpi-tile"><span class="stats-kpi-value">${t.value}</span><span class="stats-kpi-label">${t.label}</span></div>`;
   const gridHtml = (arr) => `<div class="stats-kpi-grid">${arr.map(tileHtml).join('')}</div>`;
@@ -2113,8 +2146,9 @@ function renderStatsScreen() {
     ${sectionHtml('Habits', habitTiles)}
     ${sectionHtml('Extremes', extremeTiles)}
     ${sectionHtml('Money', moneyTiles)}
+    ${sectionHtml('Ratings', ratingTiles)}
     ${stats.topRatedShows.length > 0 ? `
-      <p class="section-label">Top-rated shows</p>
+      <p class="section-label">Top-rated concerts</p>
       <div class="stats-list-card">
         ${stats.topRatedShows.slice(0, TOP_RATED_DISPLAY_CAP).map((c) => `<div class="stats-list-row"><span>${escapeHtml(c.bandName)} &middot; ${escapeHtml((c.date || '').slice(0, 4))}</span>${starsHtml(c.rating)}</div>`).join('')}
         ${stats.topRatedShows.length > TOP_RATED_DISPLAY_CAP ? `<div class="stats-list-row"><span class="muted">+${stats.topRatedShows.length - TOP_RATED_DISPLAY_CAP} more</span></div>` : ''}
