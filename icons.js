@@ -112,6 +112,20 @@ const ICONS = {
     '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>',
   eyeOff:
     '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.4 17.4A11 11 0 0 1 12 19c-7 0-11-7-11-7a19.6 19.6 0 0 1 4.6-5.4"/><path d="M9.9 5.2A8.6 8.6 0 0 1 12 5c7 0 11 7 11 7a19.4 19.4 0 0 1-2.2 3.1"/><path d="M14.1 14.1a3 3 0 1 1-4.2-4.2"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
+  // Settings > Research pipeline usage cards (4 icons below) — small
+  // detail-row glyphs, same 13px outline treatment as the rest of the set.
+  key:
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.9 12.1L20 3"/><path d="M15.5 7.5l3 3"/><path d="M18 5l3 3"/></svg>',
+  // Plain calendar (no internal mark) — distinct from calendarCheck/
+  // calendarPlus above, used where the date itself is the only signal.
+  calendarPlain:
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/></svg>',
+  // Ascending bars — "limits/usage" concept, paired with shieldCheck below
+  // for the "real limit vs our own safety cap" distinction on usage cards.
+  gauge:
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="21" x2="5" y2="13"/><line x1="12" y1="21" x2="12" y2="7"/><line x1="19" y1="21" x2="19" y2="3"/></svg>',
+  shieldCheck:
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3.3 8.5-7 10-3.7-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg>',
 };
 
 function icon(name) {

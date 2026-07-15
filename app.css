@@ -479,6 +479,44 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .usage-bar-track { height: 5px; background: var(--surface-muted); border-radius: 3px; overflow: hidden; }
 .usage-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
 
+/* One card per research-pipeline service (Settings > Research pipeline) —
+   name + tiered usage bar, then icon-led detail rows (key, added date,
+   real limit, our safety cap). Same bordered-card look as .settings-card,
+   just stacked one per service instead of one shared card. */
+.usage-service-card {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; background: var(--surface); margin-bottom: 8px;
+}
+.usage-service-name { font-size: 13px; font-weight: 500; margin: 0 0 8px; }
+
+/* Tiered bar: full track width = the service's real free-tier ceiling, not
+   our own lower cap. .usage-bar-cap-region shades 0-to-our-cap so it's
+   visually distinct from the (lighter) remainder of the real limit; the
+   accent fill sits on top of it, on the same real-limit scale; the tick
+   marks exactly where our own cap sits inside that real ceiling. */
+.usage-bar-track-tiered {
+  position: relative; height: 6px; background: var(--surface-muted);
+  border-radius: 3px; margin-bottom: 10px;
+}
+.usage-bar-cap-region {
+  position: absolute; left: 0; top: 0; height: 100%;
+  background: var(--border-strong); border-radius: 3px;
+}
+.usage-bar-fill-tiered {
+  position: absolute; left: 0; top: 0; height: 100%;
+  background: var(--accent); border-radius: 3px;
+}
+.usage-bar-cap-tick {
+  position: absolute; top: -2px; height: 10px; width: 2px;
+  background: var(--text); transform: translateX(-1px);
+}
+
+.usage-detail-row {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text); padding: 3px 0;
+}
+.usage-detail-row svg { color: var(--text-muted); flex-shrink: 0; }
+
 .settings-version { text-align: center; color: var(--text-muted); font-size: 11px; margin: 18px 0 4px; }
 
 /* Show/hide toggle for the Groq key field — a long key is easy to mistype
