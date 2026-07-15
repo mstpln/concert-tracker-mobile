@@ -73,8 +73,10 @@ const RESEARCH_KEY_METADATA = {
   // Client Secret: unlike the other keys above, the real add-date IS known
   // here (2026-07-13, this build) rather than guessed — so, unlike the
   // no-date policy those follow (see the QA-pass note above), it's included
-  // here since it's actually accurate.
-  spotifyClientSecret: { label: 'Spotify Client Secret', masked: 'cafa••••••••ff48 (added 2026-07-13)' },
+  // here since it's actually accurate. Now a structured field (addedAt)
+  // rather than baked into the masked string, so the Settings usage cards
+  // can render it as its own row.
+  spotifyClientSecret: { label: 'Spotify Client Secret', masked: 'cafa••••••••ff48', addedAt: '2026-07-13' },
 };
 
 async function init() {
@@ -2408,17 +2410,46 @@ async function renderSettingsScreen() {
 // GitHub login) is the safe equivalent of a "run now" button.
 const RESEARCH_PIPELINE_ACTIONS_URL = 'https://github.com/mstpln/concert-tracker-mobile/actions/workflows/research.yml';
 
-function usageBarRowHtml(label, used, cap) {
+// Tiered usage bar — the track's full width is the service's real free-tier
+// ceiling (realLimit), not our own lower cap, so the bar always answers "how
+// close to the REAL limit are we" rather than just "how close to our own
+// arbitrary number". The cap-region fill (0 to ourCap) plus a tick at that
+// boundary shows where our own safety cap sits inside that real ceiling; the
+// accent fill (0 to used) is actual usage, on the same real-limit scale. For
+// a service with no published real limit (Spotify), realLimit === ourCap is
+// passed in and the tick is simply omitted — there's nothing to mark.
+function tieredUsageBarHtml(used, ourCap, realLimit) {
+  const real = Number(realLimit) || Number(ourCap) || 1;
+  const cap = Number(ourCap) || real;
   const u = Number(used) || 0;
-  const c = Number(cap) || 1;
-  const pct = Math.min(100, Math.max(0, (u / c) * 100));
+  const capPct = Math.round(Math.min(100, Math.max(0, (cap / real) * 100)) * 100) / 100;
+  const usedPct = Math.round(Math.min(100, Math.max(0, (u / real) * 100)) * 100) / 100;
   return `
-    <div class="usage-bar-row">
-      <div class="usage-bar-label-row">
-        <span>${escapeHtml(label)}</span>
-        <span>${u.toLocaleString()} / ${c.toLocaleString()}</span>
-      </div>
-      <div class="usage-bar-track"><div class="usage-bar-fill" style="width:${pct}%"></div></div>
+    <div class="usage-bar-track-tiered">
+      <div class="usage-bar-cap-region" style="width:${capPct}%"></div>
+      <div class="usage-bar-fill-tiered" style="width:${usedPct}%"></div>
+      ${cap < real ? `<div class="usage-bar-cap-tick" style="left:${capPct}%"></div>` : ''}
+    </div>`;
+}
+
+function usageDetailRowHtml(iconName, html) {
+  return `<div class="usage-detail-row">${icon(iconName)}<span>${html}</span></div>`;
+}
+
+// One card per research-pipeline service: name + tiered bar, then up to 4
+// grouped detail rows (key, added date, real limit, our own safety
+// structure). addedAt is only rendered when it's a real, honestly-known
+// date (see RESEARCH_KEY_METADATA's no-fabrication policy above) — most
+// services simply omit that row rather than show a guessed date.
+function usageServiceCardHtml({ name, keyMasked, addedAt, used, ourCap, realLimit, limitText, capText }) {
+  return `
+    <div class="usage-service-card">
+      <p class="usage-service-name">${escapeHtml(name)}</p>
+      ${tieredUsageBarHtml(used, ourCap, realLimit)}
+      ${keyMasked ? usageDetailRowHtml('key', escapeHtml(keyMasked)) : ''}
+      ${addedAt ? usageDetailRowHtml('calendarPlain', `Added ${escapeHtml(formatSettingsDate(addedAt))}`) : ''}
+      ${usageDetailRowHtml('gauge', `Real limit: ${escapeHtml(limitText)}`)}
+      ${usageDetailRowHtml('shieldCheck', `Our cap: ${escapeHtml(capText)}`)}
     </div>`;
 }
 
@@ -2461,16 +2492,74 @@ function researchPipelineSectionHtml() {
   const sp = apiUsage.spotify || {};
   const lastRun = apiUsage.lastRun || null;
 
-  const bars =
-    usageBarRowHtml('Ticketmaster (today)', tm.callsToday, tm.freeTierDailyLimit ?? 5000) +
-    usageBarRowHtml('Tavily (this month)', tv.callsThisMonth, tv.freeTierMonthlyLimit ?? 1000) +
-    usageBarRowHtml('Groq requests (today)', gq.callsToday, gq.freeTierDailyRequestLimit ?? 1000) +
-    usageBarRowHtml('Groq tokens (today)', gq.tokensToday ?? 0, gq.freeTierTpdLimit ?? 200000) +
-    usageBarRowHtml('setlist.fm (today)', sl.callsToday, sl.freeTierDailyLimit ?? 1440) +
-    usageBarRowHtml('Spotify (today)', sp.callsToday, sp.dailyCap ?? 6000);
+  // Real free-tier ceiling and our own (lower) safety cap for each service —
+  // both already synced into apiUsage.json on every pipeline run (see
+  // usageTracker.js's "resync every cap/limit field from config" comment),
+  // so these read the actual enforced numbers rather than duplicating
+  // hard-coded constants here. Ticketmaster's own cap is the one exception:
+  // it's enforced as "50% of the real daily limit" inline in code rather
+  // than stored as a named field, so it's recomputed the same way here.
+  const tmReal = tm.freeTierDailyLimit ?? 5000;
+  const tmCap = Math.round(tmReal * 0.5);
+  const tvReal = tv.freeTierMonthlyLimit ?? 1000;
+  const tvCap = tv.monthlyCap ?? 900;
+  const gqReal = gq.freeTierTpdLimit ?? 200000;
+  const gqCap = gq.safeTpd ?? 150000;
+  const slReal = sl.freeTierDailyLimit ?? 1440;
+  const slCap = sl.dailyCap ?? 1200;
+  const spCap = sp.dailyCap ?? 6000;
+
+  const cards =
+    usageServiceCardHtml({
+      name: 'Ticketmaster',
+      keyMasked: RESEARCH_KEY_METADATA.ticketmaster.masked,
+      addedAt: RESEARCH_KEY_METADATA.ticketmaster.addedAt,
+      used: tm.callsToday, ourCap: tmCap, realLimit: tmReal,
+      limitText: `${tmReal.toLocaleString()}/day`,
+      capText: `${tmCap.toLocaleString()}/day · ${(tm.perRunCap ?? 300).toLocaleString()}/run`,
+    }) +
+    usageServiceCardHtml({
+      name: 'Tavily',
+      keyMasked: RESEARCH_KEY_METADATA.tavily.masked,
+      addedAt: RESEARCH_KEY_METADATA.tavily.addedAt,
+      used: tv.callsThisMonth, ourCap: tvCap, realLimit: tvReal,
+      limitText: `${tvReal.toLocaleString()}/month`,
+      capText: `${tvCap.toLocaleString()}/month · ${(tv.perRunCap ?? 180).toLocaleString()}/run`,
+    }) +
+    usageServiceCardHtml({
+      name: 'Groq (research pipeline)',
+      keyMasked: RESEARCH_KEY_METADATA.groq.masked,
+      addedAt: RESEARCH_KEY_METADATA.groq.addedAt,
+      // Bar tracks tokens, not requests — TPD is the real binding constraint
+      // for this pipeline (see config.js), requests are mentioned in text only.
+      used: gq.tokensToday ?? 0, ourCap: gqCap, realLimit: gqReal,
+      limitText: `${gqReal.toLocaleString()} tokens/day (${(gq.freeTierDailyRequestLimit ?? 1000).toLocaleString()} req/day)`,
+      capText: `${gqCap.toLocaleString()} tokens/day (${(gq.dailyCap ?? 800).toLocaleString()} req · ${(gq.perRunCap ?? 250).toLocaleString()}/run)`,
+    }) +
+    usageServiceCardHtml({
+      name: 'setlist.fm',
+      keyMasked: RESEARCH_KEY_METADATA.setlistfm.masked,
+      addedAt: RESEARCH_KEY_METADATA.setlistfm.addedAt,
+      used: sl.callsToday, ourCap: slCap, realLimit: slReal,
+      limitText: `${slReal.toLocaleString()}/day`,
+      capText: `${slCap.toLocaleString()}/day · ${(sl.perRunCap ?? 200).toLocaleString()}/run`,
+    }) +
+    usageServiceCardHtml({
+      name: 'Spotify',
+      // Two credentials (Client ID + Secret) share one card — the secret is
+      // the only one with a real masked preview/add-date (see
+      // RESEARCH_KEY_METADATA above), the ID is mentioned alongside it.
+      keyMasked: `${RESEARCH_KEY_METADATA.spotifyClientSecret.masked} · Client ID via GitHub secret`,
+      addedAt: RESEARCH_KEY_METADATA.spotifyClientSecret.addedAt,
+      // No published real limit — Spotify throttles via HTTP 429 instead of
+      // a documented requests/day number, so realLimit === ourCap (no tick).
+      used: sp.callsToday, ourCap: spCap, realLimit: spCap,
+      limitText: `No fixed limit — throttled via HTTP 429`,
+      capText: `${spCap.toLocaleString()}/day · ${(sp.perRunCap ?? 4000).toLocaleString()}/run`,
+    });
 
   const lastRunHtml = lastRun
-    ? `<p class="settings-hint" style="margin-top:8px">
+    ? `<p class="settings-hint" style="margin-top:0">
          Last run ${escapeHtml(formatSettingsDate(lastRun.finishedAt))} · ${escapeHtml(lastRun.status || 'unknown')}
          · ${lastRun.bandsProcessed ?? 0} bands checked, ${lastRun.concertsAdded ?? 0} new concerts, ${lastRun.newsAdded ?? 0} new news items, ${lastRun.setlistsAdded ?? 0} new setlists, ${lastRun.spotifyLinksAdded ?? 0} new song links.
        </p>`
@@ -2479,14 +2568,11 @@ function researchPipelineSectionHtml() {
   return `
     <p class="section-label">Research pipeline</p>
     <div class="settings-card">
-      ${keyRows}
-      <div class="settings-card-divider">
-        ${bars}
-        ${lastRunHtml}
-        <p class="settings-hint" style="margin-top:8px">All these services have hard-coded usage caps set well below their free tier (or, for Spotify, well below what it takes to trip its own rate limiting), so this can never incur a charge.</p>
-      </div>
-      <div class="settings-card-divider">${actionButtons}</div>
-    </div>`;
+      ${lastRunHtml}
+      <div class="${lastRun ? 'settings-card-divider' : ''}">${actionButtons}</div>
+    </div>
+    ${cards}
+    <p class="settings-hint" style="font-style:italic;margin:8px 2px 4px">Updated automatically after each pipeline run.</p>`;
 }
 
 /* ---------------- Enrichment (runs on add) ---------------- */
