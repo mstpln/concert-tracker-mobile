@@ -49,6 +49,18 @@ const ICONS = {
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M7.5 10.5c3-1 6.5-1 9 .8M8 14c2.3-.7 5-.7 7 .6"/></svg>',
   weather:
     '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 18h10a4 4 0 0 0 .4-8A6 6 0 0 0 6 11.5 3.3 3.3 0 0 0 7 18z"/></svg>',
+  weatherClearDay: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>',
+  weatherClearNight: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 15.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 11.5z"/></svg>',
+  weatherPartlyCloudyDay: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"/><path d="M6 3v2M2 8h2M16 18H7a4 4 0 0 1 .4-8A5 5 0 0 1 17 12a3 3 0 0 1-1 6z"/></svg>',
+  weatherPartlyCloudyNight: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 6a5 5 0 0 0 2 8.5A4 4 0 0 1 18 18H7a4 4 0 0 1 .4-8A5 5 0 0 1 12 6z"/></svg>',
+  weatherCloudy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 18h13a4 4 0 0 0 .5-8A6 6 0 0 0 7 11a3.5 3.5 0 0 0-2 7z"/></svg>',
+  weatherFog: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h16M3 13h18M5 17h14"/></svg>',
+  weatherDrizzle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 14h13a4 4 0 0 0 .5-8A6 6 0 0 0 7 7a3.5 3.5 0 0 0-2 7zM8 18v2M12 18v2M16 18v2"/></svg>',
+  weatherRain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13h13a4 4 0 0 0 .5-8A6 6 0 0 0 7 6a3.5 3.5 0 0 0-2 7zM8 17l-1 3M13 17l-1 3M18 17l-1 3"/></svg>',
+  weatherHeavyRain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h13a4 4 0 0 0 .5-8A6 6 0 0 0 7 5a3.5 3.5 0 0 0-2 7zM7 16l-1 4M11 16l-1 4M15 16l-1 4M19 16l-1 4"/></svg>',
+  weatherSnow: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13h13a4 4 0 0 0 .5-8A6 6 0 0 0 7 6a3.5 3.5 0 0 0-2 7zM8 18h.01M12 20h.01M16 18h.01"/></svg>',
+  weatherThunderstorm: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13h13a4 4 0 0 0 .5-8A6 6 0 0 0 7 6a3.5 3.5 0 0 0-2 7zM12 15l-2 4h3l-1 3 3-5h-3z"/></svg>',
+  weatherUnknown: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4.2 1.8c-.9.8-1.7 1.2-1.7 2.7M12 17h.01"/></svg>',
   checklist:
     '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12l2.5 2.5L16 9"/></svg>',
   folder:

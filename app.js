@@ -43,6 +43,7 @@ let venuesEuropeOnly = false;
 // attendance.
 let venuesPastOnly = false;
 let activeVenueKey = null;
+const weatherViews = new Map(); // browser-local, transient UI state only
 
 const el = (id) => document.getElementById(id);
 
@@ -754,6 +755,7 @@ function renderMyConcertsScreen() {
 
   container.innerHTML = html;
   wireMyConcertsHandlers(container);
+  upcoming.forEach((concert) => ensureConcertWeather(concert));
 }
 
 function statsTeaserHtml(stats) {
@@ -1089,6 +1091,24 @@ const PREP_CHECKLIST = [
 ];
 function prepCount(c) { return PREP_CHECKLIST.filter(([key]) => c.prepChecklist?.[key]).length; }
 function prepPanel(id, content) { return `<div id="prep-${escapeAttr(id)}" class="concert-prep-panel" hidden>${content}</div>`; }
+function weatherDateLabel(value) { return value ? new Intl.DateTimeFormat('en', { month: 'long', day: 'numeric' }).format(new Date(`${value}T00:00:00Z`)) : null; }
+function weatherSummary(weather) { const focus = weather.hours?.[Math.floor((weather.hours?.length || 1) / 2)] || weather.hours?.[0]; if (!focus) return null; const rain = Math.max(...weather.hours.map((hour) => hour.precipitationProbability)); return `${focus.temperatureC}°C · ${focus.conditionText} · ${rain}% rain`; }
+function weatherPanelHtml(c) {
+  const current = weatherViews.get(c.id); const availability = ConcertWeather.availability(c, c.timezone || 'UTC');
+  if (!availability.available) return `<p>Forecasts become available 10 days before the concert.${availability.availableDate ? ` Available ${escapeHtml(weatherDateLabel(availability.availableDate))}.` : ''}</p>`;
+  if (!current || current.kind === 'loading') return '<p aria-live="polite">Loading forecast…</p>';
+  if (current.kind === 'location_unavailable') return '<p>Weather unavailable for this venue</p>';
+  if (current.kind === 'unavailable') return '<p aria-live="polite">Forecast temporarily unavailable</p><button type="button" class="weather-retry" data-concert-id="' + escapeAttr(c.id) + '">Try again</button>';
+  const weather = current.forecast; const stale = current.kind === 'stale';
+  return `<div class="weather-hours" aria-label="Concert weather forecast">${weather.hours.map((hour) => `<div class="weather-hour"><span>${escapeHtml(hour.time.slice(11, 16))}</span><span aria-hidden="true">${icon(`weather${hour.conditionKey[0].toUpperCase()}${hour.conditionKey.slice(1)}`)}</span><strong>${hour.temperatureC}°C</strong><small>${hour.precipitationProbability}% rain · ${hour.windSpeedKmh} km/h</small></div>`).join('')}</div><p class="weather-updated">Updated ${escapeHtml(weather.fetchedAt.slice(11, 16))}${stale ? ' · Showing the latest saved forecast' : ''}</p>`;
+}
+function weatherRowStatus(c) { const current = weatherViews.get(c.id); const availability = ConcertWeather.availability(c, c.timezone || 'UTC'); if (!availability.available) return 'Available 10 days before the concert'; if (current?.forecast) return weatherSummary(current.forecast) || 'Forecast temporarily unavailable'; if (current?.kind === 'location_unavailable') return 'Weather unavailable for this venue'; if (current?.kind === 'unavailable') return 'Forecast temporarily unavailable'; return 'Loading forecast…'; }
+function ensureConcertWeather(concert, force = false) {
+  const availability = ConcertWeather.availability(concert, concert.timezone || 'UTC'); if (!availability.available || weatherViews.get(concert.id)?.kind === 'loading') return;
+  const current = weatherViews.get(concert.id); if (!force && current?.kind === 'ok') return;
+  weatherViews.set(concert.id, { kind: 'loading' });
+  ConcertWeather.load(concert, { force }).then((result) => { weatherViews.set(concert.id, result); if (currentTab === 'myconcerts' && currentScreen === 'main') renderMyConcertsScreen(); });
+}
 function concertPrepGroupHtml(c) {
   const prediction = c.predictedSetlist || null;
   const confidenceLabel = prediction?.confidence ? `${prediction.confidence[0].toUpperCase()}${prediction.confidence.slice(1)}` : 'Low';
@@ -1096,7 +1116,7 @@ function concertPrepGroupHtml(c) {
   const playlistStatus = c.playlistUrl ? 'Manual playlist linked' : 'Add manually or create from prediction';
   const rows = [
     ['playlist', 'spotify', 'Playlist', playlistStatus, `<div class="prep-section"><strong>Your playlist</strong>${c.playlistUrl ? `<p>Manual playlist linked</p><a class="btn-secondary" href="${escapeAttr(c.playlistUrl)}" target="_blank" rel="noopener">Open</a><button type="button" class="prep-edit-playlist">Edit</button><button type="button" class="prep-remove-playlist">Remove</button>` : `<p>Add a playlist you already use before the concert.</p>${playlistFormHtml(c)}`}</div><div class="prep-section"><strong>Create from Predicted Setlist</strong><p>${predicted}</p><button type="button" disabled>Create playlist</button></div>`],
-    ['weather', 'weather', 'Weather forecast', 'Available 10 days before the concert', '<p>Available 10 days before the concert</p>'],
+    ['weather', 'weather', 'Weather forecast', weatherRowStatus(c), weatherPanelHtml(c)],
     ['prediction', 'setlistOrdered', 'Predicted setlist', predicted, prediction?.status === 'ready' ? `<p>Predicted order based on ${prediction.sourceSetlistCount || 0} recent setlists · ${confidenceLabel} confidence</p><ol>${(prediction.songs || []).slice(0, 10).map((s) => `<li>${escapeHtml(s.name)} <span class="muted">Played in ${s.performanceRate || 0}%${s.evidenceLabel ? ` · ${escapeHtml(s.evidenceLabel)}` : ''}${s.spotifyMatched ? ' · Spotify matched' : ''}</span></li>`).join('')}</ol><p class="muted">Updated ${escapeHtml(prediction.generatedAt ? formatDate(prediction.generatedAt.slice(0, 10)) : 'recently')} · setlist.fm</p><button type="button" disabled>Create playlist from matched songs</button>` : `<p>${predicted}</p>`],
     ['checklist', 'checklist', 'Checklist', `${prepCount(c)} of 5 complete`, `<div class="prep-checklist">${PREP_CHECKLIST.map(([key, label]) => `<label><input type="checkbox" data-prep-key="${key}" data-concert-id="${escapeAttr(c.id)}" ${c.prepChecklist?.[key] ? 'checked' : ''}/> ${label}</label>`).join('')}<p class="prep-save-error" aria-live="polite"></p></div>`],
   ];
@@ -1294,6 +1314,7 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
     const open = panel.hidden; group.querySelectorAll('.concert-prep-panel').forEach((item) => { item.hidden = true; }); group.querySelectorAll('[data-prep-toggle]').forEach((item) => { item.setAttribute('aria-expanded', 'false'); item.classList.remove('is-open'); });
     if (open) { panel.hidden = false; btn.setAttribute('aria-expanded', 'true'); btn.classList.add('is-open'); }
   }));
+  container.querySelectorAll('.weather-retry').forEach((btn) => btn.addEventListener('click', (ev) => { ev.stopPropagation(); const concert = concerts.find((item) => item.id === btn.dataset.concertId); if (concert) ensureConcertWeather(concert, true); }));
   container.querySelectorAll('[data-prep-key]').forEach((input) => input.addEventListener('change', async (ev) => {
     ev.stopPropagation(); const c = concerts.find((item) => item.id === input.dataset.concertId); if (!c) return; const previous = c.prepChecklist;
     c.prepChecklist = { ticketReady: false, travelPlanned: false, timesChecked: false, venueRulesChecked: false, playlistReady: false, ...(previous || {}), [input.dataset.prepKey]: input.checked, updatedAt: new Date().toISOString() };
