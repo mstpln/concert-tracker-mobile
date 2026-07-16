@@ -1,0 +1,39 @@
+name: MusicBrainz artist identity backfill
+run-name: MusicBrainz artist identity backfill — @${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Confirm that this will check up to five artists and may update bands.json
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-vault-data-writes
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  musicbrainz-backfill:
+    if: ${{ inputs.confirm == true && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run MusicBrainz artist identity backfill
+        env:
+          CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
+          CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
+        run: node scripts/musicbrainz-backfill.js

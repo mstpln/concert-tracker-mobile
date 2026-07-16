@@ -73,6 +73,7 @@ async function processMusicbrainzIdentities({
 }) {
   if (!enabled) return { enabled: false, updates: 0 };
   const identityUpdates = [];
+  let fatalError = null;
   for (const band of bands.filter(musicbrainzEligible).slice(0, perRunCap)) {
     const result = await searchArtist(band, usage);
     // A quota/cap skip made no provider request, so it must never be
@@ -82,6 +83,7 @@ async function processMusicbrainzIdentities({
     if (identity) identityUpdates.push({ id: band.id, musicbrainz: identity });
     if (result.kind === 'fatal') {
       if (result.error) usage.note(result.error);
+      fatalError = result.error || 'MusicBrainz provider failed';
       break;
     }
   }
@@ -89,7 +91,7 @@ async function processMusicbrainzIdentities({
     const latestBands = await readBands('bands.json', []);
     await writeBands('bands.json', mergeResults(latestBands, identityUpdates));
   }
-  return { enabled: true, updates: identityUpdates.length };
+  return fatalError ? { enabled: true, updates: identityUpdates.length, fatalError } : { enabled: true, updates: identityUpdates.length };
 }
 
 function concertKey(c) {

@@ -71,11 +71,13 @@ function freshState() {
     // each run, so coverage evens out over several weeks instead.
     rotation: { nextBandIndex: 0 },
     lastRun: null,
+    lastMusicbrainzRun: null,
   };
 }
 
 function ensureMusicbrainzState(state) {
   if (!state.musicbrainz) state.musicbrainz = freshState().musicbrainz;
+  if (!('lastMusicbrainzRun' in state)) state.lastMusicbrainzRun = null;
   Object.assign(state.musicbrainz, { perRunCap: config.MUSICBRAINZ.perRunCap });
   return state;
 }
@@ -347,6 +349,18 @@ class UsageTracker {
       setlistfmCalls: this.state.setlistfm.callsThisRun,
       spotifyCalls: this.state.spotify.callsThisRun,
       musicbrainzCalls: this.state.musicbrainz.callsThisRun,
+      notes: this._notes,
+      ...summary,
+    };
+  }
+
+  finishMusicbrainzRun(summary) {
+    this.state.lastMusicbrainzRun = {
+      startedAt: this._startedAt || new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      mode: 'musicbrainz-only',
+      musicbrainzCalls: this.state.musicbrainz.callsThisRun,
+      identityUpdates: 0,
       notes: this._notes,
       ...summary,
     };
