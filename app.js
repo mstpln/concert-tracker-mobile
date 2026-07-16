@@ -914,7 +914,7 @@ function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
       ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
       ${ticketCostBlockHtml(c)}
       <div class="row-divider"></div>
-      ${mcLinksRowHtml(c, isPast)}
+      ${isPast ? mcLinksRowHtml(c, true) : concertPrepGroupHtml(c)}
       ${isPast ? `<div class="row-divider"></div>${concertReviewHtml(c)}` : ''}
       <button class="icon-btn remove-going-btn delete-corner-btn" data-concert-id="${c.id}" aria-label="Remove">${icon('trash')}</button>
     </div>`;
@@ -1081,6 +1081,25 @@ function mcLinksRowHtml(c, isPast) {
       ${isPast ? `<div class="expand-panel" data-panel="photo" hidden>${photoFormHtml(c)}</div>` : ''}
       ${hasSetlist ? `<div class="expand-panel" data-panel="setlist" hidden>${mcSetlistPanelContentHtml(c)}</div>` : ''}
     </div>`;
+}
+
+const PREP_CHECKLIST = [
+  ['ticketReady', 'Ticket ready'], ['travelPlanned', 'Travel planned'], ['timesChecked', 'Doors & stage times checked'],
+  ['venueRulesChecked', 'Venue rules checked'], ['playlistReady', 'Playlist ready'],
+];
+function prepCount(c) { return PREP_CHECKLIST.filter(([key]) => c.prepChecklist?.[key]).length; }
+function prepPanel(id, content) { return `<div id="prep-${escapeAttr(id)}" class="concert-prep-panel" hidden>${content}</div>`; }
+function concertPrepGroupHtml(c) {
+  const prediction = c.predictedSetlist || null;
+  const predicted = prediction?.status === 'ready' ? `${prediction.predictedSongCount || prediction.songs?.length || 0} songs · ${prediction.confidence || 'Low'} confidence${prediction.spotifyMatchedCount != null ? ` · ${prediction.spotifyMatchedCount} on Spotify` : ''}` : prediction?.status === 'pending' ? 'Prediction is being prepared' : prediction?.status === 'insufficient_data' ? 'Not enough recent setlists yet' : 'Prediction not available';
+  const playlistStatus = c.playlistUrl ? 'Manual playlist linked' : 'Add manually or create from prediction';
+  const rows = [
+    ['playlist', 'spotify', 'Playlist', playlistStatus, `<div class="prep-section"><strong>Your playlist</strong>${c.playlistUrl ? `<p>Manual playlist linked</p><a class="btn-secondary" href="${escapeAttr(c.playlistUrl)}" target="_blank" rel="noopener">Open</a><button type="button" class="prep-edit-playlist">Edit</button><button type="button" class="prep-remove-playlist">Remove</button>` : `<p>Add a playlist you already use before the concert.</p>${playlistFormHtml(c)}`}</div><div class="prep-section"><strong>Create from Predicted Setlist</strong><p>${predicted}</p><button type="button" disabled>Create playlist</button></div>`],
+    ['weather', 'weather', 'Weather forecast', 'Available 10 days before the concert', '<p>Available 10 days before the concert</p>'],
+    ['prediction', 'setlistOrdered', 'Predicted setlist', predicted, prediction?.status === 'ready' ? `<p>Predicted order based on ${prediction.sourceSetlistCount || 0} recent setlists</p><ol>${(prediction.songs || []).slice(0, 10).map((s) => `<li>${escapeHtml(s.name)} <span class="muted">Played in ${s.performanceRate || 0}%${s.evidenceLabel ? ` · ${escapeHtml(s.evidenceLabel)}` : ''}</span></li>`).join('')}</ol><button type="button" disabled>Create playlist from matched songs</button>` : `<p>${predicted}</p>`],
+    ['checklist', 'checklist', 'Checklist', `${prepCount(c)} of 5 complete`, `<div class="prep-checklist">${PREP_CHECKLIST.map(([key, label]) => `<label><input type="checkbox" data-prep-key="${key}" data-concert-id="${escapeAttr(c.id)}" ${c.prepChecklist?.[key] ? 'checked' : ''}/> ${label}</label>`).join('')}<p class="prep-save-error" aria-live="polite"></p></div>`],
+  ];
+  return `<div class="concert-prep-group" data-open="">${rows.map(([id, iconName, title, status, panel]) => `<button type="button" class="concert-prep-row" data-prep-toggle="${id}" aria-expanded="false" aria-controls="prep-${escapeAttr(c.id)}-${id}">${icon(iconName)}<span><strong>${title}</strong><small>${status}</small></span><span class="details-chevron">${icon('chevronDown')}</span></button>${prepPanel(`${c.id}-${id}`, panel)}`).join('')}</div>`;
 }
 
 // Rating (1-5) and notes, only ever shown for past + attended concerts —
@@ -1268,6 +1287,19 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
       }
     });
   });
+
+  container.querySelectorAll('[data-prep-toggle]').forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation(); const group = btn.closest('.concert-prep-group'); const id = btn.getAttribute('aria-controls'); const panel = group?.querySelector(`#${CSS.escape(id)}`); if (!panel) return;
+    const open = panel.hidden; group.querySelectorAll('.concert-prep-panel').forEach((item) => { item.hidden = true; }); group.querySelectorAll('[data-prep-toggle]').forEach((item) => { item.setAttribute('aria-expanded', 'false'); item.classList.remove('is-open'); });
+    if (open) { panel.hidden = false; btn.setAttribute('aria-expanded', 'true'); btn.classList.add('is-open'); }
+  }));
+  container.querySelectorAll('[data-prep-key]').forEach((input) => input.addEventListener('change', async (ev) => {
+    ev.stopPropagation(); const c = concerts.find((item) => item.id === input.dataset.concertId); if (!c) return; const previous = c.prepChecklist;
+    c.prepChecklist = { ticketReady: false, travelPlanned: false, timesChecked: false, venueRulesChecked: false, playlistReady: false, ...(previous || {}), [input.dataset.prepKey]: input.checked, updatedAt: new Date().toISOString() };
+    try { await dlWriteJsonFile(remote, 'concerts.json', concerts); refresh(); } catch (error) { c.prepChecklist = previous; input.checked = !input.checked; const message = input.closest('.prep-checklist')?.querySelector('.prep-save-error'); if (message) message.textContent = 'Could not save. Please try again.'; }
+  }));
+  container.querySelectorAll('.prep-edit-playlist').forEach((btn) => btn.addEventListener('click', (ev) => { ev.stopPropagation(); const panel = btn.closest('.concert-prep-panel'); panel.innerHTML = playlistFormHtml(concerts.find((c) => c.id === btn.closest('.row-card-mc').querySelector('.remove-going-btn').dataset.concertId)); }));
+  container.querySelectorAll('.prep-remove-playlist').forEach((btn) => btn.addEventListener('click', async (ev) => { ev.stopPropagation(); if (!confirm('Remove this playlist link?')) return; const c = concerts.find((item) => item.id === btn.closest('.row-card-mc').querySelector('.remove-going-btn').dataset.concertId); if (!c) return; const previous = c.playlistUrl; c.playlistUrl = null; try { await dlWriteJsonFile(remote, 'concerts.json', concerts); refresh(); } catch { c.playlistUrl = previous; } }));
 
   container.querySelectorAll('.remove-going-btn').forEach((b) => {
     b.addEventListener('click', async (ev) => {

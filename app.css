@@ -697,6 +697,22 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .setlist-attribution { display: inline-block; margin-top: 6px; font-size: 11px; color: var(--text-muted); text-decoration: none; }
 .setlist-attribution:hover { text-decoration: underline; }
 
+/* Upcoming My Concerts preparation rows only. */
+.concert-prep-group { margin-top: 8px; border-top: 1px solid var(--border); }
+.concert-prep-row { width: 100%; min-height: 52px; display: flex; align-items: center; gap: 11px; padding: 9px 0; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border); text-align: left; }
+.concert-prep-row > span:nth-child(2) { flex: 1; min-width: 0; }
+.concert-prep-row strong, .concert-prep-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.concert-prep-row small { color: var(--text-muted); margin-top: 2px; font-size: 12px; }
+.concert-prep-row .details-chevron { transition: transform .15s ease; }
+.concert-prep-row.is-open .details-chevron { transform: rotate(180deg); }
+.concert-prep-panel { padding: 10px 0 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--text-secondary); }
+.concert-prep-panel p { margin: 4px 0 8px; }
+.prep-section + .prep-section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.prep-section .btn-secondary, .prep-section button { margin-right: 7px; }
+.prep-checklist label { display: block; padding: 7px 0; color: var(--text); }
+.prep-checklist input { margin-right: 8px; accent-color: var(--accent); }
+.prep-save-error { color: var(--danger); }
+
 /* Total band count (top of My Bands, above the filter rows) — a lightweight
    inline stat rather than a card, since it's only one number; echoes the
    stats teaser's bold-number + muted-label language for consistency. */
