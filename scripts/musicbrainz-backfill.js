@@ -15,6 +15,11 @@ async function runMusicbrainzBackfill({
 } = {}) {
   let usage;
   let identityUpdates = 0;
+  let usageSaveAttempted = false;
+  const saveUsage = async () => {
+    usageSaveAttempted = true;
+    await usage.save();
+  };
   try {
     usage = await loadUsage();
     const bands = await readBands('bands.json', []);
@@ -25,14 +30,20 @@ async function runMusicbrainzBackfill({
       perRunCap: config.MUSICBRAINZ.perRunCap,
     });
     identityUpdates = result.updates;
-    usage.finishRun({ mode: 'musicbrainz-only', status: 'success', identityUpdates });
-    await usage.save();
+    if (result.fatalError) {
+      const providerError = new Error(result.fatalError);
+      usage.finishMusicbrainzRun({ status: 'error', identityUpdates, error: providerError.message });
+      try { await saveUsage(); } catch (saveError) { log(`Additionally failed to save MusicBrainz error usage: ${saveError.message}`); }
+      throw providerError;
+    }
+    usage.finishMusicbrainzRun({ status: 'ok', identityUpdates });
+    await saveUsage();
     log(`MusicBrainz-only backfill complete: ${usage.state.musicbrainz.callsThisRun} request(s), ${identityUpdates} identity update(s).`);
     return result;
   } catch (error) {
-    if (usage) {
-      usage.finishRun({ mode: 'musicbrainz-only', status: 'error', identityUpdates, error: error.message });
-      await usage.save();
+    if (usage && !usageSaveAttempted) {
+      usage.finishMusicbrainzRun({ status: 'error', identityUpdates, error: error.message });
+      try { await saveUsage(); } catch (saveError) { log(`Additionally failed to save MusicBrainz error usage: ${saveError.message}`); }
     }
     throw error;
   }
