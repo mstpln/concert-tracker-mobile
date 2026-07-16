@@ -75,9 +75,12 @@ async function processMusicbrainzIdentities({
   const identityUpdates = [];
   for (const band of bands.filter(musicbrainzEligible).slice(0, perRunCap)) {
     const result = await searchArtist(band, usage);
+    // A quota/cap skip made no provider request, so it must never be
+    // translated into a no-match decision or written back to the band.
+    if (result.kind === 'skipped') break;
     const identity = identityResult(band, result);
     if (identity) identityUpdates.push({ id: band.id, musicbrainz: identity });
-    if (result.kind === 'fatal' || result.kind === 'skipped') {
+    if (result.kind === 'fatal') {
       if (result.error) usage.note(result.error);
       break;
     }

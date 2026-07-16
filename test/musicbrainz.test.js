@@ -56,6 +56,24 @@ test('23 disabled pipeline makes zero MusicBrainz requests, writes, and usage at
   assert.deepEqual(calls, { searches: 0, reads: 0, writes: 0, attempts: 0 });
   assert.equal(config.MUSICBRAINZ.enabled, false);
 });
+test('enabled pipeline safely leaves bands unchanged when UsageTracker skips MusicBrainz', async () => {
+  const original = band('The Cure', { musicbrainz: { status:'pending', mbid:null, lastAttemptedAt:'before', reviewCandidates:[] } });
+  const snapshot = JSON.parse(JSON.stringify(original));
+  const calls = { canCall: 0, attempts: 0, reads: 0, writes: 0 };
+  const usage = {
+    canCallMusicbrainz() { calls.canCall++; return false; },
+    recordMusicbrainzAttempt: async () => { calls.attempts++; },
+    note() { throw new Error('a skipped lookup must not be noted as an error'); },
+  };
+  const result = await processMusicbrainzIdentities({
+    bands: [original, band('Second band')], usage, enabled: true,
+    readBands: async () => { calls.reads++; }, writeBands: async () => { calls.writes++; },
+  });
+  assert.deepEqual(result, { enabled: true, updates: 0 });
+  assert.deepEqual(calls, { canCall: 1, attempts: 0, reads: 0, writes: 0 });
+  assert.deepEqual(original, snapshot);
+  assert.equal(identityResult(original, { kind:'skipped' }), null);
+});
 test('24 automatic-confirmation threshold uses production scoring', async () => { const result = await searchArtist(band(), fakeUsage(), response([raw()])); assert.equal(result.automatic.score, 95); });
 test('25 clear-lead threshold leaves actual candidates for review', async () => { const result = await searchArtist(band(), fakeUsage(), response([raw('The Cure', { id:'a', score:100 }), raw('The Cure', { id:'b', score:95 })])); assert.equal(result.automatic, null); assert.equal(result.candidates.length, 2); });
 test('26 ambiguous candidates become needs_review', () => assert.equal(identityResult(band(), { kind:'ok',automatic:null,candidates:[{mbid:'x'}] }).status, 'needs_review'));
