@@ -5,11 +5,28 @@
 const config = require('./config');
 
 const IMPERSONATOR = /\b(tribute|cover|parody|experience|impersonat|ultimate|revival|homage|salute|remembering|celebrating)\b/i;
+const COUNTRY_ALIASES = {
+  se: 'SE', sweden: 'SE', sverige: 'SE',
+  us: 'US', usa: 'US', 'united states': 'US', 'united states of america': 'US',
+  gb: 'GB', uk: 'GB', 'united kingdom': 'GB', england: 'GB', scotland: 'GB', wales: 'GB',
+};
 
 function normalize(value) {
   return String(value || '').toLowerCase().normalize('NFKD').trim()
     .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ')
     .trim().replace(/^the\s+/, '').replace(/\s+/g, ' ');
+}
+function countryFrom(value) {
+  const normalized = normalize(value);
+  if (COUNTRY_ALIASES[normalized]) return COUNTRY_ALIASES[normalized];
+  const words = normalized.split(' ');
+  for (let size = Math.min(4, words.length); size > 0; size--) {
+    for (let start = 0; start + size <= words.length; start++) {
+      const found = COUNTRY_ALIASES[words.slice(start, start + size).join(' ')];
+      if (found) return found;
+    }
+  }
+  return null;
 }
 function candidateFrom(raw, band) {
   const name = String(raw?.name || '');
@@ -20,11 +37,14 @@ function candidateFrom(raw, band) {
   const area = raw?.area?.name || null;
   const country = raw?.country || raw?.['country-code'] || null;
   const type = raw?.type || null;
-  const contradictory = !!(band.origin && (area || country) && !normalize(`${area} ${country}`).includes(normalize(band.origin)));
+  const originCountry = countryFrom(band.origin);
+  const mbCountry = countryFrom(country) || countryFrom(area);
+  const contradictory = !!(originCountry && mbCountry && originCountry !== mbCountry);
+  const originAgreement = !!(originCountry && mbCountry && originCountry === mbCountry);
   const bad = IMPERSONATOR.test(`${name} ${raw?.disambiguation || ''}`);
-  let score = exact ? 70 : aliasExact ? 65 : 0;
+  let score = exact ? 75 : aliasExact ? 65 : 0;
   if (type === 'Group' || type === 'Orchestra') score += 10;
-  if (band.origin && !contradictory) score += 10;
+  if (originAgreement) score += 5;
   if (Number(raw?.score) >= 95) score += 10;
   if (contradictory) score -= 30;
   if (bad) score = 0;
@@ -32,7 +52,7 @@ function candidateFrom(raw, band) {
   if (exact) reasons.push('Exact artist-name match');
   if (aliasExact) reasons.push('Exact alias match');
   if (type) reasons.push(`Artist type: ${type}`);
-  if (band.origin && !contradictory) reasons.push('No origin conflict');
+  if (originAgreement) reasons.push('Origin agreement');
   if (contradictory) reasons.push('Origin conflict');
   return { mbid: raw?.id || '', artistName: name, area, country, artistType: type,
     disambiguation: raw?.disambiguation || null, score: Math.max(0, Math.min(100, score)), matchReasons: reasons,
@@ -55,7 +75,7 @@ async function searchArtist(band, usage, fetchImpl = fetch) {
     const rejected = new Set(band.musicbrainz?.rejectedCandidateMbids || []);
     const unique = new Map();
     for (const candidate of data.artists.map((raw) => candidateFrom(raw, band))) {
-      if (candidate.mbid && !candidate._bad && !rejected.has(candidate.mbid) && !unique.has(candidate.mbid)) unique.set(candidate.mbid, candidate);
+      if (candidate.mbid && candidate._exact && !candidate._bad && !rejected.has(candidate.mbid) && !unique.has(candidate.mbid)) unique.set(candidate.mbid, candidate);
     }
     const candidates = [...unique.values()].sort((a, b) => b.score - a.score).slice(0, config.MUSICBRAINZ.maxCandidates);
     const clean = candidates.map(({ _exact, _bad, _contradictory, ...c }) => c);
@@ -77,4 +97,4 @@ function identityResult(band, result, now = new Date().toISOString()) {
   return { ...prior, mbid: null, status: 'needs_review', lastAttemptedAt: now, reviewCandidates: result.candidates, source: 'MusicBrainz' };
 }
 
-module.exports = { normalize, candidateFrom, searchArtist, identityResult };
+module.exports = { normalize, countryFrom, candidateFrom, searchArtist, identityResult };

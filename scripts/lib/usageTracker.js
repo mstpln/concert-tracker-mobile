@@ -74,6 +74,12 @@ function freshState() {
   };
 }
 
+function ensureMusicbrainzState(state) {
+  if (!state.musicbrainz) state.musicbrainz = freshState().musicbrainz;
+  Object.assign(state.musicbrainz, { perRunCap: config.MUSICBRAINZ.perRunCap });
+  return state;
+}
+
 class UsageTracker {
   constructor(state) {
     this.state = state;
@@ -107,7 +113,7 @@ class UsageTracker {
     if (!state.groq) state.groq = freshState().groq;
     if (!state.setlistfm) state.setlistfm = freshState().setlistfm;
     if (!state.spotify) state.spotify = freshState().spotify;
-    if (!state.musicbrainz) state.musicbrainz = freshState().musicbrainz;
+    ensureMusicbrainzState(state);
     if (!state.rotation || typeof state.rotation.nextBandIndex !== 'number') {
       state.rotation = { nextBandIndex: 0 };
     }
@@ -146,7 +152,6 @@ class UsageTracker {
       dailyCap: config.SPOTIFY.dailyCap,
       perRunCap: config.SPOTIFY.perRunCap,
     });
-    Object.assign(state.musicbrainz, { perRunCap: config.MUSICBRAINZ.perRunCap });
 
     if (state.ticketmaster.dayOfCounts !== today) {
       state.ticketmaster.dayOfCounts = today;
@@ -352,4 +357,4 @@ class UsageTracker {
   }
 }
 
-module.exports = { UsageTracker, freshState };
+module.exports = { UsageTracker, freshState, ensureMusicbrainzState };
