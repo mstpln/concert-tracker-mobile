@@ -3,9 +3,26 @@
 // Shared, pure state transitions for the Settings review actions. Kept free
 // of storage/UI concerns so the browser and focused tests use identical rules.
 (function (root) {
+  function retainedMetadata(previous) {
+    return {
+      source: previous.source || 'MusicBrainz',
+      lastAttemptedAt: previous.lastAttemptedAt || null,
+      rejectedCandidateMbids: [...new Set(previous.rejectedCandidateMbids || [])],
+    };
+  }
+
+  function clearedIdentity(previous, changes) {
+    return {
+      mbid: null, artistName: null, area: null, country: null, artistType: null, disambiguation: null,
+      confidence: null, matchMethod: null, matchedAt: null,
+      ...retainedMetadata(previous),
+      ...changes,
+    };
+  }
+
   function confirmedIdentity(candidate, previous, now = new Date().toISOString()) {
     return {
-      ...previous,
+      ...retainedMetadata(previous),
       mbid: candidate.mbid,
       artistName: candidate.artistName,
       area: candidate.area || null,
@@ -16,7 +33,7 @@
       status: 'manual_confirmed',
       matchMethod: 'manual_review',
       source: 'MusicBrainz',
-      matchedAt: previous.matchedAt || now,
+      matchedAt: now,
       reviewedAt: now,
       reviewCandidates: [],
     };
@@ -24,13 +41,11 @@
 
   function rejectCandidates(previous, now = new Date().toISOString()) {
     const rejectedCandidateMbids = [...new Set([...(previous.rejectedCandidateMbids || []), ...(previous.reviewCandidates || []).map((c) => c.mbid).filter(Boolean)])];
-    return { ...previous, mbid: null, artistName: null, area: null, country: null, artistType: null,
-      disambiguation: null, confidence: null, matchMethod: null, matchedAt: null,
-      status: 'manual_rejected', reviewedAt: now, rejectedCandidateMbids, reviewCandidates: [] };
+    return clearedIdentity(previous, { status: 'manual_rejected', reviewedAt: now, rejectedCandidateMbids, reviewCandidates: [] });
   }
 
   function retryIdentity(previous, now = new Date().toISOString()) {
-    return { ...previous, status: 'pending', reviewedAt: now, reviewCandidates: [] };
+    return clearedIdentity(previous, { status: 'pending', reviewedAt: now, reviewCandidates: [] });
   }
 
   const api = { confirmedIdentity, rejectCandidates, retryIdentity };

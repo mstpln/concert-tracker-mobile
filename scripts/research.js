@@ -58,6 +58,37 @@ function mergeMusicbrainzResults(latestBands, updates) {
   });
 }
 
+// Isolated so disabled-mode behavior is testable without starting the full
+// research workflow or touching its other providers.
+async function processMusicbrainzIdentities({
+  bands,
+  usage,
+  enabled = config.MUSICBRAINZ.enabled,
+  perRunCap = config.MUSICBRAINZ.perRunCap,
+  searchArtist = musicbrainz.searchArtist,
+  identityResult = musicbrainz.identityResult,
+  readBands = worker.readJson,
+  writeBands = worker.writeJson,
+  mergeResults = mergeMusicbrainzResults,
+}) {
+  if (!enabled) return { enabled: false, updates: 0 };
+  const identityUpdates = [];
+  for (const band of bands.filter(musicbrainzEligible).slice(0, perRunCap)) {
+    const result = await searchArtist(band, usage);
+    const identity = identityResult(band, result);
+    if (identity) identityUpdates.push({ id: band.id, musicbrainz: identity });
+    if (result.kind === 'fatal' || result.kind === 'skipped') {
+      if (result.error) usage.note(result.error);
+      break;
+    }
+  }
+  if (identityUpdates.length) {
+    const latestBands = await readBands('bands.json', []);
+    await writeBands('bands.json', mergeResults(latestBands, identityUpdates));
+  }
+  return { enabled: true, updates: identityUpdates.length };
+}
+
 function concertKey(c) {
   return `${c.bandId}|${c.date}|${slugify(c.venue || '')}`;
 }
@@ -210,19 +241,7 @@ async function main() {
   sharedUsage = usage;
 
   // Disabled by default; this cannot alter existing concert/news lookups.
-  const identityUpdates = [];
-  if (config.MUSICBRAINZ.enabled) {
-    for (const band of bands.filter(musicbrainzEligible).slice(0, config.MUSICBRAINZ.perRunCap)) {
-      const result = await musicbrainz.searchArtist(band, usage);
-      const identity = musicbrainz.identityResult(band, result);
-      if (identity) identityUpdates.push({ id: band.id, musicbrainz: identity });
-      if (result.kind === 'fatal' || result.kind === 'skipped') { if (result.error) usage.note(result.error); break; }
-    }
-    if (identityUpdates.length) {
-      const latestBands = await worker.readJson('bands.json', []);
-      await worker.writeJson('bands.json', mergeMusicbrainzResults(latestBands, identityUpdates));
-    }
-  }
+  await processMusicbrainzIdentities({ bands, usage });
 
   const existingConcertIds = new Set(concerts.map((c) => c.id));
   const existingConcertKeys = new Set(concerts.map(concertKey));
@@ -480,4 +499,4 @@ if (require.main === module) main().catch(async (e) => {
   process.exitCode = 1;
 });
 
-module.exports = { musicbrainzEligible, mergeMusicbrainzResults };
+module.exports = { musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities };

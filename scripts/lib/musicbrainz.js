@@ -39,8 +39,12 @@ function candidateFrom(raw, band) {
   const type = raw?.type || null;
   const originCountry = countryFrom(band.origin);
   const mbCountry = countryFrom(country) || countryFrom(area);
+  const hasSavedOrigin = Boolean(String(band.origin || '').trim());
   const contradictory = !!(originCountry && mbCountry && originCountry !== mbCountry);
   const originAgreement = !!(originCountry && mbCountry && originCountry === mbCountry);
+  // A saved origin is evidence only when both sides can be deterministically
+  // normalized. Unknown values remain reviewable but can never auto-confirm.
+  const originUnverified = hasSavedOrigin && (!originCountry || !mbCountry);
   const bad = IMPERSONATOR.test(`${name} ${raw?.disambiguation || ''}`);
   let score = exact ? 75 : aliasExact ? 65 : 0;
   if (type === 'Group' || type === 'Orchestra') score += 10;
@@ -56,7 +60,7 @@ function candidateFrom(raw, band) {
   if (contradictory) reasons.push('Origin conflict');
   return { mbid: raw?.id || '', artistName: name, area, country, artistType: type,
     disambiguation: raw?.disambiguation || null, score: Math.max(0, Math.min(100, score)), matchReasons: reasons,
-    _exact: exact || aliasExact, _bad: bad, _contradictory: contradictory };
+    _exact: exact || aliasExact, _bad: bad, _contradictory: contradictory, _originUnverified: originUnverified };
 }
 
 async function searchArtist(band, usage, fetchImpl = fetch) {
@@ -78,9 +82,9 @@ async function searchArtist(band, usage, fetchImpl = fetch) {
       if (candidate.mbid && candidate._exact && !candidate._bad && !rejected.has(candidate.mbid) && !unique.has(candidate.mbid)) unique.set(candidate.mbid, candidate);
     }
     const candidates = [...unique.values()].sort((a, b) => b.score - a.score).slice(0, config.MUSICBRAINZ.maxCandidates);
-    const clean = candidates.map(({ _exact, _bad, _contradictory, ...c }) => c);
+    const clean = candidates.map(({ _exact, _bad, _contradictory, _originUnverified, ...c }) => c);
     const top = candidates[0], second = candidates[1];
-    const automatic = top && top._exact && !top._contradictory && top.score >= config.MUSICBRAINZ.autoConfirmThreshold &&
+    const automatic = top && top._exact && !top._contradictory && !top._originUnverified && top.score >= config.MUSICBRAINZ.autoConfirmThreshold &&
       (!second || top.score - second.score >= config.MUSICBRAINZ.clearLeadThreshold);
     return { kind: 'ok', candidates: clean, automatic: automatic ? clean[0] : null };
   } catch (e) {
@@ -92,9 +96,21 @@ function identityResult(band, result, now = new Date().toISOString()) {
   const prior = band.musicbrainz || {};
   if (['manual_confirmed', 'auto_confirmed'].includes(prior.status)) return null;
   if (result.kind === 'fatal') return { ...prior, status: 'error', lastAttemptedAt: now, source: 'MusicBrainz' };
-  if (result.automatic) return { ...prior, ...result.automatic, confidence: result.automatic.score, status: 'auto_confirmed', matchMethod: 'automatic', source: 'MusicBrainz', matchedAt: now, lastAttemptedAt: now, reviewCandidates: [] };
-  if (!result.candidates?.length) return { ...prior, mbid: null, status: 'no_match', lastAttemptedAt: now, reviewCandidates: [], source: 'MusicBrainz' };
-  return { ...prior, mbid: null, status: 'needs_review', lastAttemptedAt: now, reviewCandidates: result.candidates, source: 'MusicBrainz' };
+  const rejectedCandidateMbids = [...new Set(prior.rejectedCandidateMbids || [])];
+  if (result.automatic) return {
+    mbid: result.automatic.mbid, artistName: result.automatic.artistName, area: result.automatic.area || null,
+    country: result.automatic.country || null, artistType: result.automatic.artistType || null,
+    disambiguation: result.automatic.disambiguation || null, confidence: result.automatic.score,
+    status: 'auto_confirmed', matchMethod: 'automatic', source: 'MusicBrainz', matchedAt: now,
+    reviewedAt: prior.reviewedAt || null, lastAttemptedAt: now, rejectedCandidateMbids, reviewCandidates: [],
+  };
+  const unresolved = (status, reviewCandidates) => ({
+    mbid: null, artistName: null, area: null, country: null, artistType: null, disambiguation: null,
+    confidence: null, status, matchMethod: null, source: prior.source || 'MusicBrainz', matchedAt: null,
+    reviewedAt: prior.reviewedAt || null, lastAttemptedAt: now, rejectedCandidateMbids, reviewCandidates,
+  });
+  if (!result.candidates?.length) return unresolved('no_match', []);
+  return unresolved('needs_review', result.candidates);
 }
 
 module.exports = { normalize, countryFrom, candidateFrom, searchArtist, identityResult };
