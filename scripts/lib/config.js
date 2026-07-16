@@ -159,10 +159,10 @@ module.exports = {
     maxSpotifyReleasePages: 3,
   },
 
-  // Kept separate from identity resolution and disabled until the prediction
-  // pipeline has been reviewed in a release.  Tests call it explicitly.
+  // Kept separate from identity resolution; prediction processing is guarded
+  // by the existing upcoming-attending, confirmed-identity and quota checks.
   PREDICTED_SETLIST: {
-    enabled: false,
+    enabled: true,
     refreshDays: 7,
     historyMaxSetlists: 20,
     historyWindowDays: 730,
