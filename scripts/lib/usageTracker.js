@@ -60,6 +60,7 @@ function freshState() {
       callsToday: 0,
       callsThisRun: 0,
     },
+    musicbrainz: { perRunCap: config.MUSICBRAINZ.perRunCap, callsThisRun: 0, lastCallAt: null },
     // Which band index the news-research loop should start from this run.
     // Since the Groq daily token budget can run out partway through the
     // band list (it did, on the very first live run — 149,959/150,000
@@ -73,6 +74,12 @@ function freshState() {
   };
 }
 
+function ensureMusicbrainzState(state) {
+  if (!state.musicbrainz) state.musicbrainz = freshState().musicbrainz;
+  Object.assign(state.musicbrainz, { perRunCap: config.MUSICBRAINZ.perRunCap });
+  return state;
+}
+
 class UsageTracker {
   constructor(state) {
     this.state = state;
@@ -83,6 +90,7 @@ class UsageTracker {
     this._lastGroqCallAt = 0;
     this._lastSetlistfmCallAt = 0;
     this._lastSpotifyCallAt = 0;
+    this._lastMusicbrainzCallAt = 0;
     // Stamped here (construction time — right after UsageTracker.load()
     // resolves, at the very start of a run) rather than left unset. An
     // earlier version never assigned this anywhere, so finishRun()'s
@@ -105,6 +113,7 @@ class UsageTracker {
     if (!state.groq) state.groq = freshState().groq;
     if (!state.setlistfm) state.setlistfm = freshState().setlistfm;
     if (!state.spotify) state.spotify = freshState().spotify;
+    ensureMusicbrainzState(state);
     if (!state.rotation || typeof state.rotation.nextBandIndex !== 'number') {
       state.rotation = { nextBandIndex: 0 };
     }
@@ -173,6 +182,7 @@ class UsageTracker {
     state.groq.tokensThisRun = 0;
     state.setlistfm.callsThisRun = 0;
     state.spotify.callsThisRun = 0;
+    state.musicbrainz.callsThisRun = 0;
 
     return new UsageTracker(state);
   }
@@ -314,6 +324,16 @@ class UsageTracker {
     this.state.spotify.callsToday += 1;
   }
 
+  // ---------------- MusicBrainz (internal courtesy cap only; no daily allowance implied) ----------------
+  canCallMusicbrainz() { return this.state.musicbrainz.callsThisRun < this.state.musicbrainz.perRunCap; }
+  async recordMusicbrainzAttempt() {
+    const gap = Date.now() - this._lastMusicbrainzCallAt;
+    if (gap < config.MUSICBRAINZ.minDelayMs) await sleep(config.MUSICBRAINZ.minDelayMs - gap);
+    this._lastMusicbrainzCallAt = Date.now();
+    this.state.musicbrainz.callsThisRun += 1;
+    this.state.musicbrainz.lastCallAt = new Date().toISOString();
+  }
+
   // ---------------- Persistence ----------------
 
   finishRun(summary) {
@@ -326,6 +346,7 @@ class UsageTracker {
       groqTokens: this.state.groq.tokensThisRun,
       setlistfmCalls: this.state.setlistfm.callsThisRun,
       spotifyCalls: this.state.spotify.callsThisRun,
+      musicbrainzCalls: this.state.musicbrainz.callsThisRun,
       notes: this._notes,
       ...summary,
     };
@@ -336,4 +357,4 @@ class UsageTracker {
   }
 }
 
-module.exports = { UsageTracker, freshState };
+module.exports = { UsageTracker, freshState, ensureMusicbrainzState };

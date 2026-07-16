@@ -469,6 +469,9 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   padding: 12px; background: var(--surface); margin-bottom: 4px;
 }
 .settings-card-divider { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+.identity-candidate { border-top: 1px solid var(--border); margin-top: 9px; padding-top: 9px; }
+.identity-candidate p { color: var(--text-muted); font-size: 12px; margin: 3px 0; overflow-wrap: anywhere; }
+.identity-candidate .btn-secondary, .identity-review-card > .btn-secondary { margin-top: 5px; }
 
 .usage-bar-row { margin-bottom: 8px; }
 .usage-bar-row:last-child { margin-bottom: 0; }

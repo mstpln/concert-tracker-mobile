@@ -62,6 +62,10 @@ Cloudflare's dashboard — no coding required. Should take about 15-20 minutes.
 
 ## What's not included yet
 
+## MusicBrainz artist identity
+
+MusicBrainz is used only to identify artists with a stable MBID for future features. It needs no API key. Automatic lookups are disabled by default in `scripts/lib/config.js`; when explicitly enabled, the pipeline makes at most five, one-request-per-band lookups per run. Uncertain results appear in Settings under **Artist identity review**. No production backfill occurs automatically, and user-confirmed choices are protected. Rollback means disabling the feature; it does not delete stored identity history.
+
 - **No push notifications.** The Chrome extension's weekly "new concert
   found" alert doesn't have an equivalent here yet — you'd see new shows the
   next time you open the app, not via a phone notification. Doable later

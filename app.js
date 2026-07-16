@@ -2323,6 +2323,8 @@ async function renderSettingsScreen() {
 
     ${researchPipelineSectionHtml()}
 
+    ${artistIdentityReviewHtml()}
+
     <p class="settings-version">LiveVault ${escapeHtml(typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?')}</p>
   `;
 
@@ -2400,6 +2402,38 @@ async function renderSettingsScreen() {
       if (btn) btn.textContent = 'Refresh now';
     }, 1800);
   });
+  wireArtistIdentityReview();
+}
+
+function artistIdentityReviewHtml() {
+  const reviewable = bands.filter((b) => ['needs_review', 'no_match', 'error', 'manual_rejected'].includes(b.musicbrainz?.status));
+  const cards = reviewable.filter((b) => b.musicbrainz?.status === 'needs_review').map((band) => {
+    const candidates = (band.musicbrainz.reviewCandidates || []).map((c) => `<div class="identity-candidate"><strong>${escapeHtml(c.artistName)}</strong><p>${escapeHtml([c.area, c.country, c.artistType, c.disambiguation].filter(Boolean).join(' · ') || 'No extra metadata')}</p><p>${escapeHtml((c.matchReasons || []).join(' · '))} · ${escapeHtml(String(c.score))}/100 · Data from MusicBrainz</p><button class="btn-secondary identity-use" data-band-id="${escapeAttr(band.id)}" data-mbid="${escapeAttr(c.mbid)}" aria-label="Use ${escapeAttr(c.artistName)} for ${escapeAttr(band.name)}">Use this artist</button></div>`).join('');
+    return `<div class="settings-card identity-review-card"><p><strong>${escapeHtml(band.name)}</strong>${band.origin ? ` · ${escapeHtml(band.origin)}` : ''}</p>${candidates}<button class="btn-secondary identity-none" data-band-id="${escapeAttr(band.id)}" aria-label="Reject all displayed MusicBrainz candidates for ${escapeAttr(band.name)}">None of these</button></div>`;
+  }).join('');
+  const retries = reviewable.filter((b) => b.musicbrainz?.status !== 'needs_review').map((b) => `<button class="btn-secondary identity-retry" data-band-id="${escapeAttr(b.id)}" aria-label="Try MusicBrainz matching again for ${escapeAttr(b.name)}">Try again: ${escapeHtml(b.name)}</button>`).join('');
+  return `<p class="section-label">Artist identity review</p><div class="identity-review">${cards || '<div class="settings-card"><p class="settings-hint" style="margin:0">No artist matches need review.</p></div>'}${retries ? `<div class="show-buttons">${retries}</div>` : ''}<p class="settings-hint">MusicBrainz candidate data is shown for review; automatic lookups are disabled by default.</p></div>`;
+}
+
+async function saveArtistIdentity(bandId, updater) {
+  const latest = await dlReadJsonFile(remote, 'bands.json', []);
+  const band = latest.find((b) => b.id === bandId);
+  if (!band) throw new Error('Band no longer exists');
+  const next = updater(band);
+  if (!next) throw new Error('Artist candidate is no longer available');
+  const merged = latest.map((b) => b.id === bandId ? { ...b, musicbrainz: next } : b);
+  await dlWriteJsonFile(remote, 'bands.json', merged);
+  bands = merged;
+}
+
+function wireArtistIdentityReview() {
+  el('screen-settings').querySelectorAll('.identity-use').forEach((button) => button.addEventListener('click', async () => {
+    try { await saveArtistIdentity(button.dataset.bandId, (band) => { const mb = band.musicbrainz || {}; const c = (mb.reviewCandidates || []).find((x) => x.mbid === button.dataset.mbid); return c ? MusicbrainzState.confirmedIdentity(c, mb) : null; }); renderSettingsScreen(); } catch { alert('Could not save this review. Refresh and try again.'); }
+  }));
+  el('screen-settings').querySelectorAll('.identity-none').forEach((button) => button.addEventListener('click', async () => {
+    try { await saveArtistIdentity(button.dataset.bandId, (band) => MusicbrainzState.rejectCandidates(band.musicbrainz || {})); renderSettingsScreen(); } catch { alert('Could not save this review. Refresh and try again.'); }
+  }));
+  el('screen-settings').querySelectorAll('.identity-retry').forEach((button) => button.addEventListener('click', async () => { try { await saveArtistIdentity(button.dataset.bandId, (band) => MusicbrainzState.retryIdentity(band.musicbrainz || {})); renderSettingsScreen(); } catch { alert('Could not save this review. Refresh and try again.'); } }));
 }
 
 // Where the GitHub Actions workflow lives — used only for an external
