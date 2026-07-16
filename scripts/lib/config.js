@@ -121,6 +121,19 @@ module.exports = {
     minDelayMs: 150,
   },
 
+  MUSICBRAINZ: {
+    baseUrl: 'https://musicbrainz.org/ws/2',
+    enabled: false,
+    userAgent: 'TheLiveVault/1.0 (https://github.com/mstpln/concert-tracker-mobile; personal non-commercial project)',
+    perRunCap: 5,
+    minDelayMs: 1100,
+    timeoutMs: 10000,
+    maxCandidates: 5,
+    autoConfirmThreshold: 95,
+    clearLeadThreshold: 10,
+    noMatchRetryDays: 90,
+  },
+
   WORKER: {
     endpointEnv: 'CF_WORKER_ENDPOINT',
     tokenEnv: 'CF_WORKER_TOKEN',
