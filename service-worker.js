@@ -23,7 +23,7 @@
 // so this file can sanity-assert the two stay in sync (see the console
 // warning) — it is NOT what drives cache invalidation.
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v44';
+const CACHE_NAME_LITERAL = 'v45';
 if (CACHE_NAME_LITERAL !== APP_VERSION) {
   console.warn(
     `service-worker.js CACHE_NAME_LITERAL ("${CACHE_NAME_LITERAL}") is out of sync with version.js APP_VERSION ("${APP_VERSION}") — bump CACHE_NAME_LITERAL in service-worker.js to match, otherwise old installs won't update.`
@@ -38,6 +38,7 @@ const SHELL_FILES = [
   './dataLib.js',
   './icons.js',
   './remoteStore.js',
+  './musicbrainzState.js',
   './version.js',
   './manifest.json',
   './icons/icon-192.png',
