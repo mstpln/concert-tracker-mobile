@@ -44,6 +44,9 @@ let venuesEuropeOnly = false;
 let venuesPastOnly = false;
 let activeVenueKey = null;
 const weatherViews = new Map(); // browser-local, transient UI state only
+const playlistReviews = new Map(); // transient selections only; never concert data
+const playlistOperations = new Map();
+let spotifyAuthMessage = '';
 
 const el = (id) => document.getElementById(id);
 
@@ -103,6 +106,9 @@ async function init() {
   venuesPastOnly = !!savedVenuesPast;
   const { alertsLastOpenedAt: savedAlertsLastOpenedAt = null } = await chrome.storage.local.get('alertsLastOpenedAt');
   alertsLastOpenedAt = savedAlertsLastOpenedAt;
+  const spotifyCallback = await SpotifyUser.handleCallback();
+  if (spotifyCallback.kind === 'error') spotifyAuthMessage = spotifyCallback.message;
+  if (spotifyCallback.kind === 'ok') spotifyAuthMessage = 'Spotify connected.';
 
   wireOnboarding();
   wireHeader();
@@ -1091,6 +1097,17 @@ const PREP_CHECKLIST = [
 ];
 function prepCount(c) { return PREP_CHECKLIST.filter(([key]) => c.prepChecklist?.[key]).length; }
 function prepPanel(id, content) { return `<div id="prep-${escapeAttr(id)}" class="concert-prep-panel" hidden>${content}</div>`; }
+function predictedMixSongs(c) { const seen = new Set(); return (c.predictedSetlist?.songs || []).filter((song) => song.spotifyMatched && song.spotifyUri && !song.isCover && !seen.has(song.spotifyUri) && seen.add(song.spotifyUri)); }
+function predictedMixReviewItems(c, review) { const seen = new Set(); return (c.predictedSetlist?.songs || []).map((song) => { if (song.isCover) return `<p class="muted">${escapeHtml(song.name)} · Cover excluded</p>`; if (!song.spotifyMatched || !song.spotifyUri) return `<p class="muted">${escapeHtml(song.name)} · Unmatched</p>`; if (seen.has(song.spotifyUri)) return ''; seen.add(song.spotifyUri); return `<label><input type="checkbox" class="predicted-track-check" data-concert-id="${escapeAttr(c.id)}" data-uri="${escapeAttr(song.spotifyUri)}" ${review.uris.includes(song.spotifyUri) ? 'checked' : ''}/> ${escapeHtml(song.name)}</label>`; }).join(''); }
+function predictedPlaylistStatus(c) { const manual = !!c.playlistUrl; const generated = c.predictedPlaylist; if (manual && generated) return 'Manual linked · Predicted mix saved'; if (manual) return 'Manual playlist linked'; if (generated) return `Predicted mix · ${generated.trackCount} track${generated.trackCount === 1 ? '' : 's'}`; return 'Add manually or create from prediction'; }
+function predictedMixName(c) { const year = (c.date || '').slice(0, 4); return [c.bandName, c.venue || c.city, year].filter(Boolean).join(' — ').replace(/ — (\d{4})$/, ' $1'); }
+function predictedMixPanelHtml(c) {
+  const prediction = c.predictedSetlist; const matched = predictedMixSongs(c); const generated = c.predictedPlaylist; const changed = generated && prediction?.fingerprint && generated.sourcePredictionFingerprint !== prediction.fingerprint;
+  if (prediction?.status !== 'ready') return `<div class="prep-section"><strong>Create from Predicted Setlist</strong><p>${prediction?.status === 'pending' ? 'Prediction is being prepared' : prediction?.status === 'insufficient_data' ? 'Not enough recent setlists yet' : 'Prediction not available'}</p><button type="button" disabled>Create playlist</button></div>`;
+  if (!matched.length) return '<div class="prep-section"><strong>Create from Predicted Setlist</strong><p>No matched Spotify songs available</p><button type="button" disabled>Create playlist</button></div>';
+  const review = playlistReviews.get(c.id); if (review) return `<div class="prep-section playlist-review"><label for="predicted-playlist-name-${escapeAttr(c.id)}">Playlist name</label><input id="predicted-playlist-name-${escapeAttr(c.id)}" class="predicted-playlist-name" data-concert-id="${escapeAttr(c.id)}" value="${escapeAttr(review.name)}"/><p>${matched.length} of ${prediction.predictedSongCount || prediction.songs.length} songs available on Spotify</p><div class="playlist-review-songs">${predictedMixReviewItems(c, review)}</div><p class="playlist-operation-status" aria-live="polite">${escapeHtml(review.message || '')}${review.operation?.playlist?.external_urls?.spotify && review.message?.includes('could not be saved') ? ` <a href="${escapeAttr(review.operation.playlist.external_urls.spotify)}" target="_blank" rel="noopener">Open playlist</a>` : ''}</p><button type="button" class="btn-secondary playlist-review-cancel" data-concert-id="${escapeAttr(c.id)}">Cancel</button><button type="button" class="btn-primary playlist-create-confirm" data-concert-id="${escapeAttr(c.id)}" ${review.uris.length ? '' : 'disabled'}>Create private playlist</button></div>`;
+  return `<div class="prep-section"><strong>Create from Predicted Setlist</strong><p>${generated ? `Predicted mix · ${generated.trackCount} track${generated.trackCount === 1 ? '' : 's'}` : `${matched.length} of ${prediction.predictedSongCount || prediction.songs.length} songs available on Spotify`}</p>${generated ? `<a class="btn-secondary" href="${escapeAttr(generated.spotifyUrl)}" target="_blank" rel="noopener">Open predicted mix</a>${changed ? '<p>The prediction has changed since this mix was created.</p><button type="button" class="playlist-review-open" data-concert-id="' + escapeAttr(c.id) + '">Create new mix</button>' : ''}` : `<button type="button" class="playlist-review-open" data-concert-id="${escapeAttr(c.id)}">Create playlist</button>`}</div>`;
+}
 function weatherDateLabel(value) { return value ? new Intl.DateTimeFormat('en', { month: 'long', day: 'numeric' }).format(new Date(`${value}T00:00:00Z`)) : null; }
 function weatherSummary(weather) { const focus = weather.hours?.[Math.floor((weather.hours?.length || 1) / 2)] || weather.hours?.[0]; if (!focus) return null; const rain = Math.max(...weather.hours.map((hour) => hour.precipitationProbability)); return `${focus.temperatureC}°C · ${focus.conditionText} · ${rain}% rain`; }
 function weatherPanelHtml(c) {
@@ -1113,9 +1130,9 @@ function concertPrepGroupHtml(c) {
   const prediction = c.predictedSetlist || null;
   const confidenceLabel = prediction?.confidence ? `${prediction.confidence[0].toUpperCase()}${prediction.confidence.slice(1)}` : 'Low';
   const predicted = prediction?.status === 'ready' ? `${prediction.predictedSongCount || prediction.songs?.length || 0} songs · ${confidenceLabel} confidence${prediction.spotifyMatchedCount ? ` · ${prediction.spotifyMatchedCount} on Spotify` : ''}` : prediction?.status === 'pending' ? 'Prediction is being prepared' : prediction?.status === 'insufficient_data' ? 'Not enough recent setlists yet' : 'Prediction not available';
-  const playlistStatus = c.playlistUrl ? 'Manual playlist linked' : 'Add manually or create from prediction';
+  const playlistStatus = predictedPlaylistStatus(c);
   const rows = [
-    ['playlist', 'spotify', 'Playlist', playlistStatus, `<div class="prep-section"><strong>Your playlist</strong>${c.playlistUrl ? `<p>Manual playlist linked</p><a class="btn-secondary" href="${escapeAttr(c.playlistUrl)}" target="_blank" rel="noopener">Open</a><button type="button" class="prep-edit-playlist">Edit</button><button type="button" class="prep-remove-playlist">Remove</button>` : `<p>Add a playlist you already use before the concert.</p>${playlistFormHtml(c)}`}</div><div class="prep-section"><strong>Create from Predicted Setlist</strong><p>${predicted}</p><button type="button" disabled>Create playlist</button></div>`],
+    ['playlist', 'spotify', 'Playlist', playlistStatus, `<div class="prep-section"><strong>Your playlist</strong>${c.playlistUrl ? `<p>Manual playlist linked</p><a class="btn-secondary" href="${escapeAttr(c.playlistUrl)}" target="_blank" rel="noopener">Open</a><button type="button" class="prep-edit-playlist">Edit</button><button type="button" class="prep-remove-playlist">Remove</button>` : `<p>Add a playlist you already use before the concert.</p>${playlistFormHtml(c)}`}</div>${predictedMixPanelHtml(c)}`],
     ['weather', 'weather', 'Weather forecast', weatherRowStatus(c), weatherPanelHtml(c)],
     ['prediction', 'setlistOrdered', 'Predicted setlist', predicted, prediction?.status === 'ready' ? `<p>Predicted order based on ${prediction.sourceSetlistCount || 0} recent setlists · ${confidenceLabel} confidence</p><ol>${(prediction.songs || []).slice(0, 10).map((s) => `<li>${escapeHtml(s.name)} <span class="muted">Played in ${s.performanceRate || 0}%${s.evidenceLabel ? ` · ${escapeHtml(s.evidenceLabel)}` : ''}${s.spotifyMatched ? ' · Spotify matched' : ''}</span></li>`).join('')}</ol><p class="muted">Updated ${escapeHtml(prediction.generatedAt ? formatDate(prediction.generatedAt.slice(0, 10)) : 'recently')} · setlist.fm</p><button type="button" disabled>Create playlist from matched songs</button>` : `<p>${predicted}</p>`],
     ['checklist', 'checklist', 'Checklist', `${prepCount(c)} of 5 complete`, `<div class="prep-checklist">${PREP_CHECKLIST.map(([key, label]) => `<label><input type="checkbox" data-prep-key="${key}" data-concert-id="${escapeAttr(c.id)}" ${c.prepChecklist?.[key] ? 'checked' : ''}/> ${label}</label>`).join('')}<p class="prep-save-error" aria-live="polite"></p></div>`],
@@ -1315,6 +1332,11 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
     if (open) { panel.hidden = false; btn.setAttribute('aria-expanded', 'true'); btn.classList.add('is-open'); }
   }));
   container.querySelectorAll('.weather-retry').forEach((btn) => btn.addEventListener('click', (ev) => { ev.stopPropagation(); const concert = concerts.find((item) => item.id === btn.dataset.concertId); if (concert) ensureConcertWeather(concert, true); }));
+  container.querySelectorAll('.playlist-review-open').forEach((btn) => btn.addEventListener('click', (ev) => { ev.stopPropagation(); const c = concerts.find((item) => item.id === btn.dataset.concertId); if (!c) return; playlistReviews.set(c.id, { name: predictedMixName(c), uris: predictedMixSongs(c).map((song) => song.spotifyUri), message: '' }); refresh(); }));
+  container.querySelectorAll('.playlist-review-cancel').forEach((btn) => btn.addEventListener('click', (ev) => { ev.stopPropagation(); playlistReviews.delete(btn.dataset.concertId); refresh(); }));
+  container.querySelectorAll('.predicted-playlist-name').forEach((input) => input.addEventListener('input', () => { const review = playlistReviews.get(input.dataset.concertId); if (review) review.name = input.value; }));
+  container.querySelectorAll('.predicted-track-check').forEach((input) => input.addEventListener('change', () => { const review = playlistReviews.get(input.dataset.concertId); if (!review) return; review.uris = review.uris.filter((uri) => uri !== input.dataset.uri); if (input.checked) { const c = concerts.find((item) => item.id === input.dataset.concertId); const order = predictedMixSongs(c).map((song) => song.spotifyUri); review.uris = order.filter((uri) => review.uris.includes(uri) || uri === input.dataset.uri); } refresh(); }));
+  container.querySelectorAll('.playlist-create-confirm').forEach((btn) => btn.addEventListener('click', async (ev) => { ev.stopPropagation(); const c = concerts.find((item) => item.id === btn.dataset.concertId); const review = playlistReviews.get(btn.dataset.concertId); if (!c || !review?.uris.length || playlistOperations.has(c.id)) return; playlistOperations.set(c.id, true); review.message = 'Creating playlist…'; refresh(); try { const result = await SpotifyUser.createPrivatePlaylist(review.name.trim() || predictedMixName(c), review.uris, fetch, review.operation); review.operation = { playlist: result.playlist, added: result.added }; const metadata = { spotifyPlaylistId: result.playlist.id, spotifyUrl: result.playlist.external_urls.spotify, name: review.name.trim() || predictedMixName(c), trackCount: result.added, sourcePredictionFingerprint: c.predictedSetlist?.fingerprint || null, createdAt: new Date().toISOString() }; const latest = await dlReadJsonFile(remote, 'concerts.json', []); const exists = latest.some((item) => item.id === c.id); if (!exists) throw new Error('Playlist exists, but this concert was removed before it could be saved.'); await dlWriteJsonFile(remote, 'concerts.json', latest.map((item) => item.id === c.id ? { ...item, predictedPlaylist: metadata } : item)); concerts = latest.map((item) => item.id === c.id ? { ...item, predictedPlaylist: metadata } : item); playlistReviews.delete(c.id); } catch (error) { if (error.operation) review.operation = error.operation; review.message = error.operation ? 'Playlist created, but tracks could not be added. Try again.' : review.operation?.playlist ? 'Playlist created, but could not be saved in the app. Try again.' : (error.message || 'Could not create playlist. Try again.'); } finally { playlistOperations.delete(c.id); refresh(); } }));
   container.querySelectorAll('[data-prep-key]').forEach((input) => input.addEventListener('change', async (ev) => {
     ev.stopPropagation(); const c = concerts.find((item) => item.id === input.dataset.concertId); if (!c) return; const previous = c.prepChecklist;
     c.prepChecklist = { ticketReady: false, travelPlanned: false, timesChecked: false, venueRulesChecked: false, playlistReady: false, ...(previous || {}), [input.dataset.prepKey]: input.checked, updatedAt: new Date().toISOString() };
@@ -2321,6 +2343,9 @@ function showSettingsScreen({ fromHistory = false } = {}) {
 
 async function renderSettingsScreen() {
   let { groqApiKey = '', groqApiKeyAddedAt = null } = await chrome.storage.local.get(['groqApiKey', 'groqApiKeyAddedAt']);
+  const spotifySettings = await chrome.storage.local.get(['spotifyUserClientId', SpotifyUser.TOKEN_KEY]);
+  const spotifyClientId = spotifySettings.spotifyUserClientId || '';
+  const spotifyAuthorization = spotifySettings[SpotifyUser.TOKEN_KEY] || null;
   if (groqApiKey && !groqApiKeyAddedAt) {
     groqApiKeyAddedAt = new Date().toISOString();
     await chrome.storage.local.set({ groqApiKeyAddedAt });
@@ -2337,6 +2362,12 @@ async function renderSettingsScreen() {
     <div class="settings-card">
       <p class="muted" style="font-size:11.5px;margin:0 0 8px">${escapeHtml(remote?.endpoint || 'Not connected')}${remote?.token ? ` · ${escapeHtml(maskApiKey(remote.token))}` : ''}</p>
       <button id="change-connection-btn" class="btn-secondary">Change connection</button>
+    </div>
+
+    <p class="section-label">Spotify playlist creation</p>
+    <div class="settings-card">
+      ${!spotifyClientId ? `<label for="spotify-client-id-input">Spotify public Client ID</label><input id="spotify-client-id-input" value="" placeholder="Public Client ID from Spotify Dashboard"/><p class="settings-hint">This ID is public. Do not enter a Client Secret.</p><button id="save-spotify-client-id" class="btn-primary">Save Client ID</button>` : !spotifyAuthorization ? `<p class="settings-hint">Spotify Client ID configured. Connect to create private playlists from predicted setlists.</p><button id="connect-spotify" class="btn-primary">Connect Spotify</button><button id="remove-spotify-client-id" class="btn-secondary">Remove Client ID</button>` : `<p class="settings-hint">Connected to Spotify</p><button id="disconnect-spotify" class="btn-secondary">Disconnect</button>`}
+      <p id="spotify-settings-status" class="settings-hint" aria-live="polite">${escapeHtml(spotifyAuthMessage)}</p>
     </div>
 
     <p class="section-label">Band info lookups</p>
@@ -2385,6 +2416,10 @@ async function renderSettingsScreen() {
   el('change-connection-btn').addEventListener('click', () => {
     showOnboarding();
   });
+  el('save-spotify-client-id')?.addEventListener('click', async () => { const value = el('spotify-client-id-input').value.trim(); if (!value) { el('spotify-settings-status').textContent = 'Enter the public Client ID.'; return; } await chrome.storage.local.set({ spotifyUserClientId: value }); spotifyAuthMessage = ''; renderSettingsScreen(); });
+  el('remove-spotify-client-id')?.addEventListener('click', async () => { await chrome.storage.local.remove('spotifyUserClientId'); spotifyAuthMessage = ''; renderSettingsScreen(); });
+  el('connect-spotify')?.addEventListener('click', () => SpotifyUser.beginAuthorization(spotifyClientId));
+  el('disconnect-spotify')?.addEventListener('click', async () => { await SpotifyUser.clearAuth(); spotifyAuthMessage = 'Spotify disconnected.'; renderSettingsScreen(); });
 
   el('save-groq-key').addEventListener('click', async () => {
     const val = el('groq-key-input').value.trim();

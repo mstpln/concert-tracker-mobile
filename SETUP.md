@@ -119,6 +119,28 @@ record, is not service-worker cached, and is not an offline feature. Fixture
 tests mock Open-Meteo responses. Stage 4 Spotify playlist creation remains
 unimplemented.
 
+## My Concerts preparation tools — Stage 4
+
+The unified Playlist row keeps manual links in `playlistUrl` and stores an
+optional generated Spotify mix separately in `predictedPlaylist`. Generated
+mixes are private and are never modified automatically: if a prediction later
+changes, the app offers a separate new mix.
+
+Playlist creation uses Spotify Authorization Code with PKCE and only requests
+`playlist-modify-private`. In Spotify’s dashboard, configure the production
+redirect URI as the GitHub Pages app URL (for example
+`https://mstpln.github.io/concert-tracker-mobile/`) and use the identical local
+development URL you open while testing (for example `http://localhost:8080/`).
+Enter only the public Client ID in Settings—never a Client Secret. Authorization
+tokens live only in browser-local storage, never in R2 or concert data.
+
+Before creation, the app shows matched songs in predicted order and lets you
+exclude them; unmatched songs cannot be selected. It creates the private
+playlist only after confirmation. If track insertion is interrupted, it retains
+the temporary browser-local operation so retrying continues with the existing
+Spotify playlist instead of making a duplicate. Local tests use mocked Spotify
+responses. Stage 4 adds no offline access, Concert Day Mode, or rarity tags.
+
 MusicBrainz is used only to identify artists with a stable MBID for future features. It needs no API key. Automatic lookups are disabled by default in `scripts/lib/config.js`; when explicitly enabled, the pipeline makes at most five, one-request-per-band lookups per run. Uncertain results appear in Settings under **Artist identity review**. No production backfill occurs automatically, and user-confirmed choices are protected. Rollback means disabling the feature; it does not delete stored identity history.
 
 ### Run the MusicBrainz backfill manually
