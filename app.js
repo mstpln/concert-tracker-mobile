@@ -2406,13 +2406,18 @@ async function renderSettingsScreen() {
 }
 
 function artistIdentityReviewHtml() {
+  const summary = MusicbrainzState.artistIdentitySummary(bands);
+  const identified = summary.autoConfirmed + summary.manualConfirmed;
+  const lastMusicbrainzRun = apiUsage?.lastMusicbrainzRun;
+  const lastRunHtml = lastMusicbrainzRun ? `<div class="settings-card"><p class="settings-hint" style="margin:0"><strong>Last manual MusicBrainz run:</strong> ${escapeHtml(formatSettingsDate(lastMusicbrainzRun.finishedAt))} · ${escapeHtml(lastMusicbrainzRun.status || 'unknown')} · ${escapeHtml(String(lastMusicbrainzRun.musicbrainzCalls ?? 0))} requests · ${escapeHtml(String(lastMusicbrainzRun.identityUpdates ?? 0))} records updated${lastMusicbrainzRun.error ? ` · ${escapeHtml(lastMusicbrainzRun.error)}` : ''}</p></div>` : '';
   const reviewable = bands.filter((b) => ['needs_review', 'no_match', 'error', 'manual_rejected'].includes(b.musicbrainz?.status));
   const cards = reviewable.filter((b) => b.musicbrainz?.status === 'needs_review').map((band) => {
-    const candidates = (band.musicbrainz.reviewCandidates || []).map((c) => `<div class="identity-candidate"><strong>${escapeHtml(c.artistName)}</strong><p>${escapeHtml([c.area, c.country, c.artistType, c.disambiguation].filter(Boolean).join(' · ') || 'No extra metadata')}</p><p>${escapeHtml((c.matchReasons || []).join(' · '))} · ${escapeHtml(String(c.score))}/100 · Data from MusicBrainz</p><button class="btn-secondary identity-use" data-band-id="${escapeAttr(band.id)}" data-mbid="${escapeAttr(c.mbid)}" aria-label="Use ${escapeAttr(c.artistName)} for ${escapeAttr(band.name)}">Use this artist</button></div>`).join('');
+    const candidates = (band.musicbrainz.reviewCandidates || []).map((c) => `<div class="identity-candidate"><strong>${escapeHtml(c.artistName)}</strong><p>${escapeHtml([c.area, c.country, c.artistType, c.disambiguation].filter(Boolean).join(' · ') || 'No extra metadata')}</p><p>${escapeHtml((c.matchReasons || []).join(' · '))} · ${escapeHtml(String(c.score))}/100 · Data from MusicBrainz</p><a class="btn-secondary" href="https://musicbrainz.org/artist/${escapeAttr(encodeURIComponent(String(c.mbid || '')))}" target="_blank" rel="noopener">View on MusicBrainz</a><button class="btn-secondary identity-use" data-band-id="${escapeAttr(band.id)}" data-mbid="${escapeAttr(c.mbid)}" aria-label="Use ${escapeAttr(c.artistName)} for ${escapeAttr(band.name)}">Use this artist</button></div>`).join('');
     return `<div class="settings-card identity-review-card"><p><strong>${escapeHtml(band.name)}</strong>${band.origin ? ` · ${escapeHtml(band.origin)}` : ''}</p>${candidates}<button class="btn-secondary identity-none" data-band-id="${escapeAttr(band.id)}" aria-label="Reject all displayed MusicBrainz candidates for ${escapeAttr(band.name)}">None of these</button></div>`;
   }).join('');
-  const retries = reviewable.filter((b) => b.musicbrainz?.status !== 'needs_review').map((b) => `<button class="btn-secondary identity-retry" data-band-id="${escapeAttr(b.id)}" aria-label="Try MusicBrainz matching again for ${escapeAttr(b.name)}">Try again: ${escapeHtml(b.name)}</button>`).join('');
-  return `<p class="section-label">Artist identity review</p><div class="identity-review">${cards || '<div class="settings-card"><p class="settings-hint" style="margin:0">No artist matches need review.</p></div>'}${retries ? `<div class="show-buttons">${retries}</div>` : ''}<p class="settings-hint">MusicBrainz candidate data is shown for review; automatic lookups are disabled by default.</p></div>`;
+  const retryReasons = { no_match: 'No match', error: 'Lookup error', manual_rejected: 'Previously rejected' };
+  const retries = reviewable.filter((b) => b.musicbrainz?.status !== 'needs_review').map((b) => `<button class="btn-secondary identity-retry" data-band-id="${escapeAttr(b.id)}" aria-label="Try MusicBrainz matching again for ${escapeAttr(b.name)}">Try again: ${escapeHtml(b.name)} · ${escapeHtml(retryReasons[b.musicbrainz.status])}</button>`).join('');
+  return `<p class="section-label">Artist identity review</p><div class="identity-review"><div class="settings-card"><p class="settings-hint" style="margin:0"><strong>${summary.total} followed artists</strong> · ${identified} identified (${summary.autoConfirmed} automatic, ${summary.manualConfirmed} manual) · ${summary.awaitingReview} awaiting review · ${summary.notCheckedYet} not checked yet · ${summary.noMatch} no match · ${summary.errors} errors · ${summary.manuallyRejected} manually rejected</p></div>${lastRunHtml}${cards || '<div class="settings-card"><p class="settings-hint" style="margin:0">No artist matches need review.</p></div>'}${retries ? `<div class="show-buttons">${retries}</div>` : ''}<p class="settings-hint">Weekly automatic MusicBrainz lookups are off. The manual workflow checks at most five artists per run.</p><a class="btn-secondary" href="https://github.com/mstpln/concert-tracker-mobile/actions/workflows/musicbrainz.yml" target="_blank" rel="noopener">Open MusicBrainz runs</a></div>`;
 }
 
 async function saveArtistIdentity(bandId, updater) {
@@ -2427,13 +2432,19 @@ async function saveArtistIdentity(bandId, updater) {
 }
 
 function wireArtistIdentityReview() {
-  el('screen-settings').querySelectorAll('.identity-use').forEach((button) => button.addEventListener('click', async () => {
-    try { await saveArtistIdentity(button.dataset.bandId, (band) => { const mb = band.musicbrainz || {}; const c = (mb.reviewCandidates || []).find((x) => x.mbid === button.dataset.mbid); return c ? MusicbrainzState.confirmedIdentity(c, mb) : null; }); renderSettingsScreen(); } catch { alert('Could not save this review. Refresh and try again.'); }
-  }));
-  el('screen-settings').querySelectorAll('.identity-none').forEach((button) => button.addEventListener('click', async () => {
-    try { await saveArtistIdentity(button.dataset.bandId, (band) => MusicbrainzState.rejectCandidates(band.musicbrainz || {})); renderSettingsScreen(); } catch { alert('Could not save this review. Refresh and try again.'); }
-  }));
-  el('screen-settings').querySelectorAll('.identity-retry').forEach((button) => button.addEventListener('click', async () => { try { await saveArtistIdentity(button.dataset.bandId, (band) => MusicbrainzState.retryIdentity(band.musicbrainz || {})); renderSettingsScreen(); } catch { alert('Could not save this review. Refresh and try again.'); } }));
+  const submit = async (button, action) => {
+    const controls = [...el('screen-settings').querySelectorAll('.identity-use, .identity-none, .identity-retry')].filter((control) => control.dataset.bandId === button.dataset.bandId);
+    const labels = controls.map((control) => control.textContent);
+    controls.forEach((control) => { control.disabled = true; control.textContent = 'Saving…'; });
+    try { await action(); renderSettingsScreen(); }
+    catch {
+      controls.forEach((control, index) => { control.disabled = false; control.textContent = labels[index]; });
+      alert('Could not save this review. Refresh and try again.');
+    }
+  };
+  el('screen-settings').querySelectorAll('.identity-use').forEach((button) => button.addEventListener('click', () => submit(button, () => saveArtistIdentity(button.dataset.bandId, (band) => { const mb = band.musicbrainz || {}; const c = (mb.reviewCandidates || []).find((x) => x.mbid === button.dataset.mbid); return c ? MusicbrainzState.confirmedIdentity(c, mb) : null; }))));
+  el('screen-settings').querySelectorAll('.identity-none').forEach((button) => button.addEventListener('click', () => submit(button, () => saveArtistIdentity(button.dataset.bandId, (band) => MusicbrainzState.rejectCandidates(band.musicbrainz || {})))));
+  el('screen-settings').querySelectorAll('.identity-retry').forEach((button) => button.addEventListener('click', () => submit(button, () => saveArtistIdentity(button.dataset.bandId, (band) => MusicbrainzState.retryIdentity(band.musicbrainz || {})))));
 }
 
 // Where the GitHub Actions workflow lives — used only for an external

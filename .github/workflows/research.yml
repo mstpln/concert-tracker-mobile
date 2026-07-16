@@ -12,6 +12,11 @@ on:
     - cron: '0 1 * * 4'
   workflow_dispatch: {} # lets you trigger a run manually from the Actions tab, for testing
 
+concurrency:
+  group: live-vault-data-writes
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   research:
     runs-on: ubuntu-latest

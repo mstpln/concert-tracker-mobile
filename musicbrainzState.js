@@ -48,7 +48,24 @@
     return clearedIdentity(previous, { status: 'pending', reviewedAt: now, reviewCandidates: [] });
   }
 
-  const api = { confirmedIdentity, rejectCandidates, retryIdentity };
+  function artistIdentitySummary(bands) {
+    const summary = { total: Array.isArray(bands) ? bands.length : 0, autoConfirmed: 0, manualConfirmed: 0, awaitingReview: 0, notCheckedYet: 0, noMatch: 0, errors: 0, manuallyRejected: 0 };
+    for (const band of Array.isArray(bands) ? bands : []) {
+      switch (band.musicbrainz?.status) {
+        case 'auto_confirmed': summary.autoConfirmed++; break;
+        case 'manual_confirmed': summary.manualConfirmed++; break;
+        case 'needs_review': summary.awaitingReview++; break;
+        case 'no_match': summary.noMatch++; break;
+        case 'error': summary.errors++; break;
+        case 'manual_rejected': summary.manuallyRejected++; break;
+        case 'pending': summary.notCheckedYet++; break;
+        default: summary.notCheckedYet++;
+      }
+    }
+    return summary;
+  }
+
+  const api = { confirmedIdentity, rejectCandidates, retryIdentity, artistIdentitySummary };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.MusicbrainzState = api;
 })(typeof window !== 'undefined' ? window : globalThis);

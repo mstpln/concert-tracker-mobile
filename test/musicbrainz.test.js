@@ -1,10 +1,10 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalize, countryFrom, candidateFrom, searchArtist, identityResult } = require('../scripts/lib/musicbrainz');
+const { normalize, escapeLucenePhrase, countryFrom, candidateFrom, searchArtist, identityResult } = require('../scripts/lib/musicbrainz');
 const { musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities } = require('../scripts/research');
 const { UsageTracker, ensureMusicbrainzState } = require('../scripts/lib/usageTracker');
-const { confirmedIdentity, rejectCandidates, retryIdentity } = require('../musicbrainzState');
+const { confirmedIdentity, rejectCandidates, retryIdentity, artistIdentitySummary } = require('../musicbrainzState');
 const config = require('../scripts/lib/config');
 const band = (name = 'The Cure', extra = {}) => ({ id: 'cure', name, ...extra });
 const raw = (name = 'The Cure', extra = {}) => ({ id: 'mbid-1', name, type: 'Group', score: 100, ...extra });
@@ -16,6 +16,20 @@ test('2 exact alias match', () => assert.equal(candidateFrom(raw('X', { aliases:
 test('3 punctuation differences', () => assert.equal(normalize('AC/DC'), 'ac dc'));
 test('4 diacritics', () => assert.equal(normalize('Beyoncé'), 'beyonce'));
 test('5 whitespace differences', () => assert.equal(normalize('  The   Cure '), 'cure'));
+test('Unicode names remain distinct and punctuation-only names remain matchable', () => {
+  assert.notEqual(normalize('Кино'), ''); assert.notEqual(normalize('東京事変'), ''); assert.notEqual(normalize('Кино'), normalize('東京事変'));
+  assert.notEqual(normalize('!!!'), ''); assert.notEqual(normalize('!!!'), normalize('???'));
+  assert.equal(candidateFrom(raw('!!!'), band('!!!'))._exact, true);
+  assert.equal(candidateFrom(raw('???'), band('!!!'))._exact, false);
+  assert.equal(normalize('Sigur Rós'), 'sigur ros');
+});
+test('Lucene phrase escaping preserves special-character artist names', () => {
+  assert.equal(escapeLucenePhrase('AC/DC'), 'AC\\/DC');
+  assert.equal(escapeLucenePhrase('blink-182'), 'blink\\-182');
+  assert.equal(escapeLucenePhrase('+44'), '\\+44');
+  assert.equal(escapeLucenePhrase('Band (Live)'), 'Band \\(Live\\)');
+  assert.equal(escapeLucenePhrase('The "Quote"'), 'The \\"Quote\\"');
+});
 test('6 same-name artists from different countries', () => assert.equal(candidateFrom(raw('Muse', { country: 'US' }), band('Muse', { origin: 'United Kingdom' }))._contradictory, true));
 test('7 solo artist versus group', () => assert.ok(candidateFrom(raw('Muse', { type: 'Person' }), band('Muse')).score < candidateFrom(raw('Muse'), band('Muse')).score));
 test('8 artist-type agreement', () => assert.ok(candidateFrom(raw(), band()).score >= 90));
@@ -44,6 +58,16 @@ test('19 HTTP 503 is fatal', async () => assert.equal((await searchArtist(band()
 test('20 sequential pacing uses UsageTracker state', async () => { const u = new UsageTracker({ musicbrainz:{perRunCap:5,callsThisRun:0,lastCallAt:null},ticketmaster:{},tavily:{},groq:{},setlistfm:{},spotify:{}}); await u.recordMusicbrainzAttempt(); const first = u._lastMusicbrainzCallAt; await u.recordMusicbrainzAttempt(); assert.ok(u._lastMusicbrainzCallAt - first >= config.MUSICBRAINZ.minDelayMs - 25); });
 test('21 five-request per-run cap', () => { const u = new UsageTracker({ musicbrainz: { perRunCap: 5, callsThisRun: 5 }, ticketmaster:{},tavily:{},groq:{},setlistfm:{},spotify:{} }); assert.equal(u.canCallMusicbrainz(), false); });
 test('22 attempt counted before HTTP request', async () => { const u = fakeUsage(); await searchArtist(band(), u, async () => { assert.equal(u.attempts, 1); return { ok: true, json: async () => ({ artists: [] }) }; }); });
+test('MusicBrainz search sends escaped artist and alias phrases', async () => {
+  for (const name of ['AC/DC', 'blink-182', '+44', 'Band (Live)', 'The "Quote"', 'The Cure']) {
+    let query = null;
+    await searchArtist(band(name), fakeUsage(), async (url) => { query = url.searchParams.get('query'); return { ok: true, json: async () => ({ artists: [] }) }; });
+    const escaped = escapeLucenePhrase(name);
+    assert.equal(query, `artist:"${escaped}" OR alias:"${escaped}"`);
+  }
+  const aliasOnly = await searchArtist(band('Alias Artist'), fakeUsage(), response([raw('Different Name', { aliases:[{ name:'Alias Artist' }] })]));
+  assert.equal(aliasOnly.candidates.length, 1);
+});
 test('23 disabled pipeline makes zero MusicBrainz requests, writes, and usage attempts', async () => {
   const calls = { searches: 0, reads: 0, writes: 0, attempts: 0 };
   const result = await processMusicbrainzIdentities({
@@ -74,6 +98,18 @@ test('enabled pipeline safely leaves bands unchanged when UsageTracker skips Mus
   assert.deepEqual(original, snapshot);
   assert.equal(identityResult(original, { kind:'skipped' }), null);
 });
+test('fatal MusicBrainz result preserves prior updates, writes the error, and stops processing', async () => {
+  const bands = [{ id:'one', name:'One' }, { id:'two', name:'Two' }, { id:'three', name:'Three' }];
+  const searched = [], writes = [], notes = [];
+  const result = await processMusicbrainzIdentities({
+    bands, enabled: true, usage: { note: (message) => notes.push(message) },
+    searchArtist: async (candidate) => { searched.push(candidate.id); return candidate.id === 'two' ? { kind:'fatal', error:'MusicBrainz HTTP 503' } : { kind:'ok' }; },
+    identityResult: (_band, providerResult) => ({ status: providerResult.kind === 'fatal' ? 'error' : 'needs_review' }),
+    readBands: async () => bands, writeBands: async (_file, data) => writes.push(data),
+  });
+  assert.deepEqual(searched, ['one', 'two']); assert.equal(result.fatalError, 'MusicBrainz HTTP 503'); assert.equal(result.updates, 2);
+  assert.equal(writes.length, 1); assert.equal(writes[0][0].musicbrainz.status, 'needs_review'); assert.equal(writes[0][1].musicbrainz.status, 'error'); assert.deepEqual(notes, ['MusicBrainz HTTP 503']);
+});
 test('24 automatic-confirmation threshold uses production scoring', async () => { const result = await searchArtist(band(), fakeUsage(), response([raw()])); assert.equal(result.automatic.score, 95); });
 test('25 clear-lead threshold leaves actual candidates for review', async () => { const result = await searchArtist(band(), fakeUsage(), response([raw('The Cure', { id:'a', score:100 }), raw('The Cure', { id:'b', score:95 })])); assert.equal(result.automatic, null); assert.equal(result.candidates.length, 2); });
 test('26 ambiguous candidates become needs_review', () => assert.equal(identityResult(band(), { kind:'ok',automatic:null,candidates:[{mbid:'x'}] }).status, 'needs_review'));
@@ -98,6 +134,7 @@ test('38 deleted band is not restored', () => assert.equal(mergeMusicbrainzResul
 test('39 newer human decision wins over automation', () => assert.equal(mergeMusicbrainzResults([{id:'x',musicbrainz:{status:'manual_confirmed'}}],[{id:'x',musicbrainz:{status:'auto_confirmed'}}])[0].musicbrainz.status,'manual_confirmed'));
 test('40 old band records without musicbrainz still work', () => assert.equal(musicbrainzEligible(band()),true));
 test('41 old usage state initializes and manual transformations clear stale identity', () => { const state={}; ensureMusicbrainzState(state); assert.equal(state.musicbrainz.callsThisRun,0); const c={mbid:'m',artistName:'Artist',area:'Area',country:'SE',artistType:'Group',disambiguation:'d',score:88,matchReasons:['x']}; const confirmed=confirmedIdentity(c,{rejectedCandidateMbids:['old']},'now'); assert.equal(confirmed.score,undefined); assert.equal(confirmed.matchReasons,undefined); assert.equal(confirmed.mbid,'m'); const rejected=rejectCandidates({...confirmed,reviewCandidates:[c]},'later'); assert.deepEqual(rejected.rejectedCandidateMbids,['old','m']); assert.equal(rejected.matchMethod,null); assert.equal(rejected.matchedAt,null); });
+test('artist identity summary counts every review state', () => assert.deepEqual(artistIdentitySummary([{musicbrainz:{status:'auto_confirmed'}},{musicbrainz:{status:'manual_confirmed'}},{musicbrainz:{status:'needs_review'}},{musicbrainz:{status:'pending'}},{musicbrainz:{status:'no_match'}},{musicbrainz:{status:'error'}},{musicbrainz:{status:'manual_rejected'}},{}]), { total:8, autoConfirmed:1, manualConfirmed:1, awaitingReview:1, notCheckedYet:2, noMatch:1, errors:1, manuallyRejected:1 }));
 test('automatic confirmation persists only identity fields, not candidate scoring details', () => {
   const identity = identityResult(band('', { musicbrainz: { rejectedCandidateMbids: ['old'], score: 1, matchReasons: ['old'] } }), { kind: 'ok', automatic: { mbid:'m',artistName:'Artist',area:'Area',country:'SE',artistType:'Group',disambiguation:'d',score:95,matchReasons:['Exact'] }, candidates: [] }, 'now');
   assert.equal(identity.score, undefined); assert.equal(identity.matchReasons, undefined);

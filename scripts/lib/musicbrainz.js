@@ -12,9 +12,15 @@ const COUNTRY_ALIASES = {
 };
 
 function normalize(value) {
-  return String(value || '').toLowerCase().normalize('NFKD').trim()
-    .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ')
-    .trim().replace(/^the\s+/, '').replace(/\s+/g, ' ');
+  const raw = String(value || '');
+  const normalized = raw.toLocaleLowerCase().normalize('NFKD')
+    .replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim().replace(/^the\s+/u, '').replace(/\s+/g, ' ');
+  return normalized || `symbols-${[...raw].map((char) => char.codePointAt(0).toString(16)).join('-')}`;
+}
+
+function escapeLucenePhrase(value) {
+  return String(value || '').replace(/([+\-!(){}\[\]^"~*?:\\/&|])/g, '\\$1');
 }
 function countryFrom(value) {
   const normalized = normalize(value);
@@ -70,7 +76,9 @@ async function searchArtist(band, usage, fetchImpl = fetch) {
   const timer = setTimeout(() => controller.abort(), config.MUSICBRAINZ.timeoutMs);
   try {
     const url = new URL(`${config.MUSICBRAINZ.baseUrl}/artist`);
-    url.searchParams.set('query', `artist:"${band.name.replace(/"/g, '')}"`);
+    const artistName = String(band.name || '');
+    const phrase = escapeLucenePhrase(artistName);
+    url.searchParams.set('query', `artist:"${phrase}" OR alias:"${phrase}"`);
     url.searchParams.set('fmt', 'json'); url.searchParams.set('limit', String(config.MUSICBRAINZ.maxCandidates));
     const res = await fetchImpl(url, { headers: { Accept: 'application/json', 'User-Agent': config.MUSICBRAINZ.userAgent }, signal: controller.signal });
     if (!res.ok) return { kind: 'fatal', error: `MusicBrainz HTTP ${res.status}` };
@@ -115,4 +123,4 @@ function identityResult(band, result, now = new Date().toISOString()) {
   return unresolved('needs_review', result.candidates);
 }
 
-module.exports = { normalize, countryFrom, candidateFrom, searchArtist, identityResult };
+module.exports = { normalize, escapeLucenePhrase, countryFrom, candidateFrom, searchArtist, identityResult };
