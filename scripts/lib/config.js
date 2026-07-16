@@ -159,6 +159,16 @@ module.exports = {
     maxSpotifyReleasePages: 3,
   },
 
+  // Kept separate from identity resolution and disabled until the prediction
+  // pipeline has been reviewed in a release.  Tests call it explicitly.
+  PREDICTED_SETLIST: {
+    enabled: false,
+    refreshDays: 7,
+    historyMaxSetlists: 20,
+    historyWindowDays: 730,
+    minimumUsefulSetlists: 3,
+  },
+
   WORKER: {
     endpointEnv: 'CF_WORKER_ENDPOINT',
     tokenEnv: 'CF_WORKER_TOKEN',

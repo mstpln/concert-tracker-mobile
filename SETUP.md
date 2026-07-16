@@ -74,13 +74,32 @@ Apple Music, and other valid playlist links can be added, edited, opened, or
 removed without affecting any future generated-playlist data.
 
 Stage 1 does not create Spotify playlists, use Spotify OAuth, request live
-weather, cache weather, or generate predictions. Weather therefore shows
-`Available 10 days before the concert`; predicted-setlist rendering supports
-local fixtures only. The fixed manual checklist is: Ticket ready, Travel
+weather, or cache weather. Weather therefore shows `Available 10 days before
+the concert`. The fixed manual checklist is: Ticket ready, Travel
 planned, Doors & stage times checked, Venue rules checked, and Playlist ready.
 Nothing is completed automatically. There is no offline mode or Concert Day
 Mode. For local visual testing, provide fixture concerts with optional
 `predictedSetlist` data; fixtures must not be stored in production JSON.
+
+## My Concerts preparation tools — Stage 2
+
+Predicted setlists are a research-side estimate, never a real setlist. They
+need a confirmed MusicBrainz MBID; research-side song matching additionally
+requires a confirmed Spotify artist ID. The deterministic calculation uses up
+to 20 useful setlist.fm shows from roughly the last 24 months, excludes covers,
+and needs at least three shows. It weighs appearance rate, recency, typical
+position, and opener/closer/encore evidence. `Played in X%` is the share of
+source shows containing the song.
+
+Overall confidence is **high** for at least eight consistent shows with a 65%
+average selected-song rate, **medium** for at least five shows and 45%, and
+**low** otherwise. A song can receive only Likely opener, Common closer,
+Common encore, or Recently added. Ready predictions refresh at most every
+seven days. Before saving, the pipeline reads the latest concerts and merges
+only `predictedSetlist`, preserving playlists, checklist choices, and every
+other concert field. Tests use mocked providers. Stage 2 uses existing
+app-only Spotify credentials only: it adds no user OAuth and never creates a
+playlist.
 
 MusicBrainz is used only to identify artists with a stable MBID for future features. It needs no API key. Automatic lookups are disabled by default in `scripts/lib/config.js`; when explicitly enabled, the pipeline makes at most five, one-request-per-band lookups per run. Uncertain results appear in Settings under **Artist identity review**. No production backfill occurs automatically, and user-confirmed choices are protected. Rollback means disabling the feature; it does not delete stored identity history.
 
