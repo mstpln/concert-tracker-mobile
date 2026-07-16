@@ -1,0 +1,26 @@
+name: MusicBrainz artist identity backfill
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: live-vault-data-writes
+  cancel-in-progress: false
+
+jobs:
+  musicbrainz-backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run MusicBrainz artist identity backfill
+        env:
+          CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
+          CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
+        run: node scripts/musicbrainz-backfill.js
