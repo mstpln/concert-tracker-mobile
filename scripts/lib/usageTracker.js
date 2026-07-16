@@ -61,6 +61,10 @@ function freshState() {
       callsThisRun: 0,
     },
     musicbrainz: { perRunCap: config.MUSICBRAINZ.perRunCap, callsThisRun: 0, lastCallAt: null },
+    // Additive diagnostics for the disabled-by-default structured router.
+    // These are summaries only; existing provider counters remain the quota
+    // enforcement source and old apiUsage.json files need no migration.
+    structuredResearch: { tavilyByReason: {}, groqByCategory: {}, skips: {}, providerFailures: {} },
     // Which band index the news-research loop should start from this run.
     // Since the Groq daily token budget can run out partway through the
     // band list (it did, on the very first live run — 149,959/150,000
@@ -79,6 +83,16 @@ function ensureMusicbrainzState(state) {
   if (!state.musicbrainz) state.musicbrainz = freshState().musicbrainz;
   if (!('lastMusicbrainzRun' in state)) state.lastMusicbrainzRun = null;
   Object.assign(state.musicbrainz, { perRunCap: config.MUSICBRAINZ.perRunCap });
+  return state;
+}
+
+function ensureStructuredResearchState(state) {
+  if (!state.structuredResearch || typeof state.structuredResearch !== 'object') {
+    state.structuredResearch = freshState().structuredResearch;
+  }
+  for (const key of ['tavilyByReason', 'groqByCategory', 'skips', 'providerFailures']) {
+    if (!state.structuredResearch[key] || typeof state.structuredResearch[key] !== 'object') state.structuredResearch[key] = {};
+  }
   return state;
 }
 
@@ -116,6 +130,7 @@ class UsageTracker {
     if (!state.setlistfm) state.setlistfm = freshState().setlistfm;
     if (!state.spotify) state.spotify = freshState().spotify;
     ensureMusicbrainzState(state);
+    ensureStructuredResearchState(state);
     if (!state.rotation || typeof state.rotation.nextBandIndex !== 'number') {
       state.rotation = { nextBandIndex: 0 };
     }
@@ -192,6 +207,12 @@ class UsageTracker {
   note(text) {
     this._notes.push(text);
     console.log(`[usage] ${text}`);
+  }
+
+  recordStructured(kind, value) {
+    const bucket = this.state.structuredResearch?.[kind];
+    if (!bucket || !value) return;
+    bucket[value] = (bucket[value] || 0) + 1;
   }
 
   // ---------------- Ticketmaster ----------------
@@ -371,4 +392,4 @@ class UsageTracker {
   }
 }
 
-module.exports = { UsageTracker, freshState, ensureMusicbrainzState };
+module.exports = { UsageTracker, freshState, ensureMusicbrainzState, ensureStructuredResearchState };

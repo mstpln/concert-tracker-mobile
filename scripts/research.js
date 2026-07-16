@@ -32,6 +32,7 @@ const geocode = require('./lib/geocode');
 const setlistfm = require('./lib/setlistfm');
 const spotify = require('./lib/spotify');
 const musicbrainz = require('./lib/musicbrainz');
+const structured = require('./lib/structuredResearch');
 const { slugify, isValidFullDate, daysAgo, truncate, todayIso } = require('./lib/util');
 const config = require('./lib/config');
 
@@ -94,6 +95,95 @@ async function processMusicbrainzIdentities({
   return fatalError ? { enabled: true, updates: identityUpdates.length, fatalError } : { enabled: true, updates: identityUpdates.length };
 }
 
+// Runs only behind STRUCTURED_RESEARCH.enabled.  It refreshes compact,
+// additive provider identity/release state and performs safe full-document
+// merges by stable band id.  It intentionally does not touch concerts and
+// never stores provider payloads.
+async function processStructuredResearch({
+  bands, news, usage, enabled = config.STRUCTURED_RESEARCH.enabled,
+  readBands = worker.readJson, writeBands = worker.writeJson, readNews = worker.readJson, writeNews = worker.writeJson,
+  fetchArtistMetadata = musicbrainz.fetchArtistMetadata, fetchReleaseGroups = musicbrainz.fetchReleaseGroups,
+  resolveSpotify = spotify.resolveArtistIdentity, resolveTicketmaster = ticketmaster.resolveAttractionIdentity,
+  listSpotifyReleases = spotify.listArtistReleases, getSpotifyTracks = spotify.getReleaseTracks, now = new Date().toISOString(),
+}) {
+  if (!enabled) return { enabled: false, bands, news, updates: 0, alerts: 0 };
+  const updates = [];
+  const alerts = [];
+  for (const band of bands) {
+    const mb = band.musicbrainz;
+    if (!mb?.mbid || !['manual_confirmed', 'auto_confirmed'].includes(mb.status)) continue;
+    const metadataFresh = mb.metadata?.lastSuccessfulAt && Date.parse(mb.metadata.lastSuccessfulAt) + config.STRUCTURED_RESEARCH.artistMetadataRefreshDays * 86400000 > Date.parse(now);
+    let metadata = mb.metadata?.artistName ? mb.metadata : null;
+    if (!metadataFresh) {
+      const result = await fetchArtistMetadata(mb.mbid, usage);
+      if (result.kind === 'ok') metadata = { ...result.metadata, lastAttemptedAt: now, lastSuccessfulAt: now, nextEligibleCheckAt: null, errorCategory: null };
+      else if (result.kind !== 'skipped') metadata = { ...(metadata || {}), lastAttemptedAt: now, nextEligibleCheckAt: new Date(Date.parse(now) + config.STRUCTURED_RESEARCH.temporaryErrorRetryHours * 3600000).toISOString(), errorCategory: result.error || 'request_failed' };
+    }
+    const nextMb = { ...mb, ...(metadata ? { metadata } : {}) };
+    if (config.STRUCTURED_RESEARCH.providerIdentityResolutionEnabled && metadata) {
+      const spotifyResult = await resolveSpotify({ band: { ...band, musicbrainz: nextMb }, metadata, usage, now });
+      if (spotifyResult.identity) nextMb.spotify = spotifyResult.identity;
+      const ticketmasterResult = await resolveTicketmaster({ band: { ...band, musicbrainz: nextMb }, metadata, usage, now });
+      if (ticketmasterResult.identity) nextMb.ticketmaster = ticketmasterResult.identity;
+    }
+    let releases = structured.releaseState(band);
+    if (config.STRUCTURED_RESEARCH.structuredReleaseMonitoringEnabled) {
+      const observed = [];
+      const priorMbBaseline = structured.providerBaseline(releases, 'musicbrainz');
+      if (!priorMbBaseline.nextEligibleCheckAt || Date.parse(priorMbBaseline.nextEligibleCheckAt) <= Date.parse(now)) {
+        const result = await fetchReleaseGroups(mb.mbid, usage, { offset: priorMbBaseline.continuation?.offset || 0 });
+        if (result.kind === 'ok') {
+          const values = result.releaseGroups.map((raw) => structured.musicbrainzRelease(raw, mb.mbid)).filter(Boolean);
+          observed.push(...values);
+          const complete = result.offset + result.releaseGroups.length >= result.count || result.releaseGroups.length === 0;
+          const newItems = structured.newReleasesAfterBaseline(priorMbBaseline, values);
+          releases = { ...releases, musicbrainz: structured.updateProviderBaseline(priorMbBaseline, values, { complete, now, continuation: complete ? null : { offset: result.offset + result.releaseGroups.length } }), observations: structured.mergeReleaseList([...(releases.observations || []), ...values]).slice(-500) };
+          for (const release of newItems) if (!structured.newsHasRelease(news, band.id, release)) alerts.push(structured.structuredNewsItem(band, release, now));
+        } else if (result.kind !== 'skipped') releases = { ...releases, musicbrainz: structured.updateProviderBaseline(priorMbBaseline, [], { complete: false, now, errorCategory: result.kind === 'unavailable' ? 'unavailable' : 'error', continuation: priorMbBaseline.continuation }) };
+      }
+      const spotifyId = nextMb.spotify?.status === 'confirmed' ? nextMb.spotify.id : null;
+      const priorSpotifyBaseline = structured.providerBaseline(releases, 'spotify');
+      if (spotifyId && (!priorSpotifyBaseline.nextEligibleCheckAt || Date.parse(priorSpotifyBaseline.nextEligibleCheckAt) <= Date.parse(now))) {
+        const result = await listSpotifyReleases(spotifyId, usage, { offset: priorSpotifyBaseline.continuation?.offset || 0 });
+        if (result.kind === 'ok') {
+          const values = result.items.map((raw) => structured.spotifyRelease(raw, spotifyId)).filter(Boolean);
+          const complete = result.offset + result.items.length >= result.total || result.items.length === 0;
+          const newItems = structured.newReleasesAfterBaseline(priorSpotifyBaseline, values);
+          // Track data is intentionally narrow: only a genuinely new,
+          // eligible Spotify single receives one compact track-list request.
+          // Baselines and unchanged catalogue entries never fan out.
+          for (const release of newItems.filter((release) => release.type === 'Single' && release.spotifyReleaseId)) {
+            const tracks = await getSpotifyTracks(release.spotifyReleaseId, usage);
+            if (tracks.kind === 'ok') release.tracks = (tracks.data?.items || []).map((track) => track?.name).filter(Boolean).slice(0, 50);
+          }
+          releases = { ...releases, spotify: structured.updateProviderBaseline(priorSpotifyBaseline, values, { complete, now, continuation: complete ? null : { offset: result.offset + result.items.length } }), observations: structured.mergeReleaseList([...(releases.observations || []), ...values]).slice(-500) };
+          for (const release of newItems) if (!structured.newsHasRelease(news, band.id, release)) alerts.push(structured.structuredNewsItem(band, release, now));
+        } else if (result.kind !== 'skipped') releases = { ...releases, spotify: structured.updateProviderBaseline(priorSpotifyBaseline, [], { complete: false, now, errorCategory: result.kind === 'unavailable' ? 'unavailable' : 'error', continuation: priorSpotifyBaseline.continuation }) };
+      }
+    }
+    updates.push({ id: band.id, musicbrainz: nextMb, structuredResearch: { ...(band.structuredResearch || {}), releases } });
+  }
+  const meaningful = updates.filter((update) => {
+    const before = bands.find((band) => band.id === update.id);
+    return JSON.stringify(before?.musicbrainz) !== JSON.stringify(update.musicbrainz) || JSON.stringify(before?.structuredResearch) !== JSON.stringify(update.structuredResearch);
+  });
+  let mergedBands = bands;
+  if (meaningful.length) {
+    const latest = await readBands('bands.json', []);
+    mergedBands = structured.mergeStructuredBandUpdates(latest, meaningful);
+    await writeBands('bands.json', mergedBands);
+  }
+  const validAlerts = alerts.filter(Boolean);
+  let mergedNews = news;
+  if (validAlerts.length) {
+    const latestNews = await readNews('news.json', []);
+    mergedNews = [...latestNews];
+    for (const alert of validAlerts) if (!structured.newsHasRelease(mergedNews, alert.bandId, alert)) mergedNews.push(alert);
+    if (mergedNews.length !== latestNews.length) await writeNews('news.json', mergedNews);
+  }
+  return { enabled: true, bands: mergedBands, news: mergedNews, updates: meaningful.length, alerts: validAlerts.length };
+}
+
 function concertKey(c) {
   return `${c.bandId}|${c.date}|${slugify(c.venue || '')}`;
 }
@@ -112,11 +202,17 @@ const SNIPPET_MAX_CHARS = 300;
 const TOUR_DATE_ESTIMATED_TOKENS = 900;
 const NEWS_ESTIMATED_TOKENS = 1100;
 
-async function fetchTourDatesViaTavily(band, usage) {
+function promisingTavilyResults(results) {
+  return results.some((result) => /\d{4}|tour|concert|festival|tickets?/i.test(`${result?.title || ''} ${result?.content || ''}`));
+}
+
+async function fetchTourDatesViaTavily(band, usage, { allowGroq = true, seenFingerprints = new Set(), onFingerprints = null } = {}) {
   const searchResult = await tavily.search(`${band.name} tour dates concert announcement`, usage, {
     maxResults: TAVILY_TOUR_DATE_MAX_RESULTS,
   });
-  if (!searchResult || searchResult.results.length === 0) return [];
+  if (!searchResult || searchResult.results.length === 0 || !allowGroq || !promisingTavilyResults(searchResult.results)) return [];
+  const fingerprints = searchResult.results.map((result) => structured.resultFingerprint(result, 'tour'));
+  if (fingerprints.every((fingerprint) => seenFingerprints.has(fingerprint))) return [];
 
   const snippets = searchResult.results
     .map((r, i) => `[${i}] ${r.title}\nURL: ${r.url}\n${truncate(r.content, SNIPPET_MAX_CHARS)}`)
@@ -140,6 +236,7 @@ async function fetchTourDatesViaTavily(band, usage) {
   const parsed = await groq.chatJson(systemPrompt, userPrompt, usage, {
     estimatedTokens: TOUR_DATE_ESTIMATED_TOKENS,
   });
+  if (parsed) onFingerprints?.(fingerprints);
   const shows = Array.isArray(parsed?.shows) ? parsed.shows : [];
   // Defensive filter, independent of what the model was told: never trust
   // the LLM alone to enforce "upcoming only" — this is the second layer of
@@ -178,13 +275,20 @@ async function fetchTourDatesViaTavily(band, usage) {
   return results;
 }
 
-async function fetchNewsForBand(band, usage) {
-  const searchResult = await tavily.search(`${band.name} news`, usage, {
+async function fetchNewsForBand(band, usage, { category = 'legacy', allowGroq = true, seenFingerprints = new Set(), onFingerprints = null } = {}) {
+  const query = category === 'status'
+    ? `${band.name} hiatus breakup reunion lineup announcement`
+    : category === 'release'
+      ? `${band.name} new album EP single announcement`
+      : `${band.name} news`;
+  const searchResult = await tavily.search(query, usage, {
     maxResults: TAVILY_NEWS_MAX_RESULTS,
     topic: 'news',
     days: 21,
   });
-  if (!searchResult || searchResult.results.length === 0) return [];
+  if (!searchResult || searchResult.results.length === 0 || !allowGroq || !promisingTavilyResults(searchResult.results)) return [];
+  const fingerprints = searchResult.results.map((result) => structured.resultFingerprint(result, category));
+  if (fingerprints.every((fingerprint) => seenFingerprints.has(fingerprint))) return [];
 
   const snippets = searchResult.results
     .map(
@@ -213,6 +317,7 @@ async function fetchNewsForBand(band, usage) {
   const parsed = await groq.chatJson(systemPrompt, userPrompt, usage, {
     estimatedTokens: NEWS_ESTIMATED_TOKENS,
   });
+  if (parsed) onFingerprints?.(fingerprints);
   const items = Array.isArray(parsed?.items) ? parsed.items : [];
 
   return items
@@ -237,7 +342,7 @@ let sharedUsage = null;
 async function main() {
   console.log('Concert Tracker research pipeline starting…');
 
-  const [bands, concerts, news, usage] = await Promise.all([
+  let [bands, concerts, news, usage] = await Promise.all([
     worker.readJson('bands.json', []),
     worker.readJson('concerts.json', []),
     worker.readJson('news.json', []),
@@ -247,6 +352,13 @@ async function main() {
 
   // Disabled by default; this cannot alter existing concert/news lookups.
   await processMusicbrainzIdentities({ bands, usage });
+
+  // Keep the legacy flow byte-for-byte in effect while the master flag is
+  // off.  When later enabled, confirmed MBIDs can seed provider IDs and
+  // silent release baselines without a separate migration or data file.
+  const structuredRun = await processStructuredResearch({ bands, news, usage });
+  bands = structuredRun.bands;
+  news = structuredRun.news;
 
   const existingConcertIds = new Set(concerts.map((c) => c.id));
   const existingConcertKeys = new Set(concerts.map(concertKey));
@@ -268,6 +380,8 @@ async function main() {
   let tavilyFallbackUsed = 0;
   let newsAttemptCount = 0;
   let newsBudgetExhaustedNoted = false;
+  const routingUpdates = new Map();
+  const structuredEnabled = config.STRUCTURED_RESEARCH.enabled;
 
   for (const band of orderedBands) {
     bandsProcessed += 1;
@@ -282,7 +396,8 @@ async function main() {
 
     if (candidates.length > 0) ticketmasterHits += 1;
 
-    // ---- Supplement: Tavily + Groq, ALWAYS attempted (budget permitting) ----
+    // Legacy runs retain the broad supplement.  Structured runs instead use
+    // the due-only cadence and record why a call was made or skipped.
     //
     // Used to be an `else if` — only run when Ticketmaster found literally
     // nothing for the band. Changed 2026-07-13 after a real gap: a band on
@@ -303,9 +418,18 @@ async function main() {
     // the worst case, and the existing "budget exhausted" path below simply
     // means some bands go without a news check that particular week rather
     // than anything ever exceeding a free-tier limit.
-    if (usage.canCallTavily() && usage.canCallGroq(TOUR_DATE_ESTIMATED_TOKENS)) {
+    const tourReason = structuredEnabled ? (config.STRUCTURED_RESEARCH.targetedTavilyRoutingEnabled ? structured.tavilyEligibility(band, 'tour', { ticketmasterFound: candidates.length > 0 }) : null) : 'legacy_tour_search';
+    if (!tourReason && structuredEnabled) usage.recordStructured('skips', 'category_not_due');
+    if (tourReason && usage.canCallTavily() && (!structuredEnabled || usage.canCallGroq(TOUR_DATE_ESTIMATED_TOKENS))) {
       try {
-        const supplemental = await fetchTourDatesViaTavily(band, usage);
+        if (structuredEnabled) usage.recordStructured('tavilyByReason', tourReason);
+        const remembered = new Set(band.structuredResearch?.routing?.groqFingerprints || []);
+        const remember = (fingerprints) => {
+          const previous = routingUpdates.get(band.id) || band.structuredResearch?.routing || {};
+          routingUpdates.set(band.id, { ...previous, groqFingerprints: [...new Set([...(previous.groqFingerprints || []), ...fingerprints])].slice(-100) });
+        };
+        const supplemental = await fetchTourDatesViaTavily(band, usage, { allowGroq: !structuredEnabled || config.STRUCTURED_RESEARCH.groqFallbackEnabled, seenFingerprints: remembered, onFingerprints: structuredEnabled ? remember : null });
+        if (structuredEnabled) routingUpdates.set(band.id, { ...(routingUpdates.get(band.id) || band.structuredResearch?.routing || {}), lastTavilyTourAt: new Date().toISOString(), lastTavilyTourReason: tourReason });
         if (supplemental.length > 0) {
           tavilyFallbackUsed += 1;
           candidates = candidates.concat(supplemental);
@@ -335,11 +459,18 @@ async function main() {
       newConcerts.push(c);
     }
 
-    // ---- News: one combined Tavily search + Groq classification ----
-    if (usage.canCallTavily() && usage.canCallGroq(NEWS_ESTIMATED_TOKENS)) {
+    // Legacy mode retains the combined broad search.  Structured mode only
+    // asks about specific status changes; release announcements are a
+    // fallback category and never replace structured release monitoring.
+    const statusReason = structuredEnabled ? (config.STRUCTURED_RESEARCH.targetedTavilyRoutingEnabled ? structured.tavilyEligibility(band, 'status') : null) : 'legacy_news_search';
+    if (statusReason && usage.canCallTavily() && (!structuredEnabled || usage.canCallGroq(NEWS_ESTIMATED_TOKENS))) {
       newsAttemptCount += 1;
       try {
-        const items = await fetchNewsForBand(band, usage);
+        if (structuredEnabled) usage.recordStructured('tavilyByReason', statusReason);
+        const remembered = new Set(band.structuredResearch?.routing?.groqFingerprints || []);
+        const remember = (fingerprints) => { const previous = routingUpdates.get(band.id) || band.structuredResearch?.routing || {}; routingUpdates.set(band.id, { ...previous, groqFingerprints: [...new Set([...(previous.groqFingerprints || []), ...fingerprints])].slice(-100) }); };
+        const items = await fetchNewsForBand(band, usage, { category: structuredEnabled ? 'status' : 'legacy', allowGroq: !structuredEnabled || config.STRUCTURED_RESEARCH.groqFallbackEnabled, seenFingerprints: remembered, onFingerprints: structuredEnabled ? remember : null });
+        if (structuredEnabled) routingUpdates.set(band.id, { ...(routingUpdates.get(band.id) || band.structuredResearch?.routing || {}), lastTavilyStatusAt: new Date().toISOString(), lastTavilyStatusReason: statusReason });
         for (const n of items) {
           const key = newsKey(n);
           if (existingNewsKeys.has(key)) continue;
@@ -349,13 +480,37 @@ async function main() {
       } catch (e) {
         usage.note(`News research failed for "${band.name}": ${e.message}`);
       }
-    } else if (!newsBudgetExhaustedNoted) {
+    } else if (!newsBudgetExhaustedNoted && !structuredEnabled) {
       // Tavily/Groq budget for this run is used up — keep going so the
       // remaining bands still get their (free, cheap) Ticketmaster tour-date
       // check; they just won't get a news check until next week's run.
       usage.note('Tavily/Groq run budget exhausted — skipping news research for remaining bands this run');
       newsBudgetExhaustedNoted = true;
     }
+
+    // Only fill a structured-provider gap; do not use Tavily to rediscover
+    // ordinary catalogue releases already covered by MusicBrainz/Spotify.
+    const releaseState = band.structuredResearch?.releases || {};
+    const structuredReleaseSufficient = releaseState.musicbrainz?.status === 'complete' || releaseState.spotify?.status === 'complete';
+    const releaseReason = structuredEnabled && config.STRUCTURED_RESEARCH.targetedTavilyRoutingEnabled && !structuredReleaseSufficient ? structured.tavilyEligibility(band, 'release') : null;
+    if (releaseReason && usage.canCallTavily() && usage.canCallGroq(NEWS_ESTIMATED_TOKENS)) {
+      try {
+        usage.recordStructured('tavilyByReason', releaseReason);
+        const remembered = new Set(band.structuredResearch?.routing?.groqFingerprints || []);
+        const remember = (fingerprints) => { const previous = routingUpdates.get(band.id) || band.structuredResearch?.routing || {}; routingUpdates.set(band.id, { ...previous, groqFingerprints: [...new Set([...(previous.groqFingerprints || []), ...fingerprints])].slice(-100) }); };
+        const items = await fetchNewsForBand(band, usage, { category: 'release', allowGroq: config.STRUCTURED_RESEARCH.groqFallbackEnabled, seenFingerprints: remembered, onFingerprints: remember });
+        routingUpdates.set(band.id, { ...(routingUpdates.get(band.id) || band.structuredResearch?.routing || {}), lastTavilyReleaseAt: new Date().toISOString(), lastTavilyReleaseReason: releaseReason });
+        for (const item of items.filter((item) => item.category === 'album')) {
+          const key = newsKey(item); if (!existingNewsKeys.has(key)) { existingNewsKeys.add(key); newNews.push(item); }
+        }
+      } catch (error) { usage.note(`Release fallback failed for "${band.name}": ${error.message}`); }
+    }
+  }
+
+  if (structuredEnabled && routingUpdates.size) {
+    const latestBands = await worker.readJson('bands.json', []);
+    const updates = [...routingUpdates].map(([id, routing]) => ({ id, structuredResearch: { routing } }));
+    await worker.writeJson('bands.json', structured.mergeStructuredBandUpdates(latestBands, updates));
   }
 
   // Drop anything whose own reported event date is older than the
@@ -392,11 +547,14 @@ async function main() {
 
   let setlistChecksAttempted = 0;
   let setlistsAdded = 0;
+  const bandsById = new Map(bands.map((band) => [band.id, band]));
   for (const c of needsSetlistCheck) {
     if (!usage.canCallSetlistfm()) break;
     setlistChecksAttempted += 1;
     try {
-      const result = await setlistfm.findSetlistForShow(c, usage);
+      const band = bandsById.get(c.bandId);
+      const artistMbid = structuredEnabled && band?.musicbrainz?.mbid && ['manual_confirmed', 'auto_confirmed'].includes(band.musicbrainz?.status) ? band.musicbrainz.mbid : null;
+      const result = await setlistfm.findSetlistForShow(c, usage, { artistMbid });
       c.setlistCheckedAt = new Date().toISOString();
       if (result) {
         c.setlist = result;
@@ -426,7 +584,9 @@ async function main() {
     if (!usage.canCallSpotify()) break;
     spotifyConcertsProcessed += 1;
     try {
-      spotifyLinksAdded += await spotify.resolveSongLinks(c.setlist.songs, c.bandName, usage);
+      const band = bandsById.get(c.bandId);
+      const spotifyArtistId = structuredEnabled && band?.musicbrainz?.spotify?.status === 'confirmed' ? band.musicbrainz.spotify.id : null;
+      spotifyLinksAdded += await spotify.resolveSongLinks(c.setlist.songs, c.bandName, usage, { spotifyArtistId });
     } catch (e) {
       usage.note(`Spotify song-link resolution failed for "${c.bandName}" (${c.date}): ${e.message}`);
     }
@@ -504,4 +664,4 @@ if (require.main === module) main().catch(async (e) => {
   process.exitCode = 1;
 });
 
-module.exports = { musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities };
+module.exports = { musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities, processStructuredResearch, newsKey, fetchTourDatesViaTavily, fetchNewsForBand, promisingTavilyResults };
