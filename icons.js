@@ -126,6 +126,19 @@ const ICONS = {
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="21" x2="5" y2="13"/><line x1="12" y1="21" x2="12" y2="7"/><line x1="19" y1="21" x2="19" y2="3"/></svg>',
   shieldCheck:
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3.3 8.5-7 10-3.7-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg>',
+  // Local, compact provider marks used only on Settings usage cards. They
+  // are inline SVGs so no third-party asset or runtime network request is
+  // needed to render recognizable provider branding.
+  providerTicketmaster:
+    '<svg viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="5" fill="#026CDF"/><text x="14" y="19.5" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="15" font-style="italic" font-weight="700">tm</text></svg>',
+  providerTavily:
+    '<svg viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="5" fill="#0497A5"/><text x="14" y="17.5" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="700">tavily</text></svg>',
+  providerGroq:
+    '<svg viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="5" fill="#fff"/><text x="14" y="17.5" text-anchor="middle" fill="#171717" font-family="Arial,sans-serif" font-size="9" font-weight="700">groq</text></svg>',
+  providerSetlistfm:
+    '<svg viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="5" fill="#07100d"/><text x="14" y="14" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="7" font-weight="700">setlist</text><text x="14" y="20" text-anchor="middle" fill="#c8df00" font-family="Arial,sans-serif" font-size="7" font-weight="700">.fm</text></svg>',
+  providerSpotify:
+    '<svg viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="14" fill="#1DB954"/><path d="M7.2 10.8c4.3-1.3 9.2-.8 13.2 1.1M7.8 14.4c3.5-1 7.3-.6 10.5.9M8.6 17.7c2.6-.7 5.4-.4 7.7.7" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>',
 };
 
 function icon(name) {
