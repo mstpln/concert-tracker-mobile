@@ -93,6 +93,8 @@ async function searchArtist(band, usage, fetchImpl = fetch) {
 }
 
 function identityResult(band, result, now = new Date().toISOString()) {
+  // A skipped lookup made no MusicBrainz request and carries no match result.
+  if (result.kind === 'skipped') return null;
   const prior = band.musicbrainz || {};
   if (['manual_confirmed', 'auto_confirmed'].includes(prior.status)) return null;
   if (result.kind === 'fatal') return { ...prior, status: 'error', lastAttemptedAt: now, source: 'MusicBrainz' };
