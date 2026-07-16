@@ -48,6 +48,7 @@ function normalizeSetlist(raw) {
     songs,
     tourName: raw?.tour?.name || null,
     url: raw?.url || null,
+    artistUrl: raw?.artist?.url || null,
   };
 }
 
@@ -71,7 +72,7 @@ function venueMatches(setlistVenueName, expectedVenue) {
 // concert, or null if no setlist is on file yet (or the lookup failed/was
 // skipped) — callers treat null as "nothing to add this time", never as
 // an error to surface to the user.
-async function findSetlistForShow(concert, usage) {
+async function findSetlistForShow(concert, usage, { artistMbid = null, fetchImpl = fetch } = {}) {
   if (!usage.canCallSetlistfm()) {
     usage.note(`setlist.fm per-run/daily cap reached — skipping "${concert.bandName}" (${concert.date})`);
     return null;
@@ -79,13 +80,14 @@ async function findSetlistForShow(concert, usage) {
   await usage.recordSetlistfmCall();
 
   const url = new URL(`${config.SETLISTFM.baseUrl}/search/setlists`);
-  url.searchParams.set('artistName', concert.bandName);
+  if (artistMbid) url.searchParams.set('artistMbid', artistMbid);
+  else url.searchParams.set('artistName', concert.bandName);
   url.searchParams.set('date', toSetlistFmDate(concert.date));
   url.searchParams.set('p', '1');
 
   let res;
   try {
-    res = await fetch(url.toString(), {
+    res = await fetchImpl(url.toString(), {
       headers: { 'x-api-key': apiKey(), Accept: 'application/json' },
     });
   } catch (e) {
@@ -108,9 +110,13 @@ async function findSetlistForShow(concert, usage) {
   const candidates = data?.setlist || [];
   if (candidates.length === 0) return null;
 
-  const match = candidates.find((s) => venueMatches(s?.venue?.name, concert.venue)) || candidates[0];
+  // An MBID lookup is only trustworthy when setlist.fm returns that same
+  // artist.  Never fall back to a different artist from this response.
+  const identityCandidates = artistMbid ? candidates.filter((s) => s?.artist?.mbid === artistMbid) : candidates;
+  const match = identityCandidates.find((s) => venueMatches(s?.venue?.name, concert.venue)) || identityCandidates[0];
+  if (!match) return null;
   const normalized = normalizeSetlist(match);
   return normalized.songs.length > 0 ? normalized : null;
 }
 
-module.exports = { findSetlistForShow };
+module.exports = { findSetlistForShow, normalizeSetlist, venueMatches };

@@ -100,6 +100,63 @@ async function searchArtist(band, usage, fetchImpl = fetch) {
   } finally { clearTimeout(timer); }
 }
 
+function spotifyArtistIdFromRelations(relations) {
+  for (const relation of relations || []) {
+    const url = relation?.url?.resource || relation?.target;
+    const match = String(url || '').match(/^https:\/\/open\.spotify\.com\/artist\/([A-Za-z0-9]+)(?:[/?#].*)?$/i);
+    if (match) return { id: match[1], url: `https://open.spotify.com/artist/${match[1]}` };
+  }
+  return null;
+}
+
+async function requestJson(path, params, usage, fetchImpl = fetch) {
+  if (!usage.canCallMusicbrainz()) return { kind: 'skipped' };
+  await usage.recordMusicbrainzAttempt();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.MUSICBRAINZ.timeoutMs);
+  try {
+    const url = new URL(`${config.MUSICBRAINZ.baseUrl}${path}`);
+    for (const [key, value] of Object.entries(params || {})) if (value != null) url.searchParams.set(key, String(value));
+    url.searchParams.set('fmt', 'json');
+    const res = await fetchImpl(url, { headers: { Accept: 'application/json', 'User-Agent': config.MUSICBRAINZ.userAgent }, signal: controller.signal });
+    if (!res.ok) return { kind: 'error', error: `MusicBrainz HTTP ${res.status}`, status: res.status };
+    return { kind: 'ok', data: await res.json() };
+  } catch (e) {
+    return { kind: 'error', error: e?.name === 'AbortError' ? 'MusicBrainz timeout' : `MusicBrainz request failed: ${e.message}` };
+  } finally { clearTimeout(timer); }
+}
+
+// Confirmed identities only.  Keep a compact structured summary; never
+// persist provider payloads, tags, or prose descriptions.
+async function fetchArtistMetadata(mbid, usage, fetchImpl = fetch) {
+  if (!mbid) return { kind: 'skipped' };
+  const result = await requestJson(`/artist/${encodeURIComponent(mbid)}`, { inc: 'aliases+url-rels' }, usage, fetchImpl);
+  if (result.kind !== 'ok') return result;
+  const artist = result.data;
+  if (!artist?.id || artist.id !== mbid) return { kind: 'error', error: 'Invalid MusicBrainz artist metadata' };
+  return {
+    kind: 'ok',
+    metadata: {
+      mbid: artist.id,
+      artistName: artist.name || null,
+      aliases: (artist.aliases || []).map((alias) => alias?.name).filter(Boolean).slice(0, 20),
+      artistType: artist.type || null,
+      area: artist.area?.name || null,
+      country: artist.country || null,
+      disambiguation: artist.disambiguation || null,
+      spotify: spotifyArtistIdFromRelations(artist.relations),
+    },
+  };
+}
+
+async function fetchReleaseGroups(mbid, usage, { offset = 0, limit = 100, fetchImpl = fetch } = {}) {
+  if (!mbid) return { kind: 'skipped' };
+  const result = await requestJson('/release-group', { artist: mbid, limit, offset, 'release-type': 'album|ep|single' }, usage, fetchImpl);
+  if (result.kind !== 'ok') return result;
+  if (!Array.isArray(result.data?.['release-groups'])) return { kind: 'error', error: 'Invalid MusicBrainz release-group response' };
+  return { kind: 'ok', offset, count: result.data['release-group-count'] || 0, releaseGroups: result.data['release-groups'] };
+}
+
 function identityResult(band, result, now = new Date().toISOString()) {
   // A skipped lookup made no MusicBrainz request and carries no match result.
   if (result.kind === 'skipped') return null;
@@ -123,4 +180,4 @@ function identityResult(band, result, now = new Date().toISOString()) {
   return unresolved('needs_review', result.candidates);
 }
 
-module.exports = { normalize, escapeLucenePhrase, countryFrom, candidateFrom, searchArtist, identityResult };
+module.exports = { normalize, escapeLucenePhrase, countryFrom, candidateFrom, searchArtist, identityResult, spotifyArtistIdFromRelations, fetchArtistMetadata, fetchReleaseGroups };

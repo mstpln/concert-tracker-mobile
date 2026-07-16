@@ -83,6 +83,39 @@ The weekly research pipeline does **not** run MusicBrainz automatically. When yo
 
 No MusicBrainz API key is needed. Confirmed, rejected, and review states are protected. The manual run writes only `bands.json` and `apiUsage.json`.
 
+## Structured research routing (disabled by default)
+
+Confirmed MBIDs remain the canonical artist identity. The optional structured
+router uses them to query setlist.fm by MBID, resolve and cache a conservative
+Spotify artist ID and Ticketmaster attraction ID, validate Spotify setlist
+song links, and monitor MusicBrainz release groups plus Spotify albums and
+singles. It uses the existing `news.json` **album** category for structured
+album, EP, and single alerts—there is no new screen or data file.
+
+Each provider starts with a silent, resumable baseline: existing catalogue
+items are recorded as compact keys and produce no historical alerts. Later
+eligible albums, EPs and singles can create one deduplicated alert. Compilations,
+live/remix/tribute/karaoke/promotional/reissue/deluxe variants and guest-only
+appearances are excluded. A future alert requires a complete date; partial
+dates retain their true precision internally rather than being presented as a
+made-up exact date.
+
+The router is controlled by `STRUCTURED_RESEARCH.enabled` in
+`scripts/lib/config.js`, which is **false** by default. To activate later,
+review the branch, merge it, then deliberately change only that flag to `true`
+and deploy the reviewed change. The normal MusicBrainz identity flag remains
+separate and disabled. Roll back by setting the structured flag back to
+`false`; cached provider IDs, baselines and existing alerts are retained.
+
+MusicBrainz needs no secret. The existing Spotify Client Credentials,
+Ticketmaster, Tavily, Groq and setlist.fm credentials are reused. Cached IDs
+are not routinely re-resolved; unresolved identities retry after 90 days and
+temporary errors after 24 hours. MusicBrainz/Spotify release scans refresh at
+most weekly. Tavily is limited to due tour, future-release-gap, status, or
+missing-ticket searches; Groq is only a validated fallback for a promising,
+ambiguous Tavily result and remains unchanged for About descriptions. Local
+tests use mocked provider responses only.
+
 - **No push notifications.** The Chrome extension's weekly "new concert
   found" alert doesn't have an equivalent here yet — you'd see new shows the
   next time you open the app, not via a phone notification. Doable later
