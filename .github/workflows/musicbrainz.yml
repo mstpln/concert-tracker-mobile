@@ -1,15 +1,28 @@
 name: MusicBrainz artist identity backfill
+run-name: MusicBrainz artist identity backfill — @${{ github.actor }}
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Confirm that this will check up to five artists and may update bands.json
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 concurrency:
   group: live-vault-data-writes
   cancel-in-progress: false
+  queue: max
 
 jobs:
   musicbrainz-backfill:
+    if: ${{ inputs.confirm == true && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repo
         uses: actions/checkout@v4

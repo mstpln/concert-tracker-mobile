@@ -66,6 +66,23 @@ Cloudflare's dashboard — no coding required. Should take about 15-20 minutes.
 
 MusicBrainz is used only to identify artists with a stable MBID for future features. It needs no API key. Automatic lookups are disabled by default in `scripts/lib/config.js`; when explicitly enabled, the pipeline makes at most five, one-request-per-band lookups per run. Uncertain results appear in Settings under **Artist identity review**. No production backfill occurs automatically, and user-confirmed choices are protected. Rollback means disabling the feature; it does not delete stored identity history.
 
+### Run the MusicBrainz backfill manually
+
+The weekly research pipeline does **not** run MusicBrainz automatically. When you are ready to check a small batch yourself:
+
+1. Open your repository on GitHub and choose **Actions**.
+2. Open **MusicBrainz artist identity backfill**.
+3. Click **Run workflow**.
+4. Select the `main` branch.
+5. Tick the confirmation checkbox.
+6. Click **Run workflow**.
+7. The run checks at most five eligible artists.
+8. Refresh the app's **Settings** screen afterward.
+9. Review any uncertain candidates in **Artist identity review**.
+10. Repeat later until the remaining count reaches zero.
+
+No MusicBrainz API key is needed. Confirmed, rejected, and review states are protected. The manual run writes only `bands.json` and `apiUsage.json`.
+
 - **No push notifications.** The Chrome extension's weekly "new concert
   found" alert doesn't have an equivalent here yet — you'd see new shows the
   next time you open the app, not via a phone notification. Doable later
