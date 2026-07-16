@@ -697,6 +697,35 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .setlist-attribution { display: inline-block; margin-top: 6px; font-size: 11px; color: var(--text-muted); text-decoration: none; }
 .setlist-attribution:hover { text-decoration: underline; }
 
+/* Upcoming My Concerts preparation rows only. */
+.concert-prep-group { margin-top: 8px; border-top: 1px solid var(--border); }
+.concert-prep-row { width: 100%; min-height: 52px; display: flex; align-items: center; gap: 11px; padding: 9px 0; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border); text-align: left; }
+.concert-prep-row > span:nth-child(2) { flex: 1; min-width: 0; }
+.concert-prep-row strong, .concert-prep-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.concert-prep-row small { color: var(--text-muted); margin-top: 2px; font-size: 12px; }
+.concert-prep-row .details-chevron { transition: transform .15s ease; }
+.concert-prep-row.is-open .details-chevron { transform: rotate(180deg); }
+.concert-prep-panel { padding: 10px 0 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--text-secondary); }
+.concert-prep-panel p { margin: 4px 0 8px; }
+.prep-section + .prep-section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.prep-section .btn-secondary, .prep-section button { margin-right: 7px; }
+.playlist-review input[type="text"], .playlist-review input:not([type]) { width:100%; margin:5px 0 8px; }
+.playlist-review-songs { max-height: 230px; overflow:auto; border-top:1px solid var(--border); border-bottom:1px solid var(--border); margin:8px 0; }
+.playlist-review-songs label, .playlist-review-songs p { display:block; padding:6px 2px; margin:0; line-height:1.35; }
+.playlist-review-songs input { margin-right:7px; accent-color:var(--accent); }
+.playlist-operation-status { min-height: 16px; }
+.weather-hours { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin: 8px 0; }
+.weather-hour { min-width: 0; padding: 7px 4px; border: 1px solid var(--border); border-radius: 6px; text-align: center; }
+.weather-hour span, .weather-hour strong, .weather-hour small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weather-hour span { font-size: 11px; color: var(--text-muted); }
+.weather-hour span svg { width: 16px; height: 16px; margin: 4px auto; color: var(--text-secondary); }
+.weather-hour strong { font-size: 13px; color: var(--text); }
+.weather-hour small { margin-top: 3px; font-size: 10px; color: var(--text-muted); }
+.weather-updated { color: var(--text-muted); font-size: 11px; }
+.prep-checklist label { display: block; padding: 7px 0; color: var(--text); }
+.prep-checklist input { margin-right: 8px; accent-color: var(--accent); }
+.prep-save-error { color: var(--danger); }
+
 /* Total band count (top of My Bands, above the filter rows) — a lightweight
    inline stat rather than a card, since it's only one number; echoes the
    stats teaser's bold-number + muted-label language for consistency. */
