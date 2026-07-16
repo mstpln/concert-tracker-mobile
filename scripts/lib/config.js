@@ -134,6 +134,31 @@ module.exports = {
     noMatchRetryDays: 90,
   },
 
+  // This is deliberately separate from MUSICBRAINZ.enabled.  The latter
+  // controls the conservative identity matcher; this flag controls the
+  // broader use of already-confirmed identities in the weekly pipeline.
+  // Keep it off until a reviewed release decision explicitly enables it.
+  STRUCTURED_RESEARCH: {
+    enabled: false,
+    providerIdentityResolutionEnabled: true,
+    structuredReleaseMonitoringEnabled: true,
+    targetedTavilyRoutingEnabled: true,
+    groqFallbackEnabled: true,
+    artistMetadataRefreshDays: 90,
+    unresolvedIdentityRetryDays: 90,
+    temporaryErrorRetryHours: 24,
+    musicbrainzReleaseRefreshDays: 7,
+    spotifyReleaseRefreshDays: 7,
+    tavilyNoEventsDays: 14,
+    tavilySupplementalTourDays: 28,
+    tavilyReleaseDays: 28,
+    tavilyStatusDays: 28,
+    tavilyTicketDays: 28,
+    groqFingerprintDays: 90,
+    maxMusicbrainzReleasePages: 3,
+    maxSpotifyReleasePages: 3,
+  },
+
   WORKER: {
     endpointEnv: 'CF_WORKER_ENDPOINT',
     tokenEnv: 'CF_WORKER_TOKEN',
