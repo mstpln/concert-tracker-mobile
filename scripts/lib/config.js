@@ -139,7 +139,7 @@ module.exports = {
   // broader use of already-confirmed identities in the weekly pipeline.
   // Keep it off until a reviewed release decision explicitly enables it.
   STRUCTURED_RESEARCH: {
-    enabled: false,
+    enabled: true,
     providerIdentityResolutionEnabled: true,
     structuredReleaseMonitoringEnabled: true,
     targetedTavilyRoutingEnabled: true,
