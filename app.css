@@ -487,7 +487,10 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   border: 1px solid var(--border); border-radius: 10px;
   padding: 12px; background: var(--surface); margin-bottom: 8px;
 }
-.usage-service-name { font-size: 13px; font-weight: 500; margin: 0 0 8px; }
+.usage-service-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.usage-provider-logo { width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; }
+.usage-provider-logo svg { display: block; width: 28px; height: 28px; }
+.usage-service-name { font-size: 13px; font-weight: 500; margin: 0; }
 
 /* Tiered bar: full track width = the service's real free-tier ceiling, not
    our own lower cap. .usage-bar-cap-region shades 0-to-our-cap so it's
@@ -496,7 +499,7 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
    marks exactly where our own cap sits inside that real ceiling. */
 .usage-bar-track-tiered {
   position: relative; height: 6px; background: var(--surface-muted);
-  border-radius: 3px; margin-bottom: 10px;
+  border-radius: 3px;
 }
 .usage-bar-cap-region {
   position: absolute; left: 0; top: 0; height: 100%;
@@ -510,6 +513,17 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   position: absolute; top: -2px; height: 10px; width: 2px;
   background: var(--text); transform: translateX(-1px);
 }
+
+/* A compact cap-based readout: kept content-width and allowed to wrap only
+   between its text groups so large token counts remain usable at 375px. */
+.usage-summary {
+  display: inline-block; max-width: 100%; box-sizing: border-box;
+  margin: 8px 0 10px; padding: 3px 7px;
+  border: 1px solid var(--border-strong); border-radius: 6px;
+  color: var(--text); font-size: 11px; line-height: 1.25;
+  white-space: normal;
+}
+.usage-summary-percent { color: var(--accent); white-space: nowrap; }
 
 .usage-detail-row {
   display: flex; align-items: center; gap: 6px;

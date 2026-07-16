@@ -2432,6 +2432,18 @@ function tieredUsageBarHtml(used, ourCap, realLimit) {
     </div>`;
 }
 
+// The compact summary deliberately uses our internal safety cap rather than
+// the provider's real ceiling. The tiered bar above continues to use the real
+// ceiling, so the two elements answer two different, complementary questions.
+function usageSummaryHtml(used, ourCap) {
+  const cap = Number(ourCap) || 1;
+  const actualUsed = Math.max(0, Number(used) || 0);
+  const percentage = Math.round((actualUsed / cap) * 100);
+  return `<div class="usage-summary" aria-label="${actualUsed.toLocaleString()} of ${cap.toLocaleString()} used, ${percentage}% of our cap">
+    <span>${actualUsed.toLocaleString()} / ${cap.toLocaleString()} used&nbsp; •&nbsp; </span><span class="usage-summary-percent">${percentage}%</span>
+  </div>`;
+}
+
 function usageDetailRowHtml(iconName, html) {
   return `<div class="usage-detail-row">${icon(iconName)}<span>${html}</span></div>`;
 }
@@ -2441,11 +2453,15 @@ function usageDetailRowHtml(iconName, html) {
 // structure). addedAt is only rendered when it's a real, honestly-known
 // date (see RESEARCH_KEY_METADATA's no-fabrication policy above) — most
 // services simply omit that row rather than show a guessed date.
-function usageServiceCardHtml({ name, keyMasked, addedAt, used, ourCap, realLimit, limitText, capText }) {
+function usageServiceCardHtml({ name, providerIcon, keyMasked, addedAt, used, ourCap, realLimit, limitText, capText }) {
   return `
     <div class="usage-service-card">
-      <p class="usage-service-name">${escapeHtml(name)}</p>
+      <div class="usage-service-header">
+        <span class="usage-provider-logo" aria-hidden="true">${icon(providerIcon)}</span>
+        <p class="usage-service-name">${escapeHtml(name)}</p>
+      </div>
       ${tieredUsageBarHtml(used, ourCap, realLimit)}
+      ${usageSummaryHtml(used, ourCap)}
       ${keyMasked ? usageDetailRowHtml('key', escapeHtml(keyMasked)) : ''}
       ${addedAt ? usageDetailRowHtml('calendarPlain', `Added ${escapeHtml(formatSettingsDate(addedAt))}`) : ''}
       ${usageDetailRowHtml('gauge', `Real limit: ${escapeHtml(limitText)}`)}
@@ -2512,6 +2528,7 @@ function researchPipelineSectionHtml() {
   const cards =
     usageServiceCardHtml({
       name: 'Ticketmaster',
+      providerIcon: 'providerTicketmaster',
       keyMasked: RESEARCH_KEY_METADATA.ticketmaster.masked,
       addedAt: RESEARCH_KEY_METADATA.ticketmaster.addedAt,
       used: tm.callsToday, ourCap: tmCap, realLimit: tmReal,
@@ -2520,6 +2537,7 @@ function researchPipelineSectionHtml() {
     }) +
     usageServiceCardHtml({
       name: 'Tavily',
+      providerIcon: 'providerTavily',
       keyMasked: RESEARCH_KEY_METADATA.tavily.masked,
       addedAt: RESEARCH_KEY_METADATA.tavily.addedAt,
       used: tv.callsThisMonth, ourCap: tvCap, realLimit: tvReal,
@@ -2528,6 +2546,7 @@ function researchPipelineSectionHtml() {
     }) +
     usageServiceCardHtml({
       name: 'Groq (research pipeline)',
+      providerIcon: 'providerGroq',
       keyMasked: RESEARCH_KEY_METADATA.groq.masked,
       addedAt: RESEARCH_KEY_METADATA.groq.addedAt,
       // Bar tracks tokens, not requests — TPD is the real binding constraint
@@ -2538,6 +2557,7 @@ function researchPipelineSectionHtml() {
     }) +
     usageServiceCardHtml({
       name: 'setlist.fm',
+      providerIcon: 'providerSetlistfm',
       keyMasked: RESEARCH_KEY_METADATA.setlistfm.masked,
       addedAt: RESEARCH_KEY_METADATA.setlistfm.addedAt,
       used: sl.callsToday, ourCap: slCap, realLimit: slReal,
@@ -2546,6 +2566,7 @@ function researchPipelineSectionHtml() {
     }) +
     usageServiceCardHtml({
       name: 'Spotify',
+      providerIcon: 'providerSpotify',
       // Two credentials (Client ID + Secret) share one card — the secret is
       // the only one with a real masked preview/add-date (see
       // RESEARCH_KEY_METADATA above), the ID is mentioned alongside it.
