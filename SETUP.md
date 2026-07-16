@@ -101,6 +101,24 @@ other concert field. Tests use mocked providers. Stage 2 uses existing
 app-only Spotify credentials only: it adds no user OAuth and never creates a
 playlist.
 
+## My Concerts preparation tools — Stage 3
+
+The Weather forecast row uses the official Open-Meteo forecast and geocoding
+APIs directly in the browser; no API key is required. It stays exactly
+`Available 10 days before the concert` until the venue-local concert date is
+within that window. Forecasts use the venue timezone, show only the hours
+around the concert (or 17:00–23:00 when no start time is known), and use
+Celsius and km/h.
+
+Existing coordinates are used first. Otherwise the app conservatively resolves
+the saved city and country, caches successful and failed location lookups, and
+does not guess a wrong-country result. Normalized forecast data is cached in
+browser-local storage for six hours; a failed refresh can show the last saved
+forecast inside the expanded row. Weather is never written to R2 or a concert
+record, is not service-worker cached, and is not an offline feature. Fixture
+tests mock Open-Meteo responses. Stage 4 Spotify playlist creation remains
+unimplemented.
+
 MusicBrainz is used only to identify artists with a stable MBID for future features. It needs no API key. Automatic lookups are disabled by default in `scripts/lib/config.js`; when explicitly enabled, the pipeline makes at most five, one-request-per-band lookups per run. Uncertain results appear in Settings under **Artist identity review**. No production backfill occurs automatically, and user-confirmed choices are protected. Rollback means disabling the feature; it does not delete stored identity history.
 
 ### Run the MusicBrainz backfill manually

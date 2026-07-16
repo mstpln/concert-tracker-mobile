@@ -709,6 +709,14 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .concert-prep-panel p { margin: 4px 0 8px; }
 .prep-section + .prep-section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
 .prep-section .btn-secondary, .prep-section button { margin-right: 7px; }
+.weather-hours { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin: 8px 0; }
+.weather-hour { min-width: 0; padding: 7px 4px; border: 1px solid var(--border); border-radius: 6px; text-align: center; }
+.weather-hour span, .weather-hour strong, .weather-hour small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weather-hour span { font-size: 11px; color: var(--text-muted); }
+.weather-hour span svg { width: 16px; height: 16px; margin: 4px auto; color: var(--text-secondary); }
+.weather-hour strong { font-size: 13px; color: var(--text); }
+.weather-hour small { margin-top: 3px; font-size: 10px; color: var(--text-muted); }
+.weather-updated { color: var(--text-muted); font-size: 11px; }
 .prep-checklist label { display: block; padding: 7px 0; color: var(--text); }
 .prep-checklist input { margin-right: 8px; accent-color: var(--accent); }
 .prep-save-error { color: var(--danger); }
