@@ -45,7 +45,7 @@ const NEWS_CATEGORIES = new Set(['concert', 'album', 'ticket', 'hiatus']);
 
 function musicbrainzEligible(band, now = Date.now()) {
   const mb = band.musicbrainz || {};
-  if (['manual_confirmed', 'auto_confirmed', 'manual_rejected'].includes(mb.status)) return false;
+  if (['manual_confirmed', 'auto_confirmed', 'manual_rejected', 'needs_review'].includes(mb.status)) return false;
   return !(mb.status === 'no_match' && mb.lastAttemptedAt && now - new Date(mb.lastAttemptedAt).getTime() < config.MUSICBRAINZ.noMatchRetryDays * 86400000);
 }
 
