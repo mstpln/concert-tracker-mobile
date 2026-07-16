@@ -64,6 +64,24 @@ Cloudflare's dashboard — no coding required. Should take about 15-20 minutes.
 
 ## MusicBrainz artist identity
 
+## My Concerts preparation tools — Stage 1
+
+Upcoming concerts marked as attending now have four compact preparation rows:
+**Playlist**, **Weather forecast**, **Predicted setlist**, and **Checklist**.
+They start collapsed, and opening one closes the other rows in that concert
+card. Existing `playlistUrl` remains the manual playlist field: Spotify,
+Apple Music, and other valid playlist links can be added, edited, opened, or
+removed without affecting any future generated-playlist data.
+
+Stage 1 does not create Spotify playlists, use Spotify OAuth, request live
+weather, cache weather, or generate predictions. Weather therefore shows
+`Available 10 days before the concert`; predicted-setlist rendering supports
+local fixtures only. The fixed manual checklist is: Ticket ready, Travel
+planned, Doors & stage times checked, Venue rules checked, and Playlist ready.
+Nothing is completed automatically. There is no offline mode or Concert Day
+Mode. For local visual testing, provide fixture concerts with optional
+`predictedSetlist` data; fixtures must not be stored in production JSON.
+
 MusicBrainz is used only to identify artists with a stable MBID for future features. It needs no API key. Automatic lookups are disabled by default in `scripts/lib/config.js`; when explicitly enabled, the pipeline makes at most five, one-request-per-band lookups per run. Uncertain results appear in Settings under **Artist identity review**. No production backfill occurs automatically, and user-confirmed choices are protected. Rollback means disabling the feature; it does not delete stored identity history.
 
 ### Run the MusicBrainz backfill manually
