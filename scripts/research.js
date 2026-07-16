@@ -31,6 +31,7 @@ const groq = require('./lib/groq');
 const geocode = require('./lib/geocode');
 const setlistfm = require('./lib/setlistfm');
 const spotify = require('./lib/spotify');
+const musicbrainz = require('./lib/musicbrainz');
 const { slugify, isValidFullDate, daysAgo, truncate, todayIso } = require('./lib/util');
 const config = require('./lib/config');
 
@@ -41,6 +42,55 @@ const config = require('./lib/config');
 const SETLIST_RECHECK_DAYS = 30;
 
 const NEWS_CATEGORIES = new Set(['concert', 'album', 'ticket', 'hiatus']);
+
+function musicbrainzEligible(band, now = Date.now()) {
+  const mb = band.musicbrainz || {};
+  if (['manual_confirmed', 'auto_confirmed', 'manual_rejected'].includes(mb.status)) return false;
+  return !(mb.status === 'no_match' && mb.lastAttemptedAt && now - new Date(mb.lastAttemptedAt).getTime() < config.MUSICBRAINZ.noMatchRetryDays * 86400000);
+}
+
+function mergeMusicbrainzResults(latestBands, updates) {
+  const byId = new Map(updates.map((u) => [u.id, u.musicbrainz]));
+  return latestBands.map((band) => {
+    const update = byId.get(band.id);
+    if (!update || ['manual_confirmed', 'manual_rejected'].includes(band.musicbrainz?.status)) return band;
+    return { ...band, musicbrainz: update };
+  });
+}
+
+// Isolated so disabled-mode behavior is testable without starting the full
+// research workflow or touching its other providers.
+async function processMusicbrainzIdentities({
+  bands,
+  usage,
+  enabled = config.MUSICBRAINZ.enabled,
+  perRunCap = config.MUSICBRAINZ.perRunCap,
+  searchArtist = musicbrainz.searchArtist,
+  identityResult = musicbrainz.identityResult,
+  readBands = worker.readJson,
+  writeBands = worker.writeJson,
+  mergeResults = mergeMusicbrainzResults,
+}) {
+  if (!enabled) return { enabled: false, updates: 0 };
+  const identityUpdates = [];
+  for (const band of bands.filter(musicbrainzEligible).slice(0, perRunCap)) {
+    const result = await searchArtist(band, usage);
+    // A quota/cap skip made no provider request, so it must never be
+    // translated into a no-match decision or written back to the band.
+    if (result.kind === 'skipped') break;
+    const identity = identityResult(band, result);
+    if (identity) identityUpdates.push({ id: band.id, musicbrainz: identity });
+    if (result.kind === 'fatal') {
+      if (result.error) usage.note(result.error);
+      break;
+    }
+  }
+  if (identityUpdates.length) {
+    const latestBands = await readBands('bands.json', []);
+    await writeBands('bands.json', mergeResults(latestBands, identityUpdates));
+  }
+  return { enabled: true, updates: identityUpdates.length };
+}
 
 function concertKey(c) {
   return `${c.bandId}|${c.date}|${slugify(c.venue || '')}`;
@@ -192,6 +242,9 @@ async function main() {
     UsageTracker.load(),
   ]);
   sharedUsage = usage;
+
+  // Disabled by default; this cannot alter existing concert/news lookups.
+  await processMusicbrainzIdentities({ bands, usage });
 
   const existingConcertIds = new Set(concerts.map((c) => c.id));
   const existingConcertKeys = new Set(concerts.map(concertKey));
@@ -426,7 +479,7 @@ async function main() {
   );
 }
 
-main().catch(async (e) => {
+if (require.main === module) main().catch(async (e) => {
   console.error('Pipeline failed:', e);
   try {
     // Reuse the same UsageTracker instance main() was mutating, if it got
@@ -448,3 +501,5 @@ main().catch(async (e) => {
   }
   process.exitCode = 1;
 });
+
+module.exports = { musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities };
