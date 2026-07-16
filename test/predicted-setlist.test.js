@@ -69,4 +69,4 @@ test('pipeline reuses one history per band, preserves ready result after failure
   const rerun = await processPredictedSetlists({ ...common, concerts: saved, readConcerts: async () => saved }); assert.equal(rerun.updates, 0);
   const preserved = await processPredictedSetlists({ ...common, concerts: [concert({ predictedSetlist: saved[0].predictedSetlist })], findHistory: async () => ({ kind: 'error' }), readConcerts: async () => saved, writeConcerts: async () => { throw new Error('must not write'); } }); assert.equal(preserved.updates, 0);
 });
-test('Stage 2 keeps the feature disabled by default and does not alter Stage 1 paths', () => { assert.equal(config.PREDICTED_SETLIST.enabled, false); });
+test('Stage 2 released configuration enables prediction without altering Stage 1 paths', () => { assert.equal(config.PREDICTED_SETLIST.enabled, true); });
