@@ -68,6 +68,24 @@ function venueMatches(setlistVenueName, expectedVenue) {
   return a === b || a.includes(b) || b.includes(a);
 }
 
+// Artist history is deliberately MBID-only.  The result is compacted before
+// returning so callers never persist a provider payload.
+async function findRecentSetlistsForArtist(artistMbid, usage, { fetchImpl = fetch } = {}) {
+  if (!artistMbid || !usage.canCallSetlistfm()) return { kind: 'skipped' };
+  await usage.recordSetlistfmCall();
+  const url = `${config.SETLISTFM.baseUrl}/artist/${encodeURIComponent(artistMbid)}/setlists?p=1`;
+  let res;
+  try { res = await fetchImpl(url, { headers: { 'x-api-key': apiKey(), Accept: 'application/json' } }); }
+  catch (error) { usage.note(`setlist.fm artist history failed: ${error.message}`); return { kind: 'error', error: error.message }; }
+  if (res.status === 404) return { kind: 'ok', setlists: [] };
+  if (!res.ok) return { kind: 'error', status: res.status };
+  try {
+    const data = await res.json();
+    if (!Array.isArray(data?.setlist)) return { kind: 'error', error: 'Invalid setlist.fm artist history response' };
+    return { kind: 'ok', setlists: data.setlist.slice(0, config.PREDICTED_SETLIST.historyMaxSetlists).map((raw) => ({ id: raw.id || null, eventDate: raw.eventDate || null, venue: { id: raw.venue?.id || null, name: raw.venue?.name || null }, songs: normalizeSetlist(raw).songs })) };
+  } catch (error) { return { kind: 'error', error: 'Invalid setlist.fm artist history JSON' }; }
+}
+
 // Returns a normalized { songs, tourName, url } object for the given
 // concert, or null if no setlist is on file yet (or the lookup failed/was
 // skipped) — callers treat null as "nothing to add this time", never as
@@ -119,4 +137,4 @@ async function findSetlistForShow(concert, usage, { artistMbid = null, fetchImpl
   return normalized.songs.length > 0 ? normalized : null;
 }
 
-module.exports = { findSetlistForShow, normalizeSetlist, venueMatches };
+module.exports = { findSetlistForShow, findRecentSetlistsForArtist, normalizeSetlist, venueMatches };

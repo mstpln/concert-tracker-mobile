@@ -159,6 +159,16 @@ module.exports = {
     maxSpotifyReleasePages: 3,
   },
 
+  // Kept separate from identity resolution; prediction processing is guarded
+  // by the existing upcoming-attending, confirmed-identity and quota checks.
+  PREDICTED_SETLIST: {
+    enabled: true,
+    refreshDays: 7,
+    historyMaxSetlists: 20,
+    historyWindowDays: 730,
+    minimumUsefulSetlists: 3,
+  },
+
   WORKER: {
     endpointEnv: 'CF_WORKER_ENDPOINT',
     tokenEnv: 'CF_WORKER_TOKEN',

@@ -64,6 +64,83 @@ Cloudflare's dashboard — no coding required. Should take about 15-20 minutes.
 
 ## MusicBrainz artist identity
 
+## My Concerts preparation tools — Stage 1
+
+Upcoming concerts marked as attending now have four compact preparation rows:
+**Playlist**, **Weather forecast**, **Predicted setlist**, and **Checklist**.
+They start collapsed, and opening one closes the other rows in that concert
+card. Existing `playlistUrl` remains the manual playlist field: Spotify,
+Apple Music, and other valid playlist links can be added, edited, opened, or
+removed without affecting any future generated-playlist data.
+
+Stage 1 does not create Spotify playlists, use Spotify OAuth, request live
+weather, or cache weather. Weather therefore shows `Available 10 days before
+the concert`. The fixed manual checklist is: Ticket ready, Travel
+planned, Doors & stage times checked, Venue rules checked, and Playlist ready.
+Nothing is completed automatically. There is no offline mode or Concert Day
+Mode. For local visual testing, provide fixture concerts with optional
+`predictedSetlist` data; fixtures must not be stored in production JSON.
+
+## My Concerts preparation tools — Stage 2
+
+Predicted setlists are a research-side estimate, never a real setlist. They
+need a confirmed MusicBrainz MBID; research-side song matching additionally
+requires a confirmed Spotify artist ID. The deterministic calculation uses up
+to 20 useful setlist.fm shows from roughly the last 24 months, excludes covers,
+and needs at least three shows. It weighs appearance rate, recency, typical
+position, and opener/closer/encore evidence. `Played in X%` is the share of
+source shows containing the song.
+
+Overall confidence is **high** for at least eight consistent shows with a 65%
+average selected-song rate, **medium** for at least five shows and 45%, and
+**low** otherwise. A song can receive only Likely opener, Common closer,
+Common encore, or Recently added. Ready predictions refresh at most every
+seven days. Before saving, the pipeline reads the latest concerts and merges
+only `predictedSetlist`, preserving playlists, checklist choices, and every
+other concert field. Tests use mocked providers. Stage 2 uses existing
+app-only Spotify credentials only: it adds no user OAuth and never creates a
+playlist.
+
+## My Concerts preparation tools — Stage 3
+
+The Weather forecast row uses the official Open-Meteo forecast and geocoding
+APIs directly in the browser; no API key is required. It stays exactly
+`Available 10 days before the concert` until the venue-local concert date is
+within that window. Forecasts use the venue timezone, show only the hours
+around the concert (or 17:00–23:00 when no start time is known), and use
+Celsius and km/h.
+
+Existing coordinates are used first. Otherwise the app conservatively resolves
+the saved city and country, caches successful and failed location lookups, and
+does not guess a wrong-country result. Normalized forecast data is cached in
+browser-local storage for six hours; a failed refresh can show the last saved
+forecast inside the expanded row. Weather is never written to R2 or a concert
+record, is not service-worker cached, and is not an offline feature. Fixture
+tests mock Open-Meteo responses. Stage 4 Spotify playlist creation remains
+unimplemented.
+
+## My Concerts preparation tools — Stage 4
+
+The unified Playlist row keeps manual links in `playlistUrl` and stores an
+optional generated Spotify mix separately in `predictedPlaylist`. Generated
+mixes are private and are never modified automatically: if a prediction later
+changes, the app offers a separate new mix.
+
+Playlist creation uses Spotify Authorization Code with PKCE and only requests
+`playlist-modify-private`. In Spotify’s dashboard, configure the production
+redirect URI as the GitHub Pages app URL (for example
+`https://mstpln.github.io/concert-tracker-mobile/`) and use the identical local
+development URL you open while testing (for example `http://localhost:8080/`).
+Enter only the public Client ID in Settings—never a Client Secret. Authorization
+tokens live only in browser-local storage, never in R2 or concert data.
+
+Before creation, the app shows matched songs in predicted order and lets you
+exclude them; unmatched songs cannot be selected. It creates the private
+playlist only after confirmation. If track insertion is interrupted, it retains
+the temporary browser-local operation so retrying continues with the existing
+Spotify playlist instead of making a duplicate. Local tests use mocked Spotify
+responses. Stage 4 adds no offline access, Concert Day Mode, or rarity tags.
+
 MusicBrainz is used only to identify artists with a stable MBID for future features. It needs no API key. Automatic lookups are disabled by default in `scripts/lib/config.js`; when explicitly enabled, the pipeline makes at most five, one-request-per-band lookups per run. Uncertain results appear in Settings under **Artist identity review**. No production backfill occurs automatically, and user-confirmed choices are protected. Rollback means disabling the feature; it does not delete stored identity history.
 
 ### Run the MusicBrainz backfill manually
