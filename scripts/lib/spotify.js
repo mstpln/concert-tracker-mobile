@@ -15,6 +15,7 @@
 
 const config = require('./config');
 const { sleep } = require('./util');
+const { normalizeTitle } = require('./predictedSetlist');
 
 function basicAuthHeader() {
   const id = process.env[config.SPOTIFY.clientIdEnv];
@@ -208,4 +209,39 @@ async function getReleaseTracks(releaseId, usage, options = {}) {
   return spotifyRequest(`https://api.spotify.com/v1/albums/${encodeURIComponent(releaseId)}/tracks?market=SE&limit=50`, usage, options);
 }
 
-module.exports = { resolveSongLinks, searchTrack, resolveArtistIdentity, listArtistReleases, getReleaseTracks, spotifyIdentity, retryableIdentity, artistMatches };
+const UNSUITABLE_TRACK = /\b(live|acoustic|remix|demo|karaoke|tribute|cover|instrumental)\b/i;
+
+// This is intentionally stricter than the legacy historical-setlist linker:
+// predictions already have a confirmed Spotify artist ID, so accepting a
+// merely similar title would create an unsafe future playlist candidate.
+function predictedTrackCandidate(track, song, spotifyArtistId) {
+  if (!track || !artistMatches(track.artists, '', spotifyArtistId)) return false;
+  if (normalizeTitle(track.name) !== normalizeTitle(song.name)) return false;
+  return !/\b(karaoke|tribute|cover)\b/i.test(`${track.name || ''} ${track.album?.name || ''}`);
+}
+
+async function matchPredictedSong(song, spotifyArtistId, usage, { fetchImpl = fetch, getToken = getAppToken } = {}) {
+  if (!spotifyArtistId || !usage.canCallSpotify()) return { kind: 'skipped' };
+  let token;
+  try { token = await getToken(usage, fetchImpl); } catch (error) { return { kind: 'error', error: error.message }; }
+  const q = `track:"${String(song.name || '').replace(/"/g, '')}"`;
+  const url = `${config.SPOTIFY.searchUrl}?type=track&limit=10&q=${encodeURIComponent(q)}`;
+  async function request() { await usage.recordSpotifyCall(); return fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } }); }
+  let res;
+  try { res = await request(); } catch (error) { return { kind: 'error', error: error.message }; }
+  if (res.status === 429) {
+    const retryAfter = Number(res.headers?.get?.('retry-after')) || 2;
+    usage.note(`Spotify rate-limited — waiting ${retryAfter}s`);
+    await sleep((retryAfter + 1) * 1000);
+    if (!usage.canCallSpotify()) return { kind: 'skipped' };
+    try { res = await request(); } catch (error) { return { kind: 'error', error: error.message }; }
+  }
+  if (!res.ok) return { kind: 'error', status: res.status };
+  let data; try { data = await res.json(); } catch (error) { return { kind: 'error', error: 'Invalid Spotify track JSON' }; }
+  const candidates = (data?.tracks?.items || []).filter((track) => predictedTrackCandidate(track, song, spotifyArtistId));
+  candidates.sort((a, b) => Number(UNSUITABLE_TRACK.test(`${a.name} ${a.album?.name || ''}`)) - Number(UNSUITABLE_TRACK.test(`${b.name} ${b.album?.name || ''}`)) || (b.popularity || 0) - (a.popularity || 0) || String(a.id).localeCompare(String(b.id)));
+  const track = candidates[0];
+  return track ? { kind: 'ok', track: { spotifyTrackId: track.id, spotifyUri: track.uri || null, spotifyUrl: track.external_urls?.spotify || null, spotifyMatched: true } } : { kind: 'no_match' };
+}
+
+module.exports = { resolveSongLinks, searchTrack, resolveArtistIdentity, listArtistReleases, getReleaseTracks, spotifyIdentity, retryableIdentity, artistMatches, predictedTrackCandidate, matchPredictedSong };

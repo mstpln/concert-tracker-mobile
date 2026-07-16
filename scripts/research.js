@@ -33,6 +33,7 @@ const setlistfm = require('./lib/setlistfm');
 const spotify = require('./lib/spotify');
 const musicbrainz = require('./lib/musicbrainz');
 const structured = require('./lib/structuredResearch');
+const predictedSetlist = require('./lib/predictedSetlist');
 const { slugify, isValidFullDate, daysAgo, truncate, todayIso } = require('./lib/util');
 const config = require('./lib/config');
 
@@ -182,6 +183,70 @@ async function processStructuredResearch({
     if (mergedNews.length !== latestNews.length) await writeNews('news.json', mergedNews);
   }
   return { enabled: true, bands: mergedBands, news: mergedNews, updates: meaningful.length, alerts: validAlerts.length };
+}
+
+function confirmedMbid(band) {
+  const mb = band?.musicbrainz;
+  return !!(mb?.mbid && ['manual_confirmed', 'auto_confirmed'].includes(mb.status));
+}
+
+function predictedSetlistEligible(concert, band, now = new Date()) {
+  return !!(concert?.attending && concert.date && concert.date >= now.toISOString().slice(0, 10) && confirmedMbid(band));
+}
+
+function predictionDue(prediction, now = new Date()) {
+  if (!prediction || prediction.status !== 'ready' || !prediction.generatedAt) return true;
+  return Date.parse(prediction.generatedAt) + config.PREDICTED_SETLIST.refreshDays * 86400000 <= now.getTime();
+}
+
+function mergePredictedSetlistResults(latestConcerts, updates) {
+  const byId = new Map(updates.map((update) => [update.id, update.predictedSetlist]));
+  return latestConcerts.map((concert) => byId.has(concert.id) ? { ...concert, predictedSetlist: byId.get(concert.id) } : concert);
+}
+
+// MBID histories are shared by a band's upcoming concerts.  The latest
+// document is fetched only at write time and only predictedSetlist changes.
+async function processPredictedSetlists({
+  concerts, bands, usage, enabled = config.PREDICTED_SETLIST.enabled, now = new Date(),
+  findHistory = setlistfm.findRecentSetlistsForArtist, generate = predictedSetlist.generatePrediction,
+  matchSong = spotify.matchPredictedSong, readConcerts = worker.readJson, writeConcerts = worker.writeJson,
+}) {
+  if (!enabled) return { enabled: false, updates: 0 };
+  const bandsById = new Map(bands.map((band) => [band.id, band]));
+  const historyByMbid = new Map(); const updates = [];
+  const eligible = concerts.filter((concert) => predictedSetlistEligible(concert, bandsById.get(concert.bandId), now) && predictionDue(concert.predictedSetlist, now)).sort((a, b) => a.date.localeCompare(b.date));
+  for (const concert of eligible) {
+    const band = bandsById.get(concert.bandId); const mbid = band.musicbrainz.mbid;
+    let history = historyByMbid.get(mbid);
+    if (!history) { history = await findHistory(mbid, usage); historyByMbid.set(mbid, history); }
+    if (history.kind === 'skipped') break;
+    if (history.kind !== 'ok') {
+      if (concert.predictedSetlist?.status === 'ready') continue; // never replace a useful result with transient failure
+      updates.push({ id: concert.id, predictedSetlist: { ...(concert.predictedSetlist || {}), status: 'error', lastAttemptedAt: now.toISOString(), songs: concert.predictedSetlist?.songs || [] } });
+      continue;
+    }
+    const next = generate(history.setlists, { now });
+    next.generatedAt = next.status === 'ready' ? now.toISOString() : null;
+    next.lastAttemptedAt = now.toISOString(); next.sourceArtistMbid = mbid;
+    next.spotifyMatchedCount = 0;
+    const spotifyId = band.musicbrainz?.spotify?.status === 'confirmed' ? band.musicbrainz.spotify.id : null;
+    if (next.status === 'ready' && spotifyId) {
+      for (const song of next.songs) {
+        const result = await matchSong(song, spotifyId, usage);
+        if (result.kind === 'ok') Object.assign(song, result.track);
+        if (result.kind === 'skipped' || result.kind === 'error') break;
+      }
+      next.spotifyMatchedCount = next.songs.filter((song) => song.spotifyMatched).length;
+    }
+    const prior = concert.predictedSetlist;
+    if (prior?.status === next.status && prior?.fingerprint === next.fingerprint) continue;
+    updates.push({ id: concert.id, predictedSetlist: next });
+  }
+  if (!updates.length) return { enabled: true, updates: 0 };
+  const latest = await readConcerts('concerts.json', []);
+  const merged = mergePredictedSetlistResults(latest, updates);
+  if (JSON.stringify(latest) !== JSON.stringify(merged)) await writeConcerts('concerts.json', merged);
+  return { enabled: true, updates: updates.length };
 }
 
 function concertKey(c) {
@@ -359,6 +424,7 @@ async function main() {
   const structuredRun = await processStructuredResearch({ bands, news, usage });
   bands = structuredRun.bands;
   news = structuredRun.news;
+  await processPredictedSetlists({ concerts, bands, usage });
 
   const existingConcertIds = new Set(concerts.map((c) => c.id));
   const existingConcertKeys = new Set(concerts.map(concertKey));
@@ -664,4 +730,4 @@ if (require.main === module) main().catch(async (e) => {
   process.exitCode = 1;
 });
 
-module.exports = { musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities, processStructuredResearch, newsKey, fetchTourDatesViaTavily, fetchNewsForBand, promisingTavilyResults };
+module.exports = { musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities, processStructuredResearch, predictedSetlistEligible, predictionDue, mergePredictedSetlistResults, processPredictedSetlists, newsKey, fetchTourDatesViaTavily, fetchNewsForBand, promisingTavilyResults };
