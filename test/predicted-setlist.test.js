@@ -5,7 +5,7 @@ const config = require('../scripts/lib/config');
 const { usefulSetlists, generatePrediction } = require('../scripts/lib/predictedSetlist');
 const setlist = require('../scripts/lib/setlistfm');
 const spotify = require('../scripts/lib/spotify');
-const { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, predictedSetlistEligible, predictionDiagnostics, mergePredictedSetlistResults, finalConcertWritePayload, processPredictedSetlists } = require('../scripts/research');
+const { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, predictedSetlistEligible, predictionDue, spotifySocialArtistId, spotifyArtistIdentityForBand, spotifyEnrichmentDue, enrichPredictionWithSpotify, predictionDiagnostics, mergePredictedSetlistResults, finalConcertWritePayload, processPredictedSetlists } = require('../scripts/research');
 const { safeCounter } = require('../scripts/lib/usageTracker');
 process.env.SETLISTFM_API_KEY = 'test-key';
 
@@ -100,3 +100,66 @@ test('pipeline reuses one history per band, preserves ready result after failure
   const preserved = await processPredictedSetlists({ ...common, concerts: [concert({ predictedSetlist: saved[0].predictedSetlist })], findHistory: async () => ({ kind: 'error' }), readConcerts: async () => saved, writeConcerts: async () => { throw new Error('must not write'); } }); assert.equal(preserved.updates, 0);
 });
 test('Stage 2 released configuration enables prediction without altering Stage 1 paths', () => { assert.equal(config.PREDICTED_SETLIST.enabled, true); });
+test('predicted Spotify search uses only title and band, then a title-only fallback without display metadata', async () => {
+  const requests = []; const u = usage(); let call = 0;
+  const response = (items) => ({ ok: true, json: async () => ({ tracks: { items } }) });
+  const result = await spotify.matchPredictedSong({ name: 'All the Rage Back Home', performanceRate: 100, evidenceLabel: 'Likely opener', predictedPosition: 1 }, 'artist', u, { bandName: 'Interpol', getToken: async () => 'token', fetchImpl: async (url) => { requests.push(decodeURIComponent(url)); call += 1; return call === 1 ? response([]) : response([{ id: 'track', name: 'All the Rage Back Home', artists: [{ id: 'artist' }], album: { name: 'Album' } }]); } });
+  assert.equal(result.kind, 'ok'); assert.equal(requests.length, 2); assert.match(requests[0], /track:"All the Rage Back Home" artist:"Interpol"/); assert.match(requests[1], /track:"All the Rage Back Home"/); assert.doesNotMatch(requests[1], /artist:/); for (const request of requests) assert.doesNotMatch(request, /Played in 100%|Likely opener|Common closer|predictedPosition/);
+});
+test('predicted Spotify matching accepts only exact title and artist, rejects unsuitable recordings, and constructs a missing URI', async () => {
+  const u = usage(); const response = { tracks: { items: [
+    { id: 'wrong-artist', name: 'Song', artists: [{ id: 'other' }], album: { name: 'Album' } },
+    { id: 'wrong-title', name: 'Other Song', artists: [{ id: 'artist' }], album: { name: 'Album' } },
+    { id: 'karaoke', name: 'Song', artists: [{ id: 'artist' }], album: { name: 'Karaoke' } },
+    { id: 'cover', name: 'Song', artists: [{ id: 'artist' }], album: { name: 'Cover versions' } },
+    { id: 'right', name: 'Song', artists: [{ id: 'artist' }], album: { name: 'Studio' }, popularity: 1 },
+  ] } };
+  const result = await spotify.matchPredictedSong({ name: 'Song' }, 'artist', u, { bandName: 'Band', getToken: async () => 'token', fetchImpl: async () => ({ ok: true, json: async () => response }) });
+  assert.deepEqual(result.track, { spotifyTrackId: 'right', spotifyUri: 'spotify:track:right', spotifyUrl: null, spotifyMatched: true });
+});
+test('Interpol fixture enriches all ten clean predicted titles with mocked Spotify responses', async () => {
+  const titles = ['All the Rage Back Home', 'Evil', 'Roland', 'Obstacle 1', 'Wings on Fire', 'The New', 'Slow Hands', 'The Rover', 'NYC', 'PDA'];
+  const prediction = { status: 'ready', generatedAt: now.toISOString(), fingerprint: 'interpol', songs: titles.map((name, index) => ({ name, performanceRate: 100, evidenceLabel: index === 0 ? 'Likely opener' : index === 9 ? 'Common closer' : null, spotifyMatched: false })) };
+  const requests = []; const enriched = await enrichPredictionWithSpotify(prediction, band({ name: 'Interpol' }), usage(), now, (song, artistId, u, options) => spotify.matchPredictedSong(song, artistId, u, { ...options, getToken: async () => 'token', fetchImpl: async (url) => { const decoded = decodeURIComponent(url); requests.push(decoded); const title = /track:"([^"]+)"/.exec(decoded)?.[1]; return { ok: true, json: async () => ({ tracks: { items: [{ id: `id-${title}`, name: title, artists: [{ id: 'artist' }], album: { name: 'Studio' } }] } }) }; } }));
+  assert.equal(enriched.status, 'complete'); assert.equal(enriched.prediction.spotifyMatchedCount, 10); assert.equal(requests.length, 10); assert.ok(requests.every((request) => /artist:"Interpol"/.test(request))); assert.ok(requests.every((request) => !/Played in 100%|Likely opener|Common closer/.test(request)));
+});
+test('ready predictions missing matching metadata are enrichment-eligible before seven days without setlist.fm history', async () => {
+  const ready = { status: 'ready', generatedAt: now.toISOString(), fingerprint: 'same', songs: [{ name: 'Song', spotifyMatched: false }] }; let historyCalls = 0; let saved = [concert({ predictedSetlist: ready })];
+  assert.equal(predictionDue(ready, now), false); assert.equal(spotifyEnrichmentDue(ready, spotifyArtistIdentityForBand(band()), now), true);
+  const result = await processPredictedSetlists({ concerts: saved, bands: [band()], usage: usage(), enabled: true, now, findHistory: async () => { historyCalls += 1; return { kind: 'ok', setlists: three }; }, matchSong: async () => ({ kind: 'ok', track: { spotifyTrackId: 'id', spotifyUri: 'spotify:track:id', spotifyUrl: null, spotifyMatched: true } }), readConcerts: async () => saved, writeConcerts: async (_name, value) => { saved = value; }, log: () => {} });
+  assert.equal(historyCalls, 0); assert.equal(result.updates, 1); assert.equal(saved[0].predictedSetlist.spotifyMatchedCount, 1); assert.equal(saved[0].predictedSetlist.fingerprint, 'same');
+});
+test('enrichment retains earlier matches, continues after no-match, and records retryable provider outcomes', async () => {
+  const ready = { status: 'ready', generatedAt: now.toISOString(), fingerprint: 'same', songs: [{ name: 'Already', spotifyMatched: true, spotifyUri: 'spotify:track:already' }, { name: 'Missing', spotifyMatched: false }, { name: 'Later', spotifyMatched: false }] };
+  let calls = 0; const partial = await enrichPredictionWithSpotify(ready, band(), usage(), now, async (song) => { calls += 1; return song.name === 'Missing' ? { kind: 'no_match' } : { kind: 'ok', track: { spotifyTrackId: 'later', spotifyUri: 'spotify:track:later', spotifyMatched: true } }; });
+  assert.equal(calls, 2); assert.equal(partial.status, 'partial'); assert.equal(partial.prediction.songs[0].spotifyUri, 'spotify:track:already'); assert.equal(partial.prediction.songs[2].spotifyMatched, true);
+  const retry = await enrichPredictionWithSpotify(ready, band(), usage(), now, async () => ({ kind: 'error' }));
+  assert.equal(retry.status, 'error'); assert.ok(Date.parse(retry.prediction.spotifyMatchNextEligibleAt) > now.getTime()); assert.equal(retry.prediction.songs[0].spotifyUri, 'spotify:track:already');
+});
+test('Spotify quota blocking preserves earlier matches, records a retry, and does not block enrichment-only work behind setlist quota', async () => {
+  const ready = { status: 'ready', generatedAt: now.toISOString(), fingerprint: 'same', songs: [{ name: 'First', spotifyMatched: false }, { name: 'Second', spotifyMatched: false }] };
+  const quotaUsage = { ...usage(), canCallSetlistfm: () => false, canCallSpotify: (() => { let checks = 0; return () => ++checks < 2; })() };
+  const blocked = await enrichPredictionWithSpotify(ready, band(), quotaUsage, now, async () => ({ kind: 'ok', track: { spotifyTrackId: 'first', spotifyUri: 'spotify:track:first', spotifyMatched: true } }));
+  assert.equal(blocked.status, 'quota_blocked'); assert.equal(blocked.prediction.spotifyMatchedCount, 1); assert.ok(Date.parse(blocked.prediction.spotifyMatchNextEligibleAt) > now.getTime());
+  let saved = [concert({ predictedSetlist: ready })]; let historyCalls = 0;
+  await processPredictedSetlists({ concerts: saved, bands: [band()], usage: { ...usage(), canCallSetlistfm: () => false }, enabled: true, now, findHistory: async () => { historyCalls += 1; return { kind: 'ok', setlists: three }; }, matchSong: async () => ({ kind: 'ok', track: { spotifyTrackId: 'id', spotifyUri: 'spotify:track:id', spotifyMatched: true } }), readConcerts: async () => saved, writeConcerts: async (_name, value) => { saved = value; }, log: () => {} });
+  assert.equal(historyCalls, 0); assert.equal(saved[0].predictedSetlist.spotifyMatchedCount, 2);
+});
+test('current complete matching is not repeated, while old versions and retryable quota states are backfilled', () => {
+  const complete = { status: 'ready', songs: [{ name: 'Song', spotifyMatched: true, spotifyUri: 'spotify:track:id' }], spotifyMatchVersion: config.PREDICTED_SETLIST.spotifyMatchVersion, spotifyMatchStatus: 'complete', spotifyMatchArtistId: 'artist' };
+  assert.equal(spotifyEnrichmentDue(complete, { id: 'artist' }, now), false);
+  assert.equal(spotifyEnrichmentDue({ ...complete, spotifyMatchVersion: 1 }, { id: 'artist' }, now), true);
+  assert.equal(spotifyEnrichmentDue({ ...complete, spotifyMatchStatus: 'quota_blocked', spotifyMatchNextEligibleAt: new Date(now.getTime() - 1).toISOString() }, { id: 'artist' }, now), true);
+});
+test('Spotify artist identity prefers confirmed structured data and safely accepts only exact official social artist URLs', () => {
+  assert.equal(spotifySocialArtistId('https://open.spotify.com/artist/social123?si=x'), 'social123');
+  for (const url of ['https://open.spotify.com/playlist/x', 'https://open.spotify.com/album/x', 'https://open.spotify.com/track/x', 'https://open.spotify.com/artist/a/extra', 'https://spotify.com/artist/x', 'https://spoti.fi/x', 'not a url']) assert.equal(spotifySocialArtistId(url), null);
+  assert.deepEqual(spotifyArtistIdentityForBand(band({ socials: { spotify: 'https://open.spotify.com/artist/social123' } })), { id: 'artist', source: 'structured_identity' });
+  assert.deepEqual(spotifyArtistIdentityForBand(band({ musicbrainz: { status: 'manual_confirmed', mbid: 'mbid' }, socials: { spotify: 'https://open.spotify.com/artist/social123' } })), { id: 'social123', source: 'official_social_url' });
+});
+test('latest enrichment write preserves manual playlist and unrelated concert fields, while UI exposes state-specific Spotify copy', async () => {
+  const ready = { status: 'ready', generatedAt: now.toISOString(), fingerprint: 'same', songs: [{ name: 'Song', spotifyMatched: false }] }; let saved = [concert({ predictedSetlist: ready, predictedPlaylist: { spotifyUrl: 'https://mix' }, setlistInsights: { status: 'ready' } })];
+  await processPredictedSetlists({ concerts: saved, bands: [band()], usage: usage(), enabled: true, now, findHistory: async () => { throw new Error('must not fetch history'); }, matchSong: async () => ({ kind: 'ok', track: { spotifyTrackId: 'id', spotifyUri: 'spotify:track:id', spotifyMatched: true } }), readConcerts: async () => saved, writeConcerts: async (_name, value) => { saved = value; }, log: () => {} });
+  assert.equal(saved[0].playlistUrl, 'https://playlist'); assert.deepEqual(saved[0].predictedPlaylist, { spotifyUrl: 'https://mix' }); assert.deepEqual(saved[0].setlistInsights, { status: 'ready' }); assert.equal(saved[0].notes, 'keep');
+  const app = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'app.js'), 'utf8'); for (const copy of ['Spotify matching has not run yet.', 'Spotify matching could not be completed yet. It will retry.', 'predicted songs matched on Spotify.']) assert.match(app, new RegExp(copy.replace(/[.?]/g, '\\$&'))); assert.match(app, /if \(!matched\.length\)/);
+});
