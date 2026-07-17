@@ -181,6 +181,8 @@ module.exports = {
     longGapMinimumYears: 2,
     maximumInsightsPerConcert: 2,
     historyPageLimit: 5,
+    temporaryErrorRetryHours: 24,
+    quotaBlockedRetryHours: 24,
   },
 
   WORKER: {

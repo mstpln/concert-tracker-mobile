@@ -210,7 +210,7 @@ function mergePredictedSetlistResults(latestConcerts, updates) {
 function setlistInsightsEligible(concert, band, now = new Date(), { force = false, onlyConcertIds = null } = {}) {
   if (!concert?.attending || !concert?.date || concert.date >= now.toISOString().slice(0, 10) || !confirmedMbid(band)) return false;
   if (onlyConcertIds && !onlyConcertIds.has(concert.id)) return false;
-  return setlistInsights.insightsDue(concert, band.musicbrainz.mbid, { force });
+  return setlistInsights.insightsDue(concert, band.musicbrainz.mbid, { force, now });
 }
 
 function mergeSetlistInsightResults(latestConcerts, updates) {
@@ -230,9 +230,9 @@ async function processSetlistInsights({
   for (const concert of eligible) {
     const mbid = bandsById.get(concert.bandId).musicbrainz.mbid;
     let history = historyByMbid.get(mbid);
-    if (!history) { history = await findHistory(mbid, usage, { beforeDate: concert.date }); historyByMbid.set(mbid, history); diagnostics.historyCalls += 1; }
-    if (history.kind === 'skipped') { diagnostics.quotaBlocked += 1; if (concert.setlistInsights?.status !== 'ready') updates.push({ id: concert.id, setlistInsights: { ...(concert.setlistInsights || {}), status: 'quota_blocked', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, lastAttemptedAt: now.toISOString(), sourceArtistMbid: mbid, sourceSetlistFingerprint: setlistInsights.fingerprint(concert.setlist), insights: [] } }); break; }
-    if (history.kind !== 'ok') { diagnostics.errors += 1; if (concert.setlistInsights?.status !== 'ready') updates.push({ id: concert.id, setlistInsights: { ...(concert.setlistInsights || {}), status: 'error', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, lastAttemptedAt: now.toISOString(), sourceArtistMbid: mbid, sourceSetlistFingerprint: setlistInsights.fingerprint(concert.setlist), insights: [] } }); continue; }
+    if (!history) { try { history = await findHistory(mbid, usage, { beforeDate: concert.date }); } catch { history = { kind: 'error' }; } historyByMbid.set(mbid, history); diagnostics.historyCalls += 1; }
+    if (history.kind === 'skipped') { diagnostics.quotaBlocked += 1; if (concert.setlistInsights?.status !== 'ready') updates.push({ id: concert.id, setlistInsights: { ...(concert.setlistInsights || {}), status: 'quota_blocked', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, lastAttemptedAt: now.toISOString(), nextEligibleCheckAt: new Date(now.getTime() + config.SETLIST_INSIGHTS.quotaBlockedRetryHours * 3600000).toISOString(), sourceArtistMbid: mbid, sourceSetlistFingerprint: setlistInsights.fingerprint(concert.setlist), insights: [] } }); break; }
+    if (history.kind !== 'ok') { diagnostics.errors += 1; if (concert.setlistInsights?.status !== 'ready') updates.push({ id: concert.id, setlistInsights: { ...(concert.setlistInsights || {}), status: 'error', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, lastAttemptedAt: now.toISOString(), nextEligibleCheckAt: new Date(now.getTime() + config.SETLIST_INSIGHTS.temporaryErrorRetryHours * 3600000).toISOString(), sourceArtistMbid: mbid, sourceSetlistFingerprint: setlistInsights.fingerprint(concert.setlist), insights: [] } }); continue; }
     const result = analyze(concert, history.setlists, { now }); result.sourceArtistMbid = mbid;
     diagnostics.processed += 1; if (result.status === 'ready') { diagnostics.ready += 1; diagnostics.generated += result.insights.length; } else diagnostics.insufficient += 1;
     const prior = concert.setlistInsights;
@@ -736,14 +736,6 @@ async function main() {
     }
   }
 
-  // Weekly processing is deliberately limited to actual setlists found in
-  // this run. Historical missing records require the manual backfill.
-  let setlistInsightRun = { updates: 0, concerts };
-  if (newlyAddedSetlistIds.size) {
-    setlistInsightRun = await processSetlistInsights({ concerts, bands, usage, onlyConcertIds: newlyAddedSetlistIds });
-    concerts = setlistInsightRun.concerts || concerts;
-  }
-
   // ---- Spotify links: one track link per original (non-cover) setlist song ----
   //
   // Scans every concert (not just ones touched this run) that has a setlist
@@ -776,6 +768,14 @@ async function main() {
   // in on setlist songs — a single PUT rather than three separate ones.
   if (newConcerts.length > 0 || setlistChecksAttempted > 0 || spotifyConcertsProcessed > 0) {
     await worker.writeJson('concerts.json', finalConcertWritePayload(concerts, newConcerts));
+  }
+  // Persist newly found setlists and Spotify song fields before insight work.
+  // The insight processor then rereads that latest document and merges only
+  // setlistInsights, so a history failure cannot erase the actual setlist.
+  let setlistInsightRun = { updates: 0, concerts };
+  if (newlyAddedSetlistIds.size) {
+    setlistInsightRun = await processSetlistInsights({ concerts: await worker.readJson('concerts.json', []), bands, usage, onlyConcertIds: newlyAddedSetlistIds });
+    concerts = setlistInsightRun.concerts || concerts;
   }
   if (freshNews.length > 0) {
     await worker.writeJson('news.json', [...news, ...freshNews]);

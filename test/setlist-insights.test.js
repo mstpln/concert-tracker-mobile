@@ -25,7 +25,16 @@ test('normalization, conservative rare threshold, tour context, long gap and sta
   const old = history('old', '2022-01-01', [song('Raré!')], { tourName: 'Old Tour' });
   const result = engine.analyzeSetlistInsights(concert({ setlist: { tourName: 'Tour', songs: [song('Open'), song('Raré!'), song('Close'), song('Encore', { isEncore: true })] } }), [...enough, old], { now });
   assert.equal(result.status, 'ready'); assert.equal(result.insights.length, 2); assert.equal(result.insights.some((item) => item.label.startsWith('First in ')), true); assert.equal(result.insights.every((item) => !/first ever|career/i.test(`${item.label} ${item.explanation}`)), true);
-  assert.equal(engine.analyzeSetlistInsights(concert(), enough.slice(0, 19), { now }).status, 'insufficient_data');
+  assert.equal(engine.analyzeSetlistInsights(concert(), enough.slice(0, 19).map((item) => ({ ...item, tourName: null })), { now }).status, 'insufficient_data');
+});
+test('provider dd-MM-yyyy dates normalize safely for both history paths and reject impossible dates', async () => {
+  assert.equal(setlist.normalizeEventDate('23-08-1964'), '1964-08-23'); assert.equal(setlist.normalizeEventDate('17-07-2026'), '2026-07-17'); assert.equal(setlist.normalizeEventDate('03-04-2026'), '2026-04-03'); assert.equal(setlist.normalizeEventDate('31-02-2026'), null);
+  const u = usage(); const result = await setlist.findRecentSetlistsForArtist('m', u, { fetchImpl: async () => ({ ok: true, json: async () => ({ setlist: [{ id: 'x', eventDate: '17-07-2026', sets: { set: [{ song: [song('A')] }] } }] }) }) }); assert.equal(result.setlists[0].eventDate, '2026-07-17');
+});
+test('retry policy protects ready and insufficient records, retries temporary states when due, and force overrides', () => {
+  const base = concert(); const fp = engine.fingerprint(base.setlist); const stable = { algorithmVersion: 1, sourceSetlistFingerprint: fp, sourceArtistMbid: 'mbid' };
+  assert.equal(engine.insightsDue({ ...base, setlistInsights: { ...stable, status: 'ready' } }, 'mbid', { now }), false); assert.equal(engine.insightsDue({ ...base, setlistInsights: { ...stable, status: 'insufficient_data' } }, 'mbid', { now }), false);
+  assert.equal(engine.insightsDue({ ...base, setlistInsights: { ...stable, status: 'error', nextEligibleCheckAt: '2026-07-18T00:00:00Z' } }, 'mbid', { now }), false); assert.equal(engine.insightsDue({ ...base, setlistInsights: { ...stable, status: 'quota_blocked', nextEligibleCheckAt: '2026-07-16T00:00:00Z' } }, 'mbid', { now }), true); assert.equal(engine.insightsDue({ ...base, setlistInsights: { ...stable, status: 'ready' } }, 'mbid', { now, force: true }), true);
 });
 test('position tags identify opener and main-set closer with and without an encore', () => {
   assert.deepEqual([...engine.positionTags([song('A'), song('B'), song('C', { isEncore: true })]).entries()], [[0, ['Opener']], [1, ['Main-set closer']]]);
