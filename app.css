@@ -696,6 +696,9 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 }
 .setlist-attribution { display: inline-block; margin-top: 6px; font-size: 11px; color: var(--text-muted); text-decoration: none; }
 .setlist-attribution:hover { text-decoration: underline; }
+.setlist-insight-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; vertical-align: middle; }
+.setlist-insight-tag { display: inline-flex; align-items: center; min-height: 18px; padding: 1px 5px; border: 1px solid var(--border-strong); border-radius: 9px; color: var(--text-secondary); background: var(--surface-muted); font-size: 10.5px; line-height: 1.2; white-space: nowrap; }
+.setlist-insight-context { margin: 8px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.35; }
 
 /* Upcoming My Concerts preparation rows only. */
 .concert-prep-group { margin-top: 8px; border-top: 1px solid var(--border); }
