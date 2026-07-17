@@ -212,6 +212,7 @@ function setlistInsightsEligible(concert, band, now = new Date(), { force = fals
   if (onlyConcertIds && !onlyConcertIds.has(concert.id)) return false;
   return setlistInsights.insightsDue(concert, band.musicbrainz.mbid, { force, now });
 }
+function selectWeeklyInsightRetryIds(concerts, bandsById, now = new Date()) { return (concerts || []).filter((concert) => ['error', 'quota_blocked', 'history_incomplete'].includes(concert.setlistInsights?.status) && setlistInsightsEligible(concert, bandsById.get(concert.bandId), now)).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)).slice(0, config.SETLIST_INSIGHTS.weeklyRetryLimit).map((concert) => concert.id); }
 
 function mergeSetlistInsightResults(latestConcerts, updates) {
   const byId = new Map(updates.map((update) => [update.id, update.setlistInsights]));
@@ -781,7 +782,7 @@ async function main() {
   // The insight processor then rereads that latest document and merges only
   // setlistInsights, so a history failure cannot erase the actual setlist.
   let setlistInsightRun = { updates: 0, concerts };
-  const retryInsightIds = concerts.filter((concert) => ['error', 'quota_blocked', 'history_incomplete'].includes(concert.setlistInsights?.status) && setlistInsightsEligible(concert, bandsById.get(concert.bandId), new Date())).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)).slice(0, config.SETLIST_INSIGHTS.weeklyRetryLimit).map((concert) => concert.id);
+  const retryInsightIds = selectWeeklyInsightRetryIds(concerts, bandsById, new Date());
   const insightIds = new Set([...newlyAddedSetlistIds, ...retryInsightIds]);
   if (insightIds.size) {
     setlistInsightRun = await processSetlistInsights({ concerts: await worker.readJson('concerts.json', []), bands, usage, onlyConcertIds: insightIds });
@@ -853,4 +854,4 @@ if (require.main === module) main().catch(async (e) => {
   process.exitCode = 1;
 });
 
-module.exports = { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities, processStructuredResearch, predictedSetlistEligible, predictionDue, predictionDiagnostics, logPredictionDiagnostics, mergePredictedSetlistResults, finalConcertWritePayload, processPredictedSetlists, setlistInsightsEligible, mergeSetlistInsightResults, processSetlistInsights, newsKey, fetchTourDatesViaTavily, fetchNewsForBand, promisingTavilyResults };
+module.exports = { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities, processStructuredResearch, predictedSetlistEligible, predictionDue, predictionDiagnostics, logPredictionDiagnostics, mergePredictedSetlistResults, finalConcertWritePayload, processPredictedSetlists, setlistInsightsEligible, selectWeeklyInsightRetryIds, mergeSetlistInsightResults, processSetlistInsights, newsKey, fetchTourDatesViaTavily, fetchNewsForBand, promisingTavilyResults };

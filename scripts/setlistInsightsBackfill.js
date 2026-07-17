@@ -9,6 +9,7 @@ const { needsInsightCompletion } = require('./lib/setlistInsights');
 
 function requestedMaximum(value) { const n = Number.parseInt(value, 10); return Math.min(10, Math.max(1, Number.isFinite(n) ? n : 5)); }
 function requestedForce(value) { return value === true || value === 'true'; }
+function countRemainingInsights(concerts, byId, now = new Date()) { return (concerts || []).filter((concert) => { const band = byId.get(concert.bandId); return confirmedMbid(band) && needsInsightCompletion(concert, band.musicbrainz.mbid, undefined, now); }).length; }
 
 async function runSetlistInsightsBackfill({ maxConcerts = process.env.MAX_CONCERTS, forceRecalculate = process.env.FORCE_RECALCULATE, readConcerts = worker.readJson, readBands = worker.readJson, loadUsage = UsageTracker.load, processInsights = processSetlistInsights, now = new Date(), log = console.log } = {}) {
   const usage = await loadUsage(); const concerts = await readConcerts('concerts.json', []); const bands = await readBands('bands.json', []); const byId = new Map(bands.map((band) => [band.id, band]));
@@ -17,7 +18,7 @@ async function runSetlistInsightsBackfill({ maxConcerts = process.env.MAX_CONCER
   const selected = eligible.slice(0, limit); let result;
   try {
     result = await processInsights({ concerts, bands, usage, enabled: true, force, onlyConcertIds: new Set(selected.map((concert) => concert.id)), now, log });
-    const current = result.concerts || concerts; const remaining = current.filter((concert) => { const band = byId.get(concert.bandId); return confirmedMbid(band) && needsInsightCompletion(concert, band.musicbrainz.mbid, undefined, now); }).length;
+    const current = result.concerts || concerts; const remaining = countRemainingInsights(current, byId, now);
     usage.state.lastSetlistInsightsBackfill = { mode: 'setlist-insights-backfill', status: 'ok', eligible: eligible.length, selected: selected.length, processed: result.diagnostics.processed, ready: result.diagnostics.ready, insufficient: result.diagnostics.insufficient, errors: result.diagnostics.errors, insightsGenerated: result.diagnostics.generated, remaining, setlistfmCalls: usage.state.setlistfm.callsThisRun, finishedAt: new Date().toISOString() };
     await usage.save();
     log(`Live-performance insight backfill: eligible ${eligible.length}, selected ${selected.length}, processed ${result.diagnostics.processed}, ready ${result.diagnostics.ready}, insufficient ${result.diagnostics.insufficient}, errors ${result.diagnostics.errors}, insights generated ${result.diagnostics.generated}, remaining ${remaining}.`);
@@ -29,4 +30,4 @@ async function runSetlistInsightsBackfill({ maxConcerts = process.env.MAX_CONCER
 }
 
 if (require.main === module) runSetlistInsightsBackfill().catch((error) => { console.error('Setlist insight backfill failed:', error.message); process.exitCode = 1; });
-module.exports = { runSetlistInsightsBackfill, requestedMaximum, requestedForce };
+module.exports = { runSetlistInsightsBackfill, requestedMaximum, requestedForce, countRemainingInsights };
