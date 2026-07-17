@@ -13,7 +13,7 @@ function requestedForce(value) { return value === true || value === 'true'; }
 async function runSetlistInsightsBackfill({ maxConcerts = process.env.MAX_CONCERTS, forceRecalculate = process.env.FORCE_RECALCULATE, readConcerts = worker.readJson, readBands = worker.readJson, loadUsage = UsageTracker.load, processInsights = processSetlistInsights, now = new Date(), log = console.log } = {}) {
   const usage = await loadUsage(); const concerts = await readConcerts('concerts.json', []); const bands = await readBands('bands.json', []); const byId = new Map(bands.map((band) => [band.id, band]));
   const force = requestedForce(forceRecalculate); const limit = requestedMaximum(maxConcerts);
-  const eligible = concerts.filter((concert) => setlistInsightsEligible(concert, byId.get(concert.bandId), now, { force })).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const eligible = concerts.filter((concert) => setlistInsightsEligible(concert, byId.get(concert.bandId), now, { force })).sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
   const selected = eligible.slice(0, limit); let result;
   try {
     result = await processInsights({ concerts, bands, usage, enabled: true, force, onlyConcertIds: new Set(selected.map((concert) => concert.id)), now, log });

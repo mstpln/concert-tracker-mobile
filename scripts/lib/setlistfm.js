@@ -100,23 +100,25 @@ async function findRecentSetlistsForArtist(artistMbid, usage, { fetchImpl = fetc
 // are compact normalized records; raw provider payloads are never persisted.
 async function findHistoricalSetlistsForArtist(artistMbid, usage, { beforeDate, pageLimit = config.SETLIST_INSIGHTS.historyPageLimit, fetchImpl = fetch } = {}) {
   if (!artistMbid) return { kind: 'skipped', setlists: [] };
-  const setlists = []; let reachedBeforeDate = false;
+  const setlists = []; let reachedBeforeDate = false; let providerExhausted = false; let pagesFetched = 0;
   for (let page = 1; page <= pageLimit; page++) {
-    if (!usage.canCallSetlistfm()) return { kind: 'skipped', setlists, reachedBeforeDate };
+    if (!usage.canCallSetlistfm()) return { kind: 'skipped', setlists, reachedBeforeDate, providerExhausted, historyComplete: false, pagesFetched };
     await usage.recordSetlistfmCall();
-    let res;
+    let res; pagesFetched++;
     try { res = await fetchImpl(`${config.SETLISTFM.baseUrl}/artist/${encodeURIComponent(artistMbid)}/setlists?p=${page}`, { headers: { 'x-api-key': apiKey(), Accept: 'application/json' } }); }
     catch (error) { usage.note(`setlist.fm insight history failed: ${error.message}`); return { kind: 'error', setlists, reachedBeforeDate }; }
-    if (res.status === 404) return { kind: 'ok', setlists, reachedBeforeDate: true };
+    if (res.status === 404) return { kind: 'ok', setlists, reachedBeforeDate, providerExhausted: true, historyComplete: true, pagesFetched };
     if (!res.ok) return { kind: 'error', status: res.status, setlists, reachedBeforeDate };
     let data; try { data = await res.json(); } catch { return { kind: 'error', setlists, reachedBeforeDate }; }
-    if (!Array.isArray(data?.setlist)) return { kind: 'error', setlists, reachedBeforeDate };
+    if (!Array.isArray(data?.setlist)) return { kind: 'error', setlists, reachedBeforeDate, pagesFetched };
     const compact = data.setlist.map((raw) => ({ id: raw.id || null, eventDate: normalizeEventDate(raw.eventDate), venue: { id: raw.venue?.id || null, name: raw.venue?.name || null }, tourName: raw.tour?.name || null, songs: normalizeSetlist(raw).songs }));
     setlists.push(...compact);
     if (compact.some((item) => item.eventDate && item.eventDate < beforeDate)) reachedBeforeDate = true;
-    if (!compact.length || (reachedBeforeDate && setlists.filter((item) => item.eventDate && item.eventDate < beforeDate).length >= config.SETLIST_INSIGHTS.comparisonSetlistLimit)) break;
+    const total = Number(data.total); const itemsPerPage = Number(data.itemsPerPage); const providerPage = Number(data.page || page);
+    providerExhausted = !compact.length || (Number.isFinite(total) && Number.isFinite(itemsPerPage) && providerPage * itemsPerPage >= total);
+    if (providerExhausted || (reachedBeforeDate && setlists.filter((item) => item.eventDate && item.eventDate < beforeDate).length >= config.SETLIST_INSIGHTS.comparisonSetlistLimit)) break;
   }
-  return { kind: 'ok', setlists, reachedBeforeDate };
+  return { kind: 'ok', setlists, reachedBeforeDate, providerExhausted, historyComplete: reachedBeforeDate || providerExhausted, pagesFetched };
 }
 
 // Returns a normalized { songs, tourName, url } object for the given

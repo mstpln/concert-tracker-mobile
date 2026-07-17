@@ -239,6 +239,7 @@ async function processSetlistInsights({
       diagnostics.quotaBlocked += eligible.length - eligible.indexOf(concert); break;
     }
     if (history.kind !== 'ok') { diagnostics.errors += 1; if (concert.setlistInsights?.status !== 'ready') updates.push({ id: concert.id, setlistInsights: { ...(concert.setlistInsights || {}), status: 'error', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, lastAttemptedAt: now.toISOString(), nextEligibleCheckAt: new Date(now.getTime() + config.SETLIST_INSIGHTS.temporaryErrorRetryHours * 3600000).toISOString(), sourceArtistMbid: mbid, sourceSetlistFingerprint: setlistInsights.fingerprint(concert.setlist), insights: [] } }); continue; }
+    if (history.historyComplete === false) { if (concert.setlistInsights?.status !== 'ready') updates.push({ id: concert.id, setlistInsights: { ...(concert.setlistInsights || {}), status: 'history_incomplete', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, lastAttemptedAt: now.toISOString(), nextEligibleCheckAt: new Date(now.getTime() + config.SETLIST_INSIGHTS.historyIncompleteRetryDays * 86400000).toISOString(), sourceArtistMbid: mbid, sourceSetlistFingerprint: setlistInsights.fingerprint(concert.setlist), pagesFetched: history.pagesFetched || 0, insights: [] } }); continue; }
     const result = analyze(concert, history.setlists, { now }); result.sourceArtistMbid = mbid;
     diagnostics.processed += 1; if (result.status === 'ready') { diagnostics.ready += 1; diagnostics.generated += result.insights.length; } else diagnostics.insufficient += 1;
     const prior = concert.setlistInsights;
@@ -780,7 +781,7 @@ async function main() {
   // The insight processor then rereads that latest document and merges only
   // setlistInsights, so a history failure cannot erase the actual setlist.
   let setlistInsightRun = { updates: 0, concerts };
-  const retryInsightIds = concerts.filter((concert) => ['error', 'quota_blocked'].includes(concert.setlistInsights?.status) && setlistInsightsEligible(concert, bandsById.get(concert.bandId), new Date())).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)).slice(0, config.SETLIST_INSIGHTS.weeklyRetryLimit).map((concert) => concert.id);
+  const retryInsightIds = concerts.filter((concert) => ['error', 'quota_blocked', 'history_incomplete'].includes(concert.setlistInsights?.status) && setlistInsightsEligible(concert, bandsById.get(concert.bandId), new Date())).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)).slice(0, config.SETLIST_INSIGHTS.weeklyRetryLimit).map((concert) => concert.id);
   const insightIds = new Set([...newlyAddedSetlistIds, ...retryInsightIds]);
   if (insightIds.size) {
     setlistInsightRun = await processSetlistInsights({ concerts: await worker.readJson('concerts.json', []), bands, usage, onlyConcertIds: insightIds });
