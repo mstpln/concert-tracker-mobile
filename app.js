@@ -48,6 +48,10 @@ const playlistReviews = new Map(); // transient selections only; never concert d
 const playlistOperations = new Map();
 const prepOpenPanels = new Map(); // browser-local accordion state only; never concert data
 let spotifyAuthMessage = '';
+// Settings starts on Research each time it is opened. These are deliberately
+// browser-local display choices, never stored with the user's concert data.
+let settingsTab = 'research';
+let settingsExpandedTool = null;
 
 const el = (id) => document.getElementById(id);
 
@@ -2366,6 +2370,8 @@ async function exportDataAsExcel() {
 
 function showSettingsScreen({ fromHistory = false } = {}) {
   currentScreen = 'settings';
+  settingsTab = 'research';
+  settingsExpandedTool = null;
   setHeaderChrome({ showBack: true, title: 'Settings' });
   el('europe-toggle-btn').classList.add('hidden');
   el('nearby-toggle-btn').classList.add('hidden');
@@ -2390,7 +2396,11 @@ async function renderSettingsScreen() {
          ${groqApiKeyAddedAt ? ` · added ${escapeHtml(formatSettingsDate(groqApiKeyAddedAt))}` : ''}
        </p>`
     : '';
-  container.innerHTML = `
+  const settingsTabsHtml = `
+    <div class="news-subtab-switch settings-subtab-switch" role="tablist" aria-label="Settings sections">
+      ${['research', 'review', 'data'].map((tab) => `<button type="button" class="news-subtab-btn settings-subtab-btn${settingsTab === tab ? ' active' : ''}" data-settings-tab="${tab}" role="tab" aria-selected="${settingsTab === tab}"${settingsTab === tab ? '' : ' tabindex="-1"'}>${escapeHtml(tab[0].toUpperCase() + tab.slice(1))}</button>`).join('')}
+    </div>`;
+  const dataTabHtml = `
     <p class="section-label">Connection</p>
     <div class="settings-card">
       <p class="muted" style="font-size:11.5px;margin:0 0 8px">${escapeHtml(remote?.endpoint || 'Not connected')}${remote?.token ? ` · ${escapeHtml(maskApiKey(remote.token))}` : ''}</p>
@@ -2403,23 +2413,7 @@ async function renderSettingsScreen() {
       <p id="spotify-settings-status" class="settings-hint" aria-live="polite">${escapeHtml(spotifyAuthMessage)}</p>
     </div>
 
-    <p class="section-label">Band info lookups</p>
-    <div class="settings-card">
-      <label>Groq API key (optional)</label>
-      ${savedKeyInfo}
-      <div class="password-field-wrap">
-        <input type="password" id="groq-key-input" value="" placeholder="${groqApiKey ? 'Enter a new key to replace it' : 'For faster, more reliable band-info lookups'}" />
-        <button type="button" id="groq-key-toggle-visibility" class="icon-btn password-toggle-btn" aria-label="Show key" title="Show key"></button>
-      </div>
-      <p class="settings-hint">Used to fill in genre, bio and links when you add a band. Leave blank to use a free fallback (slower, less reliable).</p>
-      <div class="show-buttons" style="margin-top:8px">
-        <button id="save-groq-key" class="btn-primary">Save</button>
-        ${groqApiKey ? `<button id="remove-groq-key" class="btn-secondary btn-danger">Remove key</button>` : ''}
-      </div>
-      <span id="groq-save-status" class="settings-hint"></span>
-    </div>
-
-    <p class="section-label">Display</p>
+    <p class="section-label">Band status</p>
     <div class="settings-card">
       <label>Inactive after</label>
       <div style="display:flex;align-items:center;gap:8px">
@@ -2438,15 +2432,26 @@ async function renderSettingsScreen() {
       </div>
       <span id="export-status" class="settings-hint"></span>
     </div>
-
-    ${researchPipelineSectionHtml()}
-
-    ${artistIdentityReviewHtml()}
-
     <p class="settings-version">LiveVault ${escapeHtml(typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?')}</p>
   `;
+  const researchTabHtml = researchPipelineSectionHtml({
+    expandedTool: settingsExpandedTool,
+    groqSettingsHtml: groqSettingsHtml({ groqApiKey, savedKeyInfo }),
+  });
+  container.innerHTML = `${settingsTabsHtml}${settingsTab === 'research' ? researchTabHtml : settingsTab === 'review' ? artistIdentityReviewHtml() : dataTabHtml}`;
 
-  el('change-connection-btn').addEventListener('click', () => {
+  container.querySelectorAll('[data-settings-tab]').forEach((button) => button.addEventListener('click', () => {
+    settingsTab = button.dataset.settingsTab;
+    settingsExpandedTool = null;
+    renderSettingsScreen();
+  }));
+  container.querySelectorAll('[data-research-tool]').forEach((button) => button.addEventListener('click', () => {
+    const tool = button.dataset.researchTool;
+    settingsExpandedTool = settingsExpandedTool === tool ? null : tool;
+    renderSettingsScreen();
+  }));
+
+  el('change-connection-btn')?.addEventListener('click', () => {
     showOnboarding();
   });
   el('save-spotify-client-id')?.addEventListener('click', async () => { const value = el('spotify-client-id-input').value.trim(); if (!value) { el('spotify-settings-status').textContent = 'Enter the public Client ID.'; return; } await chrome.storage.local.set({ spotifyUserClientId: value }); spotifyAuthMessage = ''; renderSettingsScreen(); });
@@ -2454,7 +2459,7 @@ async function renderSettingsScreen() {
   el('connect-spotify')?.addEventListener('click', () => SpotifyUser.beginAuthorization(spotifyClientId));
   el('disconnect-spotify')?.addEventListener('click', async () => { await SpotifyUser.clearAuth(); spotifyAuthMessage = 'Spotify disconnected.'; renderSettingsScreen(); });
 
-  el('save-groq-key').addEventListener('click', async () => {
+  el('save-groq-key')?.addEventListener('click', async () => {
     const val = el('groq-key-input').value.trim();
     if (!val) {
       el('groq-save-status').textContent = 'Enter a key to save, or use Remove key to clear it.';
@@ -2473,9 +2478,9 @@ async function renderSettingsScreen() {
   });
 
   const groqKeyToggleBtn = el('groq-key-toggle-visibility');
-  groqKeyToggleBtn.innerHTML = icon('eye');
+  if (groqKeyToggleBtn) groqKeyToggleBtn.innerHTML = icon('eye');
   let groqKeyVisible = false;
-  groqKeyToggleBtn.addEventListener('click', () => {
+  groqKeyToggleBtn?.addEventListener('click', () => {
     groqKeyVisible = !groqKeyVisible;
     el('groq-key-input').type = groqKeyVisible ? 'text' : 'password';
     groqKeyToggleBtn.innerHTML = icon(groqKeyVisible ? 'eyeOff' : 'eye');
@@ -2483,13 +2488,13 @@ async function renderSettingsScreen() {
     groqKeyToggleBtn.setAttribute('title', groqKeyVisible ? 'Hide key' : 'Show key');
   });
 
-  el('export-csv-btn').addEventListener('click', () => {
+  el('export-csv-btn')?.addEventListener('click', () => {
     exportDataAsCsv();
     el('export-status').textContent = 'CSV files downloading…';
     setTimeout(() => (el('export-status').textContent = ''), 2000);
   });
 
-  el('export-excel-btn').addEventListener('click', async () => {
+  el('export-excel-btn')?.addEventListener('click', async () => {
     const btn = el('export-excel-btn');
     const original = btn.textContent;
     btn.textContent = 'Preparing…';
@@ -2503,14 +2508,14 @@ async function renderSettingsScreen() {
     }
   });
 
-  el('inactivity-years-input').addEventListener('change', async (ev) => {
+  el('inactivity-years-input')?.addEventListener('change', async (ev) => {
     const val = Math.max(1, Math.min(10, parseInt(ev.target.value, 10) || 3));
     inactivityYears = val;
     ev.target.value = val;
     await chrome.storage.local.set({ inactivityYears: val });
   });
 
-  el('recheck-btn').addEventListener('click', async () => {
+  el('recheck-btn')?.addEventListener('click', async () => {
     el('recheck-btn').textContent = 'Refreshing…';
     try {
       await loadDataAndShowApp();
@@ -2539,7 +2544,7 @@ function artistIdentityReviewHtml() {
   }).join('');
   const retryReasons = { no_match: 'No match', error: 'Lookup error', manual_rejected: 'Previously rejected' };
   const retries = reviewable.filter((b) => b.musicbrainz?.status !== 'needs_review').map((b) => `<button class="btn-secondary identity-retry" data-band-id="${escapeAttr(b.id)}" aria-label="Try MusicBrainz matching again for ${escapeAttr(b.name)}">Try again: ${escapeHtml(b.name)} · ${escapeHtml(retryReasons[b.musicbrainz.status])}</button>`).join('');
-  return `<p class="section-label">Artist identity review</p><div class="identity-review"><div class="settings-card"><p class="settings-hint" style="margin:0"><strong>${summary.total} followed artists</strong> · ${identified} identified (${summary.autoConfirmed} automatic, ${summary.manualConfirmed} manual) · ${summary.awaitingReview} awaiting review · ${summary.notCheckedYet} not checked yet · ${summary.noMatch} no match · ${summary.errors} errors · ${summary.manuallyRejected} manually rejected</p></div>${lastRunHtml}${cards || '<div class="settings-card"><p class="settings-hint" style="margin:0">No artist matches need review.</p></div>'}${retries ? `<div class="show-buttons">${retries}</div>` : ''}<p class="settings-hint">Weekly automatic MusicBrainz lookups are off. The manual workflow checks at most five artists per run.</p><a class="btn-secondary" href="https://github.com/mstpln/concert-tracker-mobile/actions/workflows/musicbrainz.yml" target="_blank" rel="noopener">Open MusicBrainz runs</a></div>`;
+  return `<p class="section-label">MusicBrainz artist review</p><p class="settings-hint settings-section-intro">Review uncertain artist matches before they are used for future research.</p><div class="identity-review"><div class="settings-card"><p class="settings-hint" style="margin:0"><strong>${summary.total} followed artists</strong> · ${identified} identified (${summary.autoConfirmed} automatic, ${summary.manualConfirmed} manual) · ${summary.awaitingReview} awaiting review · ${summary.notCheckedYet} not checked yet · ${summary.noMatch} no match · ${summary.errors} errors · ${summary.manuallyRejected} manually rejected</p></div>${lastRunHtml}${cards || '<div class="settings-card"><p class="settings-hint" style="margin:0">No artist matches need review.</p></div>'}${retries ? `<p class="section-label identity-retry-label">Matches to revisit</p><div class="show-buttons">${retries}</div>` : ''}<p class="settings-hint">Weekly automatic MusicBrainz lookups are off. The manual workflow checks at most five artists per run.</p><a class="btn-secondary" href="https://github.com/mstpln/concert-tracker-mobile/actions/workflows/musicbrainz.yml" target="_blank" rel="noopener">Open MusicBrainz runs</a></div>`;
 }
 
 async function saveArtistIdentity(bandId, updater) {
@@ -2636,21 +2641,43 @@ function usageServiceCardHtml({ name, providerIcon, keyMasked, addedAt, used, ou
     </div>`;
 }
 
-// Renders the read-only "Research pipeline" block in Settings: which
-// provider keys are configured (masked — GitHub Actions secrets can't be
-// read back, so this is a static record, see RESEARCH_KEY_METADATA above)
-// and how much of each free tier this week's run has used, sourced from
-// apiUsage.json (written by scripts/research.js, never by this app).
-function researchPipelineSectionHtml() {
-  const keyRows = Object.values(RESEARCH_KEY_METADATA)
-    .map(
-      (k) => `
-        <p class="muted" style="font-size:11px;margin:0 0 3px">
-          ${escapeHtml(k.label)}: <strong>${escapeHtml(k.masked)}</strong>
-        </p>`
-    )
-    .join('');
+function groqSettingsHtml({ groqApiKey, savedKeyInfo }) {
+  return `
+    <div class="settings-card settings-groq-local-key">
+      <label>Groq API key (optional)</label>
+      ${savedKeyInfo}
+      <div class="password-field-wrap">
+        <input type="password" id="groq-key-input" value="" placeholder="${groqApiKey ? 'Enter a new key to replace it' : 'For faster, more reliable band-info lookups'}" />
+        <button type="button" id="groq-key-toggle-visibility" class="icon-btn password-toggle-btn" aria-label="Show key" title="Show key"></button>
+      </div>
+      <p class="settings-hint">Used to fill in genre, bio and links when you add a band. Leave blank to use a free fallback (slower, less reliable).</p>
+      <div class="show-buttons" style="margin-top:8px">
+        <button id="save-groq-key" class="btn-primary">Save</button>
+        ${groqApiKey ? `<button id="remove-groq-key" class="btn-secondary btn-danger">Remove key</button>` : ''}
+      </div>
+      <span id="groq-save-status" class="settings-hint"></span>
+    </div>`;
+}
 
+function researchToolOverviewHtml(provider) {
+  const isExpanded = settingsExpandedTool === provider.id;
+  const percentage = Math.round(((Number(provider.used) || 0) / (Number(provider.ourCap) || 1)) * 100);
+  return `
+    <div class="research-tool-overview-row${isExpanded ? ' is-expanded' : ''}">
+      <button type="button" class="research-tool-overview-button" data-research-tool="${escapeAttr(provider.id)}" aria-expanded="${isExpanded}" aria-controls="research-tool-${escapeAttr(provider.id)}">
+        <span class="research-tool-overview-title">${escapeHtml(provider.name)}</span>
+        <span class="research-tool-overview-percent">${escapeHtml(String(percentage))}% <span class="details-chevron">${icon('chevronDown')}</span></span>
+        <span class="research-tool-overview-usage">${escapeHtml((Number(provider.used) || 0).toLocaleString())} / ${escapeHtml((Number(provider.ourCap) || 0).toLocaleString())} used</span>
+        <span class="research-tool-overview-bar"><span style="width:${Math.max(0, Math.min(100, percentage))}%"></span></span>
+      </button>
+      <div id="research-tool-${escapeAttr(provider.id)}" class="research-tool-details${isExpanded ? ' is-open' : ''}">${isExpanded ? usageServiceCardHtml(provider) + (provider.id === 'groq' ? provider.groqSettingsHtml : '') : ''}</div>
+    </div>`;
+}
+
+// Renders the Settings > Research view. Usage is read from apiUsage.json
+// (written by scripts/research.js, never by this app); provider secrets remain
+// masked static metadata because GitHub Actions secrets cannot be read back.
+function researchPipelineSectionHtml({ expandedTool = null, groqSettingsHtml = '' } = {}) {
   const actionButtons = `
     <div class="show-buttons" style="margin-top:10px">
       <button id="recheck-btn" class="btn-secondary">Refresh now</button>
@@ -2660,10 +2687,13 @@ function researchPipelineSectionHtml() {
 
   if (!apiUsage) {
     return `
+      <p class="section-label">Research tools</p>
+      <div class="settings-card">
+        <p class="settings-hint" style="margin-top:0">Each provider has its own limit and run behavior.</p>
+        <p class="settings-hint">No usage data yet — this fills in after the weekly GitHub Actions run has run at least once.</p>
+      </div>
       <p class="section-label">Research pipeline</p>
       <div class="settings-card">
-        ${keyRows}
-        <p class="settings-hint" style="margin-top:6px">No usage data yet — this fills in after the weekly GitHub Actions run has run at least once.</p>
         <div class="settings-card-divider">${actionButtons}</div>
       </div>`;
   }
@@ -2672,7 +2702,6 @@ function researchPipelineSectionHtml() {
   const tv = apiUsage.tavily || {};
   const gq = apiUsage.groq || {};
   const sl = apiUsage.setlistfm || {};
-  const sp = apiUsage.spotify || {};
   const lastRun = apiUsage.lastRun || null;
 
   // Real free-tier ceiling and our own (lower) safety cap for each service —
@@ -2690,10 +2719,9 @@ function researchPipelineSectionHtml() {
   const gqCap = gq.safeTpd ?? 150000;
   const slReal = sl.freeTierDailyLimit ?? 1440;
   const slCap = sl.dailyCap ?? 1200;
-  const spCap = sp.dailyCap ?? 6000;
-
-  const cards =
-    usageServiceCardHtml({
+  const providers = [
+    {
+      id: 'ticketmaster',
       name: 'Ticketmaster',
       providerIcon: 'providerTicketmaster',
       keyMasked: RESEARCH_KEY_METADATA.ticketmaster.masked,
@@ -2701,8 +2729,9 @@ function researchPipelineSectionHtml() {
       used: tm.callsToday, ourCap: tmCap, realLimit: tmReal,
       limitText: `${tmReal.toLocaleString()}/day`,
       capText: `${tmCap.toLocaleString()}/day · ${(tm.perRunCap ?? 300).toLocaleString()}/run`,
-    }) +
-    usageServiceCardHtml({
+    },
+    {
+      id: 'tavily',
       name: 'Tavily',
       providerIcon: 'providerTavily',
       keyMasked: RESEARCH_KEY_METADATA.tavily.masked,
@@ -2710,8 +2739,9 @@ function researchPipelineSectionHtml() {
       used: tv.callsThisMonth, ourCap: tvCap, realLimit: tvReal,
       limitText: `${tvReal.toLocaleString()}/month`,
       capText: `${tvCap.toLocaleString()}/month · ${(tv.perRunCap ?? 180).toLocaleString()}/run`,
-    }) +
-    usageServiceCardHtml({
+    },
+    {
+      id: 'groq',
       name: 'Groq (research pipeline)',
       providerIcon: 'providerGroq',
       keyMasked: RESEARCH_KEY_METADATA.groq.masked,
@@ -2721,8 +2751,10 @@ function researchPipelineSectionHtml() {
       used: gq.tokensToday ?? 0, ourCap: gqCap, realLimit: gqReal,
       limitText: `${gqReal.toLocaleString()} tokens/day (${(gq.freeTierDailyRequestLimit ?? 1000).toLocaleString()} req/day)`,
       capText: `${gqCap.toLocaleString()} tokens/day (${(gq.dailyCap ?? 800).toLocaleString()} req · ${(gq.perRunCap ?? 250).toLocaleString()}/run)`,
-    }) +
-    usageServiceCardHtml({
+      groqSettingsHtml,
+    },
+    {
+      id: 'setlistfm',
       name: 'setlist.fm',
       providerIcon: 'providerSetlistfm',
       keyMasked: RESEARCH_KEY_METADATA.setlistfm.masked,
@@ -2730,21 +2762,9 @@ function researchPipelineSectionHtml() {
       used: sl.callsToday, ourCap: slCap, realLimit: slReal,
       limitText: `${slReal.toLocaleString()}/day`,
       capText: `${slCap.toLocaleString()}/day · ${(sl.perRunCap ?? 200).toLocaleString()}/run`,
-    }) +
-    usageServiceCardHtml({
-      name: 'Spotify',
-      providerIcon: 'providerSpotify',
-      // Two credentials (Client ID + Secret) share one card — the secret is
-      // the only one with a real masked preview/add-date (see
-      // RESEARCH_KEY_METADATA above), the ID is mentioned alongside it.
-      keyMasked: `${RESEARCH_KEY_METADATA.spotifyClientSecret.masked} · Client ID via GitHub secret`,
-      addedAt: RESEARCH_KEY_METADATA.spotifyClientSecret.addedAt,
-      // No published real limit — Spotify throttles via HTTP 429 instead of
-      // a documented requests/day number, so realLimit === ourCap (no tick).
-      used: sp.callsToday, ourCap: spCap, realLimit: spCap,
-      limitText: `No fixed limit — throttled via HTTP 429`,
-      capText: `${spCap.toLocaleString()}/day · ${(sp.perRunCap ?? 4000).toLocaleString()}/run`,
-    });
+    },
+  ];
+  settingsExpandedTool = expandedTool;
 
   const lastRunHtml = lastRun
     ? `<p class="settings-hint" style="margin-top:0">
@@ -2754,12 +2774,16 @@ function researchPipelineSectionHtml() {
     : '';
 
   return `
+    <p class="section-label">Research tools</p>
+    <p class="settings-hint settings-section-intro">Each provider has its own limit and run behavior.</p>
+    <div class="settings-card research-tools-overview">
+      ${providers.map(researchToolOverviewHtml).join('')}
+    </div>
     <p class="section-label">Research pipeline</p>
     <div class="settings-card">
       ${lastRunHtml}
       <div class="${lastRun ? 'settings-card-divider' : ''}">${actionButtons}</div>
     </div>
-    ${cards}
     <p class="settings-hint" style="font-style:italic;margin:8px 2px 4px">Updated automatically after each pipeline run.</p>`;
 }
 
