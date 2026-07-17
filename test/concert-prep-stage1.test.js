@@ -15,6 +15,11 @@ test('Stage 1 uses the Spotify and local preparation icons, not music for Playli
   assert.match(app, /\['playlist', 'spotify', 'Playlist'/); assert.doesNotMatch(app, /\['playlist', 'music', 'Playlist'/);
   assert.match(icons, /weather:/); assert.match(icons, /checklist:/);
 });
+test('past and upcoming playlist UI share the Spotify icon helper', () => {
+  assert.match(app, /field: 'playlistUrl', iconName: 'spotify', label: 'Playlist'/);
+  assert.match(app, /\['playlist', 'spotify', 'Playlist'/);
+  assert.doesNotMatch(app, /field: 'playlistUrl', iconName: 'music', label: 'Playlist'/);
+});
 test('Stage 1 preserves manual playlistUrl and stores only additive checklist data', () => {
   assert.match(app, /c\.playlistUrl/); assert.match(app, /c\.prepChecklist = \{ ticketReady: false, travelPlanned: false, timesChecked: false, venueRulesChecked: false, playlistReady: false/);
   assert.match(app, /PREP_CHECKLIST = \[/); assert.doesNotMatch(app, /custom checklist/i);
