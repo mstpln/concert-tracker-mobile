@@ -4,7 +4,7 @@ const config = require('./config');
 const { normalizeTitle } = require('./predictedSetlist');
 
 function hash(value) { let h = 2166136261; for (const ch of value) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return `si-${(h >>> 0).toString(16)}`; }
-function iso(value) { const time = Date.parse(value || ''); return Number.isFinite(time) ? new Date(time).toISOString().slice(0, 10) : null; }
+function iso(value) { return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : null; }
 function fingerprint(setlist) { return hash(JSON.stringify([setlist?.tourName || null, (setlist?.songs || []).map((song) => [normalizeTitle(song?.name), !!song?.isEncore, !!song?.isCover])])); }
 
 function usefulEarlierSetlists(raw, beforeDate, limit = config.SETLIST_INSIGHTS.comparisonSetlistLimit) {
@@ -33,29 +33,32 @@ function analyzeSetlistInsights(concert, history, { settings = config.SETLIST_IN
   const setlist = concert?.setlist; const sourceSetlistFingerprint = fingerprint(setlist); const targetDate = iso(concert?.date);
   const base = { algorithmVersion: settings.algorithmVersion, lastAttemptedAt: now.toISOString(), sourceSetlistFingerprint, sourceArtistMbid: null, insights: [] };
   if (!targetDate || !Array.isArray(setlist?.songs) || !setlist.songs.length) return { ...base, status: 'insufficient_data' };
-  const prior = usefulEarlierSetlists(history, targetDate, settings.comparisonSetlistLimit);
-  if (prior.length < settings.minimumUsefulPriorSetlists) return { ...base, status: 'insufficient_data', comparisonWindow: { setlistCount: prior.length, earliestDate: prior.at(-1)?.date || null, latestDate: prior[0]?.date || null, beforeDate: targetDate } };
+  const allPrior = usefulEarlierSetlists(history, targetDate, Number.MAX_SAFE_INTEGER); const prior = allPrior.slice(0, settings.comparisonSetlistLimit);
   const candidates = [];
   for (const song of setlist.songs) {
     if (!song?.name || song.isCover) continue;
     const normalizedName = normalizeTitle(song.name); if (!normalizedName) continue;
-    const appearances = prior.filter((entry) => entry.songs.some((item) => item.normalizedName === normalizedName));
+    const appearances = allPrior.filter((entry) => entry.songs.some((item) => item.normalizedName === normalizedName));
     const rate = appearances.length / prior.length;
-    if (rate <= settings.rareMaximumPerformanceRate) candidates.push({ type: 'rare', priority: 3, score: rate, normalizedName, songName: song.name, label: 'Rare', explanation: `Played at ${appearances.length} of the previous ${prior.length} recorded shows`, occurrenceCount: appearances.length, sampleSize: prior.length });
-    const sameTour = setlist.tourName ? prior.filter((entry) => entry.tourName === setlist.tourName) : [];
+    if (prior.length >= settings.minimumUsefulPriorSetlists && rate <= settings.rareMaximumPerformanceRate) candidates.push({ type: 'rare', priority: 3, score: rate, normalizedName, songName: song.name, label: 'Rare', explanation: `Played at ${appearances.filter((entry) => prior.includes(entry)).length} of the previous ${prior.length} recorded shows`, occurrenceCount: appearances.filter((entry) => prior.includes(entry)).length, sampleSize: prior.length });
+    const sameTour = allPrior.filter((entry) => entry.tourName === setlist.tourName);
     if (sameTour.length >= settings.minimumSameTourPriorSetlists && !sameTour.some((entry) => entry.songs.some((item) => item.normalizedName === normalizedName))) candidates.push({ type: 'tour_debut', priority: 2, score: -sameTour.length, normalizedName, songName: song.name, label: 'Tour debut', explanation: `Not found in the previous ${sameTour.length} recorded shows from this tour`, occurrenceCount: 0, sampleSize: sameTour.length });
     if (appearances.length) {
       const last = appearances[0]; const years = Math.floor((Date.parse(targetDate) - Date.parse(last.date)) / (365.25 * 86400000));
       if (years >= settings.longGapMinimumYears) candidates.push({ type: 'long_gap', priority: 1, score: -years, normalizedName, songName: song.name, label: `First in ${years} years`, explanation: `First recorded performance in ${years} years`, occurrenceCount: appearances.length, sampleSize: prior.length });
     }
   }
-  const insights = [...new Map(candidates.sort((a, b) => a.priority - b.priority || a.score - b.score || a.normalizedName.localeCompare(b.normalizedName)).map((item) => [`${item.normalizedName}|${item.type}`, item])).values()].slice(0, settings.maximumInsightsPerConcert);
-  return { ...base, status: 'ready', generatedAt: now.toISOString(), comparisonWindow: { setlistCount: prior.length, earliestDate: prior.at(-1)?.date || null, latestDate: prior[0]?.date || null, beforeDate: targetDate }, insights };
+  const strongestPerSong = new Map(); for (const item of candidates.sort((a, b) => a.priority - b.priority || a.score - b.score || a.normalizedName.localeCompare(b.normalizedName))) if (!strongestPerSong.has(item.normalizedName)) strongestPerSong.set(item.normalizedName, item);
+  const insights = [...strongestPerSong.values()].sort((a, b) => a.priority - b.priority || a.score - b.score || a.normalizedName.localeCompare(b.normalizedName)).slice(0, settings.maximumInsightsPerConcert);
+  const enoughEvidence = prior.length >= settings.minimumUsefulPriorSetlists || allPrior.some((entry) => entry.tourName === setlist.tourName) || candidates.some((item) => item.type === 'long_gap');
+  return { ...base, status: enoughEvidence ? 'ready' : 'insufficient_data', generatedAt: enoughEvidence ? now.toISOString() : null, comparisonWindow: { setlistCount: prior.length, earliestDate: prior.at(-1)?.date || null, latestDate: prior[0]?.date || null, beforeDate: targetDate }, insights: enoughEvidence ? insights : [] };
 }
 
-function insightsDue(concert, mbid, { force = false, settings = config.SETLIST_INSIGHTS } = {}) {
+function insightsDue(concert, mbid, { force = false, settings = config.SETLIST_INSIGHTS, now = new Date() } = {}) {
   if (!concert?.setlist || !mbid) return false; const prior = concert.setlistInsights;
-  return force || !prior || prior.algorithmVersion !== settings.algorithmVersion || prior.sourceSetlistFingerprint !== fingerprint(concert.setlist) || prior.sourceArtistMbid !== mbid;
+  if (force || !prior || prior.algorithmVersion !== settings.algorithmVersion || prior.sourceSetlistFingerprint !== fingerprint(concert.setlist) || prior.sourceArtistMbid !== mbid) return true;
+  if (!['error', 'quota_blocked'].includes(prior.status)) return false;
+  return Date.parse(prior.nextEligibleCheckAt || '') <= now.getTime();
 }
 
 module.exports = { fingerprint, usefulEarlierSetlists, positionTags, analyzeSetlistInsights, insightsDue };
