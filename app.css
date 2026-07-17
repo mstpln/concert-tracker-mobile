@@ -723,7 +723,7 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .setlist-insight-context { margin: 8px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.35; }
 
 /* Upcoming My Concerts preparation rows only. */
-.concert-prep-group { margin-top: 8px; }
+.concert-prep-group { margin-top: 8px; border-top: 1px solid var(--border); }
 .concert-prep-row { width: 100%; min-height: 52px; display: flex; align-items: center; gap: 11px; padding: 9px 0; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border); text-align: left; }
 .concert-prep-row > span:nth-child(2) { flex: 1; min-width: 0; }
 .concert-prep-row strong, .concert-prep-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
