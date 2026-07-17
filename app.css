@@ -469,6 +469,28 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   padding: 12px; background: var(--surface); margin-bottom: 4px;
 }
 .settings-card-divider { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+.settings-section-intro { margin: -7px 0 10px; }
+.settings-subtab-switch { margin-bottom: 18px; }
+.research-tools-overview { padding: 0 12px; }
+.research-tool-overview-row { border-bottom: 1px solid var(--border); }
+.research-tool-overview-row:last-child { border-bottom: none; }
+.research-tool-overview-button {
+  width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px; padding: 14px 0 12px; border: none; background: none;
+  color: var(--text); text-align: left; font: inherit;
+}
+.research-tool-overview-title { font-size: 15px; font-weight: 600; min-width: 0; }
+.research-tool-overview-percent { display: inline-flex; align-items: center; gap: 5px; font-size: 15px; white-space: nowrap; }
+.research-tool-overview-percent .details-chevron { display: flex; transition: transform .15s ease; }
+.research-tool-overview-row.is-expanded .research-tool-overview-percent .details-chevron { transform: rotate(180deg); }
+.research-tool-overview-usage { grid-column: 1 / -1; color: var(--text-muted); font-size: 12.5px; }
+.research-tool-overview-bar { grid-column: 1 / -1; display: block; height: 6px; overflow: hidden; border-radius: 3px; background: var(--surface-muted); }
+.research-tool-overview-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.research-tool-details { display: none; padding: 0 0 12px; }
+.research-tool-details.is-open { display: block; }
+.research-tool-details .usage-service-card, .research-tool-details .settings-card { margin: 0; }
+.research-tool-details .settings-groq-local-key { margin-top: 8px; }
+.identity-retry-label { margin-top: 18px; }
 .identity-candidate { border-top: 1px solid var(--border); margin-top: 9px; padding-top: 9px; }
 .identity-candidate p { color: var(--text-muted); font-size: 12px; margin: 3px 0; overflow-wrap: anywhere; }
 .identity-candidate .btn-secondary, .identity-review-card > .btn-secondary { margin-top: 5px; }
