@@ -104,6 +104,13 @@ test('weekly retries and backfill remaining use behavioral eligible state', () =
   const due = concert({ id: 'due', setlistInsights: { status: 'history_incomplete', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, sourceSetlistFingerprint: fp, sourceArtistMbid: 'mbid', nextEligibleCheckAt: '2026-07-01T00:00:00Z' } }); const later = concert({ id: 'later', setlistInsights: { ...due.setlistInsights, nextEligibleCheckAt: '2026-08-01T00:00:00Z' } });
   assert.deepEqual(selectWeeklyInsightRetryIds([later, due], byId, now), ['due']); assert.equal(countRemainingInsights([due], byId, now), 1); assert.equal(confirmedMbid(band), true);
 });
+test('manual insight backfill selects newest concerts first with ID tie-breaking and a strict batch limit', async () => {
+  const { runSetlistInsightsBackfill } = require('../scripts/setlistInsightsBackfill'); const fp = engine.fingerprint(concert().setlist);
+  const records = [concert({ id: 'z', date: '2025-01-01' }), concert({ id: 'b', date: '2025-03-01' }), concert({ id: 'a', date: '2025-03-01' }), concert({ id: 'c', date: '2025-02-01' })]; let selected;
+  const fakeUsage = { state: { setlistfm: { callsThisRun: 0 } }, save: async () => {} };
+  await runSetlistInsightsBackfill({ maxConcerts: 3, now, readConcerts: async () => records, readBands: async () => [{ id: 'b', musicbrainz: { status: 'manual_confirmed', mbid: 'mbid' } }], loadUsage: async () => fakeUsage, processInsights: async ({ onlyConcertIds }) => { selected = [...onlyConcertIds]; return { concerts: records, diagnostics: { processed: 0, ready: 0, insufficient: 0, errors: 0, generated: 0 } }; }, log: () => {} });
+  assert.deepEqual(selected, ['a', 'b', 'c']);
+});
 test('backfill runner accepts injected processor without shadowing the Node process global', async () => {
   const tracker = { state: { setlistfm: { callsThisRun: 0 } }, save: async () => {} };
   const result = await runSetlistInsightsBackfill({
