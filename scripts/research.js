@@ -231,7 +231,13 @@ async function processSetlistInsights({
     const mbid = bandsById.get(concert.bandId).musicbrainz.mbid;
     let history = historyByMbid.get(mbid);
     if (!history) { try { history = await findHistory(mbid, usage, { beforeDate: concert.date }); } catch { history = { kind: 'error' }; } historyByMbid.set(mbid, history); diagnostics.historyArtistsRequested += 1; }
-    if (history.kind === 'skipped') { diagnostics.quotaBlocked += 1; if (concert.setlistInsights?.status !== 'ready') updates.push({ id: concert.id, setlistInsights: { ...(concert.setlistInsights || {}), status: 'quota_blocked', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, lastAttemptedAt: now.toISOString(), nextEligibleCheckAt: new Date(now.getTime() + config.SETLIST_INSIGHTS.quotaBlockedRetryHours * 3600000).toISOString(), sourceArtistMbid: mbid, sourceSetlistFingerprint: setlistInsights.fingerprint(concert.setlist), insights: [] } }); break; }
+    if (history.kind === 'skipped') {
+      for (const remaining of eligible.slice(eligible.indexOf(concert))) {
+        const remainingMbid = bandsById.get(remaining.bandId).musicbrainz.mbid;
+        if (remaining.setlistInsights?.status !== 'ready') updates.push({ id: remaining.id, setlistInsights: { ...(remaining.setlistInsights || {}), status: 'quota_blocked', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, lastAttemptedAt: now.toISOString(), nextEligibleCheckAt: new Date(now.getTime() + config.SETLIST_INSIGHTS.quotaBlockedRetryHours * 3600000).toISOString(), sourceArtistMbid: remainingMbid, sourceSetlistFingerprint: setlistInsights.fingerprint(remaining.setlist), insights: [] } });
+      }
+      diagnostics.quotaBlocked += eligible.length - eligible.indexOf(concert); break;
+    }
     if (history.kind !== 'ok') { diagnostics.errors += 1; if (concert.setlistInsights?.status !== 'ready') updates.push({ id: concert.id, setlistInsights: { ...(concert.setlistInsights || {}), status: 'error', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, lastAttemptedAt: now.toISOString(), nextEligibleCheckAt: new Date(now.getTime() + config.SETLIST_INSIGHTS.temporaryErrorRetryHours * 3600000).toISOString(), sourceArtistMbid: mbid, sourceSetlistFingerprint: setlistInsights.fingerprint(concert.setlist), insights: [] } }); continue; }
     const result = analyze(concert, history.setlists, { now }); result.sourceArtistMbid = mbid;
     diagnostics.processed += 1; if (result.status === 'ready') { diagnostics.ready += 1; diagnostics.generated += result.insights.length; } else diagnostics.insufficient += 1;

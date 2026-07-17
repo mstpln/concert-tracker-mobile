@@ -4,7 +4,7 @@
 // It never discovers concerts or invokes any provider other than setlist.fm.
 const worker = require('./lib/workerClient');
 const { UsageTracker } = require('./lib/usageTracker');
-const { setlistInsightsEligible, processSetlistInsights } = require('./research');
+const { setlistInsightsEligible, processSetlistInsights, confirmedMbid } = require('./research');
 const { needsInsightCompletion } = require('./lib/setlistInsights');
 
 function requestedMaximum(value) { const n = Number.parseInt(value, 10); return Math.min(10, Math.max(1, Number.isFinite(n) ? n : 5)); }
@@ -17,7 +17,7 @@ async function runSetlistInsightsBackfill({ maxConcerts = process.env.MAX_CONCER
   const selected = eligible.slice(0, limit); let result;
   try {
     result = await process({ concerts, bands, usage, enabled: true, force, onlyConcertIds: new Set(selected.map((concert) => concert.id)), now, log });
-    const current = result.concerts || concerts; const remaining = current.filter((concert) => needsInsightCompletion(concert, byId.get(concert.bandId)?.musicbrainz?.mbid)).length;
+    const current = result.concerts || concerts; const remaining = current.filter((concert) => { const band = byId.get(concert.bandId); return confirmedMbid(band) && needsInsightCompletion(concert, band.musicbrainz.mbid, undefined, now); }).length;
     usage.state.lastSetlistInsightsBackfill = { mode: 'setlist-insights-backfill', status: 'ok', eligible: eligible.length, selected: selected.length, processed: result.diagnostics.processed, ready: result.diagnostics.ready, insufficient: result.diagnostics.insufficient, errors: result.diagnostics.errors, insightsGenerated: result.diagnostics.generated, remaining, setlistfmCalls: usage.state.setlistfm.callsThisRun, finishedAt: new Date().toISOString() };
     await usage.save();
     log(`Live-performance insight backfill: eligible ${eligible.length}, selected ${selected.length}, processed ${result.diagnostics.processed}, ready ${result.diagnostics.ready}, insufficient ${result.diagnostics.insufficient}, errors ${result.diagnostics.errors}, insights generated ${result.diagnostics.generated}, remaining ${remaining}.`);
