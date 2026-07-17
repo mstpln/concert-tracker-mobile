@@ -91,6 +91,24 @@ and needs at least three shows. It weighs appearance rate, recency, typical
 position, and opener/closer/encore evidence. `Played in X%` is the share of
 source shows containing the song.
 
+## Live-performance rarity insights
+
+Actual setlists on attended past concerts can show factual **Opener** and
+**Main-set closer** tags plus conservative setlist.fm context: **Rare**,
+**Tour debut**, or **First in X years**. These statements concern earlier
+*recorded shows* only; setlist.fm is crowd-sourced and may be incomplete, so
+the app never claims a first-ever performance or career-wide rarity. The
+engine compares at most 50 earlier setlists, needs 20 for Rare, three earlier
+same-tour setlists for Tour debut, and a two-year recorded gap for First in X
+years.
+
+Weekly research enriches only actual setlists newly found in that run. Existing
+history uses the manual **Live-performance rarity insights backfill** workflow:
+confirmation and `main` are required; it processes 5 concerts by default
+(hard maximum 10), shares the data-write queue, and uses only Worker and
+setlist.fm credentials. Reruns are safe unless the algorithm version, trusted
+MBID, or stored setlist changes, unless force recalculation is selected.
+
 Overall confidence is **high** for at least eight consistent shows with a 65%
 average selected-song rate, **medium** for at least five shows and 45%, and
 **low** otherwise. A song can receive only Likely opener, Common closer,

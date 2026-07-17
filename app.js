@@ -1044,9 +1044,23 @@ function mcSetlistTriggerCellHtml(c) {
   return `<button type="button" class="link-trigger setlist-trigger" data-toggle-panel="setlist" data-concert-id="${escapeAttr(c.id)}">${icon('setlistOrdered')}<span class="link-trigger-label">Setlist (${songCount})</span><span class="details-chevron">${icon('chevronDown')}</span></button>`;
 }
 
+function actualSetlistNormalizedName(value) {
+  return String(value || '').toLocaleLowerCase().normalize('NFKD').replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
+}
+function actualSetlistTagsHtml(c, song, index) {
+  const songs = c.setlist?.songs || []; const firstEncore = songs.findIndex((item) => item?.isEncore);
+  const closerIndex = firstEncore < 0 ? songs.length - 1 : firstEncore - 1;
+  const tags = [];
+  if (index === 0) tags.push('Opener');
+  if (index === closerIndex && !song.isEncore) tags.push('Main-set closer');
+  const generated = (c.setlistInsights?.status === 'ready' ? c.setlistInsights.insights || [] : []).filter((item) => item.normalizedName === actualSetlistNormalizedName(song.name)).slice(0, 1);
+  for (const item of generated) tags.push(item.label);
+  return tags.length ? `<span class="setlist-insight-tags">${tags.map((tag) => `<span class="setlist-insight-tag">${escapeHtml(tag)}</span>`).join('')}</span>` : '';
+}
+
 function mcSetlistPanelContentHtml(c) {
   const songsHtml = c.setlist.songs
-    .map((s) => {
+    .map((s, index) => {
       const encoreLabel = s.isEncore ? `<span class="setlist-encore-divider">Encore</span>` : '';
       const coverTag = s.isCover ? `<span class="setlist-cover-tag">cover</span>` : '';
       // Only an original (non-cover) song with a resolved Spotify link becomes
@@ -1059,11 +1073,12 @@ function mcSetlistPanelContentHtml(c) {
         !s.isCover && s.spotifyUrl
           ? `<a class="setlist-song-link" href="${escapeAttr(s.spotifyUrl)}" target="_blank" rel="noopener">${escapeHtml(s.name)}</a>`
           : escapeHtml(s.name);
-      return `${encoreLabel}<li class="setlist-song${s.isCover ? ' setlist-cover' : ''}">${nameHtml}${coverTag}</li>`;
+      return `${encoreLabel}<li class="setlist-song${s.isCover ? ' setlist-cover' : ''}">${nameHtml}${actualSetlistTagsHtml(c, s, index)}${coverTag}</li>`;
     })
     .join('');
   return `
     <ol class="setlist-song-list">${songsHtml}</ol>
+    ${c.setlistInsights?.status === 'ready' && c.setlistInsights.insights?.length ? `<p class="setlist-insight-context">Compared with ${c.setlistInsights.comparisonWindow?.setlistCount || 0} earlier recorded setlists · setlist.fm data may be incomplete</p>` : ''}
     ${c.setlist.url ? `<a class="setlist-attribution" href="${escapeAttr(c.setlist.url)}" target="_blank" rel="noopener">View on setlist.fm</a>` : ''}`;
 }
 
