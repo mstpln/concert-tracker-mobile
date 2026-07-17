@@ -183,6 +183,7 @@ module.exports = {
     historyPageLimit: 5,
     temporaryErrorRetryHours: 24,
     quotaBlockedRetryHours: 24,
+    weeklyRetryLimit: 2,
   },
 
   WORKER: {
