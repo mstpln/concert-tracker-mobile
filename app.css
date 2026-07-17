@@ -717,6 +717,8 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .playlist-review-songs label, .playlist-review-songs p { display:block; padding:6px 2px; margin:0; line-height:1.35; }
 .playlist-review-songs input { margin-right:7px; accent-color:var(--accent); }
 .playlist-operation-status { min-height: 16px; }
+.playlist-review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.playlist-review-actions .btn-primary, .playlist-review-actions .btn-secondary { margin-right: 0; }
 .weather-hours { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin: 8px 0; }
 .weather-hour { min-width: 0; padding: 7px 4px; border: 1px solid var(--border); border-radius: 6px; text-align: center; }
 .weather-hour span, .weather-hour strong, .weather-hour small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
