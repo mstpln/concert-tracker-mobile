@@ -27,6 +27,16 @@ function toSetlistFmDate(isoDate) {
   return `${d}-${m}-${y}`;
 }
 
+// Provider dates are dd-MM-yyyy. Never delegate this ambiguous format to
+// Date.parse; internal consumers receive validated YYYY-MM-DD only.
+function normalizeEventDate(value) {
+  const text = String(value || ''); let match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(text);
+  let year; let month; let day;
+  if (match) { [, day, month, year] = match; } else { match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text); if (!match) return null; [, year, month, day] = match; }
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  return date.getUTCFullYear() === Number(year) && date.getUTCMonth() === Number(month) - 1 && date.getUTCDate() === Number(day) ? `${year}-${month}-${day}` : null;
+}
+
 // Flattens setlist.fm's nested sets.set[].song[] shape into the flat
 // { name, isEncore, isCover } array the app's setlistBlockHtml (app.js)
 // already renders.
@@ -82,8 +92,31 @@ async function findRecentSetlistsForArtist(artistMbid, usage, { fetchImpl = fetc
   try {
     const data = await res.json();
     if (!Array.isArray(data?.setlist)) return { kind: 'error', error: 'Invalid setlist.fm artist history response' };
-    return { kind: 'ok', setlists: data.setlist.slice(0, config.PREDICTED_SETLIST.historyMaxSetlists).map((raw) => ({ id: raw.id || null, eventDate: raw.eventDate || null, venue: { id: raw.venue?.id || null, name: raw.venue?.name || null }, songs: normalizeSetlist(raw).songs })) };
+    return { kind: 'ok', setlists: data.setlist.slice(0, config.PREDICTED_SETLIST.historyMaxSetlists).map((raw) => ({ id: raw.id || null, eventDate: normalizeEventDate(raw.eventDate), venue: { id: raw.venue?.id || null, name: raw.venue?.name || null }, songs: normalizeSetlist(raw).songs })) };
   } catch (error) { return { kind: 'error', error: 'Invalid setlist.fm artist history JSON' }; }
+}
+
+// Bounded MBID-only pagination for actual-setlist context. Returned entries
+// are compact normalized records; raw provider payloads are never persisted.
+async function findHistoricalSetlistsForArtist(artistMbid, usage, { beforeDate, pageLimit = config.SETLIST_INSIGHTS.historyPageLimit, fetchImpl = fetch } = {}) {
+  if (!artistMbid) return { kind: 'skipped', setlists: [] };
+  const setlists = []; let reachedBeforeDate = false;
+  for (let page = 1; page <= pageLimit; page++) {
+    if (!usage.canCallSetlistfm()) return { kind: 'skipped', setlists, reachedBeforeDate };
+    await usage.recordSetlistfmCall();
+    let res;
+    try { res = await fetchImpl(`${config.SETLISTFM.baseUrl}/artist/${encodeURIComponent(artistMbid)}/setlists?p=${page}`, { headers: { 'x-api-key': apiKey(), Accept: 'application/json' } }); }
+    catch (error) { usage.note(`setlist.fm insight history failed: ${error.message}`); return { kind: 'error', setlists, reachedBeforeDate }; }
+    if (res.status === 404) return { kind: 'ok', setlists, reachedBeforeDate: true };
+    if (!res.ok) return { kind: 'error', status: res.status, setlists, reachedBeforeDate };
+    let data; try { data = await res.json(); } catch { return { kind: 'error', setlists, reachedBeforeDate }; }
+    if (!Array.isArray(data?.setlist)) return { kind: 'error', setlists, reachedBeforeDate };
+    const compact = data.setlist.map((raw) => ({ id: raw.id || null, eventDate: normalizeEventDate(raw.eventDate), venue: { id: raw.venue?.id || null, name: raw.venue?.name || null }, tourName: raw.tour?.name || null, songs: normalizeSetlist(raw).songs }));
+    setlists.push(...compact);
+    if (compact.some((item) => item.eventDate && item.eventDate < beforeDate)) reachedBeforeDate = true;
+    if (!compact.length || (reachedBeforeDate && setlists.filter((item) => item.eventDate && item.eventDate < beforeDate).length >= config.SETLIST_INSIGHTS.comparisonSetlistLimit)) break;
+  }
+  return { kind: 'ok', setlists, reachedBeforeDate };
 }
 
 // Returns a normalized { songs, tourName, url } object for the given
@@ -137,4 +170,4 @@ async function findSetlistForShow(concert, usage, { artistMbid = null, fetchImpl
   return normalized.songs.length > 0 ? normalized : null;
 }
 
-module.exports = { findSetlistForShow, findRecentSetlistsForArtist, normalizeSetlist, venueMatches };
+module.exports = { findSetlistForShow, findRecentSetlistsForArtist, findHistoricalSetlistsForArtist, normalizeEventDate, normalizeSetlist, venueMatches };

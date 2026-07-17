@@ -33,6 +33,7 @@ const setlistfm = require('./lib/setlistfm');
 const spotify = require('./lib/spotify');
 const musicbrainz = require('./lib/musicbrainz');
 const structured = require('./lib/structuredResearch');
+const setlistInsights = require('./lib/setlistInsights');
 const predictedSetlist = require('./lib/predictedSetlist');
 const { slugify, isValidFullDate, daysAgo, truncate, todayIso } = require('./lib/util');
 const config = require('./lib/config');
@@ -204,6 +205,52 @@ function predictionDue(prediction, now = new Date()) {
 function mergePredictedSetlistResults(latestConcerts, updates) {
   const byId = new Map(updates.map((update) => [update.id, update.predictedSetlist]));
   return latestConcerts.map((concert) => byId.has(concert.id) ? { ...concert, predictedSetlist: byId.get(concert.id) } : concert);
+}
+
+function setlistInsightsEligible(concert, band, now = new Date(), { force = false, onlyConcertIds = null } = {}) {
+  if (!concert?.attending || !concert?.date || concert.date >= now.toISOString().slice(0, 10) || !confirmedMbid(band)) return false;
+  if (onlyConcertIds && !onlyConcertIds.has(concert.id)) return false;
+  return setlistInsights.insightsDue(concert, band.musicbrainz.mbid, { force, now });
+}
+
+function mergeSetlistInsightResults(latestConcerts, updates) {
+  const byId = new Map(updates.map((update) => [update.id, update.setlistInsights]));
+  return latestConcerts.map((concert) => byId.has(concert.id) ? { ...concert, setlistInsights: byId.get(concert.id) } : concert);
+}
+
+async function processSetlistInsights({
+  concerts, bands, usage, enabled = config.SETLIST_INSIGHTS.enabled, now = new Date(), force = false, onlyConcertIds = null,
+  findHistory = setlistfm.findHistoricalSetlistsForArtist, analyze = setlistInsights.analyzeSetlistInsights,
+  readConcerts = worker.readJson, writeConcerts = worker.writeJson, log = console.log,
+} = {}) {
+  if (!enabled) return { enabled: false, updates: 0, concerts, diagnostics: { eligible: 0 } };
+  const bandsById = new Map((bands || []).map((band) => [band.id, band]));
+  const eligible = (concerts || []).filter((concert) => setlistInsightsEligible(concert, bandsById.get(concert.bandId), now, { force, onlyConcertIds })).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const historyByMbid = new Map(); const updates = []; const callsBefore = Number(usage?.state?.setlistfm?.callsThisRun || 0); const diagnostics = { eligible: eligible.length, processed: 0, ready: 0, insufficient: 0, errors: 0, quotaBlocked: 0, generated: 0, historyArtistsRequested: 0, setlistfmRequests: 0 };
+  for (const concert of eligible) {
+    const mbid = bandsById.get(concert.bandId).musicbrainz.mbid;
+    let history = historyByMbid.get(mbid);
+    if (!history) { try { history = await findHistory(mbid, usage, { beforeDate: concert.date }); } catch { history = { kind: 'error' }; } historyByMbid.set(mbid, history); diagnostics.historyArtistsRequested += 1; }
+    if (history.kind === 'skipped') {
+      for (const remaining of eligible.slice(eligible.indexOf(concert))) {
+        const remainingMbid = bandsById.get(remaining.bandId).musicbrainz.mbid;
+        if (remaining.setlistInsights?.status !== 'ready') updates.push({ id: remaining.id, setlistInsights: { ...(remaining.setlistInsights || {}), status: 'quota_blocked', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, lastAttemptedAt: now.toISOString(), nextEligibleCheckAt: new Date(now.getTime() + config.SETLIST_INSIGHTS.quotaBlockedRetryHours * 3600000).toISOString(), sourceArtistMbid: remainingMbid, sourceSetlistFingerprint: setlistInsights.fingerprint(remaining.setlist), insights: [] } });
+      }
+      diagnostics.quotaBlocked += eligible.length - eligible.indexOf(concert); break;
+    }
+    if (history.kind !== 'ok') { diagnostics.errors += 1; if (concert.setlistInsights?.status !== 'ready') updates.push({ id: concert.id, setlistInsights: { ...(concert.setlistInsights || {}), status: 'error', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, lastAttemptedAt: now.toISOString(), nextEligibleCheckAt: new Date(now.getTime() + config.SETLIST_INSIGHTS.temporaryErrorRetryHours * 3600000).toISOString(), sourceArtistMbid: mbid, sourceSetlistFingerprint: setlistInsights.fingerprint(concert.setlist), insights: [] } }); continue; }
+    const result = analyze(concert, history.setlists, { now }); result.sourceArtistMbid = mbid;
+    diagnostics.processed += 1; if (result.status === 'ready') { diagnostics.ready += 1; diagnostics.generated += result.insights.length; } else diagnostics.insufficient += 1;
+    const prior = concert.setlistInsights;
+    if (prior?.status === result.status && prior?.algorithmVersion === result.algorithmVersion && prior?.sourceSetlistFingerprint === result.sourceSetlistFingerprint && prior?.sourceArtistMbid === result.sourceArtistMbid) continue;
+    updates.push({ id: concert.id, setlistInsights: result });
+  }
+  diagnostics.setlistfmRequests = Math.max(0, Number(usage?.state?.setlistfm?.callsThisRun || 0) - callsBefore);
+  if (!updates.length) { log(`Live-performance insights: ${diagnostics.eligible} eligible, ${diagnostics.processed} processed, ${diagnostics.ready} ready, ${diagnostics.insufficient} insufficient, ${diagnostics.generated} insights generated, ${diagnostics.historyArtistsRequested} artist histories, ${diagnostics.setlistfmRequests} setlist.fm requests.`); return { enabled: true, updates: 0, concerts, diagnostics }; }
+  const latest = await readConcerts('concerts.json', []); const merged = mergeSetlistInsightResults(latest, updates);
+  if (JSON.stringify(latest) !== JSON.stringify(merged)) await writeConcerts('concerts.json', merged);
+  log(`Live-performance insights: ${diagnostics.eligible} eligible, ${diagnostics.processed} processed, ${diagnostics.ready} ready, ${diagnostics.insufficient} insufficient, ${diagnostics.generated} insights generated, ${diagnostics.historyArtistsRequested} artist histories, ${diagnostics.setlistfmRequests} setlist.fm requests.`);
+  return { enabled: true, updates: updates.length, concerts: merged, diagnostics };
 }
 
 function finalConcertWritePayload(concerts, newConcerts) {
@@ -675,6 +722,7 @@ async function main() {
 
   let setlistChecksAttempted = 0;
   let setlistsAdded = 0;
+  const newlyAddedSetlistIds = new Set();
   const bandsById = new Map(bands.map((band) => [band.id, band]));
   for (const c of needsSetlistCheck) {
     if (!usage.canCallSetlistfm()) break;
@@ -687,6 +735,7 @@ async function main() {
       if (result) {
         c.setlist = result;
         setlistsAdded += 1;
+        newlyAddedSetlistIds.add(c.id);
       }
     } catch (e) {
       usage.note(`setlist.fm lookup failed for "${c.bandName}" (${c.date}): ${e.message}`);
@@ -727,6 +776,16 @@ async function main() {
   if (newConcerts.length > 0 || setlistChecksAttempted > 0 || spotifyConcertsProcessed > 0) {
     await worker.writeJson('concerts.json', finalConcertWritePayload(concerts, newConcerts));
   }
+  // Persist newly found setlists and Spotify song fields before insight work.
+  // The insight processor then rereads that latest document and merges only
+  // setlistInsights, so a history failure cannot erase the actual setlist.
+  let setlistInsightRun = { updates: 0, concerts };
+  const retryInsightIds = concerts.filter((concert) => ['error', 'quota_blocked'].includes(concert.setlistInsights?.status) && setlistInsightsEligible(concert, bandsById.get(concert.bandId), new Date())).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)).slice(0, config.SETLIST_INSIGHTS.weeklyRetryLimit).map((concert) => concert.id);
+  const insightIds = new Set([...newlyAddedSetlistIds, ...retryInsightIds]);
+  if (insightIds.size) {
+    setlistInsightRun = await processSetlistInsights({ concerts: await worker.readJson('concerts.json', []), bands, usage, onlyConcertIds: insightIds });
+    concerts = setlistInsightRun.concerts || concerts;
+  }
   if (freshNews.length > 0) {
     await worker.writeJson('news.json', [...news, ...freshNews]);
   }
@@ -751,6 +810,7 @@ async function main() {
     setlistsAdded,
     spotifyConcertsProcessed,
     spotifyLinksAdded,
+    setlistInsightUpdates: setlistInsightRun.updates,
     status: 'ok',
   });
   await usage.save();
@@ -792,4 +852,4 @@ if (require.main === module) main().catch(async (e) => {
   process.exitCode = 1;
 });
 
-module.exports = { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities, processStructuredResearch, predictedSetlistEligible, predictionDue, predictionDiagnostics, logPredictionDiagnostics, mergePredictedSetlistResults, finalConcertWritePayload, processPredictedSetlists, newsKey, fetchTourDatesViaTavily, fetchNewsForBand, promisingTavilyResults };
+module.exports = { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities, processStructuredResearch, predictedSetlistEligible, predictionDue, predictionDiagnostics, logPredictionDiagnostics, mergePredictedSetlistResults, finalConcertWritePayload, processPredictedSetlists, setlistInsightsEligible, mergeSetlistInsightResults, processSetlistInsights, newsKey, fetchTourDatesViaTavily, fetchNewsForBand, promisingTavilyResults };
