@@ -206,6 +206,10 @@ function mergePredictedSetlistResults(latestConcerts, updates) {
   return latestConcerts.map((concert) => byId.has(concert.id) ? { ...concert, predictedSetlist: byId.get(concert.id) } : concert);
 }
 
+function finalConcertWritePayload(concerts, newConcerts) {
+  return [...concerts, ...newConcerts];
+}
+
 function predictionDiagnostics(concerts, bands, usage, now) {
   const diagnostics = {
     totalConcerts: concerts.length, upcomingAttending: 0, missingBand: 0, missingMbid: 0,
@@ -721,7 +725,7 @@ async function main() {
   // existing records, and any spotifyUrl/spotifyChecked fields just filled
   // in on setlist songs — a single PUT rather than three separate ones.
   if (newConcerts.length > 0 || setlistChecksAttempted > 0 || spotifyConcertsProcessed > 0) {
-    await worker.writeJson('concerts.json', [...concerts, ...newConcerts]);
+    await worker.writeJson('concerts.json', finalConcertWritePayload(concerts, newConcerts));
   }
   if (freshNews.length > 0) {
     await worker.writeJson('news.json', [...news, ...freshNews]);
@@ -788,4 +792,4 @@ if (require.main === module) main().catch(async (e) => {
   process.exitCode = 1;
 });
 
-module.exports = { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities, processStructuredResearch, predictedSetlistEligible, predictionDue, predictionDiagnostics, logPredictionDiagnostics, mergePredictedSetlistResults, processPredictedSetlists, newsKey, fetchTourDatesViaTavily, fetchNewsForBand, promisingTavilyResults };
+module.exports = { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities, processStructuredResearch, predictedSetlistEligible, predictionDue, predictionDiagnostics, logPredictionDiagnostics, mergePredictedSetlistResults, finalConcertWritePayload, processPredictedSetlists, newsKey, fetchTourDatesViaTavily, fetchNewsForBand, promisingTavilyResults };
