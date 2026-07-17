@@ -220,28 +220,29 @@ function predictedTrackCandidate(track, song, spotifyArtistId) {
   return !/\b(karaoke|tribute|cover)\b/i.test(`${track.name || ''} ${track.album?.name || ''}`);
 }
 
-async function matchPredictedSong(song, spotifyArtistId, usage, { fetchImpl = fetch, getToken = getAppToken } = {}) {
+function predictedTrackFields(track) {
+  return { spotifyTrackId: track.id, spotifyUri: track.uri || `spotify:track:${track.id}`, spotifyUrl: track.external_urls?.spotify || null, spotifyMatched: true };
+}
+
+async function matchPredictedSong(song, spotifyArtistId, usage, { bandName = '', fetchImpl = fetch, getToken = getAppToken } = {}) {
   if (!spotifyArtistId || !usage.canCallSpotify()) return { kind: 'skipped' };
   let token;
   try { token = await getToken(usage, fetchImpl); } catch (error) { return { kind: 'error', error: error.message }; }
-  const q = `track:"${String(song.name || '').replace(/"/g, '')}"`;
-  const url = `${config.SPOTIFY.searchUrl}?type=track&limit=10&q=${encodeURIComponent(q)}`;
-  async function request() { await usage.recordSpotifyCall(); return fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } }); }
-  let res;
-  try { res = await request(); } catch (error) { return { kind: 'error', error: error.message }; }
-  if (res.status === 429) {
-    const retryAfter = Number(res.headers?.get?.('retry-after')) || 2;
-    usage.note(`Spotify rate-limited — waiting ${retryAfter}s`);
-    await sleep((retryAfter + 1) * 1000);
+  const cleanTitle = String(song.name || '').replace(/"/g, ''); const cleanBand = String(bandName || '').replace(/"/g, '');
+  const queries = [cleanBand ? `track:"${cleanTitle}" artist:"${cleanBand}"` : `track:"${cleanTitle}"`, `track:"${cleanTitle}"`].filter((query, index, all) => all.indexOf(query) === index);
+  for (const q of queries) {
     if (!usage.canCallSpotify()) return { kind: 'skipped' };
-    try { res = await request(); } catch (error) { return { kind: 'error', error: error.message }; }
+    const url = `${config.SPOTIFY.searchUrl}?type=track&limit=10&q=${encodeURIComponent(q)}`;
+    let res;
+    try { await usage.recordSpotifyCall(); res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } }); } catch (error) { return { kind: 'error', error: error.message }; }
+    if (res.status === 429) return { kind: 'error', status: 429 };
+    if (!res.ok) return { kind: 'error', status: res.status };
+    let data; try { data = await res.json(); } catch (error) { return { kind: 'error', error: 'Invalid Spotify track JSON' }; }
+    const candidates = (data?.tracks?.items || []).filter((track) => predictedTrackCandidate(track, song, spotifyArtistId));
+    candidates.sort((a, b) => Number(UNSUITABLE_TRACK.test(`${a.name} ${a.album?.name || ''}`)) - Number(UNSUITABLE_TRACK.test(`${b.name} ${b.album?.name || ''}`)) || (b.popularity || 0) - (a.popularity || 0) || String(a.id).localeCompare(String(b.id)));
+    if (candidates[0]) return { kind: 'ok', track: predictedTrackFields(candidates[0]) };
   }
-  if (!res.ok) return { kind: 'error', status: res.status };
-  let data; try { data = await res.json(); } catch (error) { return { kind: 'error', error: 'Invalid Spotify track JSON' }; }
-  const candidates = (data?.tracks?.items || []).filter((track) => predictedTrackCandidate(track, song, spotifyArtistId));
-  candidates.sort((a, b) => Number(UNSUITABLE_TRACK.test(`${a.name} ${a.album?.name || ''}`)) - Number(UNSUITABLE_TRACK.test(`${b.name} ${b.album?.name || ''}`)) || (b.popularity || 0) - (a.popularity || 0) || String(a.id).localeCompare(String(b.id)));
-  const track = candidates[0];
-  return track ? { kind: 'ok', track: { spotifyTrackId: track.id, spotifyUri: track.uri || null, spotifyUrl: track.external_urls?.spotify || null, spotifyMatched: true } } : { kind: 'no_match' };
+  return { kind: 'no_match' };
 }
 
-module.exports = { resolveSongLinks, searchTrack, resolveArtistIdentity, listArtistReleases, getReleaseTracks, spotifyIdentity, retryableIdentity, artistMatches, predictedTrackCandidate, matchPredictedSong };
+module.exports = { resolveSongLinks, searchTrack, resolveArtistIdentity, listArtistReleases, getReleaseTracks, spotifyIdentity, retryableIdentity, artistMatches, predictedTrackCandidate, predictedTrackFields, matchPredictedSong };
