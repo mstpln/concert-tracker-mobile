@@ -48,7 +48,7 @@ test('bounded MBID history pagination counts quota before every request and stop
   assert.equal(u.calls, 2); assert.equal(pages, 2); assert.equal(result.kind, 'ok');
 });
 test('insight persistence is idempotent, preserves unrelated latest fields, does not restore deleted concerts, and keeps ready on temporary error', async () => {
-  let latest = [concert({ ticketPrice: 123 })]; const next = { status: 'ready', algorithmVersion: 1, sourceSetlistFingerprint: engine.fingerprint(latest[0].setlist), sourceArtistMbid: 'mbid', insights: [] };
+  let latest = [concert({ ticketPrice: 123 })]; const next = { status: 'ready', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, sourceSetlistFingerprint: engine.fingerprint(latest[0].setlist), sourceArtistMbid: 'mbid', insights: [] };
   const merged = mergeSetlistInsightResults(latest, [{ id: 'c', setlistInsights: next }, { id: 'deleted', setlistInsights: next }]); assert.equal(merged.length, 1); assert.equal(merged[0].ticketPrice, 123); assert.equal(merged[0].predictedSetlist.status, 'ready');
   const result = await processSetlistInsights({ concerts: latest, bands: [band], usage: usage(), now, findHistory: async () => ({ kind: 'ok', setlists: enough }), analyze: () => next, readConcerts: async () => latest.map((item) => ({ ...item, notes: 'newer human note' })), writeConcerts: async (_name, value) => { latest = value; }, log: () => {} });
   assert.equal(result.updates, 1); assert.equal(latest[0].notes, 'newer human note');
@@ -74,8 +74,8 @@ test('remaining completion helper counts only trusted identities and all incompl
   const { confirmedMbid } = require('../scripts/research'); for (const status of ['needs_review', 'manual_rejected', 'no_match', undefined]) assert.equal(confirmedMbid({ musicbrainz: { status, mbid: 'm' } }), false); assert.equal(confirmedMbid({ musicbrainz: { status: 'confirmed' } }), false);
 });
 test('history pagination reaches later pages, respects its ceiling, and reports incomplete versus exhausted history', async () => {
-  const u = usage(); let page = 0; const reached = await setlist.findHistoricalSetlistsForArtist('m', u, { beforeDate: '2020-01-01', pageLimit: 10, fetchImpl: async () => ({ ok: true, json: async () => { page++; return { page, total: 100, itemsPerPage: 10, setlist: page === 6 ? Array.from({ length: 50 }, (_, i) => history(`old-${i}`, '01-01-2019', [song('A')])) : [history(`p${page}`, '01-01-2024', [song('A')])] }; } }) });
-  assert.equal(reached.pagesFetched, 6); assert.equal(reached.reachedBeforeDate, true); assert.equal(reached.historyComplete, true); assert.equal(u.calls, 6);
+  const u = usage(); let page = 0; const reached = await setlist.findHistoricalSetlistsForArtist('m', u, { beforeDate: '2020-01-01', pageLimit: 10, fetchImpl: async () => ({ ok: true, json: async () => { page++; return { page, total: 200, itemsPerPage: 10, setlist: page === 6 ? Array.from({ length: 50 }, (_, i) => history(`old-${i}`, '01-01-2019', [song('A')])) : [history(`p${page}`, '01-01-2024', [song('A')])] }; } }) });
+  assert.equal(reached.pagesFetched, 10); assert.equal(reached.historyComplete, false); assert.equal(u.calls, 10);
   const capped = await setlist.findHistoricalSetlistsForArtist('m', usage(), { beforeDate: '2020-01-01', pageLimit: 2, fetchImpl: async () => ({ ok: true, json: async () => ({ page: 1, total: 100, itemsPerPage: 10, setlist: [history('new', '01-01-2024', [song('A')])] }) }) }); assert.equal(capped.historyComplete, false);
   const exhausted = await setlist.findHistoricalSetlistsForArtist('m', usage(), { beforeDate: '2020-01-01', fetchImpl: async () => ({ ok: true, json: async () => ({ page: 1, total: 1, itemsPerPage: 20, setlist: [history('new', '01-01-2024', [song('A')])] }) }) }); assert.equal(exhausted.historyComplete, true); assert.equal(exhausted.providerExhausted, true);
 });
@@ -83,6 +83,17 @@ test('incomplete history records retry after seven days without replacing ready 
   let saved = [concert()]; const result = await processSetlistInsights({ concerts: saved, bands: [band], usage: usage(), now, findHistory: async () => ({ kind: 'ok', setlists: [], historyComplete: false, pagesFetched: 10 }), readConcerts: async () => saved, writeConcerts: async (_n, value) => { saved = value; }, log: () => {} });
   assert.equal(result.updates, 1); assert.equal(saved[0].setlistInsights.status, 'history_incomplete'); assert.equal(engine.insightsDue(saved[0], 'mbid', { now }), false); assert.equal(engine.insightsDue(saved[0], 'mbid', { now: new Date('2026-07-25') }), true);
   saved[0].setlistInsights.status = 'ready'; const protectedResult = await processSetlistInsights({ concerts: saved, bands: [band], usage: usage(), now, force: true, findHistory: async () => ({ kind: 'ok', setlists: [], historyComplete: false }), readConcerts: async () => saved, writeConcerts: async () => { throw new Error('no write'); }, log: () => {} }); assert.equal(protectedResult.updates, 0);
+});
+test('history completion requires twenty useful earlier setlists unless the provider is exhausted', () => {
+  const one = [history('old', '2019-01-01', [song('A')])]; const noisy = [...one, history('cover', '2018-01-01', [song('C', { isCover: true })]), history('empty', '2017-01-01', []), history('old', '2019-01-01', [song('A')])];
+  assert.equal(setlist.usefulEarlierCount(noisy, '2020-01-01'), 1);
+  const prior = Array.from({ length: 20 }, (_, i) => history(`u${i}`, '2019-01-01', [song('A')])); assert.equal(setlist.usefulEarlierCount(prior, '2020-01-01'), 20);
+});
+test('outdated ready becomes history_incomplete but current ready remains protected', async () => {
+  let saved = [concert({ setlistInsights: { status: 'ready', algorithmVersion: 1, sourceSetlistFingerprint: engine.fingerprint(concert().setlist), sourceArtistMbid: 'mbid', insights: [] } })];
+  await processSetlistInsights({ concerts: saved, bands: [band], usage: usage(), now, findHistory: async () => ({ kind: 'ok', historyComplete: false, usefulEarlierCount: 1, pagesFetched: 10, setlists: [] }), readConcerts: async () => saved, writeConcerts: async (_n, value) => { saved = value; }, log: () => {} }); assert.equal(saved[0].setlistInsights.status, 'history_incomplete');
+  saved[0].setlistInsights = { status: 'ready', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, sourceSetlistFingerprint: engine.fingerprint(saved[0].setlist), sourceArtistMbid: 'mbid', insights: [] };
+  const result = await processSetlistInsights({ concerts: saved, bands: [band], usage: usage(), now, force: true, findHistory: async () => ({ kind: 'ok', historyComplete: false, setlists: [] }), readConcerts: async () => saved, writeConcerts: async () => { throw new Error('no write'); }, log: () => {} }); assert.equal(result.updates, 0);
 });
 test('backfill runner accepts injected processor without shadowing the Node process global', async () => {
   const tracker = { state: { setlistfm: { callsThisRun: 0 } }, save: async () => {} };
