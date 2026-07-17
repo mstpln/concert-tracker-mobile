@@ -164,6 +164,8 @@ module.exports = {
   PREDICTED_SETLIST: {
     enabled: true,
     refreshDays: 7,
+    spotifyMatchVersion: 2,
+    spotifyTemporaryRetryHours: 24,
     historyMaxSetlists: 20,
     historyWindowDays: 730,
     minimumUsefulSetlists: 3,
