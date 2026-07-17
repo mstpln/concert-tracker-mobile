@@ -7,6 +7,7 @@ const config = require('../scripts/lib/config');
 const engine = require('../scripts/lib/setlistInsights');
 const setlist = require('../scripts/lib/setlistfm');
 const { processSetlistInsights, mergeSetlistInsightResults } = require('../scripts/research');
+const { runSetlistInsightsBackfill } = require('../scripts/setlistInsightsBackfill');
 process.env.SETLISTFM_API_KEY = 'test-key';
 const now = new Date('2026-07-17T12:00:00Z');
 const song = (name, extra = {}) => ({ name, ...extra });
@@ -71,4 +72,14 @@ test('remaining completion helper counts only trusted identities and all incompl
   const base = concert(); const fp = engine.fingerprint(base.setlist); const current = { algorithmVersion: 1, sourceSetlistFingerprint: fp, sourceArtistMbid: 'm', status: 'ready' };
   assert.equal(engine.needsInsightCompletion(base, 'm', undefined, now), true); assert.equal(engine.needsInsightCompletion({ ...base, setlistInsights: current }, 'm', undefined, now), false); assert.equal(engine.needsInsightCompletion({ ...base, setlistInsights: { ...current, status: 'insufficient_data' } }, 'm', undefined, now), false); assert.equal(engine.needsInsightCompletion({ ...base, setlistInsights: { ...current, status: 'error' } }, 'm', undefined, now), true); assert.equal(engine.needsInsightCompletion({ ...base, setlistInsights: { ...current, sourceArtistMbid: 'other' } }, 'm', undefined, now), true);
   const { confirmedMbid } = require('../scripts/research'); for (const status of ['needs_review', 'manual_rejected', 'no_match', undefined]) assert.equal(confirmedMbid({ musicbrainz: { status, mbid: 'm' } }), false); assert.equal(confirmedMbid({ musicbrainz: { status: 'confirmed' } }), false);
+});
+test('backfill runner accepts injected processor without shadowing the Node process global', async () => {
+  const tracker = { state: { setlistfm: { callsThisRun: 0 } }, save: async () => {} };
+  const result = await runSetlistInsightsBackfill({
+    maxConcerts: '5', forceRecalculate: false, now,
+    readConcerts: async () => [], readBands: async () => [], loadUsage: async () => tracker,
+    processInsights: async () => ({ concerts: [], diagnostics: { processed: 0, ready: 0, insufficient: 0, errors: 0, generated: 0 } }),
+    log: () => {},
+  });
+  assert.equal(result.diagnostics.processed, 0);
 });
