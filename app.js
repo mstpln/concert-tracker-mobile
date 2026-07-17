@@ -1041,7 +1041,13 @@ function mcLinkEditCellHtml(kind, c) {
 // counterpart since there's nothing to edit — its row-1 cell IS its own
 // open/close toggle, matching how it behaved before this restructure.
 function mcSetlistTriggerCellHtml(c) {
-  const songCount = c.setlist.songs.length;
+  const songCount = Array.isArray(c.setlist?.songs) ? c.setlist.songs.length : 0;
+  // Past cards always reserve the third column.  A missing setlist is shown
+  // as a muted, non-interactive value, matching unavailable playlist/photo
+  // fields without adding an empty panel or keyboard stop.
+  if (!songCount) {
+    return `<span class="link-trigger setlist-trigger is-empty">${icon('setlistOrdered')}<span class="link-trigger-label">Setlist (0)</span></span>`;
+  }
   // Deliberately just the count, not "N songs" — at real phone widths (tested
   // down to 375px) the word "songs" pushed the label past the column's
   // available width and got ellipsis-truncated, sometimes eating into the
@@ -1098,12 +1104,12 @@ function mcLinksRowHtml(c, isPast) {
       <div class="row-links-row">
         ${mcLinkTriggerCellHtml('playlist', c)}
         ${isPast ? mcLinkTriggerCellHtml('photo', c) : ''}
-        ${hasSetlist ? mcSetlistTriggerCellHtml(c) : ''}
+        ${isPast ? mcSetlistTriggerCellHtml(c) : ''}
       </div>
       <div class="row-edit-row">
         ${mcLinkEditCellHtml('playlist', c)}
         ${isPast ? mcLinkEditCellHtml('photo', c) : ''}
-        ${hasSetlist ? '<span class="row-edit-spacer"></span>' : ''}
+        ${isPast ? '<span class="row-edit-spacer"></span>' : ''}
       </div>
       <div class="expand-panel" data-panel="playlist" hidden>${playlistFormHtml(c)}</div>
       ${isPast ? `<div class="expand-panel" data-panel="photo" hidden>${photoFormHtml(c)}</div>` : ''}
