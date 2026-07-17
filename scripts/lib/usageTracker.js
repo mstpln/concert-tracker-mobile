@@ -79,6 +79,11 @@ function freshState() {
   };
 }
 
+function safeCounter(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : 0;
+}
+
 function ensureMusicbrainzState(state) {
   if (!state.musicbrainz) state.musicbrainz = freshState().musicbrainz;
   if (!('lastMusicbrainzRun' in state)) state.lastMusicbrainzRun = null;
@@ -188,6 +193,7 @@ class UsageTracker {
       state.setlistfm.dayOfCounts = today;
       state.setlistfm.callsToday = 0;
     }
+    state.setlistfm.callsToday = safeCounter(state.setlistfm.callsToday);
     if (state.spotify.dayOfCounts !== today) {
       state.spotify.dayOfCounts = today;
       state.spotify.callsToday = 0;
@@ -392,4 +398,4 @@ class UsageTracker {
   }
 }
 
-module.exports = { UsageTracker, freshState, ensureMusicbrainzState, ensureStructuredResearchState };
+module.exports = { UsageTracker, freshState, safeCounter, ensureMusicbrainzState, ensureStructuredResearchState };

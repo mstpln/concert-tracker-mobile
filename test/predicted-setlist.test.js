@@ -5,11 +5,13 @@ const config = require('../scripts/lib/config');
 const { usefulSetlists, generatePrediction } = require('../scripts/lib/predictedSetlist');
 const setlist = require('../scripts/lib/setlistfm');
 const spotify = require('../scripts/lib/spotify');
-const { predictedSetlistEligible, mergePredictedSetlistResults, processPredictedSetlists } = require('../scripts/research');
+const { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, predictedSetlistEligible, predictionDiagnostics, mergePredictedSetlistResults, finalConcertWritePayload, processPredictedSetlists } = require('../scripts/research');
+const { safeCounter } = require('../scripts/lib/usageTracker');
 process.env.SETLISTFM_API_KEY = 'test-key';
 
 const now = new Date('2026-07-16T12:00:00Z');
 function usage() { return { calls: 0, canCallSetlistfm: () => true, recordSetlistfmCall: async function () { this.calls++; }, canCallSpotify: () => true, recordSpotifyCall: async function () { this.calls++; }, note() {} }; }
+function diagnosticUsage(canCall = true) { return { state: { setlistfm: { callsThisRun: 0, callsToday: 0, dailyCap: config.SETLISTFM.dailyCap, perRunCap: config.SETLISTFM.perRunCap } }, canCallSetlistfm: () => canCall, canCallSpotify: () => true, recordSetlistfmCall: async () => {}, recordSpotifyCall: async () => {}, note() {} }; }
 function raw(id, date, songs) { return { id, eventDate: date, venue: { name: 'Venue' }, songs: songs.map((name, i) => typeof name === 'string' ? { name, isEncore: i === songs.length - 1 } : name) }; }
 function band(extra = {}) { return { id: 'b1', name: 'Example', musicbrainz: { status: 'manual_confirmed', mbid: 'mbid', spotify: { status: 'confirmed', id: 'artist' } }, ...extra }; }
 function concert(extra = {}) { return { id: 'c1', bandId: 'b1', attending: true, date: '2026-11-01', playlistUrl: 'https://playlist', prepChecklist: { ticketReady: true }, ticketPrice: 100, rating: 5, notes: 'keep', photos: ['x'], ...extra }; }
@@ -20,6 +22,33 @@ test('eligibility requires an upcoming attending concert and confirmed MBID', ()
   assert.equal(predictedSetlistEligible(concert({ date: '2026-01-01' }), band(), now), false);
   assert.equal(predictedSetlistEligible(concert({ attending: false }), band(), now), false);
   assert.equal(predictedSetlistEligible(concert(), band({ musicbrainz: { status: 'needs_review', mbid: 'mbid' } }), now), false);
+});
+test('trusted MusicBrainz status compatibility is explicit and excludes uncertain records', () => {
+  assert.deepEqual([...TRUSTED_MUSICBRAINZ_STATUSES].sort(), ['auto_confirmed', 'confirmed', 'manual_confirmed']);
+  for (const status of TRUSTED_MUSICBRAINZ_STATUSES) assert.equal(confirmedMbid(band({ musicbrainz: { status, mbid: 'mbid' } })), true);
+  assert.equal(confirmedMbid(band({ musicbrainz: { status: 'needs_review', mbid: 'mbid' } })), false);
+  assert.equal(confirmedMbid(band({ musicbrainz: { status: 'manual_rejected', mbid: 'mbid' } })), false);
+  assert.equal(confirmedMbid(band({ musicbrainz: { status: 'manual_confirmed' } })), false);
+});
+test('aggregate diagnostics classify eligibility without identifying concert or band records', () => {
+  const ready = { status: 'ready', generatedAt: now.toISOString(), fingerprint: 'same' };
+  const bands = [band(), band({ id: 'b2', musicbrainz: { status: 'auto_confirmed', mbid: 'm2' } }), band({ id: 'b3', musicbrainz: { status: 'confirmed', mbid: 'm3' } }), band({ id: 'b4', musicbrainz: { status: 'needs_review', mbid: 'm4' } }), band({ id: 'b5', musicbrainz: { mbid: 'm5' } }), band({ id: 'b6', musicbrainz: { status: 'manual_confirmed' } })];
+  const concerts = [concert(), concert({ id: 'c2', bandId: 'b2' }), concert({ id: 'c3', bandId: 'b3' }), concert({ id: 'c4', bandId: 'b4' }), concert({ id: 'c5', bandId: 'b5' }), concert({ id: 'c6', bandId: 'b6' }), concert({ id: 'c7', bandId: 'missing' }), concert({ id: 'past', date: '2026-01-01' }), concert({ id: 'not-going', attending: false }), concert({ id: 'not-due', predictedSetlist: ready })];
+  const { diagnostics } = predictionDiagnostics(concerts, bands, diagnosticUsage(), now);
+  assert.deepEqual({ upcoming: diagnostics.upcomingAttending, missingBand: diagnostics.missingBand, missingMbid: diagnostics.missingMbid, unconfirmed: diagnostics.unconfirmedStatus, accepted: diagnostics.acceptedConfirmedMbid, notDue: diagnostics.predictionNotDue, eligible: diagnostics.eligibleDue }, { upcoming: 8, missingBand: 1, missingMbid: 1, unconfirmed: 2, accepted: 4, notDue: 1, eligible: 3 });
+  assert.deepEqual(diagnostics.unacceptedStatuses, { needs_review: 1, missing: 1 });
+  assert.deepEqual(diagnostics.quota, { callsThisRun: 0, callsToday: 0, dailyCap: config.SETLISTFM.dailyCap, perRunCap: config.SETLISTFM.perRunCap, blockedBeforeFirstRequest: false });
+});
+test('quota block prevents the first prediction history attempt and logs only aggregates', async () => {
+  const logs = []; let historyCalls = 0;
+  const result = await processPredictedSetlists({ concerts: [concert()], bands: [band({ name: 'Private Band', musicbrainz: { status: 'manual_confirmed', mbid: 'secret-mbid' } })], usage: diagnosticUsage(false), enabled: true, now, findHistory: async () => { historyCalls++; return { kind: 'ok', setlists: three }; }, readConcerts: async () => { throw new Error('no read'); }, writeConcerts: async () => { throw new Error('no write'); }, log: (line) => logs.push(line) });
+  assert.equal(historyCalls, 0); assert.equal(result.diagnostics.historyRequestsAttempted, 0); assert.equal(result.diagnostics.setlistQuotaBlocked, 1); assert.equal(logs.join(' '), logs.join(' ').replace(/Private Band|secret-mbid/g, ''));
+});
+test('successful history requests and malformed quota counters produce safe aggregate diagnostics', async () => {
+  const u = diagnosticUsage(); u.state.setlistfm.callsToday = 'bad'; u.state.setlistfm.callsThisRun = -1;
+  assert.equal(safeCounter(u.state.setlistfm.callsToday), 0); assert.equal(safeCounter(u.state.setlistfm.callsThisRun), 0);
+  let saved = [concert()]; const result = await processPredictedSetlists({ concerts: saved, bands: [band()], usage: u, enabled: true, now, findHistory: async () => ({ kind: 'ok', setlists: three }), generate: () => ({ status: 'ready', fingerprint: 'fresh', songs: [] }), readConcerts: async () => saved, writeConcerts: async (_name, value) => { saved = value; }, log: () => {} });
+  assert.equal(result.diagnostics.historyRequestsAttempted, 1); assert.equal(result.diagnostics.historyRequestsSuccessful, 1); assert.equal(result.diagnostics.readyPredictionsGenerated, 1); assert.equal(result.diagnostics.updatesWritten, 1);
 });
 test('history ignores empty, malformed, duplicate and cover-only shows and caps at twenty', () => {
   const input = [raw('x', '2026-06-01', []), { id: 'bad', eventDate: 'bad', songs: [{ name: 'x' }] }, raw('d', '2026-06-02', ['Song']), raw('d', '2026-06-02', ['Song']), raw('cover', '2026-06-03', [{ name: 'Cover', isCover: true }]), ...Array.from({ length: 25 }, (_, i) => raw(`a${i}`, `2026-05-${String((i % 20) + 1).padStart(2, '0')}`, ['Song']))];
@@ -64,8 +93,9 @@ test('latest-record merge changes only predictedSetlist, never restores a delete
 });
 test('pipeline reuses one history per band, preserves ready result after failure, and is idempotent', async () => {
   const cs = [concert(), concert({ id: 'c2', date: '2026-12-01' })]; let histories = 0; let writes = 0; let saved = cs;
-  const common = { concerts: cs, bands: [band()], usage: usage(), enabled: true, now, findHistory: async () => { histories++; return { kind: 'ok', setlists: three }; }, matchSong: async () => ({ kind: 'no_match' }), readConcerts: async () => saved, writeConcerts: async (_name, value) => { writes++; saved = value; } };
+  const common = { concerts: cs, bands: [band()], usage: usage(), enabled: true, now, findHistory: async () => { histories++; return { kind: 'ok', setlists: three }; }, matchSong: async () => ({ kind: 'no_match' }), readConcerts: async () => saved, writeConcerts: async (_name, value) => { writes++; saved = value; }, log: () => {} };
   const first = await processPredictedSetlists(common); assert.equal(histories, 1); assert.equal(first.updates, 2); assert.equal(writes, 1);
+  const laterWrite = first.concerts.map((item) => item.id === 'c2' ? { ...item, setlistCheckedAt: 'later' } : item); const finalSaved = finalConcertWritePayload(laterWrite, []); assert.equal(finalSaved[0].predictedSetlist.status, 'ready'); assert.equal(finalSaved[1].setlistCheckedAt, 'later');
   const rerun = await processPredictedSetlists({ ...common, concerts: saved, readConcerts: async () => saved }); assert.equal(rerun.updates, 0);
   const preserved = await processPredictedSetlists({ ...common, concerts: [concert({ predictedSetlist: saved[0].predictedSetlist })], findHistory: async () => ({ kind: 'error' }), readConcerts: async () => saved, writeConcerts: async () => { throw new Error('must not write'); } }); assert.equal(preserved.updates, 0);
 });
