@@ -55,6 +55,7 @@ function analyzeSetlistInsights(concert, history, { settings = config.SETLIST_IN
 }
 
 function sameTourCount(history, targetDate, tourName) { return tourName ? history.filter((entry) => entry.date < targetDate && String(entry.tourName || '').trim() === tourName).length : 0; }
+function isCurrentReady(concert, mbid, settings = config.SETLIST_INSIGHTS) { const item = concert?.setlistInsights; return !!(item?.status === 'ready' && item.algorithmVersion === settings.algorithmVersion && item.sourceSetlistFingerprint === fingerprint(concert.setlist) && item.sourceArtistMbid === mbid); }
 function needsInsightCompletion(concert, mbid, settings = config.SETLIST_INSIGHTS, now = new Date()) { if (!concert?.attending || !concert?.date || concert.date >= now.toISOString().slice(0, 10) || !concert?.setlist || !mbid) return false; const item = concert.setlistInsights; if (!item) return true; if (item.algorithmVersion !== settings.algorithmVersion || item.sourceSetlistFingerprint !== fingerprint(concert.setlist) || item.sourceArtistMbid !== mbid) return true; return !['ready', 'insufficient_data'].includes(item.status); }
 
 function insightsDue(concert, mbid, { force = false, settings = config.SETLIST_INSIGHTS, now = new Date() } = {}) {
@@ -64,4 +65,4 @@ function insightsDue(concert, mbid, { force = false, settings = config.SETLIST_I
   return Date.parse(prior.nextEligibleCheckAt || '') <= now.getTime();
 }
 
-module.exports = { fingerprint, usefulEarlierSetlists, positionTags, analyzeSetlistInsights, insightsDue, needsInsightCompletion };
+module.exports = { fingerprint, usefulSetlists: usefulEarlierSetlists, usefulEarlierSetlists, positionTags, analyzeSetlistInsights, insightsDue, needsInsightCompletion, isCurrentReady };
