@@ -173,14 +173,15 @@ module.exports = {
   // This is separate from upcoming predictions and never makes career-wide claims.
   SETLIST_INSIGHTS: {
     enabled: true,
-    algorithmVersion: 1,
+    algorithmVersion: 2,
     comparisonSetlistLimit: 50,
     minimumUsefulPriorSetlists: 20,
     rareMaximumPerformanceRate: 0.05,
     minimumSameTourPriorSetlists: 3,
     longGapMinimumYears: 2,
     maximumInsightsPerConcert: 2,
-    historyPageLimit: 5,
+    historyPageLimit: 10,
+    historyIncompleteRetryDays: 7,
     temporaryErrorRetryHours: 24,
     quotaBlockedRetryHours: 24,
     weeklyRetryLimit: 2,

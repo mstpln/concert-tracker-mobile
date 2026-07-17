@@ -33,7 +33,7 @@ test('provider dd-MM-yyyy dates normalize safely for both history paths and reje
   const u = usage(); const result = await setlist.findRecentSetlistsForArtist('m', u, { fetchImpl: async () => ({ ok: true, json: async () => ({ setlist: [{ id: 'x', eventDate: '17-07-2026', sets: { set: [{ song: [song('A')] }] } }] }) }) }); assert.equal(result.setlists[0].eventDate, '2026-07-17');
 });
 test('retry policy protects ready and insufficient records, retries temporary states when due, and force overrides', () => {
-  const base = concert(); const fp = engine.fingerprint(base.setlist); const stable = { algorithmVersion: 1, sourceSetlistFingerprint: fp, sourceArtistMbid: 'mbid' };
+  const base = concert(); const fp = engine.fingerprint(base.setlist); const stable = { algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, sourceSetlistFingerprint: fp, sourceArtistMbid: 'mbid' };
   assert.equal(engine.insightsDue({ ...base, setlistInsights: { ...stable, status: 'ready' } }, 'mbid', { now }), false); assert.equal(engine.insightsDue({ ...base, setlistInsights: { ...stable, status: 'insufficient_data' } }, 'mbid', { now }), false);
   assert.equal(engine.insightsDue({ ...base, setlistInsights: { ...stable, status: 'error', nextEligibleCheckAt: '2026-07-18T00:00:00Z' } }, 'mbid', { now }), false); assert.equal(engine.insightsDue({ ...base, setlistInsights: { ...stable, status: 'quota_blocked', nextEligibleCheckAt: '2026-07-16T00:00:00Z' } }, 'mbid', { now }), true); assert.equal(engine.insightsDue({ ...base, setlistInsights: { ...stable, status: 'ready' } }, 'mbid', { now, force: true }), true);
 });
@@ -48,7 +48,7 @@ test('bounded MBID history pagination counts quota before every request and stop
   assert.equal(u.calls, 2); assert.equal(pages, 2); assert.equal(result.kind, 'ok');
 });
 test('insight persistence is idempotent, preserves unrelated latest fields, does not restore deleted concerts, and keeps ready on temporary error', async () => {
-  let latest = [concert({ ticketPrice: 123 })]; const next = { status: 'ready', algorithmVersion: 1, sourceSetlistFingerprint: engine.fingerprint(latest[0].setlist), sourceArtistMbid: 'mbid', insights: [] };
+  let latest = [concert({ ticketPrice: 123 })]; const next = { status: 'ready', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, sourceSetlistFingerprint: engine.fingerprint(latest[0].setlist), sourceArtistMbid: 'mbid', insights: [] };
   const merged = mergeSetlistInsightResults(latest, [{ id: 'c', setlistInsights: next }, { id: 'deleted', setlistInsights: next }]); assert.equal(merged.length, 1); assert.equal(merged[0].ticketPrice, 123); assert.equal(merged[0].predictedSetlist.status, 'ready');
   const result = await processSetlistInsights({ concerts: latest, bands: [band], usage: usage(), now, findHistory: async () => ({ kind: 'ok', setlists: enough }), analyze: () => next, readConcerts: async () => latest.map((item) => ({ ...item, notes: 'newer human note' })), writeConcerts: async (_name, value) => { latest = value; }, log: () => {} });
   assert.equal(result.updates, 1); assert.equal(latest[0].notes, 'newer human note');
@@ -64,14 +64,52 @@ test('quota interruption marks every selected remaining concert retryable while 
   const cs = ['a', 'b', 'c'].map((id) => concert({ id, bandId: id })); const bs = cs.map((item) => ({ id: item.bandId, musicbrainz: { status: 'manual_confirmed', mbid: `m-${item.id}` } })); let saved = cs;
   const first = await processSetlistInsights({ concerts: cs, bands: bs, usage: usage(), now, onlyConcertIds: new Set(cs.map((item) => item.id)), findHistory: async () => ({ kind: 'skipped' }), readConcerts: async () => saved, writeConcerts: async (_n, value) => { saved = value; }, log: () => {} });
   assert.equal(first.updates, 3); assert.equal(saved.every((item) => item.setlistInsights.status === 'quota_blocked' && item.setlistInsights.sourceArtistMbid === `m-${item.id}`), true);
-  const ready = { status: 'ready', algorithmVersion: 1, sourceSetlistFingerprint: engine.fingerprint(cs[0].setlist), sourceArtistMbid: 'm-a', insights: [] }; saved = [cs[0], cs[1], cs[2]].map((item, index) => index === 0 ? { ...item, setlistInsights: ready } : item);
+  const ready = { status: 'ready', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, sourceSetlistFingerprint: engine.fingerprint(cs[0].setlist), sourceArtistMbid: 'm-a', insights: [] }; saved = [cs[0], cs[1], cs[2]].map((item, index) => index === 0 ? { ...item, setlistInsights: ready } : item);
   let calls = 0; await processSetlistInsights({ concerts: saved, bands: bs, usage: usage(), now, onlyConcertIds: new Set(saved.map((item) => item.id)), findHistory: async () => (++calls === 1 ? { kind: 'ok', setlists: enough } : { kind: 'skipped' }), analyze: () => ready, readConcerts: async () => saved, writeConcerts: async (_n, value) => { saved = value; }, log: () => {} });
   assert.equal(saved[0].setlistInsights.status, 'ready'); assert.equal(saved[1].setlistInsights.status, 'ready'); assert.equal(saved[2].setlistInsights.status, 'quota_blocked');
 });
 test('remaining completion helper counts only trusted identities and all incomplete trusted states', () => {
-  const base = concert(); const fp = engine.fingerprint(base.setlist); const current = { algorithmVersion: 1, sourceSetlistFingerprint: fp, sourceArtistMbid: 'm', status: 'ready' };
+  const base = concert(); const fp = engine.fingerprint(base.setlist); const current = { algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, sourceSetlistFingerprint: fp, sourceArtistMbid: 'm', status: 'ready' };
   assert.equal(engine.needsInsightCompletion(base, 'm', undefined, now), true); assert.equal(engine.needsInsightCompletion({ ...base, setlistInsights: current }, 'm', undefined, now), false); assert.equal(engine.needsInsightCompletion({ ...base, setlistInsights: { ...current, status: 'insufficient_data' } }, 'm', undefined, now), false); assert.equal(engine.needsInsightCompletion({ ...base, setlistInsights: { ...current, status: 'error' } }, 'm', undefined, now), true); assert.equal(engine.needsInsightCompletion({ ...base, setlistInsights: { ...current, sourceArtistMbid: 'other' } }, 'm', undefined, now), true);
   const { confirmedMbid } = require('../scripts/research'); for (const status of ['needs_review', 'manual_rejected', 'no_match', undefined]) assert.equal(confirmedMbid({ musicbrainz: { status, mbid: 'm' } }), false); assert.equal(confirmedMbid({ musicbrainz: { status: 'confirmed' } }), false);
+});
+test('history pagination reaches later pages, respects its ceiling, and reports incomplete versus exhausted history', async () => {
+  const u = usage(); let page = 0; const reached = await setlist.findHistoricalSetlistsForArtist('m', u, { beforeDate: '2020-01-01', pageLimit: 10, fetchImpl: async () => ({ ok: true, json: async () => { page++; return { page, total: 200, itemsPerPage: 10, setlist: page === 6 ? Array.from({ length: 50 }, (_, i) => history(`old-${i}`, '01-01-2019', [song('A')])) : [history(`p${page}`, '01-01-2024', [song('A')])] }; } }) });
+  assert.equal(reached.pagesFetched, 10); assert.equal(reached.historyComplete, false); assert.equal(u.calls, 10);
+  const capped = await setlist.findHistoricalSetlistsForArtist('m', usage(), { beforeDate: '2020-01-01', pageLimit: 2, fetchImpl: async () => ({ ok: true, json: async () => ({ page: 1, total: 100, itemsPerPage: 10, setlist: [history('new', '01-01-2024', [song('A')])] }) }) }); assert.equal(capped.historyComplete, false);
+  const exhausted = await setlist.findHistoricalSetlistsForArtist('m', usage(), { beforeDate: '2020-01-01', fetchImpl: async () => ({ ok: true, json: async () => ({ page: 1, total: 1, itemsPerPage: 20, setlist: [history('new', '01-01-2024', [song('A')])] }) }) }); assert.equal(exhausted.historyComplete, true); assert.equal(exhausted.providerExhausted, true);
+});
+test('incomplete history records retry after seven days without replacing ready results', async () => {
+  let saved = [concert()]; const result = await processSetlistInsights({ concerts: saved, bands: [band], usage: usage(), now, findHistory: async () => ({ kind: 'ok', setlists: [], historyComplete: false, pagesFetched: 10 }), readConcerts: async () => saved, writeConcerts: async (_n, value) => { saved = value; }, log: () => {} });
+  assert.equal(result.updates, 1); assert.equal(saved[0].setlistInsights.status, 'history_incomplete'); assert.equal(engine.insightsDue(saved[0], 'mbid', { now }), false); assert.equal(engine.insightsDue(saved[0], 'mbid', { now: new Date('2026-07-25') }), true);
+  saved[0].setlistInsights.status = 'ready'; const protectedResult = await processSetlistInsights({ concerts: saved, bands: [band], usage: usage(), now, force: true, findHistory: async () => ({ kind: 'ok', setlists: [], historyComplete: false }), readConcerts: async () => saved, writeConcerts: async () => { throw new Error('no write'); }, log: () => {} }); assert.equal(protectedResult.updates, 0);
+});
+test('history completion requires twenty useful earlier setlists unless the provider is exhausted', () => {
+  const one = [history('old', '2019-01-01', [song('A')])]; const noisy = [...one, history('cover', '2018-01-01', [song('C', { isCover: true })]), history('empty', '2017-01-01', []), history('old', '2019-01-01', [song('A')])];
+  assert.equal(setlist.usefulEarlierCount(noisy, '2020-01-01'), 1);
+  const prior = Array.from({ length: 20 }, (_, i) => history(`u${i}`, '2019-01-01', [song('A')])); assert.equal(setlist.usefulEarlierCount(prior, '2020-01-01'), 20);
+});
+test('outdated ready becomes history_incomplete but current ready remains protected', async () => {
+  let saved = [concert({ setlistInsights: { status: 'ready', algorithmVersion: 1, sourceSetlistFingerprint: engine.fingerprint(concert().setlist), sourceArtistMbid: 'mbid', insights: [] } })];
+  await processSetlistInsights({ concerts: saved, bands: [band], usage: usage(), now, findHistory: async () => ({ kind: 'ok', historyComplete: false, usefulEarlierCount: 1, pagesFetched: 10, setlists: [] }), readConcerts: async () => saved, writeConcerts: async (_n, value) => { saved = value; }, log: () => {} }); assert.equal(saved[0].setlistInsights.status, 'history_incomplete');
+  saved[0].setlistInsights = { status: 'ready', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, sourceSetlistFingerprint: engine.fingerprint(saved[0].setlist), sourceArtistMbid: 'mbid', insights: [] };
+  const result = await processSetlistInsights({ concerts: saved, bands: [band], usage: usage(), now, force: true, findHistory: async () => ({ kind: 'ok', historyComplete: false, setlists: [] }), readConcerts: async () => saved, writeConcerts: async () => { throw new Error('no write'); }, log: () => {} }); assert.equal(result.updates, 0);
+});
+test('pagination and analysis share useful qualification for malformed titles, duplicates, covers and empty sets', () => {
+  const input = [history('valid', '2019-01-01', [song('Song')]), history('valid', '2019-01-01', [song('Song')]), history('punctuation', '2019-01-02', [song('!!!')]), history('cover', '2019-01-03', [song('Cover', { isCover: true })]), history('empty', '2019-01-04', []), history('new', '2021-01-01', [song('Song')])];
+  assert.equal(setlist.usefulEarlierCount(input, '2020-01-01'), 1); assert.equal(engine.usefulEarlierSetlists(input, '2020-01-01', Number.MAX_SAFE_INTEGER).length, 1);
+});
+test('weekly retries and backfill remaining use behavioral eligible state', () => {
+  const { selectWeeklyInsightRetryIds, confirmedMbid } = require('../scripts/research'); const { countRemainingInsights } = require('../scripts/setlistInsightsBackfill'); const byId = new Map([['b', band]]); const fp = engine.fingerprint(concert().setlist);
+  const due = concert({ id: 'due', setlistInsights: { status: 'history_incomplete', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, sourceSetlistFingerprint: fp, sourceArtistMbid: 'mbid', nextEligibleCheckAt: '2026-07-01T00:00:00Z' } }); const later = concert({ id: 'later', setlistInsights: { ...due.setlistInsights, nextEligibleCheckAt: '2026-08-01T00:00:00Z' } });
+  assert.deepEqual(selectWeeklyInsightRetryIds([later, due], byId, now), ['due']); assert.equal(countRemainingInsights([due], byId, now), 1); assert.equal(confirmedMbid(band), true);
+});
+test('manual insight backfill selects newest concerts first with ID tie-breaking and a strict batch limit', async () => {
+  const { runSetlistInsightsBackfill } = require('../scripts/setlistInsightsBackfill'); const fp = engine.fingerprint(concert().setlist);
+  const records = [concert({ id: 'z', date: '2025-01-01' }), concert({ id: 'b', date: '2025-03-01' }), concert({ id: 'a', date: '2025-03-01' }), concert({ id: 'c', date: '2025-02-01' })]; let selected;
+  const fakeUsage = { state: { setlistfm: { callsThisRun: 0 } }, save: async () => {} };
+  await runSetlistInsightsBackfill({ maxConcerts: 3, now, readConcerts: async () => records, readBands: async () => [{ id: 'b', musicbrainz: { status: 'manual_confirmed', mbid: 'mbid' } }], loadUsage: async () => fakeUsage, processInsights: async ({ onlyConcertIds }) => { selected = [...onlyConcertIds]; return { concerts: records, diagnostics: { processed: 0, ready: 0, insufficient: 0, errors: 0, generated: 0 } }; }, log: () => {} });
+  assert.deepEqual(selected, ['a', 'b', 'c']);
 });
 test('backfill runner accepts injected processor without shadowing the Node process global', async () => {
   const tracker = { state: { setlistfm: { callsThisRun: 0 } }, save: async () => {} };
