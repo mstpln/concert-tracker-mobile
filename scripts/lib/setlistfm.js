@@ -86,6 +86,29 @@ async function findRecentSetlistsForArtist(artistMbid, usage, { fetchImpl = fetc
   } catch (error) { return { kind: 'error', error: 'Invalid setlist.fm artist history JSON' }; }
 }
 
+// Bounded MBID-only pagination for actual-setlist context. Returned entries
+// are compact normalized records; raw provider payloads are never persisted.
+async function findHistoricalSetlistsForArtist(artistMbid, usage, { beforeDate, pageLimit = config.SETLIST_INSIGHTS.historyPageLimit, fetchImpl = fetch } = {}) {
+  if (!artistMbid) return { kind: 'skipped', setlists: [] };
+  const setlists = []; let reachedBeforeDate = false;
+  for (let page = 1; page <= pageLimit; page++) {
+    if (!usage.canCallSetlistfm()) return { kind: 'skipped', setlists, reachedBeforeDate };
+    await usage.recordSetlistfmCall();
+    let res;
+    try { res = await fetchImpl(`${config.SETLISTFM.baseUrl}/artist/${encodeURIComponent(artistMbid)}/setlists?p=${page}`, { headers: { 'x-api-key': apiKey(), Accept: 'application/json' } }); }
+    catch (error) { usage.note(`setlist.fm insight history failed: ${error.message}`); return { kind: 'error', setlists, reachedBeforeDate }; }
+    if (res.status === 404) return { kind: 'ok', setlists, reachedBeforeDate: true };
+    if (!res.ok) return { kind: 'error', status: res.status, setlists, reachedBeforeDate };
+    let data; try { data = await res.json(); } catch { return { kind: 'error', setlists, reachedBeforeDate }; }
+    if (!Array.isArray(data?.setlist)) return { kind: 'error', setlists, reachedBeforeDate };
+    const compact = data.setlist.map((raw) => ({ id: raw.id || null, eventDate: raw.eventDate || null, venue: { id: raw.venue?.id || null, name: raw.venue?.name || null }, tourName: raw.tour?.name || null, songs: normalizeSetlist(raw).songs }));
+    setlists.push(...compact);
+    if (compact.some((item) => item.eventDate && item.eventDate < beforeDate)) reachedBeforeDate = true;
+    if (!compact.length || (reachedBeforeDate && setlists.filter((item) => item.eventDate && item.eventDate < beforeDate).length >= config.SETLIST_INSIGHTS.comparisonSetlistLimit)) break;
+  }
+  return { kind: 'ok', setlists, reachedBeforeDate };
+}
+
 // Returns a normalized { songs, tourName, url } object for the given
 // concert, or null if no setlist is on file yet (or the lookup failed/was
 // skipped) — callers treat null as "nothing to add this time", never as
@@ -137,4 +160,4 @@ async function findSetlistForShow(concert, usage, { artistMbid = null, fetchImpl
   return normalized.songs.length > 0 ? normalized : null;
 }
 
-module.exports = { findSetlistForShow, findRecentSetlistsForArtist, normalizeSetlist, venueMatches };
+module.exports = { findSetlistForShow, findRecentSetlistsForArtist, findHistoricalSetlistsForArtist, normalizeSetlist, venueMatches };

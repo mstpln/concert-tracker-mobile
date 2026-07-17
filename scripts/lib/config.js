@@ -169,6 +169,20 @@ module.exports = {
     minimumUsefulSetlists: 3,
   },
 
+  // Actual past-setlist context is intentionally conservative and bounded.
+  // This is separate from upcoming predictions and never makes career-wide claims.
+  SETLIST_INSIGHTS: {
+    enabled: true,
+    algorithmVersion: 1,
+    comparisonSetlistLimit: 50,
+    minimumUsefulPriorSetlists: 20,
+    rareMaximumPerformanceRate: 0.05,
+    minimumSameTourPriorSetlists: 3,
+    longGapMinimumYears: 2,
+    maximumInsightsPerConcert: 2,
+    historyPageLimit: 5,
+  },
+
   WORKER: {
     endpointEnv: 'CF_WORKER_ENDPOINT',
     tokenEnv: 'CF_WORKER_TOKEN',
