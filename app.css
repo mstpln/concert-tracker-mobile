@@ -723,7 +723,7 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .setlist-insight-context { margin: 8px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.35; }
 
 /* Upcoming My Concerts preparation rows only. */
-.concert-prep-group { margin-top: 8px; border-top: 1px solid var(--border); }
+.concert-prep-group { margin-top: 8px; }
 .concert-prep-row { width: 100%; min-height: 52px; display: flex; align-items: center; gap: 11px; padding: 9px 0; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border); text-align: left; }
 .concert-prep-row > span:nth-child(2) { flex: 1; min-width: 0; }
 .concert-prep-row strong, .concert-prep-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -768,7 +768,7 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
    var(--text)/var(--text-muted) — those flip to near-black in light mode
    and would go invisible against this always-dark background. */
 .stats-teaser-card {
-  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--border); border-radius: 10px;
   background: var(--header-bg); margin-bottom: 16px; overflow: hidden;
 }
 .stats-teaser-row { display: flex; justify-content: space-between; padding: 14px 16px; text-align: center; }
@@ -796,7 +796,7 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
    always dark regardless of system theme, so the mode-flipping text tokens
    would go unreadable in light mode. */
 .countdown-card {
-  display: flex; border-radius: 10px; background: var(--header-bg);
+  display: flex; box-shadow: inset 0 0 0 1px var(--border); border-radius: 10px; background: var(--header-bg);
   margin-bottom: 16px; overflow: hidden;
 }
 /* Enlarged ~50% taller than the original build — this card is meant to draw
@@ -826,14 +826,14 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
    larger card (16px -> 24px, -8px -> -12px offset). */
 .countdown-ring-wrap::before, .countdown-ring-wrap::after {
   content: ''; position: absolute; left: -12px; width: 24px; height: 24px;
-  border-radius: 50%; background: var(--surface);
+  box-shadow: 0 0 0 1px var(--border); border-radius: 50%; background: var(--surface);
 }
 .countdown-ring-wrap::before { top: -12px; }
 .countdown-ring-wrap::after { bottom: -12px; }
 .countdown-ring-track { stroke: #2c2d30; }
 #countdown-ring-outer { stroke: #4d8dff; }
 #countdown-ring-inner { stroke: #7fb0ff; }
-#countdown-ring-day { fill: #ffffff; font-size: 22px; font-weight: 700; font-family: inherit; }
+#countdown-ring-day { fill: #ffffff; font-size: 20px; font-weight: 700; font-family: inherit; }
 .countdown-empty {
   padding: 16px; text-align: center;
   border: 1px solid var(--border); background: var(--surface);
