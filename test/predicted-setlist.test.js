@@ -5,13 +5,13 @@ const config = require('../scripts/lib/config');
 const { usefulSetlists, generatePrediction } = require('../scripts/lib/predictedSetlist');
 const setlist = require('../scripts/lib/setlistfm');
 const spotify = require('../scripts/lib/spotify');
-const { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, predictedSetlistEligible, predictionDiagnostics, mergePredictedSetlistResults, processPredictedSetlists } = require('../scripts/research');
+const { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, predictedSetlistEligible, predictionDiagnostics, mergePredictedSetlistResults, finalConcertWritePayload, processPredictedSetlists } = require('../scripts/research');
 const { safeCounter } = require('../scripts/lib/usageTracker');
 process.env.SETLISTFM_API_KEY = 'test-key';
 
 const now = new Date('2026-07-16T12:00:00Z');
 function usage() { return { calls: 0, canCallSetlistfm: () => true, recordSetlistfmCall: async function () { this.calls++; }, canCallSpotify: () => true, recordSpotifyCall: async function () { this.calls++; }, note() {} }; }
-function diagnosticUsage(canCall = true) { return { state: { setlistfm: { callsThisRun: 0, callsToday: 0, dailyCap: 900, perRunCap: 180 } }, canCallSetlistfm: () => canCall, canCallSpotify: () => true, recordSetlistfmCall: async () => {}, recordSpotifyCall: async () => {}, note() {} }; }
+function diagnosticUsage(canCall = true) { return { state: { setlistfm: { callsThisRun: 0, callsToday: 0, dailyCap: config.SETLISTFM.dailyCap, perRunCap: config.SETLISTFM.perRunCap } }, canCallSetlistfm: () => canCall, canCallSpotify: () => true, recordSetlistfmCall: async () => {}, recordSpotifyCall: async () => {}, note() {} }; }
 function raw(id, date, songs) { return { id, eventDate: date, venue: { name: 'Venue' }, songs: songs.map((name, i) => typeof name === 'string' ? { name, isEncore: i === songs.length - 1 } : name) }; }
 function band(extra = {}) { return { id: 'b1', name: 'Example', musicbrainz: { status: 'manual_confirmed', mbid: 'mbid', spotify: { status: 'confirmed', id: 'artist' } }, ...extra }; }
 function concert(extra = {}) { return { id: 'c1', bandId: 'b1', attending: true, date: '2026-11-01', playlistUrl: 'https://playlist', prepChecklist: { ticketReady: true }, ticketPrice: 100, rating: 5, notes: 'keep', photos: ['x'], ...extra }; }
@@ -37,6 +37,7 @@ test('aggregate diagnostics classify eligibility without identifying concert or 
   const { diagnostics } = predictionDiagnostics(concerts, bands, diagnosticUsage(), now);
   assert.deepEqual({ upcoming: diagnostics.upcomingAttending, missingBand: diagnostics.missingBand, missingMbid: diagnostics.missingMbid, unconfirmed: diagnostics.unconfirmedStatus, accepted: diagnostics.acceptedConfirmedMbid, notDue: diagnostics.predictionNotDue, eligible: diagnostics.eligibleDue }, { upcoming: 8, missingBand: 1, missingMbid: 1, unconfirmed: 2, accepted: 4, notDue: 1, eligible: 3 });
   assert.deepEqual(diagnostics.unacceptedStatuses, { needs_review: 1, missing: 1 });
+  assert.deepEqual(diagnostics.quota, { callsThisRun: 0, callsToday: 0, dailyCap: config.SETLISTFM.dailyCap, perRunCap: config.SETLISTFM.perRunCap, blockedBeforeFirstRequest: false });
 });
 test('quota block prevents the first prediction history attempt and logs only aggregates', async () => {
   const logs = []; let historyCalls = 0;
@@ -94,7 +95,7 @@ test('pipeline reuses one history per band, preserves ready result after failure
   const cs = [concert(), concert({ id: 'c2', date: '2026-12-01' })]; let histories = 0; let writes = 0; let saved = cs;
   const common = { concerts: cs, bands: [band()], usage: usage(), enabled: true, now, findHistory: async () => { histories++; return { kind: 'ok', setlists: three }; }, matchSong: async () => ({ kind: 'no_match' }), readConcerts: async () => saved, writeConcerts: async (_name, value) => { writes++; saved = value; }, log: () => {} };
   const first = await processPredictedSetlists(common); assert.equal(histories, 1); assert.equal(first.updates, 2); assert.equal(writes, 1);
-  const laterWrite = first.concerts.map((item) => item.id === 'c2' ? { ...item, setlistCheckedAt: 'later' } : item); assert.equal(laterWrite[0].predictedSetlist.status, 'ready'); assert.equal(laterWrite[1].setlistCheckedAt, 'later');
+  const laterWrite = first.concerts.map((item) => item.id === 'c2' ? { ...item, setlistCheckedAt: 'later' } : item); const finalSaved = finalConcertWritePayload(laterWrite, []); assert.equal(finalSaved[0].predictedSetlist.status, 'ready'); assert.equal(finalSaved[1].setlistCheckedAt, 'later');
   const rerun = await processPredictedSetlists({ ...common, concerts: saved, readConcerts: async () => saved }); assert.equal(rerun.updates, 0);
   const preserved = await processPredictedSetlists({ ...common, concerts: [concert({ predictedSetlist: saved[0].predictedSetlist })], findHistory: async () => ({ kind: 'error' }), readConcerts: async () => saved, writeConcerts: async () => { throw new Error('must not write'); } }); assert.equal(preserved.updates, 0);
 });
