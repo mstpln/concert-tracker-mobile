@@ -926,7 +926,7 @@ function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
       ${venueAddressLinkHtml(c)}
       ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
       ${ticketCostBlockHtml(c)}
-      <div class="row-divider"></div>
+      ${isPast ? '<div class="row-divider"></div>' : ''}
       ${isPast ? mcLinksRowHtml(c, true) : concertPrepGroupHtml(c)}
       ${isPast ? `<div class="row-divider"></div>${concertReviewHtml(c)}` : ''}
       <button class="icon-btn remove-going-btn delete-corner-btn" data-concert-id="${c.id}" aria-label="Remove">${icon('trash')}</button>
