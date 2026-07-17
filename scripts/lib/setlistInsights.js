@@ -60,7 +60,7 @@ function needsInsightCompletion(concert, mbid, settings = config.SETLIST_INSIGHT
 function insightsDue(concert, mbid, { force = false, settings = config.SETLIST_INSIGHTS, now = new Date() } = {}) {
   if (!concert?.setlist || !mbid) return false; const prior = concert.setlistInsights;
   if (force || !prior || prior.algorithmVersion !== settings.algorithmVersion || prior.sourceSetlistFingerprint !== fingerprint(concert.setlist) || prior.sourceArtistMbid !== mbid) return true;
-  if (!['error', 'quota_blocked'].includes(prior.status)) return false;
+  if (!['error', 'quota_blocked', 'history_incomplete'].includes(prior.status)) return false;
   return Date.parse(prior.nextEligibleCheckAt || '') <= now.getTime();
 }
 
