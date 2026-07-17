@@ -1002,7 +1002,7 @@ function photoFormHtml(c) {
 // directly, rather than relying on <details>/<summary>.
 function mcLinkFieldConfig(kind) {
   return kind === 'playlist'
-    ? { field: 'playlistUrl', iconName: 'music', label: 'Playlist', formFn: playlistFormHtml }
+    ? { field: 'playlistUrl', iconName: 'spotify', label: 'Playlist', formFn: playlistFormHtml }
     : { field: 'photoUrl', iconName: 'photo', label: 'Photos', formFn: photoFormHtml };
 }
 
