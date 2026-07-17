@@ -95,6 +95,15 @@ test('outdated ready becomes history_incomplete but current ready remains protec
   saved[0].setlistInsights = { status: 'ready', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, sourceSetlistFingerprint: engine.fingerprint(saved[0].setlist), sourceArtistMbid: 'mbid', insights: [] };
   const result = await processSetlistInsights({ concerts: saved, bands: [band], usage: usage(), now, force: true, findHistory: async () => ({ kind: 'ok', historyComplete: false, setlists: [] }), readConcerts: async () => saved, writeConcerts: async () => { throw new Error('no write'); }, log: () => {} }); assert.equal(result.updates, 0);
 });
+test('pagination and analysis share useful qualification for malformed titles, duplicates, covers and empty sets', () => {
+  const input = [history('valid', '2019-01-01', [song('Song')]), history('valid', '2019-01-01', [song('Song')]), history('punctuation', '2019-01-02', [song('!!!')]), history('cover', '2019-01-03', [song('Cover', { isCover: true })]), history('empty', '2019-01-04', []), history('new', '2021-01-01', [song('Song')])];
+  assert.equal(setlist.usefulEarlierCount(input, '2020-01-01'), 1); assert.equal(engine.usefulEarlierSetlists(input, '2020-01-01', Number.MAX_SAFE_INTEGER).length, 1);
+});
+test('weekly retries and backfill remaining use behavioral eligible state', () => {
+  const { selectWeeklyInsightRetryIds, confirmedMbid } = require('../scripts/research'); const { countRemainingInsights } = require('../scripts/setlistInsightsBackfill'); const byId = new Map([['b', band]]); const fp = engine.fingerprint(concert().setlist);
+  const due = concert({ id: 'due', setlistInsights: { status: 'history_incomplete', algorithmVersion: config.SETLIST_INSIGHTS.algorithmVersion, sourceSetlistFingerprint: fp, sourceArtistMbid: 'mbid', nextEligibleCheckAt: '2026-07-01T00:00:00Z' } }); const later = concert({ id: 'later', setlistInsights: { ...due.setlistInsights, nextEligibleCheckAt: '2026-08-01T00:00:00Z' } });
+  assert.deepEqual(selectWeeklyInsightRetryIds([later, due], byId, now), ['due']); assert.equal(countRemainingInsights([due], byId, now), 1); assert.equal(confirmedMbid(band), true);
+});
 test('backfill runner accepts injected processor without shadowing the Node process global', async () => {
   const tracker = { state: { setlistfm: { callsThisRun: 0 } }, save: async () => {} };
   const result = await runSetlistInsightsBackfill({

@@ -14,6 +14,7 @@
 // run for a show that's unlikely to ever get one.
 
 const config = require('./config');
+const { usefulEarlierSetlists } = require('./setlistInsights');
 
 function apiKey() {
   const k = process.env[config.SETLISTFM.apiKeyEnv];
@@ -98,14 +99,7 @@ async function findRecentSetlistsForArtist(artistMbid, usage, { fetchImpl = fetc
 
 // Bounded MBID-only pagination for actual-setlist context. Returned entries
 // are compact normalized records; raw provider payloads are never persisted.
-function usefulEarlierCount(setlists, beforeDate) {
-  const seen = new Set();
-  return (setlists || []).filter((item) => {
-    const key = item?.id || `${item?.eventDate || ''}|${item?.venue?.id || item?.venue?.name || ''}`;
-    if (!key || seen.has(key) || !item?.eventDate || item.eventDate >= beforeDate || !(item.songs || []).some((song) => song?.name && !song.isCover)) return false;
-    seen.add(key); return true;
-  }).length;
-}
+function usefulEarlierCount(setlists, beforeDate) { return usefulEarlierSetlists(setlists, beforeDate, Number.MAX_SAFE_INTEGER).length; }
 async function findHistoricalSetlistsForArtist(artistMbid, usage, { beforeDate, pageLimit = config.SETLIST_INSIGHTS.historyPageLimit, fetchImpl = fetch } = {}) {
   if (!artistMbid) return { kind: 'skipped', setlists: [] };
   const setlists = []; let reachedBeforeDate = false; let providerExhausted = false; let pagesFetched = 0;
