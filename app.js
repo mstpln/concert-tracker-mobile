@@ -1296,10 +1296,18 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
         ev.target.closest('.venue-address-link') ||
         ev.target.closest('.review-block') ||
         ev.target.closest('.ticket-cost-block') ||
-        ev.target.closest('.row-links-group')
+        ev.target.closest('.row-links-group') ||
+        ev.target.closest('.concert-prep-group')
       ) return;
       openProfile(row.dataset.bandId);
     });
+  });
+
+  // Preparation controls are all interactive. Contain their clicks here as
+  // well as excluding the group in the card-navigation guard above, because
+  // a checkbox click reaches the card before its later change event fires.
+  container.querySelectorAll('.concert-prep-group').forEach((group) => {
+    group.addEventListener('click', (ev) => ev.stopPropagation());
   });
 
   // Playlist/Photos/Setlist row (see mcLinksRowHtml) — tapping a trigger or
@@ -1337,11 +1345,14 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
   container.querySelectorAll('.predicted-playlist-name').forEach((input) => input.addEventListener('input', () => { const review = playlistReviews.get(input.dataset.concertId); if (review) review.name = input.value; }));
   container.querySelectorAll('.predicted-track-check').forEach((input) => input.addEventListener('change', () => { const review = playlistReviews.get(input.dataset.concertId); if (!review) return; review.uris = review.uris.filter((uri) => uri !== input.dataset.uri); if (input.checked) { const c = concerts.find((item) => item.id === input.dataset.concertId); const order = predictedMixSongs(c).map((song) => song.spotifyUri); review.uris = order.filter((uri) => review.uris.includes(uri) || uri === input.dataset.uri); } refresh(); }));
   container.querySelectorAll('.playlist-create-confirm').forEach((btn) => btn.addEventListener('click', async (ev) => { ev.stopPropagation(); const c = concerts.find((item) => item.id === btn.dataset.concertId); const review = playlistReviews.get(btn.dataset.concertId); if (!c || !review?.uris.length || playlistOperations.has(c.id)) return; playlistOperations.set(c.id, true); review.message = 'Creating playlist…'; refresh(); try { const result = await SpotifyUser.createPrivatePlaylist(review.name.trim() || predictedMixName(c), review.uris, fetch, review.operation); review.operation = { playlist: result.playlist, added: result.added }; const metadata = { spotifyPlaylistId: result.playlist.id, spotifyUrl: result.playlist.external_urls.spotify, name: review.name.trim() || predictedMixName(c), trackCount: result.added, sourcePredictionFingerprint: c.predictedSetlist?.fingerprint || null, createdAt: new Date().toISOString() }; const latest = await dlReadJsonFile(remote, 'concerts.json', []); const exists = latest.some((item) => item.id === c.id); if (!exists) throw new Error('Playlist exists, but this concert was removed before it could be saved.'); await dlWriteJsonFile(remote, 'concerts.json', latest.map((item) => item.id === c.id ? { ...item, predictedPlaylist: metadata } : item)); concerts = latest.map((item) => item.id === c.id ? { ...item, predictedPlaylist: metadata } : item); playlistReviews.delete(c.id); } catch (error) { if (error.operation) review.operation = error.operation; review.message = error.operation ? 'Playlist created, but tracks could not be added. Try again.' : review.operation?.playlist ? 'Playlist created, but could not be saved in the app. Try again.' : (error.message || 'Could not create playlist. Try again.'); } finally { playlistOperations.delete(c.id); refresh(); } }));
-  container.querySelectorAll('[data-prep-key]').forEach((input) => input.addEventListener('change', async (ev) => {
+  container.querySelectorAll('[data-prep-key]').forEach((input) => {
+    input.addEventListener('click', (ev) => ev.stopPropagation());
+    input.addEventListener('change', async (ev) => {
     ev.stopPropagation(); const c = concerts.find((item) => item.id === input.dataset.concertId); if (!c) return; const previous = c.prepChecklist;
     c.prepChecklist = { ticketReady: false, travelPlanned: false, timesChecked: false, venueRulesChecked: false, playlistReady: false, ...(previous || {}), [input.dataset.prepKey]: input.checked, updatedAt: new Date().toISOString() };
     try { await dlWriteJsonFile(remote, 'concerts.json', concerts); refresh(); } catch (error) { c.prepChecklist = previous; input.checked = !input.checked; const message = input.closest('.prep-checklist')?.querySelector('.prep-save-error'); if (message) message.textContent = 'Could not save. Please try again.'; }
-  }));
+    });
+  });
   container.querySelectorAll('.prep-edit-playlist').forEach((btn) => btn.addEventListener('click', (ev) => { ev.stopPropagation(); const panel = btn.closest('.concert-prep-panel'); panel.innerHTML = playlistFormHtml(concerts.find((c) => c.id === btn.closest('.row-card-mc').querySelector('.remove-going-btn').dataset.concertId)); }));
   container.querySelectorAll('.prep-remove-playlist').forEach((btn) => btn.addEventListener('click', async (ev) => { ev.stopPropagation(); if (!confirm('Remove this playlist link?')) return; const c = concerts.find((item) => item.id === btn.closest('.row-card-mc').querySelector('.remove-going-btn').dataset.concertId); if (!c) return; const previous = c.playlistUrl; c.playlistUrl = null; try { await dlWriteJsonFile(remote, 'concerts.json', concerts); refresh(); } catch { c.playlistUrl = previous; } }));
 

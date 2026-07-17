@@ -28,6 +28,18 @@ test('Stage 1 rows are accessible, independently expandable, and do not add prov
   assert.match(app, /aria-expanded="false"/); assert.match(app, /aria-controls=/); assert.match(app, /group\.querySelectorAll\('\.concert-prep-panel'\)/);
   assert.match(app, /ev\.stopPropagation\(\)/); assert.doesNotMatch(app, /open-meteo|pkce|authorization code/i);
 });
+test('checklist clicks and labels cannot open a band profile, while ordinary card clicks still can', () => {
+  const navigationHandler = app.slice(app.indexOf("container.querySelectorAll('.row-card[data-band-id]')"), app.indexOf('// Playlist/Photos/Setlist row'));
+  assert.match(navigationHandler, /ev\.target\.closest\('\.concert-prep-group'\)/);
+  assert.match(navigationHandler, /openProfile\(row\.dataset\.bandId\)/);
+  assert.match(app, /querySelectorAll\('\.concert-prep-group'\)[\s\S]*?group\.addEventListener\('click', \(ev\) => ev\.stopPropagation\(\)\)/);
+  assert.match(app, /querySelectorAll\('\[data-prep-key\]'\)[\s\S]*?input\.addEventListener\('click', \(ev\) => ev\.stopPropagation\(\)\)/);
+});
+test('checklist changes still persist the clicked value and retain rollback behavior', () => {
+  assert.match(app, /\[input\.dataset\.prepKey\]: input\.checked/);
+  assert.match(app, /dlWriteJsonFile\(remote, 'concerts\.json', concerts\); refresh\(\)/);
+  assert.match(app, /c\.prepChecklist = previous; input\.checked = !input\.checked/);
+});
 test('Stage 1 placeholder copy is exact and prediction remains renderer-only', () => {
   assert.match(app, /Available 10 days before the concert/); assert.match(app, /Prediction not available/); assert.match(app, /Prediction is being prepared/); assert.match(app, /Not enough recent setlists yet/);
   assert.match(app, /disabled>Create playlist/);
