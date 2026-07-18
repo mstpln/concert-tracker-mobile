@@ -97,6 +97,21 @@ test('provider retry summary selects only future retries and reports due unresol
   assert.deepEqual(identities.providerRetrySummary([{ provider: 'spotify', record: { status: 'error', nextEligibleCheckAt: 'not-a-date' } }, { provider: 'ticketmaster', record: null }], now), { nextRetryAt: null, eligibleNow: false });
 });
 
+test('Research activity prioritizes an eligible provider over another provider’s future retry', () => {
+  const source = app.slice(app.indexOf('function profileRetryActivityRow'), app.indexOf('function profileDataHtml'));
+  const profileRetryActivityRow = Function(`${source}; return profileRetryActivityRow;`)();
+  const now = new Date('2026-07-18T00:00:00.000Z');
+  const summary = identities.providerRetrySummary([
+    { provider: 'ticketmaster', record: { status: 'no_match', nextEligibleCheckAt: '2026-10-16T00:00:00.000Z' } },
+    { provider: 'spotify', record: { status: 'error', nextEligibleCheckAt: '2026-07-17T00:00:00.000Z' } },
+  ], now);
+  assert.deepEqual(summary, { nextRetryAt: '2026-10-16T00:00:00.000Z', eligibleNow: true });
+  assert.deepEqual(profileRetryActivityRow(summary, (value) => `formatted ${value}`), ['Provider retry', 'Eligible now']);
+  assert.deepEqual(profileRetryActivityRow({ nextRetryAt: '2026-07-20T00:00:00.000Z', eligibleNow: false }, (value) => `formatted ${value}`), ['Next provider retry', 'formatted 2026-07-20T00:00:00.000Z']);
+  assert.deepEqual(profileRetryActivityRow({ nextRetryAt: null, eligibleNow: true }, (value) => `formatted ${value}`), ['Provider retry', 'Eligible now']);
+  assert.equal(profileRetryActivityRow({ nextRetryAt: null, eligibleNow: false }, (value) => `formatted ${value}`), null);
+});
+
 test('profile Data CSS keeps key-value rows, IDs, candidates, and four tabs mobile-safe', () => {
   assert.match(css, /\.profile-data-row/);
   assert.match(css, /overflow-wrap: anywhere/);

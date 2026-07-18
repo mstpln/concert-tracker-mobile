@@ -2096,6 +2096,12 @@ function profileDataProviderHtml({ title, provider, record, rows, id, url, dupli
   return `<section class="settings-card profile-data-card"><p class="section-label" style="margin-top:0">${escapeHtml(title)}</p>${profileDataRows([['Status', providerIdentityStatusLabel(status)], ...rows, retry.retryScheduled ? ['Retry after', formatSettingsDate(retry.nextEligibleCheckAt)] : retrySummary.eligibleNow ? ['Retry status', 'Eligible now'] : null, record?.errorCategory ? ['Reason', String(record.errorCategory).replace(/_/g, ' ')] : null].filter(Boolean))}${profileProviderCandidatesHtml(record, provider)}${extra}${idAction || openAction ? `<div class="show-buttons profile-data-actions">${idAction}${openAction}</div>` : ''}</section>`;
 }
 
+function profileRetryActivityRow(retrySummary, formatDate = formatSettingsDate) {
+  if (retrySummary?.eligibleNow) return ['Provider retry', 'Eligible now'];
+  if (retrySummary?.nextRetryAt) return ['Next provider retry', formatDate(retrySummary.nextRetryAt)];
+  return null;
+}
+
 function profileDataHtml(band) {
   const musicbrainz = band.musicbrainz || {};
   const duplicateFor = (provider) => ProviderIdentityState.duplicateBandIds(bands, provider).has(band.id);
@@ -2109,7 +2115,7 @@ function profileDataHtml(band) {
   const spotify = musicbrainz.spotify || null;
   const activity = band.structuredResearch?.routing || {};
   const retrySummary = ProviderIdentityState.providerRetrySummary([{ provider: 'ticketmaster', record: tm }, { provider: 'spotify', record: spotify }]);
-  const researchRows = profileDataRows([['Last tour search', formatSettingsDate(activity.lastTavilyTourAt)], ['Last status search', formatSettingsDate(activity.lastTavilyStatusAt)], retrySummary.nextRetryAt ? ['Next provider retry', formatSettingsDate(retrySummary.nextRetryAt)] : retrySummary.eligibleNow ? ['Provider retry', 'Eligible now'] : null].filter(Boolean));
+  const researchRows = profileDataRows([['Last tour search', formatSettingsDate(activity.lastTavilyTourAt)], ['Last status search', formatSettingsDate(activity.lastTavilyStatusAt)], profileRetryActivityRow(retrySummary)].filter(Boolean));
   return `<section class="settings-card profile-data-card"><p class="section-label" style="margin-top:0">Identity summary</p><p class="profile-data-summary"><strong>${escapeHtml(summary)}</strong> · ${confirmedCount} provider identit${confirmedCount === 1 ? 'y' : 'ies'} confirmed</p></section>
     ${profileDataProviderHtml({ title: 'MusicBrainz', provider: 'musicbrainz', record: musicbrainz, id: mbid, url: profileMusicbrainzUrl(mbid), duplicate: duplicateFor('musicbrainz'), rows: [['Artist', musicbrainz.artistName], ['MBID', mbid, 'profile-data-id'], ['Artist type', musicbrainz.artistType], ['Area', musicbrainz.area], ['Country', musicbrainz.country], ['Disambiguation', musicbrainz.disambiguation], ['Match method', providerMatchMethodLabel(musicbrainz.matchMethod)], ['Confidence', musicbrainz.confidence != null ? `${musicbrainz.confidence}%` : null], ['Matched', formatSettingsDate(musicbrainz.matchedAt)], ['Last checked', formatSettingsDate(musicbrainz.lastCheckedAt || musicbrainz.metadata?.lastSuccessfulAt)]] })}
     ${profileDataProviderHtml({ title: 'setlist.fm', provider: 'musicbrainz', record: musicbrainz, id: null, url: null, duplicate: duplicateFor('musicbrainz'), rows: [['Identity', 'Linked through the confirmed MusicBrainz MBID'], ['MBID', mbid, 'profile-data-id'], ['Last successful setlist', formatSettingsDate(concerts.filter((concert) => concert.bandId === band.id && concert.setlist?.songs?.length).map((concert) => concert.date).sort().at(-1))]] })}
