@@ -19,6 +19,7 @@ let newsSubTab = 'news'; // 'news' | 'alerts'
 let currentTab = 'myconcerts';
 let currentScreen = 'main'; // 'main' | 'profile' | 'settings' | 'stats' | 'connection-error' (only reachable pre-navigation)
 let activeProfileBandId = null;
+let profileTab = 'concerts';
 let editingBandId = null;
 let europeOnly = false;
 let nearbyOnly = false;
@@ -1977,6 +1978,7 @@ function formatShortDate(dateStr) {
 
 function openProfile(bandId, { fromHistory = false } = {}) {
   activeProfileBandId = bandId;
+  profileTab = 'concerts';
   currentScreen = 'profile';
   profileEuropeOnly = false;
   profileNearbyOnly = false;
@@ -2021,6 +2023,80 @@ function wireBandEditForm(container, bandId) {
     editingBandId = null;
     renderProfileScreen(bandId);
   });
+}
+
+function profileTabsHtml() {
+  const tabs = ['concerts', 'alerts', 'news', 'data'];
+  return `<div class="news-subtab-switch profile-tab-switch" role="tablist" aria-label="Band profile sections">${tabs.map((tab) => `<button type="button" id="profile-tab-${tab}" class="news-subtab-btn profile-tab-btn${profileTab === tab ? ' active' : ''}" data-profile-tab="${tab}" role="tab" aria-selected="${profileTab === tab}" aria-controls="profile-tab-panel"${profileTab === tab ? '' : ' tabindex="-1"'}>${escapeHtml(tab[0].toUpperCase() + tab.slice(1))}</button>`).join('')}</div>`;
+}
+
+function profileAlertsHtml(bandId) {
+  const alerts = getAlertItems().filter((item) => item.bandId === bandId);
+  return alerts.length ? alerts.map(alertRowHtml).join('') : '<p class="screen-empty profile-tab-empty">No current alerts for this band.</p>';
+}
+
+function profileNewsHtml(bandId) {
+  const items = [...news].filter((item) => item.bandId === bandId).sort((a, b) => (b.foundAt || '').localeCompare(a.foundAt || ''));
+  return items.length ? items.map(newsCardHtml).join('') : '<p class="screen-empty profile-tab-empty">No current news for this band.</p>';
+}
+
+function profileProviderUrl(url, provider) {
+  return providerIdentityCandidateUrl(url, provider);
+}
+
+function profileMusicbrainzUrl(mbid) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(mbid || ''))
+    ? `https://musicbrainz.org/artist/${encodeURIComponent(mbid)}` : null;
+}
+
+function providerMatchMethodLabel(method) {
+  return ({ exact_music_attraction: 'Exact music attraction', musicbrainz_url_relation: 'MusicBrainz official Spotify relation', search_exact: 'Exact Spotify artist match', manual_review: 'Manually confirmed' })[method] || (method ? String(method).replace(/_/g, ' ') : null);
+}
+
+function profileDataRows(rows) {
+  return rows.filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .map(([label, value, className = '']) => `<div class="profile-data-row"><span>${escapeHtml(label)}</span><strong class="${escapeAttr(className)}">${escapeHtml(String(value))}</strong></div>`).join('');
+}
+
+function profileProviderCandidatesHtml(record, provider) {
+  if (record?.status !== 'needs_review' || !Array.isArray(record.reviewCandidates)) return '';
+  const items = record.reviewCandidates.slice(0, 5).map((candidate) => {
+    const name = candidate.artistName || candidate.attractionName || 'Unnamed candidate';
+    const href = profileProviderUrl(candidate.url, provider);
+    return `<div class="profile-data-candidate"><strong>${escapeHtml(name)}</strong><code>${escapeHtml(String(candidate.id || ''))}</code>${href ? `<a class="btn-secondary" href="${escapeAttr(href)}" target="_blank" rel="noopener">Open provider</a>` : ''}</div>`;
+  }).join('');
+  return items ? `<p class="profile-data-subhead">Review candidates</p>${items}` : '';
+}
+
+function profileDataProviderHtml({ title, provider, record, rows, id, url, duplicate = false, extra = '' }) {
+  const status = ProviderIdentityState.statusForRecord(record, provider, duplicate);
+  const retry = ProviderIdentityState.retryInfo(record);
+  const idAction = id && ProviderIdentityState.isConfirmed(record, provider)
+    ? `<button type="button" class="btn-secondary profile-copy-id" data-copy-id="${escapeAttr(id)}" aria-label="Copy ${escapeAttr(title)} ID">Copy ID</button>` : '';
+  const openAction = url ? `<a class="btn-secondary" href="${escapeAttr(url)}" target="_blank" rel="noopener">Open ${escapeHtml(title)}</a>` : '';
+  return `<section class="settings-card profile-data-card"><p class="section-label" style="margin-top:0">${escapeHtml(title)}</p>${profileDataRows([['Status', providerIdentityStatusLabel(status)], ...rows, retry.retryScheduled ? ['Retry after', formatSettingsDate(retry.nextEligibleCheckAt)] : null, record?.errorCategory ? ['Reason', String(record.errorCategory).replace(/_/g, ' ')] : null].filter(Boolean))}${profileProviderCandidatesHtml(record, provider)}${extra}${idAction || openAction ? `<div class="show-buttons profile-data-actions">${idAction}${openAction}</div>` : ''}</section>`;
+}
+
+function profileDataHtml(band) {
+  const musicbrainz = band.musicbrainz || {};
+  const duplicateFor = (provider) => ProviderIdentityState.duplicateBandIds(bands, provider).has(band.id);
+  const conflicts = ['musicbrainz', 'ticketmaster', 'spotify'].some(duplicateFor);
+  const providers = [['musicbrainz', musicbrainz], ['ticketmaster', musicbrainz.ticketmaster], ['spotify', musicbrainz.spotify]];
+  const hasReview = providers.some(([provider, record]) => ProviderIdentityState.statusForRecord(record, provider, false) === 'needs_review');
+  const confirmedCount = providers.filter(([provider, record]) => ProviderIdentityState.isConfirmed(record, provider)).length;
+  const summary = conflicts ? 'Identity conflict' : hasReview ? 'Identity needs review' : confirmedCount === 3 ? 'Identity complete' : 'Identity partial';
+  const mbid = musicbrainz.mbid || null;
+  const tm = musicbrainz.ticketmaster || null;
+  const spotify = musicbrainz.spotify || null;
+  const activity = band.structuredResearch?.routing || {};
+  const nextProviderRetry = [tm, spotify].map((record) => ProviderIdentityState.retryInfo(record).nextEligibleCheckAt).filter(Boolean).sort().at(0);
+  const researchRows = profileDataRows([['Last tour search', formatSettingsDate(activity.lastTavilyTourAt)], ['Last status search', formatSettingsDate(activity.lastTavilyStatusAt)], ['Next provider retry', formatSettingsDate(nextProviderRetry)]]);
+  return `<section class="settings-card profile-data-card"><p class="section-label" style="margin-top:0">Identity summary</p><p class="profile-data-summary"><strong>${escapeHtml(summary)}</strong> · ${confirmedCount} provider identit${confirmedCount === 1 ? 'y' : 'ies'} confirmed</p></section>
+    ${profileDataProviderHtml({ title: 'MusicBrainz', provider: 'musicbrainz', record: musicbrainz, id: mbid, url: profileMusicbrainzUrl(mbid), duplicate: duplicateFor('musicbrainz'), rows: [['Artist', musicbrainz.artistName], ['MBID', mbid, 'profile-data-id'], ['Artist type', musicbrainz.artistType], ['Area', musicbrainz.area], ['Country', musicbrainz.country], ['Disambiguation', musicbrainz.disambiguation], ['Match method', providerMatchMethodLabel(musicbrainz.matchMethod)], ['Confidence', musicbrainz.confidence != null ? `${musicbrainz.confidence}%` : null], ['Matched', formatSettingsDate(musicbrainz.matchedAt)], ['Last checked', formatSettingsDate(musicbrainz.lastCheckedAt || musicbrainz.metadata?.lastSuccessfulAt)]] })}
+    ${profileDataProviderHtml({ title: 'setlist.fm', provider: 'musicbrainz', record: musicbrainz, id: null, url: null, duplicate: duplicateFor('musicbrainz'), rows: [['Identity', 'Linked through the confirmed MusicBrainz MBID'], ['MBID', mbid, 'profile-data-id'], ['Last successful setlist', formatSettingsDate(concerts.filter((concert) => concert.bandId === band.id && concert.setlist?.songs?.length).map((concert) => concert.date).sort().at(-1))]] })}
+    ${profileDataProviderHtml({ title: 'Ticketmaster', provider: 'ticketmaster', record: tm, id: tm?.id, url: profileProviderUrl(tm?.url, 'ticketmaster'), duplicate: duplicateFor('ticketmaster'), rows: [['Provider artist', tm?.attractionName], ['Attraction ID', tm?.id, 'profile-data-id'], ['Match method', providerMatchMethodLabel(tm?.matchMethod)], ['Confidence', tm?.confidence != null ? `${tm.confidence}%` : null], ['Matched', formatSettingsDate(tm?.matchedAt)], ['Last attempted', formatSettingsDate(tm?.lastAttemptedAt)], ['Last checked', formatSettingsDate(tm?.lastCheckedAt)], ['Last successful', formatSettingsDate(tm?.lastSuccessfulAt)]], extra: `<p class="profile-data-note">Search mode: ${ProviderIdentityState.isConfirmed(tm, 'ticketmaster') ? 'Confirmed attraction ID' : 'Validated name fallback'}</p>` })}
+    ${profileDataProviderHtml({ title: 'Spotify', provider: 'spotify', record: spotify, id: spotify?.id, url: profileProviderUrl(spotify?.url, 'spotify'), duplicate: duplicateFor('spotify'), rows: [['Provider artist', spotify?.artistName], ['Artist ID', spotify?.id, 'profile-data-id'], ['Match method', providerMatchMethodLabel(spotify?.matchMethod)], ['Confidence', spotify?.confidence != null ? `${spotify.confidence}%` : null], ['Matched', formatSettingsDate(spotify?.matchedAt)], ['Last attempted', formatSettingsDate(spotify?.lastAttemptedAt)], ['Last checked', formatSettingsDate(spotify?.lastCheckedAt)], ['Last successful', formatSettingsDate(spotify?.lastSuccessfulAt)]] })}
+    <section class="settings-card profile-data-card"><p class="section-label" style="margin-top:0">Research activity</p>${researchRows || '<p class="settings-hint" style="margin:0">No research activity recorded yet.</p>'}</section>`;
 }
 
 function renderProfileScreen(bandId) {
@@ -2085,6 +2161,9 @@ function renderProfileScreen(bandId) {
       ${socialButtons.join('')}
     </div>
     ${band.bio ? `<p class="profile-bio">${escapeHtml(band.bio)}</p>` : ''}
+    ${profileTabsHtml()}
+    <div id="profile-tab-panel" role="tabpanel" aria-labelledby="profile-tab-${profileTab}" class="profile-tab-panel">
+    ${profileTab === 'concerts' ? `
     <div class="profile-divider">
       <div class="section-label-row">
         <p class="section-label" style="margin:0">Upcoming concerts</p>
@@ -2108,11 +2187,25 @@ function renderProfileScreen(bandId) {
     </div>` : ''}
     <div class="profile-danger-zone">
       <button class="profile-remove-btn" data-band-id="${escapeAttr(band.id)}">Remove this band</button>
+    </div>` : profileTab === 'alerts' ? profileAlertsHtml(bandId) : profileTab === 'news' ? profileNewsHtml(bandId) : profileDataHtml(band)}
     </div>
   `;
 
-  wireMyConcertsHandlers(container, () => renderProfileScreen(bandId));
+  if (profileTab === 'concerts') wireMyConcertsHandlers(container, () => renderProfileScreen(bandId));
   container.querySelectorAll('a').forEach((a) => a.addEventListener('click', (ev) => ev.stopPropagation()));
+  container.querySelectorAll('.profile-tab-btn').forEach((button) => button.addEventListener('click', () => {
+    profileTab = button.dataset.profileTab;
+    renderProfileScreen(bandId);
+  }));
+  container.querySelectorAll('.profile-copy-id').forEach((button) => button.addEventListener('click', async () => {
+    const value = button.dataset.copyId;
+    if (!value || !navigator.clipboard?.writeText) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      button.textContent = 'Copied';
+      setTimeout(() => { if (button.isConnected) button.textContent = 'Copy ID'; }, 1400);
+    } catch (_) { /* Clipboard access can be unavailable in an embedded PWA. */ }
+  }));
   container.querySelector('.profile-edit-btn')?.addEventListener('click', () => {
     editingBandId = bandId;
     renderProfileScreen(bandId);
@@ -3145,7 +3238,8 @@ function maskApiKey(key) {
 
 function formatSettingsDate(iso) {
   try {
-    return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    const date = new Date(iso);
+    return Number.isFinite(date.getTime()) ? date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
   } catch {
     return '';
   }
