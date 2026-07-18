@@ -165,10 +165,10 @@ test('a failed PDF load closes its temporary destination and does not report a c
   assert.equal(closed, true);
 });
 
-test('upcoming Ticket row is first, its cost form is scoped for aligned fields, and past ticket cost stays intact', () => {
+test('Ticket cost form is scoped for aligned preparation fields and past cards reuse the same Ticket panel', () => {
   assert.match(app, /const rows = \[\n    \['ticket', 'ticket', 'Ticket', ticketPrepSummaryHtml\(c\), ticketPreparationPanelHtml\(c\)\],\n    \['playlist'/);
-  assert.match(app, /\$\{isPast \? ticketCostBlockHtml\(c\) : ''\}/);
-  assert.match(app, /\$\{isPast \? mcLinksRowHtml\(c, true\) : concertPrepGroupHtml\(c\)\}/);
+  assert.match(app, /\$\{isPast \? pastConcertDetailsGroupHtml\(c\) : concertPrepGroupHtml\(c\)\}/);
+  assert.match(app, /pastDetailRowHtml\(c, 'ticket', 'ticket', 'Ticket', ticketPrepSummaryHtml\(c\), ticketPreparationPanelHtml\(c\), \{ statusHtml: true \}\)/);
   assert.match(app, /<strong>My ticket<\/strong><p>Upload a ticket PDF for offline access, or save a link to your mobile ticket\.<\/p>/);
   assert.match(app, /<div class="ticket-cost-form\$\{inPreparation \? ' ticket-cost-form-preparation' : ''\}">/);
   assert.match(app, /\$\{inPreparation \? 'Price per ticket' : 'Price'\}/);
@@ -251,12 +251,12 @@ test('Worker rejects oversized ticket PDFs and keeps private paths separate from
   assert.equal(unknown.status, 404);
 });
 
-test('release shell includes owned-ticket code and keeps the v57 cache pair synchronized', () => {
+test('release shell includes owned-ticket code and keeps the v58 cache pair synchronized', () => {
   const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const sw = fs.readFileSync(path.join(__dirname, '..', 'service-worker.js'), 'utf8');
   const version = fs.readFileSync(path.join(__dirname, '..', 'version.js'), 'utf8');
   assert.match(index, /<script src="ownedTickets\.js"><\/script>/);
   assert.match(sw, /'\.\/ownedTickets\.js'/);
-  assert.match(sw, /CACHE_NAME_LITERAL = 'v57'/);
-  assert.match(version, /APP_VERSION = 'v57'/);
+  assert.match(sw, /CACHE_NAME_LITERAL = 'v58'/);
+  assert.match(version, /APP_VERSION = 'v58'/);
 });
