@@ -1,5 +1,11 @@
 # Setup guide — Concert Tracker Mobile
 
+## Project and QA documentation
+
+Read [current project state](docs/LIVEVAULT_STATE.md), the [webview-first workflow](docs/WEBVIEW_FIRST_DEVELOPMENT.md), [Cloudflare Pages QA setup](docs/CLOUDFLARE_PAGES_QA_SETUP.md), and [GitHub repository settings](docs/GITHUB_REPOSITORY_SETTINGS.md) before changing deployment or QA configuration.
+
+`READ_ONLY_TOKEN` is separate from `API_TOKEN`. It authorizes only the Worker’s sanitized `GET /qa-smoke` check: it cannot read raw JSON or ticket files and cannot write. Store it in GitHub Actions as `CF_WORKER_READ_TOKEN`. Worker code changes still need a manual Cloudflare deployment.
+
 This is the part only you can do (account creation and payment details aren't
 something Claude does on your behalf). It's mostly clicking through
 Cloudflare's dashboard — no coding required. Should take about 15-20 minutes.

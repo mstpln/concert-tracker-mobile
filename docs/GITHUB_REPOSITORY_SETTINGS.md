@@ -1,13 +1,5 @@
-# Recommended GitHub settings
+# GitHub repository settings
 
-## Pull requests
+In repository **Settings → General**, optionally enable automatic deletion of merged head branches and allow auto-merge; only enable auto-merge after explicit user approval. In **Settings → Rules → Rulesets**, use an optional `main` ruleset requiring pull requests, blocking force pushes and branch deletion, and requiring available PR QA checks. These controls vary by GitHub plan; no Enterprise feature is required.
 
-Enable **Allow auto-merge** and **Automatically delete head branches**. Auto-merge is only enabled after the user explicitly says `merge it`.
-
-## Main protection/ruleset
-
-Where available, require a PR, require checks `Unit and safety checks`, `Desktop Chromium QA`, and `Mobile Chromium QA`, require an up-to-date branch where practical, and block force pushes/deletion. These protections are useful on free plans too, though availability varies.
-
-## Secrets and variables
-
-Keep existing `CF_WORKER_ENDPOINT`. Add `CF_WORKER_READ_TOKEN` only after deploying the Worker read-only secret. Optional variable: `PRODUCTION_APP_URL`. Enable available secret scanning/push protection; do not replace the existing write token.
+In **Settings → Secrets and variables → Actions**, retain `CF_WORKER_ENDPOINT`, add `CF_WORKER_READ_TOKEN` for sanitized smoke only, and optionally set `PRODUCTION_APP_URL` as a variable. Never add provider secrets to QA workflows. Enable GitHub’s available secret scanning/push protection where offered.
