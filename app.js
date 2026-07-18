@@ -1181,7 +1181,10 @@ function ownedTicketItemHtml(c, item) {
   const detail = item.type === 'pdf'
     ? `PDF · ${cacheState === 'cached' ? 'Available offline' : cacheState === 'unavailable' ? 'Offline copy unavailable on this device' : 'Open once to save offline'}`
     : 'Internet required';
-  return `<div class="owned-ticket-item"><div><strong>${escapeHtml(item.displayName)}</strong><small>${detail}</small></div><div class="owned-ticket-item-actions">${item.type === 'pdf' ? `<button type="button" class="btn-secondary ticket-pdf-open-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(item.id)}">Open</button>` : `<a class="btn-secondary" href="${escapeAttr(item.url)}" target="_blank" rel="noopener">Open</a><button type="button" class="btn-secondary ticket-link-edit-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(item.id)}">Edit</button>`}<button type="button" class="btn-secondary ticket-remove-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(item.id)}">Remove</button></div></div>`;
+  const actions = item.type === 'pdf'
+    ? `<button type="button" class="btn-secondary ticket-remove-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(item.id)}">Remove</button>`
+    : `<a class="btn-secondary" href="${escapeAttr(item.url)}" target="_blank" rel="noopener">Open</a><button type="button" class="btn-secondary ticket-link-edit-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(item.id)}">Edit</button><button type="button" class="btn-secondary ticket-remove-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(item.id)}">Remove</button>`;
+  return `<div class="owned-ticket-item"><div><strong>${escapeHtml(item.displayName)}</strong><small>${detail}</small></div><div class="owned-ticket-item-actions">${actions}</div></div>`;
 }
 
 function ticketOwnedPanelHtml(c) {
@@ -1190,7 +1193,8 @@ function ticketOwnedPanelHtml(c) {
   const editing = view.startsWith('edit:') ? items.find((item) => item.id === view.slice(5) && item.type === 'url') : null;
   const showLinkForm = view === 'add-link' || !!editing;
   const busy = ticketOperations.has(c.id);
-  return `<section class="prep-section owned-ticket-section"><strong>My ticket</strong><p>Upload a ticket PDF for offline access, or save a link to your mobile ticket.</p><p class="ticket-operation-status" aria-live="polite">${escapeHtml(ticketNotices.get(c.id) || '')}</p>${items.map((item) => ownedTicketItemHtml(c, item)).join('')}${showLinkForm ? `<div class="owned-ticket-link-form"><label>Ticket link<input type="url" class="owned-ticket-url-input" value="${escapeAttr(editing?.url || '')}" placeholder="https://secure-ticket-provider.example/" /></label><button type="button" class="btn-primary ticket-link-save-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(editing?.id || '')}" ${busy ? 'disabled' : ''}>Save link</button><button type="button" class="btn-secondary ticket-link-cancel-btn" data-concert-id="${escapeAttr(c.id)}">Cancel</button></div>` : `<div class="owned-ticket-add-actions"><button type="button" class="btn-secondary ticket-pdf-select-btn" data-concert-id="${escapeAttr(c.id)}" ${busy ? 'disabled' : ''}>Upload PDF</button><input type="file" class="ticket-pdf-input" data-concert-id="${escapeAttr(c.id)}" accept="application/pdf,.pdf" hidden /><button type="button" class="btn-secondary ticket-link-add-btn" data-concert-id="${escapeAttr(c.id)}" ${busy ? 'disabled' : ''}>Add ticket link</button><small>PDF only · Maximum file size: 10 MB</small></div>`}</section>`;
+  const pdfOpenButtons = items.filter((item) => item.type === 'pdf').map((item) => `<button type="button" class="btn-primary ticket-pdf-open-btn owned-ticket-open-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(item.id)}">Open ${escapeHtml(item.displayName)}</button>`).join('');
+  return `<section class="prep-section owned-ticket-section"><strong>My ticket</strong><p>Upload a ticket PDF for offline access, or save a link to your mobile ticket.</p><p class="ticket-operation-status" aria-live="polite">${escapeHtml(ticketNotices.get(c.id) || '')}</p>${items.map((item) => ownedTicketItemHtml(c, item)).join('')}${showLinkForm ? `<div class="owned-ticket-link-form"><label>Ticket link<input type="url" class="owned-ticket-url-input" value="${escapeAttr(editing?.url || '')}" placeholder="https://secure-ticket-provider.example/" /></label><button type="button" class="btn-primary ticket-link-save-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(editing?.id || '')}" ${busy ? 'disabled' : ''}>Save link</button><button type="button" class="btn-secondary ticket-link-cancel-btn" data-concert-id="${escapeAttr(c.id)}">Cancel</button></div>` : `<div class="owned-ticket-add-actions">${pdfOpenButtons}<button type="button" class="btn-secondary ticket-pdf-select-btn" data-concert-id="${escapeAttr(c.id)}" ${busy ? 'disabled' : ''}>Upload PDF</button><input type="file" class="ticket-pdf-input" data-concert-id="${escapeAttr(c.id)}" accept="application/pdf,.pdf" hidden /><button type="button" class="btn-secondary ticket-link-add-btn" data-concert-id="${escapeAttr(c.id)}" ${busy ? 'disabled' : ''}>Add ticket link</button><small>PDF only · Maximum file size: 10 MB</small></div>`}</section>`;
 }
 
 function ticketPreparationPanelHtml(c) {
@@ -1275,7 +1279,7 @@ function ticketCostFormHtml(c, { inPreparation = false } = {}) {
   const isFree = c.ticketPrice === 0;
   const hasPrice = typeof c.ticketPrice === 'number' && !Number.isNaN(c.ticketPrice);
   return `
-    <div class="ticket-cost-form">
+    <div class="ticket-cost-form${inPreparation ? ' ticket-cost-form-preparation' : ''}">
       ${inPreparation ? '<strong class="ticket-cost-heading">Ticket cost</strong>' : ''}
       <div class="ticket-cost-free-row">
         <span class="review-cost-label">${inPreparation ? 'Free ticket' : 'Ticket cost'}</span>
@@ -1290,7 +1294,7 @@ function ticketCostFormHtml(c, { inPreparation = false } = {}) {
           </span>
         </label>
         <label class="review-cost-field review-qty-field">
-          <span class="review-cost-label">${inPreparation ? 'Number of tickets' : 'Tickets'}</span>
+          <span class="review-cost-label">Tickets</span>
           <input type="number" class="ticket-qty-input" min="1" step="1" inputmode="numeric" value="${escapeAttr(c.ticketQuantity || 1)}" />
         </label>
       </div>
