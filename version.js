@@ -12,4 +12,4 @@
 // CACHE_NAME_LITERAL in service-worker.js to the same value; that second
 // edit is what actually forces old installs to update. service-worker.js
 // has a console.warn() safety check if the two ever drift apart.
-const APP_VERSION = 'v56';
+const APP_VERSION = 'v57';

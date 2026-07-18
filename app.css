@@ -647,6 +647,16 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .review-cost-field { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
 .review-qty-field { flex: 0 0 68px; }
 .review-cost-label { font-size: 11px; color: var(--text-muted); }
+.ticket-cost-form-preparation .review-cost-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 112px;
+  align-items: end; gap: 12px;
+}
+.ticket-cost-form-preparation .review-cost-field { min-width: 0; }
+.ticket-cost-form-preparation .review-cost-label { white-space: nowrap; }
+.ticket-cost-form-preparation .ticket-qty-input { width: 100%; }
+@media (max-width: 360px) {
+  .ticket-cost-form-preparation .review-cost-row { grid-template-columns: minmax(0, 1fr) 104px; gap: 10px; }
+}
 .review-cost-input-wrap { position: relative; display: flex; align-items: center; }
 .review-price-input, .review-qty-input {
   width: 100%; font-family: inherit; font-size: 13px; padding: 9px 10px;
@@ -757,14 +767,17 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .owned-ticket-section { min-width: 0; }
 .ticket-operation-status { min-height: 16px; color: var(--text-secondary); }
 .owned-ticket-add-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.owned-ticket-add-actions .btn-primary, .owned-ticket-add-actions .btn-secondary { margin-right: 0; }
+.owned-ticket-open-btn { white-space: nowrap; }
 .owned-ticket-add-actions small { flex-basis: 100%; color: var(--text-muted); font-size: 11px; }
 .owned-ticket-link-form { margin-top: 8px; }
 .owned-ticket-link-form label { display: block; color: var(--text-muted); font-size: 11px; }
 .owned-ticket-link-form input { width: 100%; margin: 4px 0 8px; }
 .owned-ticket-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); }
+.owned-ticket-item > div:first-child { min-width: 0; }
 .owned-ticket-item strong, .owned-ticket-item small { display: block; }
 .owned-ticket-item strong { color: var(--text); font-size: 12.5px; }
-.owned-ticket-item small { color: var(--text-muted); font-size: 11.5px; margin-top: 2px; }
+.owned-ticket-item small { color: var(--text-muted); font-size: 11.5px; margin-top: 2px; overflow-wrap: anywhere; }
 .owned-ticket-item-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; flex-shrink: 0; }
 .owned-ticket-item-actions .btn-secondary { margin: 0; padding: 6px 8px; font-size: 11.5px; }
 .ticket-cost-save-error { margin: 8px 0 0; }
