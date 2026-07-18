@@ -87,8 +87,9 @@ test('primary screens, settings, and band profile tabs remain navigable', async 
   await expect(page.locator('#screen-news')).toBeVisible();
 
   await page.getByRole('button', { name: 'Bands' }).click();
-  await expect(page.locator('#screen-mybands')).toBeVisible();
-  await page.getByText('QA Artist One', { exact: true }).click();
+  const bandsScreen = page.locator('#screen-mybands');
+  await expect(bandsScreen).toBeVisible();
+  await bandsScreen.getByText('QA Artist One', { exact: true }).click();
   await expect(page.locator('#screen-profile')).toBeVisible();
 
   for (const tabName of ['Concerts', 'Alerts', 'News', 'Data']) {
