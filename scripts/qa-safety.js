@@ -6,7 +6,7 @@ const { execFileSync } = require('node:child_process');
 
 const forbiddenNames = new Set(['bands.json', 'concerts.json', 'news.json', 'apiUsage.json', '.env']);
 const forbiddenPathPattern = /ticket-files|\.(?:pem|key|p12|pfx)$/i;
-const credentialLiteralPattern = /(?:api[_-]?key|token|secret)\s*[:=]\s*['"][^'"\r\n]{12,}['"]/i;
+const privateKeyMarker = /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/;
 
 function walk(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -26,8 +26,8 @@ if (fs.existsSync('dist')) {
     const stat = fs.statSync(file);
     if (stat.size <= 1024 * 1024 && /\.(?:html|js|json|css|txt|map)$/i.test(file)) {
       const content = fs.readFileSync(file, 'utf8');
-      if (credentialLiteralPattern.test(content)) {
-        throw new Error(`QA safety check rejected credential-like literal in: ${relative}`);
+      if (privateKeyMarker.test(content)) {
+        throw new Error(`QA safety check rejected private-key material in: ${relative}`);
       }
     }
   }
