@@ -24,6 +24,8 @@
     if (url.origin === 'https://qa.invalid') {
       const path = url.pathname.replace(/^\//, ''); const method = (options.method || 'GET').toUpperCase(); const data = load();
       if (path.startsWith('ticket-files/')) { const pdfs = JSON.parse(localStorage.getItem(PDF_KEY) || '{}'); if (method === 'GET') return pdfs[path] ? response(Uint8Array.from([37,80,68,70,45,49,46,52,10]), { status: 200, headers: { 'Content-Type': 'application/pdf' } }) : response('Not found', { status: 404 }); if (method === 'PUT') { pdfs[path] = true; localStorage.setItem(PDF_KEY, JSON.stringify(pdfs)); return response('OK'); } if (method === 'DELETE') { delete pdfs[path]; localStorage.setItem(PDF_KEY, JSON.stringify(pdfs)); return response('OK'); } }
+      if (localStorage.getItem(`${PREFIX}fail-read`) === path) return response('Synthetic read failure', { status: 503 });
+      if (localStorage.getItem(`${PREFIX}fail-write`) === path) return response('Synthetic write failure', { status: 503 });
       if (!['bands.json', 'concerts.json', 'news.json', 'apiUsage.json'].includes(path)) return response('Not found', { status: 404 });
       const key = path.replace('.json', ''); if (method === 'GET') return response(JSON.stringify(data[key]), { status: 200, headers: { 'Content-Type': 'application/json' } }); if (method === 'PUT') { data[key] = JSON.parse(options.body); save(data); return response('OK'); }
       return response('Method not allowed', { status: 405 });
