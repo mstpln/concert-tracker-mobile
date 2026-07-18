@@ -1,0 +1,2 @@
+const { test, expect } = require('@playwright/test');
+test('QA PWA has a manifest, isolated service worker and synthetic marker', async ({ page }) => { await page.goto('/'); await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', 'manifest.json'); await expect(page.getByTestId('qa-banner')).toBeVisible(); await page.evaluate(async () => { await navigator.serviceWorker.ready; }); const keys = await page.evaluate(() => caches.keys()); expect(keys.some((key) => key.startsWith('concert-tracker-qa-v68-'))).toBeTruthy(); });
