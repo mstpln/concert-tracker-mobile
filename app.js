@@ -2493,6 +2493,48 @@ function showSettingsScreen({ fromHistory = false } = {}) {
   if (!fromHistory) history.pushState({ tab: currentTab, screen: 'settings' }, '');
 }
 
+function providerIdentityStatusLabel(status) {
+  return ({ confirmed: 'Confirmed', needs_review: 'Needs review', no_match: 'No match', retry_pending: 'Retry pending', error: 'Error', unchecked: 'Not yet checked', duplicate_conflict: 'Duplicate conflict', manual_rejected: 'Manually rejected', unavailable: 'Unavailable' })[status] || 'Not yet checked';
+}
+
+function providerIdentityReason(issue) {
+  if (issue.status === 'retry_pending' && issue.nextEligibleCheckAt) return `Retry after ${formatSettingsDate(issue.nextEligibleCheckAt)}`;
+  if (issue.errorCategory) return issue.errorCategory.replace(/_/g, ' ');
+  if (issue.candidateName) return issue.candidateName;
+  return providerIdentityStatusLabel(issue.status);
+}
+
+function providerIdentityCoverageHtml() {
+  const coverage = ProviderIdentityState.identityCoverage(bands);
+  const rows = [
+    { label: 'MusicBrainz', data: coverage.musicbrainz },
+    { label: 'setlist.fm', data: coverage.setlistfm, note: 'Linked through the confirmed MusicBrainz MBID' },
+    { label: 'Ticketmaster', data: coverage.ticketmaster },
+    { label: 'Spotify', data: coverage.spotify },
+  ];
+  const providerDetail = (label, data) => {
+    const counts = data.counts;
+    const issueRows = data.issues.map((issue) => `<div class="provider-identity-issue"><strong>${escapeHtml(issue.bandName)}</strong><span>${escapeHtml(providerIdentityStatusLabel(issue.status))}${issue.candidateName || issue.errorCategory || issue.nextEligibleCheckAt ? ` · ${escapeHtml(providerIdentityReason(issue))}` : ''}</span></div>`).join('');
+    return `<details class="settings-card provider-identity-details"><summary><span>${escapeHtml(label)} details</span><span>${data.issueCount ? `${data.issueCount} issue${data.issueCount === 1 ? '' : 's'}` : 'All clear'}</span></summary><div class="provider-identity-breakdown"><span>${counts.confirmed} confirmed</span><span>${counts.needs_review || 0} need review</span><span>${counts.no_match || 0} no match</span><span>${counts.retry_pending || 0} retry pending</span><span>${counts.error || 0} error</span><span>${counts.unchecked || 0} not yet checked</span><span>${counts.duplicate_conflict || 0} duplicate conflict</span></div>${issueRows ? `<div class="provider-identity-issues">${issueRows}</div>` : ''}</details>`;
+  };
+  const providerDates = (provider) => bands.map((band) => band.musicbrainz?.[provider]).filter(Boolean);
+  const latest = (provider, key) => providerDates(provider).map((value) => value[key]).filter(Boolean).sort().at(-1) || null;
+  const displayDate = (value) => value ? formatSettingsDate(value) : 'Not available';
+  const duplicateCount = coverage.musicbrainz.duplicateConflicts.length + coverage.ticketmaster.duplicateConflicts.length + coverage.spotify.duplicateConflicts.length;
+  const fallbackCount = coverage.total - coverage.ticketmaster.confirmed;
+  return `
+    <p class="section-label">Artist identity coverage</p>
+    <div class="settings-card provider-identity-coverage">
+      <p class="settings-hint" style="margin-top:0"><strong>${coverage.total} followed bands</strong></p>
+      ${rows.map(({ label, data, note }) => `<div class="provider-identity-row"><strong>${escapeHtml(label)}</strong><span>${data.confirmed} / ${data.total}</span><span>${data.coveragePercent}%</span>${data.issueCount ? `<span class="provider-identity-issue-count">${data.issueCount} issue${data.issueCount === 1 ? '' : 's'}</span>` : '<span></span>'}${note ? `<small>${escapeHtml(note)}</small>` : ''}</div>`).join('')}
+      <p class="settings-hint provider-identity-summary">${coverage.ticketmaster.confirmed} bands use a confirmed Ticketmaster attraction ID · ${fallbackCount} use validated-name fallback · ${coverage.spotify.confirmed} bands use a confirmed Spotify artist ID · ${duplicateCount} duplicate provider-ID conflict${duplicateCount === 1 ? '' : 's'}.</p>
+      <p class="settings-hint provider-identity-summary">Latest provider attempt: ${escapeHtml(displayDate([latest('ticketmaster', 'lastAttemptedAt'), latest('spotify', 'lastAttemptedAt')].filter(Boolean).sort().at(-1)))} · latest success: ${escapeHtml(displayDate([latest('ticketmaster', 'lastSuccessfulAt'), latest('spotify', 'lastSuccessfulAt')].filter(Boolean).sort().at(-1)))}</p>
+    </div>
+    ${providerDetail('Ticketmaster', coverage.ticketmaster)}
+    ${providerDetail('Spotify', coverage.spotify)}
+  `;
+}
+
 async function renderSettingsScreen() {
   let { groqApiKey = '', groqApiKeyAddedAt = null } = await chrome.storage.local.get(['groqApiKey', 'groqApiKeyAddedAt']);
   const spotifySettings = await chrome.storage.local.get(['spotifyUserClientId', SpotifyUser.TOKEN_KEY]);
@@ -2514,6 +2556,8 @@ async function renderSettingsScreen() {
       ${['research', 'review', 'data'].map((tab) => `<button type="button" class="news-subtab-btn settings-subtab-btn${settingsTab === tab ? ' active' : ''}" data-settings-tab="${tab}" role="tab" aria-selected="${settingsTab === tab}"${settingsTab === tab ? '' : ' tabindex="-1"'}>${escapeHtml(tab[0].toUpperCase() + tab.slice(1))}</button>`).join('')}
     </div>`;
   const dataTabHtml = `
+    ${providerIdentityCoverageHtml()}
+
     <p class="section-label">Connection</p>
     <div class="settings-card">
       <p class="muted" style="font-size:11.5px;margin:0 0 8px">${escapeHtml(remote?.endpoint || 'Not connected')}${remote?.token ? ` · ${escapeHtml(maskApiKey(remote.token))}` : ''}</p>

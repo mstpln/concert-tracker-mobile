@@ -40,6 +40,18 @@ test('Settings keeps Groq details in its expanded research card, MusicBrainz in 
   assert.match(app, /<p class="section-label">Data export<\/p>/);
 });
 
+test('Data shows duplicate-aware Artist identity coverage without rendering provider secrets', () => {
+  const coverage = app.slice(app.indexOf('function providerIdentityCoverageHtml'), app.indexOf('async function renderSettingsScreen'));
+  assert.match(app, /function providerIdentityCoverageHtml/);
+  assert.match(coverage, /Artist identity coverage/);
+  assert.match(coverage, /Linked through the confirmed MusicBrainz MBID/);
+  assert.match(coverage, /providerDetail\('Ticketmaster'/);
+  assert.match(coverage, /providerDetail\('Spotify'/);
+  assert.match(coverage, /duplicate conflict/i);
+  assert.match(css, /\.provider-identity-row/);
+  assert.doesNotMatch(coverage, /token|secret|apikey/i);
+});
+
 test('Changing Settings tabs leaves existing controls mounted only where needed without changing the app shell', () => {
   assert.match(app, /el\('change-connection-btn'\)\?\.addEventListener/);
   assert.match(app, /el\('save-groq-key'\)\?\.addEventListener/);
