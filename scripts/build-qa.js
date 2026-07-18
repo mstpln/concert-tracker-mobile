@@ -16,7 +16,7 @@ fs.writeFileSync(path.join(out, 'index.html'), html);
 fs.writeFileSync(path.join(out, 'qa-build-config.js'), `window.__LIVEVAULT_QA_BUILD_ID__ = ${JSON.stringify(id)};\n`);
 let sw = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
 sw = sw.replace(/const CACHE_NAME = 'concert-tracker-shell-' \+ CACHE_NAME_LITERAL;/, `const CACHE_NAME = 'concert-tracker-qa-' + CACHE_NAME_LITERAL + '-${id}';`)
-  .replace("  './version.js',", "  './version.js',\n  './qa-fixtures.js',\n  './qa-bootstrap.js',\n  './qa.css',");
+  .replace("  './version.js',", "  './version.js',\n  './qa-fixtures.js',\n  './qa-build-config.js',\n  './qa-bootstrap.js',\n  './qa.css',");
 fs.writeFileSync(path.join(out, 'service-worker.js'), sw);
 fs.writeFileSync(path.join(out, 'robots.txt'), 'User-agent: *\nDisallow: /\n');
 fs.writeFileSync(path.join(out, '_headers'), '/*\n  X-Robots-Tag: noindex, nofollow, noarchive\n  Referrer-Policy: no-referrer\n  X-Content-Type-Options: nosniff\n  Content-Security-Policy: default-src \'self\'; connect-src \'self\'; img-src \'self\' data: blob:; style-src \'self\' \'unsafe-inline\'; script-src \'self\'; worker-src \'self\' blob:; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\'; form-action \'self\'\n');
