@@ -143,7 +143,7 @@ async function processStructuredResearch({
           for (const release of newItems) if (!structured.newsHasRelease(news, band.id, release)) alerts.push(structured.structuredNewsItem(band, release, now));
         } else if (result.kind !== 'skipped') releases = { ...releases, musicbrainz: structured.updateProviderBaseline(priorMbBaseline, [], { complete: false, now, errorCategory: result.kind === 'unavailable' ? 'unavailable' : 'error', continuation: priorMbBaseline.continuation }) };
       }
-      const spotifyId = nextMb.spotify?.status === 'confirmed' ? nextMb.spotify.id : null;
+      const spotifyId = ['confirmed', 'manual_confirmed'].includes(nextMb.spotify?.status) ? nextMb.spotify.id : null;
       const priorSpotifyBaseline = structured.providerBaseline(releases, 'spotify');
       if (spotifyId && (!priorSpotifyBaseline.nextEligibleCheckAt || Date.parse(priorSpotifyBaseline.nextEligibleCheckAt) <= Date.parse(now))) {
         const result = await listSpotifyReleases(spotifyId, usage, { offset: priorSpotifyBaseline.continuation?.offset || 0 });
@@ -212,7 +212,7 @@ function spotifySocialArtistId(value) {
 
 function spotifyArtistIdentityForBand(band) {
   const structured = band?.musicbrainz?.spotify;
-  if (structured?.status === 'confirmed' && structured.id) return { id: structured.id, source: 'structured_identity' };
+  if (['confirmed', 'manual_confirmed'].includes(structured?.status) && structured.id) return { id: structured.id, source: 'structured_identity' };
   const socialId = spotifySocialArtistId(band?.socials?.spotify);
   return socialId ? { id: socialId, source: 'official_social_url' } : null;
 }
@@ -857,7 +857,7 @@ async function main() {
     spotifyConcertsProcessed += 1;
     try {
       const band = bandsById.get(c.bandId);
-      const spotifyArtistId = structuredEnabled && band?.musicbrainz?.spotify?.status === 'confirmed' ? band.musicbrainz.spotify.id : null;
+      const spotifyArtistId = structuredEnabled && ['confirmed', 'manual_confirmed'].includes(band?.musicbrainz?.spotify?.status) ? band.musicbrainz.spotify.id : null;
       spotifyLinksAdded += await spotify.resolveSongLinks(c.setlist.songs, c.bandName, usage, { spotifyArtistId });
     } catch (e) {
       usage.note(`Spotify song-link resolution failed for "${c.bandName}" (${c.date}): ${e.message}`);
