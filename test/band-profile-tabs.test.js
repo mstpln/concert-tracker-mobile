@@ -23,6 +23,32 @@ test('band profile tabs are ordered, accessible, reset on open, and preserve loc
   assert.match(app, /renderProfileScreen\(bandId\)/);
 });
 
+test('profile tab keyboard helper follows visible order with wrapping, Home, End, and safe unsupported keys', () => {
+  const source = app.slice(app.indexOf('function profileTabForKey'), app.indexOf('function activateProfileTab'));
+  const profileTabForKey = Function(`${source}; return profileTabForKey;`)();
+  assert.equal(profileTabForKey('concerts', 'ArrowRight'), 'alerts');
+  assert.equal(profileTabForKey('alerts', 'ArrowRight'), 'news');
+  assert.equal(profileTabForKey('news', 'ArrowRight'), 'data');
+  assert.equal(profileTabForKey('data', 'ArrowRight'), 'concerts');
+  assert.equal(profileTabForKey('concerts', 'ArrowLeft'), 'data');
+  assert.equal(profileTabForKey('data', 'ArrowLeft'), 'news');
+  assert.equal(profileTabForKey('news', 'ArrowLeft'), 'alerts');
+  assert.equal(profileTabForKey('alerts', 'ArrowLeft'), 'concerts');
+  assert.equal(profileTabForKey('news', 'Home'), 'concerts');
+  assert.equal(profileTabForKey('concerts', 'End'), 'data');
+  assert.equal(profileTabForKey('concerts', 'Enter'), null);
+});
+
+test('profile tab activation shares click and keyboard behavior while restoring focus only on keyboard requests', () => {
+  const handlers = app.slice(app.indexOf("container.querySelectorAll('.profile-tab-btn')"), app.indexOf("container.querySelectorAll('.profile-copy-id')"));
+  const activation = app.slice(app.indexOf('function activateProfileTab'), app.indexOf('function profileAlertsHtml'));
+  assert.match(handlers, /activateProfileTab\(bandId, button\.dataset\.profileTab\)/);
+  assert.match(handlers, /keydown/);
+  assert.match(handlers, /event\.preventDefault\(\)/);
+  assert.match(handlers, /\{ focus: true \}/);
+  assert.match(activation, /if \(focus\).*querySelector.*\.focus\(\)/s);
+});
+
 test('band Alerts and News reuse existing renderers and filter exclusively by stable bandId', () => {
   const alerts = app.slice(app.indexOf('function profileAlertsHtml'), app.indexOf('function profileNewsHtml'));
   const news = app.slice(app.indexOf('function profileNewsHtml'), app.indexOf('function profileProviderUrl'));
@@ -59,6 +85,16 @@ test('provider state keeps primary statuses separate from retry scheduling for t
     assert.equal(identities.retryInfo(record, now).retryScheduled, true);
   }
   assert.equal(identities.statusForRecord({ id: 'same', status: 'confirmed' }, 'spotify', true, now), 'duplicate_conflict');
+});
+
+test('provider retry summary selects only future retries and reports due unresolved identities separately', () => {
+  const now = new Date('2026-07-18T00:00:00.000Z');
+  const futureTm = { status: 'no_match', nextEligibleCheckAt: '2026-07-22T00:00:00.000Z' };
+  const futureSpotify = { status: 'error', nextEligibleCheckAt: '2026-07-20T00:00:00.000Z' };
+  assert.deepEqual(identities.providerRetrySummary([{ provider: 'ticketmaster', record: futureTm }, { provider: 'spotify', record: futureSpotify }], now), { nextRetryAt: '2026-07-20T00:00:00.000Z', eligibleNow: false });
+  assert.deepEqual(identities.providerRetrySummary([{ provider: 'ticketmaster', record: { status: 'needs_review', nextEligibleCheckAt: '2026-07-17T00:00:00.000Z' } }], now), { nextRetryAt: null, eligibleNow: true });
+  assert.deepEqual(identities.providerRetrySummary([{ provider: 'spotify', record: { status: 'confirmed', id: 'confirmed', nextEligibleCheckAt: '2026-07-17T00:00:00.000Z' } }, { provider: 'ticketmaster', record: { status: 'manual_rejected', nextEligibleCheckAt: '2026-07-17T00:00:00.000Z' } }], now), { nextRetryAt: null, eligibleNow: false });
+  assert.deepEqual(identities.providerRetrySummary([{ provider: 'spotify', record: { status: 'error', nextEligibleCheckAt: 'not-a-date' } }, { provider: 'ticketmaster', record: null }], now), { nextRetryAt: null, eligibleNow: false });
 });
 
 test('profile Data CSS keeps key-value rows, IDs, candidates, and four tabs mobile-safe', () => {

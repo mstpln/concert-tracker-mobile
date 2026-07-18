@@ -2030,6 +2030,24 @@ function profileTabsHtml() {
   return `<div class="news-subtab-switch profile-tab-switch" role="tablist" aria-label="Band profile sections">${tabs.map((tab) => `<button type="button" id="profile-tab-${tab}" class="news-subtab-btn profile-tab-btn${profileTab === tab ? ' active' : ''}" data-profile-tab="${tab}" role="tab" aria-selected="${profileTab === tab}" aria-controls="profile-tab-panel"${profileTab === tab ? '' : ' tabindex="-1"'}>${escapeHtml(tab[0].toUpperCase() + tab.slice(1))}</button>`).join('')}</div>`;
 }
 
+function profileTabForKey(tab, key) {
+  const tabs = ['concerts', 'alerts', 'news', 'data'];
+  const index = tabs.indexOf(tab);
+  if (index < 0) return null;
+  if (key === 'ArrowRight') return tabs[(index + 1) % tabs.length];
+  if (key === 'ArrowLeft') return tabs[(index + tabs.length - 1) % tabs.length];
+  if (key === 'Home') return tabs[0];
+  if (key === 'End') return tabs[tabs.length - 1];
+  return null;
+}
+
+function activateProfileTab(bandId, tab, { focus = false } = {}) {
+  if (!['concerts', 'alerts', 'news', 'data'].includes(tab) || activeProfileBandId !== bandId) return;
+  profileTab = tab;
+  renderProfileScreen(bandId);
+  if (focus) el('screen-profile').querySelector(`#profile-tab-${tab}`)?.focus();
+}
+
 function profileAlertsHtml(bandId) {
   const alerts = getAlertItems().filter((item) => item.bandId === bandId);
   return alerts.length ? alerts.map(alertRowHtml).join('') : '<p class="screen-empty profile-tab-empty">No current alerts for this band.</p>';
@@ -2074,7 +2092,8 @@ function profileDataProviderHtml({ title, provider, record, rows, id, url, dupli
   const idAction = id && ProviderIdentityState.isConfirmed(record, provider)
     ? `<button type="button" class="btn-secondary profile-copy-id" data-copy-id="${escapeAttr(id)}" aria-label="Copy ${escapeAttr(title)} ID">Copy ID</button>` : '';
   const openAction = url ? `<a class="btn-secondary" href="${escapeAttr(url)}" target="_blank" rel="noopener">Open ${escapeHtml(title)}</a>` : '';
-  return `<section class="settings-card profile-data-card"><p class="section-label" style="margin-top:0">${escapeHtml(title)}</p>${profileDataRows([['Status', providerIdentityStatusLabel(status)], ...rows, retry.retryScheduled ? ['Retry after', formatSettingsDate(retry.nextEligibleCheckAt)] : null, record?.errorCategory ? ['Reason', String(record.errorCategory).replace(/_/g, ' ')] : null].filter(Boolean))}${profileProviderCandidatesHtml(record, provider)}${extra}${idAction || openAction ? `<div class="show-buttons profile-data-actions">${idAction}${openAction}</div>` : ''}</section>`;
+  const retrySummary = ProviderIdentityState.providerRetrySummary([{ provider, record }]);
+  return `<section class="settings-card profile-data-card"><p class="section-label" style="margin-top:0">${escapeHtml(title)}</p>${profileDataRows([['Status', providerIdentityStatusLabel(status)], ...rows, retry.retryScheduled ? ['Retry after', formatSettingsDate(retry.nextEligibleCheckAt)] : retrySummary.eligibleNow ? ['Retry status', 'Eligible now'] : null, record?.errorCategory ? ['Reason', String(record.errorCategory).replace(/_/g, ' ')] : null].filter(Boolean))}${profileProviderCandidatesHtml(record, provider)}${extra}${idAction || openAction ? `<div class="show-buttons profile-data-actions">${idAction}${openAction}</div>` : ''}</section>`;
 }
 
 function profileDataHtml(band) {
@@ -2089,8 +2108,8 @@ function profileDataHtml(band) {
   const tm = musicbrainz.ticketmaster || null;
   const spotify = musicbrainz.spotify || null;
   const activity = band.structuredResearch?.routing || {};
-  const nextProviderRetry = [tm, spotify].map((record) => ProviderIdentityState.retryInfo(record).nextEligibleCheckAt).filter(Boolean).sort().at(0);
-  const researchRows = profileDataRows([['Last tour search', formatSettingsDate(activity.lastTavilyTourAt)], ['Last status search', formatSettingsDate(activity.lastTavilyStatusAt)], ['Next provider retry', formatSettingsDate(nextProviderRetry)]]);
+  const retrySummary = ProviderIdentityState.providerRetrySummary([{ provider: 'ticketmaster', record: tm }, { provider: 'spotify', record: spotify }]);
+  const researchRows = profileDataRows([['Last tour search', formatSettingsDate(activity.lastTavilyTourAt)], ['Last status search', formatSettingsDate(activity.lastTavilyStatusAt)], retrySummary.nextRetryAt ? ['Next provider retry', formatSettingsDate(retrySummary.nextRetryAt)] : retrySummary.eligibleNow ? ['Provider retry', 'Eligible now'] : null].filter(Boolean));
   return `<section class="settings-card profile-data-card"><p class="section-label" style="margin-top:0">Identity summary</p><p class="profile-data-summary"><strong>${escapeHtml(summary)}</strong> · ${confirmedCount} provider identit${confirmedCount === 1 ? 'y' : 'ies'} confirmed</p></section>
     ${profileDataProviderHtml({ title: 'MusicBrainz', provider: 'musicbrainz', record: musicbrainz, id: mbid, url: profileMusicbrainzUrl(mbid), duplicate: duplicateFor('musicbrainz'), rows: [['Artist', musicbrainz.artistName], ['MBID', mbid, 'profile-data-id'], ['Artist type', musicbrainz.artistType], ['Area', musicbrainz.area], ['Country', musicbrainz.country], ['Disambiguation', musicbrainz.disambiguation], ['Match method', providerMatchMethodLabel(musicbrainz.matchMethod)], ['Confidence', musicbrainz.confidence != null ? `${musicbrainz.confidence}%` : null], ['Matched', formatSettingsDate(musicbrainz.matchedAt)], ['Last checked', formatSettingsDate(musicbrainz.lastCheckedAt || musicbrainz.metadata?.lastSuccessfulAt)]] })}
     ${profileDataProviderHtml({ title: 'setlist.fm', provider: 'musicbrainz', record: musicbrainz, id: null, url: null, duplicate: duplicateFor('musicbrainz'), rows: [['Identity', 'Linked through the confirmed MusicBrainz MBID'], ['MBID', mbid, 'profile-data-id'], ['Last successful setlist', formatSettingsDate(concerts.filter((concert) => concert.bandId === band.id && concert.setlist?.songs?.length).map((concert) => concert.date).sort().at(-1))]] })}
@@ -2193,10 +2212,15 @@ function renderProfileScreen(bandId) {
 
   if (profileTab === 'concerts') wireMyConcertsHandlers(container, () => renderProfileScreen(bandId));
   container.querySelectorAll('a').forEach((a) => a.addEventListener('click', (ev) => ev.stopPropagation()));
-  container.querySelectorAll('.profile-tab-btn').forEach((button) => button.addEventListener('click', () => {
-    profileTab = button.dataset.profileTab;
-    renderProfileScreen(bandId);
-  }));
+  container.querySelectorAll('.profile-tab-btn').forEach((button) => {
+    button.addEventListener('click', () => activateProfileTab(bandId, button.dataset.profileTab));
+    button.addEventListener('keydown', (event) => {
+      const tab = profileTabForKey(button.dataset.profileTab, event.key);
+      if (!tab) return;
+      event.preventDefault();
+      activateProfileTab(bandId, tab, { focus: true });
+    });
+  });
   container.querySelectorAll('.profile-copy-id').forEach((button) => button.addEventListener('click', async () => {
     const value = button.dataset.copyId;
     if (!value || !navigator.clipboard?.writeText) return;
