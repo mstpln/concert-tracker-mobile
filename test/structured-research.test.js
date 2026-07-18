@@ -7,7 +7,7 @@ const spotify = require('../scripts/lib/spotify');
 const ticketmaster = require('../scripts/lib/ticketmaster');
 const setlist = require('../scripts/lib/setlistfm');
 const structured = require('../scripts/lib/structuredResearch');
-const { processStructuredResearch } = require('../scripts/research');
+const { processStructuredResearch, venueNamesMatchConservatively, sameConcertLocation, findTicketmasterConcertMatch, upgradeExistingConcertWithTicketmaster, reconcileConcertCandidate, finalConcertWritePayload, concertWriteRequired } = require('../scripts/research');
 process.env.TICKETMASTER_API_KEY = 'test-ticketmaster-key';
 process.env.SETLISTFM_API_KEY = 'test-setlist-key';
 
@@ -86,3 +86,68 @@ test('61 existing concerts have no structured helper writes', () => assert.equal
 test('62 old usage state has additive structured block after load helper', () => { const { ensureStructuredResearchState } = require('../scripts/lib/usageTracker'); const state = {}; ensureStructuredResearchState(state); assert.ok(state.structuredResearch); });
 test('63 false master flag preserves current behavior', async () => { const r = await processStructuredResearch({ bands: [band()], news: [], usage: usage(), enabled: false }); assert.equal(r.enabled, false); });
 test('64 structured rerun is idempotent for a completed baseline', () => { const state = structured.updateProviderBaseline({ status: 'complete', knownKeys: [structured.releaseKey(release('x'))] }, [release('x')], { complete: true }); assert.equal(state.knownKeys.length, 1); });
+
+function sourceConcert(extra = {}) {
+  return {
+    id: 'tavily-original-id', bandId: 'b1', bandName: 'The Example', date: '2026-10-10', venue: 'Royal Arena', city: 'Copenhagen', country: 'Denmark', time: '19:00', distanceKm: 12, venueAddress: 'Existing address', articleUrl: 'https://news.example/show', sourceProvider: 'tavily_groq', ticketRetailerVerified: false, ticketUrl: 'https://old.example/tickets', isNew: false, foundAt: '2026-01-01T00:00:00.000Z',
+    attending: true, attended: false, ownedTickets: [{ id: 'pdf-one', type: 'pdf', label: 'Front row', objectKey: 'tickets/pdf-one' }, { id: 'pdf-two', type: 'pdf', label: 'Guest', objectKey: 'tickets/pdf-two' }], playlistUrl: 'https://open.spotify.com/playlist/manual', playlistProgress: { created: true }, setlist: { url: 'https://setlist.fm/show', songs: [{ name: 'Song', isEncore: true, spotifyUrl: 'https://spotify/song', spotifyUri: 'spotify:track:song' }] }, prepChecklist: { ticketReady: true, travelPlanned: true }, notes: 'Keep', rating: 5, photos: ['https://photos.example/one'], concertDay: { directionsOpened: true }, predictedSetlist: { status: 'ready', songs: [{ name: 'Song' }] }, setlistInsights: { status: 'ready', insights: [{ label: 'Rare' }] }, performanceInsights: { status: 'ready' }, userLinks: [{ label: 'Custom', url: 'https://example.com' }], futureFeatureData: { nested: { keepMe: true } },
+    ...extra,
+  };
+}
+
+function ticketmasterConcert(extra = {}) {
+  return { id: 'ticketmaster-generated-id', bandId: 'b1', bandName: 'The Example', date: '2026-10-10', venue: 'Royal Arena Copenhagen', city: 'Copenhagen', country: 'Denmark', time: '20:00', distanceKm: 10, venueAddress: 'Ticketmaster address', ticketUrl: 'https://ticketmaster.example/event', ticketRetailerVerified: true, sourceProvider: 'ticketmaster', providerEventId: 'tm-event-1', providerAttractionId: 'tm-attraction-1', artistMatchMethod: 'confirmed_attraction_id', isNew: true, foundAt: '2026-09-01T00:00:00.000Z', ...extra };
+}
+
+test('65 Ticketmaster upgrades an existing Tavily concert in place while preserving all user and future data', () => {
+  const existing = sourceConcert(); const candidate = ticketmasterConcert(); const upgraded = upgradeExistingConcertWithTicketmaster(existing, candidate);
+  assert.equal(upgraded.id, existing.id); assert.notEqual(upgraded.id, candidate.id);
+  assert.deepEqual({ attending: upgraded.attending, attended: upgraded.attended, ownedTickets: upgraded.ownedTickets, playlistUrl: upgraded.playlistUrl, playlistProgress: upgraded.playlistProgress, setlist: upgraded.setlist, prepChecklist: upgraded.prepChecklist, notes: upgraded.notes, rating: upgraded.rating, photos: upgraded.photos, concertDay: upgraded.concertDay, predictedSetlist: upgraded.predictedSetlist, setlistInsights: upgraded.setlistInsights, performanceInsights: upgraded.performanceInsights, userLinks: upgraded.userLinks, futureFeatureData: upgraded.futureFeatureData, isNew: upgraded.isNew, foundAt: upgraded.foundAt, articleUrl: upgraded.articleUrl }, { attending: true, attended: false, ownedTickets: existing.ownedTickets, playlistUrl: existing.playlistUrl, playlistProgress: existing.playlistProgress, setlist: existing.setlist, prepChecklist: existing.prepChecklist, notes: 'Keep', rating: 5, photos: existing.photos, concertDay: existing.concertDay, predictedSetlist: existing.predictedSetlist, setlistInsights: existing.setlistInsights, performanceInsights: existing.performanceInsights, userLinks: existing.userLinks, futureFeatureData: existing.futureFeatureData, isNew: false, foundAt: existing.foundAt, articleUrl: existing.articleUrl });
+  assert.deepEqual({ sourceProvider: upgraded.sourceProvider, providerEventId: upgraded.providerEventId, providerAttractionId: upgraded.providerAttractionId, artistMatchMethod: upgraded.artistMatchMethod, ticketUrl: upgraded.ticketUrl, ticketRetailerVerified: upgraded.ticketRetailerVerified }, { sourceProvider: 'ticketmaster', providerEventId: 'tm-event-1', providerAttractionId: 'tm-attraction-1', artistMatchMethod: 'confirmed_attraction_id', ticketUrl: 'https://ticketmaster.example/event', ticketRetailerVerified: true });
+  const nullSafe = upgradeExistingConcertWithTicketmaster(existing, ticketmasterConcert({ time: null, venueAddress: null, distanceKm: null }));
+  assert.deepEqual({ time: nullSafe.time, venueAddress: nullSafe.venueAddress, distanceKm: nullSafe.distanceKm }, { time: '19:00', venueAddress: 'Existing address', distanceKm: 12 });
+});
+
+test('66 conservative Ticketmaster matching accepts clear venue variants and rejects different shows', () => {
+  const existing = sourceConcert(); const candidate = ticketmasterConcert();
+  assert.equal(venueNamesMatchConservatively('Royal Arena', 'Royal Arena Copenhagen'), true);
+  assert.equal(venueNamesMatchConservatively('Arena', 'Royal Arena Copenhagen'), false);
+  assert.equal(sameConcertLocation(existing, candidate), true);
+  for (const changed of [{ city: 'Aarhus' }, { venue: 'Forum Copenhagen' }, { date: '2026-10-11' }, { bandId: 'other-band' }, { country: 'Sweden' }]) assert.equal(sameConcertLocation(existing, { ...candidate, ...changed }), false);
+  assert.equal(findTicketmasterConcertMatch([sourceConcert({ sourceProvider: 'ticketmaster', providerEventId: 'other-event' })], candidate).kind, 'none');
+  assert.equal(findTicketmasterConcertMatch([sourceConcert({ providerEventId: 'tm-event-1' })], candidate).reason, 'provider_event_id');
+});
+
+test('67 exact Ticketmaster event IDs require the same band and date before upgrading', () => {
+  const existing = sourceConcert({ providerEventId: 'tm-event-1' }); const candidate = ticketmasterConcert();
+  const exact = findTicketmasterConcertMatch([existing], candidate);
+  assert.deepEqual({ kind: exact.kind, reason: exact.reason, id: exact.concert.id }, { kind: 'match', reason: 'provider_event_id', id: existing.id });
+  const reconciliation = reconcileConcertCandidate([existing], [], candidate);
+  assert.equal(reconciliation.action, 'upgrade'); assert.equal(upgradeExistingConcertWithTicketmaster(existing, candidate).id, existing.id);
+
+  const differentDate = ticketmasterConcert({ date: '2026-10-11' }); const beforeDate = structuredClone(existing);
+  assert.equal(findTicketmasterConcertMatch([existing], differentDate).kind, 'none');
+  assert.equal(reconcileConcertCandidate([existing], [], differentDate).action, 'add');
+  assert.deepEqual(existing, beforeDate); assert.deepEqual([existing.date, differentDate.date], ['2026-10-10', '2026-10-11']);
+
+  const differentBand = ticketmasterConcert({ bandId: 'b2', bandName: 'Other Band' });
+  assert.equal(findTicketmasterConcertMatch([existing], differentBand).kind, 'none');
+  assert.equal(reconcileConcertCandidate([existing], [], differentBand).action, 'add');
+});
+
+test('68 candidate reconciliation skips same-run Tavily duplicates, retains different Ticketmaster events, and leaves ambiguity untouched', () => {
+  const tm = ticketmasterConcert(); const tavily = sourceConcert({ id: 'tavily-generated-id', venue: 'Royal Arena' });
+  assert.equal(reconcileConcertCandidate([], [], tm).action, 'add');
+  assert.equal(reconcileConcertCandidate([], [tm], tavily).action, 'skip_ticketmaster_duplicate');
+  assert.equal(reconcileConcertCandidate([sourceConcert({ sourceProvider: 'ticketmaster', providerEventId: 'other-event' })], [], tm).action, 'add');
+  const ambiguous = reconcileConcertCandidate([sourceConcert({ id: 'one' }), sourceConcert({ id: 'two' })], [], tm);
+  assert.deepEqual({ action: ambiguous.action, ambiguous: ambiguous.ambiguous }, { action: 'add', ambiguous: true });
+});
+
+test('69 upgrade-only concert writes merge provider fields into the latest record without restoring deleted data', () => {
+  const initial = sourceConcert(); const latest = sourceConcert({ notes: 'New user note', futureFeatureData: { nested: { keepMe: true, newer: true } } });
+  const output = finalConcertWritePayload([initial], [], { latestConcerts: [latest], ticketmasterUpgrades: [{ id: initial.id, candidate: ticketmasterConcert() }] });
+  assert.equal(concertWriteRequired({ ticketmasterUpgrades: [{ id: initial.id }] }), true);
+  assert.equal(output.length, 1); assert.equal(output[0].id, initial.id); assert.equal(output[0].notes, 'New user note'); assert.deepEqual(output[0].futureFeatureData, { nested: { keepMe: true, newer: true } }); assert.equal(output[0].providerEventId, 'tm-event-1');
+  assert.deepEqual(finalConcertWritePayload([], [], { latestConcerts: [], ticketmasterUpgrades: [{ id: initial.id, candidate: ticketmasterConcert() }] }), []);
+});

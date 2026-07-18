@@ -3,9 +3,9 @@
 //
 // For every band in bands.json:
 //   1. Ask Ticketmaster for upcoming events (structured, trusted, cheap).
-//   2. Only if Ticketmaster found nothing: fall back to a Tavily search +
-//      Groq extraction for tour dates, discarding anything without an
-//      explicit full date (mandatory-year policy — never guess).
+//   2. Use a Tavily search + Groq extraction as a supplemental source for
+//      tour dates, discarding anything without an explicit full date
+//      (mandatory-year policy — never guess).
 //   3. One combined Tavily news search + Groq classification into the four
 //      news categories, with the documented relaxed/strict sourcing rules.
 // Then, once per run: check setlist.fm for any attended-past concert that
@@ -18,10 +18,8 @@
 // Every external call is gated through usageTracker so this can never
 // exceed (self-imposed, below-free-tier) hard caps, and every provider
 // call is paced to respect real-time rate limits. New concerts/news are
-// APPENDED ONLY — nothing already in concerts.json/news.json is ever
-// edited or removed by this script (setlist data is the one exception:
-// it fills in `setlist`/`setlistCheckedAt` on an existing concert record
-// in place, since there's nowhere else for it to live).
+// appended; existing concert records are only enriched in place through
+// the explicit Ticketmaster provider-field allowlist, or with setlist data.
 
 const worker = require('./lib/workerClient');
 const { UsageTracker } = require('./lib/usageTracker');
@@ -307,8 +305,139 @@ async function processSetlistInsights({
   return { enabled: true, updates: updates.length, concerts: merged, diagnostics };
 }
 
-function finalConcertWritePayload(concerts, newConcerts) {
-  return [...concerts, ...newConcerts];
+const TICKETMASTER_CONCERT_FIELD_ALLOWLIST = [
+  'venue', 'city', 'country', 'time', 'distanceKm', 'venueAddress', 'ticketUrl',
+  'ticketRetailerVerified', 'sourceProvider', 'providerEventId', 'providerAttractionId', 'artistMatchMethod',
+];
+const GENERIC_VENUE_WORDS = new Set(['arena', 'hall', 'club', 'stadium', 'festival', 'venue', 'theatre', 'theater', 'centre', 'center', 'music', 'live']);
+
+function normalizeConcertLocation(value) {
+  return String(value || '').normalize('NFKD').replace(/\p{M}/gu, '').toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
+}
+
+function venueNamesMatchConservatively(first, second) {
+  const a = normalizeConcertLocation(first); const b = normalizeConcertLocation(second);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const [shorter, longer] = a.split(' ').length <= b.split(' ').length ? [a, b] : [b, a];
+  const distinctive = shorter.split(' ').some((word) => !GENERIC_VENUE_WORDS.has(word));
+  return distinctive && ` ${longer} `.includes(` ${shorter} `);
+}
+
+function sameConcertLocation(first, second) {
+  if (first?.bandId !== second?.bandId || first?.date !== second?.date) return false;
+  const firstCity = normalizeConcertLocation(first.city); const secondCity = normalizeConcertLocation(second.city);
+  if (!firstCity || !secondCity || firstCity !== secondCity) return false;
+  const firstCountry = normalizeConcertLocation(first.country); const secondCountry = normalizeConcertLocation(second.country);
+  if (firstCountry && secondCountry && firstCountry !== secondCountry) return false;
+  return venueNamesMatchConservatively(first.venue, second.venue);
+}
+
+function ticketmasterEventId(concert) {
+  const value = concert?.providerEventId;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function isTicketmasterConcert(concert) {
+  return concert?.sourceProvider === 'ticketmaster';
+}
+
+function findTicketmasterConcertMatch(records, candidate, { existingTicketmasterOnly = false } = {}) {
+  const candidateEventId = ticketmasterEventId(candidate);
+  const exactProviderMatches = candidateEventId ? records.filter((concert) => ticketmasterEventId(concert) === candidateEventId && concert.bandId === candidate.bandId && concert.date === candidate.date) : [];
+  if (exactProviderMatches.length === 1) return { kind: 'match', concert: exactProviderMatches[0], reason: 'provider_event_id' };
+  if (exactProviderMatches.length > 1) return { kind: 'ambiguous' };
+
+  const locationMatches = records.filter((concert) => {
+    if (existingTicketmasterOnly && !isTicketmasterConcert(concert)) return false;
+    if (candidateEventId && ticketmasterEventId(concert)) return false;
+    return sameConcertLocation(concert, candidate);
+  });
+  if (locationMatches.length === 1) return { kind: 'match', concert: locationMatches[0], reason: 'same_show' };
+  return locationMatches.length > 1 ? { kind: 'ambiguous' } : { kind: 'none' };
+}
+
+function meaningfulTicketmasterValue(value) {
+  if (value == null) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'number') return Number.isFinite(value);
+  return true;
+}
+
+function ticketmasterConcertPatch(candidate) {
+  const patch = {};
+  for (const field of TICKETMASTER_CONCERT_FIELD_ALLOWLIST) {
+    if (meaningfulTicketmasterValue(candidate?.[field])) patch[field] = candidate[field];
+  }
+  patch.sourceProvider = 'ticketmaster';
+  patch.ticketRetailerVerified = true;
+  return patch;
+}
+
+function upgradeExistingConcertWithTicketmaster(existing, candidate) {
+  return { ...existing, ...ticketmasterConcertPatch(candidate) };
+}
+
+function hasDifferentTicketmasterEvent(existing, candidate) {
+  const existingEventId = ticketmasterEventId(existing); const candidateEventId = ticketmasterEventId(candidate);
+  return !!(existingEventId && candidateEventId && existingEventId !== candidateEventId);
+}
+
+function exactConcertDuplicate(records, candidate) {
+  return records.some((concert) => !hasDifferentTicketmasterEvent(concert, candidate) && sameConcertLocation(concert, candidate) && normalizeConcertLocation(concert.venue) === normalizeConcertLocation(candidate.venue));
+}
+
+function reconcileConcertCandidate(existingConcerts, newConcerts, candidate) {
+  const records = [...existingConcerts, ...newConcerts];
+  if (isTicketmasterConcert(candidate)) {
+    const match = findTicketmasterConcertMatch(records, candidate);
+    if (match.kind === 'match') return { action: 'upgrade', ...match };
+    if (match.kind === 'ambiguous') return { action: 'add', ambiguous: true };
+    if (exactConcertDuplicate(records, candidate)) return { action: 'skip_duplicate' };
+    return { action: 'add' };
+  }
+  const ticketmasterMatch = findTicketmasterConcertMatch(records, candidate, { existingTicketmasterOnly: true });
+  if (ticketmasterMatch.kind === 'match') return { action: 'skip_ticketmaster_duplicate', ...ticketmasterMatch };
+  if (exactConcertDuplicate(records, candidate)) return { action: 'skip_duplicate' };
+  return { action: 'add' };
+}
+
+function uniqueConcertCandidate(candidate, records) {
+  const ids = new Set(records.map((concert) => concert.id));
+  if (!ids.has(candidate.id)) return candidate;
+  const suffix = slugify(ticketmasterEventId(candidate) || 'candidate') || 'candidate';
+  let number = 1; let id = `${candidate.id}-${suffix}`;
+  while (ids.has(id)) id = `${candidate.id}-${suffix}-${number++}`;
+  return { ...candidate, id };
+}
+
+function mergeTicketmasterConcertUpgrades(latestConcerts, upgrades) {
+  const byId = new Map((upgrades || []).map((update) => [update.id, update.candidate]));
+  return latestConcerts.map((concert) => byId.has(concert.id) ? upgradeExistingConcertWithTicketmaster(concert, byId.get(concert.id)) : concert);
+}
+
+function mergePipelineConcertFields(latestConcerts, currentConcerts, updatedIds) {
+  const currentById = new Map((currentConcerts || []).map((concert) => [concert.id, concert]));
+  return latestConcerts.map((concert) => {
+    if (!updatedIds?.has(concert.id)) return concert;
+    const current = currentById.get(concert.id);
+    if (!current) return concert;
+    const patch = { setlistCheckedAt: current.setlistCheckedAt };
+    if (current.setlist) patch.setlist = current.setlist;
+    return { ...concert, ...patch };
+  });
+}
+
+function finalConcertWritePayload(concerts, newConcerts, { latestConcerts = concerts, ticketmasterUpgrades = [], pipelineUpdatedIds = new Set() } = {}) {
+  let merged = mergeTicketmasterConcertUpgrades(latestConcerts, ticketmasterUpgrades);
+  merged = mergePipelineConcertFields(merged, concerts, pipelineUpdatedIds);
+  const existingIds = new Set(merged.map((concert) => concert.id));
+  return [...merged, ...(newConcerts || []).filter((concert) => !existingIds.has(concert.id))];
+}
+
+function concertWriteRequired({ newConcerts = [], ticketmasterUpgrades = [], setlistChecksAttempted = 0, spotifyConcertsProcessed = 0 } = {}) {
+  return newConcerts.length > 0 || ticketmasterUpgrades.length > 0 || setlistChecksAttempted > 0 || spotifyConcertsProcessed > 0;
 }
 
 function predictionDiagnostics(concerts, bands, usage, now) {
@@ -630,8 +759,6 @@ async function main() {
   const predictedRun = await processPredictedSetlists({ concerts, bands, usage });
   concerts = predictedRun.concerts || concerts;
 
-  const existingConcertIds = new Set(concerts.map((c) => c.id));
-  const existingConcertKeys = new Set(concerts.map(concertKey));
   const existingNewsKeys = new Set(news.map(newsKey));
 
   // Rotate the starting point each run — see the comment on `rotation` in
@@ -644,10 +771,15 @@ async function main() {
   const orderedBands = [...bands.slice(rotationOffset), ...bands.slice(0, rotationOffset)];
 
   const newConcerts = [];
+  const ticketmasterUpgrades = new Map();
+  const pipelineUpdatedIds = new Set();
   const newNews = [];
   let bandsProcessed = 0;
   let ticketmasterHits = 0;
   let tavilyFallbackUsed = 0;
+  let ticketmasterConcertsUpgraded = 0;
+  let tavilyDuplicatesSkippedForTicketmaster = 0;
+  let ambiguousTicketmasterConcertMatches = 0;
   let newsAttemptCount = 0;
   let newsBudgetExhaustedNoted = false;
   const routingUpdates = new Map();
@@ -709,8 +841,7 @@ async function main() {
       }
     }
 
-    for (const c of candidates) {
-      if (existingConcertIds.has(c.id) || existingConcertKeys.has(concertKey(c))) continue;
+    for (const candidate of candidates) {
       // Third, final layer of the upcoming-only guarantee — independent of
       // Ticketmaster's own filtering and of what the Tavily/Groq fallback
       // was told. Nothing with a past date is ever written, regardless of
@@ -720,13 +851,33 @@ async function main() {
       // timeout and the deliberate Groq TPM throttling), so a date snapshot
       // taken at run-start could be stale by the time later bands are
       // processed, right on a UTC-midnight boundary.
-      if (!c.date || c.date < todayIso()) {
-        usage.note(`Dropped past-dated candidate for "${c.bandName}": ${c.date} at ${c.venue} (source: ${c.ticketRetailerVerified ? 'Ticketmaster' : 'Tavily/Groq'})`);
+      if (!candidate.date || candidate.date < todayIso()) {
+        usage.note(`Dropped past-dated candidate for "${candidate.bandName}": ${candidate.date} at ${candidate.venue} (source: ${candidate.ticketRetailerVerified ? 'Ticketmaster' : 'Tavily/Groq'})`);
         continue;
       }
-      existingConcertIds.add(c.id);
-      existingConcertKeys.add(concertKey(c));
-      newConcerts.push(c);
+      const reconciliation = reconcileConcertCandidate(concerts, newConcerts, candidate);
+      if (reconciliation.action === 'upgrade') {
+        const existingIndex = concerts.findIndex((concert) => concert.id === reconciliation.concert.id);
+        if (existingIndex >= 0) {
+          concerts[existingIndex] = upgradeExistingConcertWithTicketmaster(concerts[existingIndex], candidate);
+          ticketmasterUpgrades.set(concerts[existingIndex].id, { id: concerts[existingIndex].id, candidate });
+          ticketmasterConcertsUpgraded += 1;
+        } else {
+          const newIndex = newConcerts.findIndex((concert) => concert.id === reconciliation.concert.id);
+          if (newIndex >= 0) newConcerts[newIndex] = upgradeExistingConcertWithTicketmaster(newConcerts[newIndex], candidate);
+        }
+        continue;
+      }
+      if (reconciliation.action === 'skip_ticketmaster_duplicate') {
+        tavilyDuplicatesSkippedForTicketmaster += 1;
+        continue;
+      }
+      if (reconciliation.action === 'skip_duplicate') continue;
+      if (reconciliation.ambiguous) {
+        ambiguousTicketmasterConcertMatches += 1;
+        usage.note(`Ambiguous Ticketmaster concert match left unchanged for "${candidate.bandName}" on ${candidate.date}`);
+      }
+      newConcerts.push(uniqueConcertCandidate(candidate, [...concerts, ...newConcerts]));
     }
 
     // Legacy mode retains the combined broad search.  Structured mode only
@@ -827,6 +978,7 @@ async function main() {
       const artistMbid = structuredEnabled && confirmedMbid(band) ? band.musicbrainz.mbid : null;
       const result = await setlistfm.findSetlistForShow(c, usage, { artistMbid });
       c.setlistCheckedAt = new Date().toISOString();
+      pipelineUpdatedIds.add(c.id);
       if (result) {
         c.setlist = result;
         setlistsAdded += 1;
@@ -835,6 +987,7 @@ async function main() {
     } catch (e) {
       usage.note(`setlist.fm lookup failed for "${c.bandName}" (${c.date}): ${e.message}`);
       c.setlistCheckedAt = new Date().toISOString();
+      pipelineUpdatedIds.add(c.id);
     }
   }
 
@@ -859,6 +1012,7 @@ async function main() {
       const band = bandsById.get(c.bandId);
       const spotifyArtistId = structuredEnabled && ['confirmed', 'manual_confirmed'].includes(band?.musicbrainz?.spotify?.status) ? band.musicbrainz.spotify.id : null;
       spotifyLinksAdded += await spotify.resolveSongLinks(c.setlist.songs, c.bandName, usage, { spotifyArtistId });
+      pipelineUpdatedIds.add(c.id);
     } catch (e) {
       usage.note(`Spotify song-link resolution failed for "${c.bandName}" (${c.date}): ${e.message}`);
     }
@@ -868,8 +1022,14 @@ async function main() {
   // (newConcerts), any setlist/setlistCheckedAt fields just filled in on
   // existing records, and any spotifyUrl/spotifyChecked fields just filled
   // in on setlist songs — a single PUT rather than three separate ones.
-  if (newConcerts.length > 0 || setlistChecksAttempted > 0 || spotifyConcertsProcessed > 0) {
-    await worker.writeJson('concerts.json', finalConcertWritePayload(concerts, newConcerts));
+  if (concertWriteRequired({ newConcerts, ticketmasterUpgrades: [...ticketmasterUpgrades.values()], setlistChecksAttempted, spotifyConcertsProcessed })) {
+    const latestConcerts = await worker.readJson('concerts.json', []);
+    concerts = finalConcertWritePayload(concerts, newConcerts, {
+      latestConcerts,
+      ticketmasterUpgrades: [...ticketmasterUpgrades.values()],
+      pipelineUpdatedIds,
+    });
+    await worker.writeJson('concerts.json', concerts);
   }
   // Persist newly found setlists and Spotify song fields before insight work.
   // The insight processor then rereads that latest document and merges only
@@ -896,6 +1056,9 @@ async function main() {
   usage.finishRun({
     bandsProcessed,
     ticketmasterHits,
+    ticketmasterConcertsUpgraded,
+    tavilyDuplicatesSkippedForTicketmaster,
+    ambiguousTicketmasterConcertMatches,
     tavilyFallbackUsed,
     newsAttemptCount,
     rotationOffset,
@@ -911,7 +1074,7 @@ async function main() {
   await usage.save();
 
   console.log(
-    `Done. Bands processed: ${bandsProcessed}, new concerts: ${newConcerts.length}, new news items: ${freshNews.length}, news attempted: ${newsAttemptCount}/${bands.length} (started at index ${rotationOffset}).`
+    `Done. Bands processed: ${bandsProcessed}, new concerts: ${newConcerts.length}, Ticketmaster upgrades: ${ticketmasterConcertsUpgraded}, Tavily duplicates skipped: ${tavilyDuplicatesSkippedForTicketmaster}, ambiguous Ticketmaster matches: ${ambiguousTicketmasterConcertMatches}, new news items: ${freshNews.length}, news attempted: ${newsAttemptCount}/${bands.length} (started at index ${rotationOffset}).`
   );
   console.log(
     `Setlists: checked ${setlistChecksAttempted}/${needsSetlistCheck.length} eligible past shows, found ${setlistsAdded} new setlist(s).`
@@ -947,4 +1110,4 @@ if (require.main === module) main().catch(async (e) => {
   process.exitCode = 1;
 });
 
-module.exports = { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities, processStructuredResearch, predictedSetlistEligible, predictionDue, spotifySocialArtistId, spotifyArtistIdentityForBand, spotifyEnrichmentDue, enrichPredictionWithSpotify, predictionDiagnostics, logPredictionDiagnostics, mergePredictedSetlistResults, finalConcertWritePayload, processPredictedSetlists, setlistInsightsEligible, selectWeeklyInsightRetryIds, mergeSetlistInsightResults, processSetlistInsights, newsKey, fetchTourDatesViaTavily, fetchNewsForBand, promisingTavilyResults };
+module.exports = { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities, processStructuredResearch, predictedSetlistEligible, predictionDue, spotifySocialArtistId, spotifyArtistIdentityForBand, spotifyEnrichmentDue, enrichPredictionWithSpotify, predictionDiagnostics, logPredictionDiagnostics, mergePredictedSetlistResults, normalizeConcertLocation, venueNamesMatchConservatively, sameConcertLocation, findTicketmasterConcertMatch, ticketmasterConcertPatch, upgradeExistingConcertWithTicketmaster, reconcileConcertCandidate, mergeTicketmasterConcertUpgrades, finalConcertWritePayload, concertWriteRequired, processPredictedSetlists, setlistInsightsEligible, selectWeeklyInsightRetryIds, mergeSetlistInsightResults, processSetlistInsights, newsKey, fetchTourDatesViaTavily, fetchNewsForBand, promisingTavilyResults };
