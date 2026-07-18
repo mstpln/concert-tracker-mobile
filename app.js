@@ -47,6 +47,9 @@ const weatherViews = new Map(); // browser-local, transient UI state only
 const playlistReviews = new Map(); // transient selections only; never concert data
 const playlistOperations = new Map();
 const prepOpenPanels = new Map(); // browser-local accordion state only; never concert data
+const ticketPanelViews = new Map(); // add/edit form state only; never concert data
+const ticketOperations = new Map();
+const ticketCacheStatus = new Map();
 let spotifyAuthMessage = '';
 // Settings starts on Research each time it is opened. These are deliberately
 // browser-local display choices, never stored with the user's concert data.
@@ -925,7 +928,7 @@ function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
       <p class="row-sub">${formatDate(c.date, c.time)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
       ${venueAddressLinkHtml(c)}
       ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
-      ${ticketCostBlockHtml(c)}
+      ${isPast ? ticketCostBlockHtml(c) : ''}
       ${isPast ? '<div class="row-divider"></div>' : ''}
       ${isPast ? mcLinksRowHtml(c, true) : concertPrepGroupHtml(c)}
       ${isPast ? `<div class="row-divider"></div>${concertReviewHtml(c)}` : ''}
@@ -1157,6 +1160,40 @@ function ensureConcertWeather(concert, force = false) {
   weatherViews.set(concert.id, { kind: 'loading' });
   ConcertWeather.load(concert, { force }).then((result) => { weatherViews.set(concert.id, result); if (currentTab === 'myconcerts' && currentScreen === 'main') renderMyConcertsScreen(); });
 }
+function ticketCostSummaryParts(c) {
+  if (typeof c.ticketPrice !== 'number' || Number.isNaN(c.ticketPrice)) return { primary: 'Add ticket cost', quantity: null, known: false };
+  const quantity = c.ticketQuantity || 1;
+  if (c.ticketPrice === 0) return { primary: 'Free', quantity: quantity > 1 ? `${quantity} tickets` : null, known: true };
+  return { primary: `${(c.ticketPrice * quantity).toLocaleString('sv-SE')} kr`, quantity: quantity > 1 ? `${quantity} tickets` : null, known: true };
+}
+
+function ownedTicketItems(c) { return OwnedTickets.ticketNames(c.ownedTickets); }
+
+function ticketPrepSummaryHtml(c) {
+  const cost = ticketCostSummaryParts(c);
+  const ownedStatus = OwnedTickets.statusLabel(c.ownedTickets);
+  return `<span class="ticket-summary-primary${cost.known ? '' : ' is-empty'}">${escapeHtml(cost.primary)}</span>${cost.quantity ? `<span class="ticket-summary-secondary"> · ${escapeHtml(cost.quantity)}</span>` : ''}<span class="ticket-summary-secondary"> · ${escapeHtml(ownedStatus)}</span>`;
+}
+
+function ownedTicketItemHtml(c, item) {
+  const offline = item.type === 'pdf' && ticketCacheStatus.get(`${c.id}:${item.id}`);
+  const detail = item.type === 'pdf' ? `PDF · ${offline ? 'Available offline' : 'Open once to save offline'}` : 'Internet required';
+  return `<div class="owned-ticket-item"><div><strong>${escapeHtml(item.displayName)}</strong><small>${detail}</small></div><div class="owned-ticket-item-actions">${item.type === 'pdf' ? `<button type="button" class="btn-secondary ticket-pdf-open-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(item.id)}">Open</button>` : `<a class="btn-secondary" href="${escapeAttr(item.url)}" target="_blank" rel="noopener">Open</a><button type="button" class="btn-secondary ticket-link-edit-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(item.id)}">Edit</button>`}<button type="button" class="btn-secondary ticket-remove-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(item.id)}">Remove</button></div></div>`;
+}
+
+function ticketOwnedPanelHtml(c) {
+  const items = ownedTicketItems(c);
+  const view = ticketPanelViews.get(c.id) || '';
+  const editing = view.startsWith('edit:') ? items.find((item) => item.id === view.slice(5) && item.type === 'url') : null;
+  const showLinkForm = view === 'add-link' || !!editing;
+  const busy = ticketOperations.has(c.id);
+  return `<section class="prep-section owned-ticket-section"><strong>My ticket</strong><p>Upload a ticket PDF for offline access, or save a link to your mobile ticket.</p><p class="ticket-operation-status" aria-live="polite"></p>${items.map((item) => ownedTicketItemHtml(c, item)).join('')}${showLinkForm ? `<div class="owned-ticket-link-form"><label>Ticket link<input type="url" class="owned-ticket-url-input" value="${escapeAttr(editing?.url || '')}" placeholder="https://secure-ticket-provider.example/" /></label><button type="button" class="btn-primary ticket-link-save-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(editing?.id || '')}" ${busy ? 'disabled' : ''}>Save link</button><button type="button" class="btn-secondary ticket-link-cancel-btn" data-concert-id="${escapeAttr(c.id)}">Cancel</button></div>` : `<div class="owned-ticket-add-actions"><button type="button" class="btn-secondary ticket-pdf-select-btn" data-concert-id="${escapeAttr(c.id)}" ${busy ? 'disabled' : ''}>Upload PDF</button><input type="file" class="ticket-pdf-input" data-concert-id="${escapeAttr(c.id)}" accept="application/pdf,.pdf" hidden /><button type="button" class="btn-secondary ticket-link-add-btn" data-concert-id="${escapeAttr(c.id)}" ${busy ? 'disabled' : ''}>Add ticket link</button><small>PDF only · Maximum file size: 10 MB</small></div>`}</section>`;
+}
+
+function ticketPreparationPanelHtml(c) {
+  return `${ticketCostFormHtml(c, { inPreparation: true })}${ticketOwnedPanelHtml(c)}`;
+}
+
 function concertPrepGroupHtml(c) {
   const prediction = c.predictedSetlist || null;
   const confidenceLabel = prediction?.confidence ? `${prediction.confidence[0].toUpperCase()}${prediction.confidence.slice(1)}` : 'Low';
@@ -1164,12 +1201,13 @@ function concertPrepGroupHtml(c) {
   const playlistStatus = predictedPlaylistStatus(c);
   const openPanel = prepOpenPanels.get(c.id) || '';
   const rows = [
+    ['ticket', 'ticket', 'Ticket', ticketPrepSummaryHtml(c), ticketPreparationPanelHtml(c)],
     ['playlist', 'spotify', 'Playlist', playlistStatus, `<div class="prep-section"><strong>Your playlist</strong>${c.playlistUrl ? `<p>Manual playlist linked</p><a class="btn-secondary" href="${escapeAttr(c.playlistUrl)}" target="_blank" rel="noopener">Open</a><button type="button" class="prep-edit-playlist">Edit</button><button type="button" class="prep-remove-playlist">Remove</button>` : `<p>Add a playlist you already use before the concert.</p>${playlistFormHtml(c)}`}</div>${predictedMixPanelHtml(c)}`],
     ['weather', 'weather', 'Weather forecast', weatherRowStatus(c), weatherPanelHtml(c)],
     ['prediction', 'setlistOrdered', 'Predicted setlist', predicted, prediction?.status === 'ready' ? `<p>Predicted order based on ${prediction.sourceSetlistCount || 0} recent setlists · ${confidenceLabel} confidence</p><ol>${(prediction.songs || []).slice(0, 10).map((s) => `<li>${escapeHtml(s.name)} <span class="muted">Played in ${s.performanceRate || 0}%${s.evidenceLabel ? ` · ${escapeHtml(s.evidenceLabel)}` : ''}${s.spotifyMatched ? ' · Spotify matched' : ''}</span></li>`).join('')}</ol><p class="muted">Updated ${escapeHtml(prediction.generatedAt ? formatDate(prediction.generatedAt.slice(0, 10)) : 'recently')} · setlist.fm</p><p class="muted">Create a playlist from the Playlist section.</p>` : `<p>${predicted}</p>`],
     ['checklist', 'checklist', 'Checklist', `${prepCount(c)} of 5 complete`, `<div class="prep-checklist">${PREP_CHECKLIST.map(([key, label]) => `<label><input type="checkbox" data-prep-key="${key}" data-concert-id="${escapeAttr(c.id)}" ${c.prepChecklist?.[key] ? 'checked' : ''}/> ${label}</label>`).join('')}<p class="prep-save-error" aria-live="polite"></p></div>`],
   ];
-  return `<div class="concert-prep-group" data-open="" data-concert-id="${escapeAttr(c.id)}">${rows.map(([id, iconName, title, status, panel]) => { const isOpen = openPanel === id; return `<button type="button" class="concert-prep-row${isOpen ? ' is-open' : ''}" data-prep-toggle="${id}" aria-expanded="${isOpen}" aria-controls="prep-${escapeAttr(c.id)}-${id}">${icon(iconName)}<span><strong>${title}</strong><small>${status}</small></span><span class="details-chevron">${icon('chevronDown')}</span></button>${prepPanel(`${c.id}-${id}`, panel, isOpen)}`; }).join('')}</div>`;
+  return `<div class="concert-prep-group" data-open="" data-concert-id="${escapeAttr(c.id)}">${rows.map(([id, iconName, title, status, panel]) => { const isOpen = openPanel === id; return `<button type="button" class="concert-prep-row${isOpen ? ' is-open' : ''}" data-prep-toggle="${id}" aria-expanded="${isOpen}" aria-controls="prep-${escapeAttr(c.id)}-${id}">${icon(iconName)}<span><strong>${title}</strong><small>${id === 'ticket' ? status : escapeHtml(status)}</small></span><span class="details-chevron">${icon('chevronDown')}</span></button>${prepPanel(`${c.id}-${id}`, panel, isOpen)}`; }).join('')}</div>`;
 }
 
 // Rating (1-5) and notes, only ever shown for past + attended concerts —
@@ -1208,12 +1246,9 @@ function dlTicketCostLabel(c) {
   return qty > 1 ? `${totalLabel} · ${qty} tickets` : totalLabel;
 }
 
-// Ticket cost — its own standalone block, entirely separate from the
-// rating/notes review below it, and shown on BOTH upcoming and past cards
-// (rating/notes stays past-only, since you can't review a show you haven't
-// been to yet, but money spent on a ticket is just as real before the show
-// as after it). Same collapsed-"Add"/visible-plus-"Edit" shape as the
-// Playlist block above.
+// Ticket cost — standalone only on past cards. Upcoming cards use the same
+// underlying fields inside their Ticket preparation panel so Build 1 can add
+// private owned-ticket files/links without changing historical-card visuals.
 function ticketCostBlockHtml(c) {
   const costLabel = dlTicketCostLabel(c);
   if (costLabel) {
@@ -1233,30 +1268,32 @@ function ticketCostBlockHtml(c) {
     </details>`;
 }
 
-function ticketCostFormHtml(c) {
+function ticketCostFormHtml(c, { inPreparation = false } = {}) {
   const isFree = c.ticketPrice === 0;
   const hasPrice = typeof c.ticketPrice === 'number' && !Number.isNaN(c.ticketPrice);
   return `
     <div class="ticket-cost-form">
+      ${inPreparation ? '<strong class="ticket-cost-heading">Ticket cost</strong>' : ''}
       <div class="ticket-cost-free-row">
-        <span class="review-cost-label">Ticket cost</span>
+        <span class="review-cost-label">${inPreparation ? 'Free ticket' : 'Ticket cost'}</span>
         <button type="button" class="toggle-pill ticket-cost-free-toggle${isFree ? ' active' : ''}">${isFree ? icon('check') + ' Free' : 'Free'}</button>
       </div>
       <div class="review-cost-row">
         <label class="review-cost-field">
-          <span class="review-cost-label">Price</span>
+          <span class="review-cost-label">${inPreparation ? 'Price per ticket' : 'Price'}</span>
           <span class="review-cost-input-wrap">
             <input type="number" class="ticket-price-input" min="0" step="1" inputmode="numeric" placeholder="0" value="${hasPrice ? escapeAttr(c.ticketPrice) : ''}" ${isFree ? 'disabled' : ''} />
             <span class="review-cost-suffix">kr</span>
           </span>
         </label>
         <label class="review-cost-field review-qty-field">
-          <span class="review-cost-label">Tickets</span>
+          <span class="review-cost-label">${inPreparation ? 'Number of tickets' : 'Tickets'}</span>
           <input type="number" class="ticket-qty-input" min="1" step="1" inputmode="numeric" value="${escapeAttr(c.ticketQuantity || 1)}" />
         </label>
       </div>
       <p class="ticket-cost-free-hint${isFree ? '' : ' hidden'}">Counted as 0 kr in your average ticket price.</p>
       <button type="button" class="btn-primary ticket-cost-save-btn" data-concert-id="${escapeAttr(c.id)}">Save</button>
+      ${inPreparation ? `<button type="button" class="btn-secondary ticket-cost-cancel-btn" data-concert-id="${escapeAttr(c.id)}">Cancel</button>` : ''}
     </div>`;
 }
 
@@ -1308,6 +1345,39 @@ function buildGoogleMapsUrl(c) {
     ? `${c.venue}, ${c.venueAddress}`
     : [c.venue, c.city, c.country].filter(Boolean).join(', ');
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+async function patchLatestConcert(concertId, patch) {
+  const latest = await dlReadJsonFile(remote, 'concerts.json', []);
+  const index = latest.findIndex((item) => item.id === concertId);
+  if (index < 0) throw new Error('This concert was removed before it could be saved.');
+  const updated = patch(latest[index]);
+  const next = latest.map((item, itemIndex) => itemIndex === index ? updated : item);
+  await dlWriteJsonFile(remote, 'concerts.json', next);
+  concerts = next;
+  return updated;
+}
+
+async function hydrateTicketCacheStatus(concert, refresh) {
+  const pdfs = ownedTicketItems(concert).filter((item) => item.type === 'pdf');
+  if (!pdfs.length) return;
+  const results = await Promise.all(pdfs.map(async (item) => [item.id, await OwnedTickets.cacheGet(concert.id, item.id).then(Boolean).catch(() => false)]));
+  let changed = false;
+  for (const [id, cached] of results) {
+    const key = `${concert.id}:${id}`;
+    if (ticketCacheStatus.get(key) !== cached) { ticketCacheStatus.set(key, cached); changed = true; }
+  }
+  if (changed && prepOpenPanels.get(concert.id) === 'ticket') refresh();
+}
+
+async function cleanupDeletedConcertTickets(concert) {
+  const pdfs = ownedTicketItems(concert).filter((item) => item.type === 'pdf');
+  const failures = [];
+  for (const item of pdfs) {
+    try { await OwnedTickets.deletePdf(remote, concert.id, item.id); await OwnedTickets.cacheDelete(concert.id, item.id); } catch (error) { failures.push(error.message || 'Could not delete a ticket PDF.'); }
+  }
+  if (failures.length) throw new Error(failures.join(' '));
+  await OwnedTickets.cacheDeleteConcert(concert.id).catch(() => {});
 }
 
 // refresh defaults to My Concerts' own re-render; the band-profile page
@@ -1369,7 +1439,10 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
   container.querySelectorAll('[data-prep-toggle]').forEach((btn) => btn.addEventListener('click', (ev) => {
     ev.stopPropagation(); const group = btn.closest('.concert-prep-group'); const id = btn.getAttribute('aria-controls'); const panel = group?.querySelector(`#${CSS.escape(id)}`); if (!panel) return;
     const open = panel.hidden; group.querySelectorAll('.concert-prep-panel').forEach((item) => { item.hidden = true; }); group.querySelectorAll('[data-prep-toggle]').forEach((item) => { item.setAttribute('aria-expanded', 'false'); item.classList.remove('is-open'); });
-    if (open) { panel.hidden = false; btn.setAttribute('aria-expanded', 'true'); btn.classList.add('is-open'); prepOpenPanels.set(group.dataset.concertId, btn.dataset.prepToggle); } else prepOpenPanels.delete(group.dataset.concertId);
+    if (open) {
+      panel.hidden = false; btn.setAttribute('aria-expanded', 'true'); btn.classList.add('is-open'); prepOpenPanels.set(group.dataset.concertId, btn.dataset.prepToggle);
+      if (btn.dataset.prepToggle === 'ticket') { const concert = concerts.find((item) => item.id === group.dataset.concertId); if (concert) hydrateTicketCacheStatus(concert, refresh); }
+    } else prepOpenPanels.delete(group.dataset.concertId);
   }));
   container.querySelectorAll('.weather-retry').forEach((btn) => btn.addEventListener('click', (ev) => { ev.stopPropagation(); const concert = concerts.find((item) => item.id === btn.dataset.concertId); if (concert) ensureConcertWeather(concert, true); }));
   container.querySelectorAll('.playlist-review-open').forEach((btn) => btn.addEventListener('click', (ev) => { ev.stopPropagation(); const c = concerts.find((item) => item.id === btn.dataset.concertId); if (!c) return; playlistReviews.set(c.id, { name: predictedMixName(c), uris: predictedMixSongs(c).map((song) => song.spotifyUri), message: '' }); prepOpenPanels.set(c.id, 'playlist'); refresh(); }));
@@ -1396,6 +1469,7 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
       if (!c) return;
       if (c.manuallyAdded) {
         if (!confirm('Remove this concert from your history? This deletes it completely since it was added by hand.')) return;
+        try { await cleanupDeletedConcertTickets(c); } catch (error) { alert(`This concert was not removed because its private tickets could not be cleaned up. ${error.message || ''}`); return; }
         concerts = concerts.filter((x) => x.id !== concertId);
       } else {
         c.attending = false;
@@ -1448,8 +1522,6 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
     btn.addEventListener('click', async (ev) => {
       ev.stopPropagation();
       const concertId = btn.dataset.concertId;
-      const c = concerts.find((x) => x.id === concertId);
-      if (!c) return;
       const form = btn.closest('.ticket-cost-form');
       const priceRaw = form.querySelector('.ticket-price-input').value;
       const qtyRaw = form.querySelector('.ticket-qty-input').value;
@@ -1458,12 +1530,21 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
       // would have broken the new Free toggle (0 kr) the same way.
       const parsedPrice = priceRaw !== '' ? Number(priceRaw) : null;
       const ticketPrice = parsedPrice === null || Number.isNaN(parsedPrice) ? null : parsedPrice;
-      c.ticketPrice = ticketPrice;
-      c.ticketQuantity = ticketPrice !== null ? (Number(qtyRaw) || 1) : null;
-      await dlWriteJsonFile(remote, 'concerts.json', concerts);
-      refresh();
+      try {
+        await patchLatestConcert(concertId, (latest) => ({ ...latest, ticketPrice, ticketQuantity: ticketPrice !== null ? (Number(qtyRaw) || 1) : null }));
+        if (btn.closest('.concert-prep-panel')) prepOpenPanels.set(concertId, 'ticket');
+        refresh();
+      } catch (error) {
+        const message = form.querySelector('.ticket-cost-save-error') || document.createElement('p');
+        message.className = 'ticket-cost-save-error error'; message.setAttribute('aria-live', 'polite'); message.textContent = error.message || 'Could not save ticket cost.';
+        if (!message.parentNode) form.appendChild(message);
+      }
     });
   });
+
+  container.querySelectorAll('.ticket-cost-cancel-btn').forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation(); prepOpenPanels.set(btn.dataset.concertId, 'ticket'); refresh();
+  }));
 
   // Free toggle — a plain client-side flip of the price input's value/
   // disabled state before Save is pressed (no data write here). Marking a
@@ -1483,6 +1564,64 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
       hint?.classList.toggle('hidden', !nowFree);
     });
   });
+
+  container.querySelectorAll('.ticket-link-add-btn').forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation(); ticketPanelViews.set(btn.dataset.concertId, 'add-link'); prepOpenPanels.set(btn.dataset.concertId, 'ticket'); refresh();
+  }));
+  container.querySelectorAll('.ticket-link-edit-btn').forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation(); ticketPanelViews.set(btn.dataset.concertId, `edit:${btn.dataset.ticketId}`); prepOpenPanels.set(btn.dataset.concertId, 'ticket'); refresh();
+  }));
+  container.querySelectorAll('.ticket-link-cancel-btn').forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation(); ticketPanelViews.delete(btn.dataset.concertId); prepOpenPanels.set(btn.dataset.concertId, 'ticket'); refresh();
+  }));
+  container.querySelectorAll('.ticket-link-save-btn').forEach((btn) => btn.addEventListener('click', async (ev) => {
+    ev.stopPropagation(); const concertId = btn.dataset.concertId; const url = OwnedTickets.safeUrl(btn.closest('.owned-ticket-link-form').querySelector('.owned-ticket-url-input').value);
+    const status = btn.closest('.owned-ticket-section').querySelector('.ticket-operation-status');
+    if (!url) { status.textContent = 'Enter a secure https ticket link.'; return; }
+    if (ticketOperations.has(concertId)) return;
+    ticketOperations.set(concertId, true); btn.disabled = true; status.textContent = 'Saving ticket link…';
+    try {
+      const editingId = btn.dataset.ticketId;
+      await patchLatestConcert(concertId, (latest) => {
+        const items = OwnedTickets.orderedTickets(latest.ownedTickets);
+        const next = editingId ? items.map((item) => item.id === editingId ? { ...item, url } : item) : [...items, { id: OwnedTickets.createId(), type: 'url', url, addedAt: new Date().toISOString() }];
+        return { ...latest, ownedTickets: next };
+      });
+      ticketPanelViews.delete(concertId); prepOpenPanels.set(concertId, 'ticket'); ticketOperations.delete(concertId); refresh();
+    } catch (error) { status.textContent = error.message || 'Could not save ticket link.'; btn.disabled = false; } finally { ticketOperations.delete(concertId); }
+  }));
+  container.querySelectorAll('.ticket-pdf-select-btn').forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation(); btn.closest('.owned-ticket-section').querySelector('.ticket-pdf-input')?.click();
+  }));
+  container.querySelectorAll('.ticket-pdf-input').forEach((input) => input.addEventListener('change', async (ev) => {
+    ev.stopPropagation(); const concertId = input.dataset.concertId; const file = input.files?.[0]; const section = input.closest('.owned-ticket-section'); const status = section.querySelector('.ticket-operation-status');
+    if (!file || ticketOperations.has(concertId)) return;
+    ticketOperations.set(concertId, true); status.textContent = 'Uploading PDF…'; const ticketId = OwnedTickets.createId();
+    try {
+      const metadata = await OwnedTickets.uploadPdf(remote, concertId, ticketId, file);
+      await OwnedTickets.cachePut(concertId, ticketId, file);
+      ticketCacheStatus.set(`${concertId}:${ticketId}`, true);
+      try { await patchLatestConcert(concertId, (latest) => ({ ...latest, ownedTickets: [...OwnedTickets.orderedTickets(latest.ownedTickets), metadata] })); }
+      catch (error) { await OwnedTickets.deletePdf(remote, concertId, ticketId).catch(() => {}); await OwnedTickets.cacheDelete(concertId, ticketId).catch(() => {}); throw error; }
+      prepOpenPanels.set(concertId, 'ticket'); ticketOperations.delete(concertId); refresh();
+    } catch (error) { status.textContent = error.message || 'Could not upload PDF.'; input.value = ''; } finally { ticketOperations.delete(concertId); }
+  }));
+  container.querySelectorAll('.ticket-pdf-open-btn').forEach((btn) => btn.addEventListener('click', async (ev) => {
+    ev.stopPropagation(); const status = btn.closest('.owned-ticket-section').querySelector('.ticket-operation-status');
+    try { await OwnedTickets.openPdf(remote, btn.dataset.concertId, btn.dataset.ticketId); ticketCacheStatus.set(`${btn.dataset.concertId}:${btn.dataset.ticketId}`, true); prepOpenPanels.set(btn.dataset.concertId, 'ticket'); refresh(); }
+    catch (error) { status.textContent = error.message || 'Could not open PDF.'; }
+  }));
+  container.querySelectorAll('.ticket-remove-btn').forEach((btn) => btn.addEventListener('click', async (ev) => {
+    ev.stopPropagation(); const concertId = btn.dataset.concertId; const ticketId = btn.dataset.ticketId; const concert = concerts.find((item) => item.id === concertId); const item = concert && OwnedTickets.orderedTickets(concert.ownedTickets).find((candidate) => candidate.id === ticketId);
+    const status = btn.closest('.owned-ticket-section').querySelector('.ticket-operation-status');
+    if (!item || !confirm(`Remove ${item.type === 'pdf' ? 'this PDF ticket' : 'this ticket link'}?`)) return;
+    if (ticketOperations.has(concertId)) return; ticketOperations.set(concertId, true); btn.disabled = true; status.textContent = 'Removing ticket…';
+    try {
+      if (item.type === 'pdf') { await OwnedTickets.deletePdf(remote, concertId, ticketId); await OwnedTickets.cacheDelete(concertId, ticketId); ticketCacheStatus.delete(`${concertId}:${ticketId}`); }
+      await patchLatestConcert(concertId, (latest) => ({ ...latest, ownedTickets: OwnedTickets.orderedTickets(latest.ownedTickets).filter((candidate) => candidate.id !== ticketId) }));
+      prepOpenPanels.set(concertId, 'ticket'); ticketOperations.delete(concertId); refresh();
+    } catch (error) { status.textContent = error.message || 'Could not remove ticket.'; btn.disabled = false; } finally { ticketOperations.delete(concertId); }
+  }));
 
   container.querySelectorAll('.playlist-save-btn').forEach((btn) => {
     btn.addEventListener('click', async (ev) => {
@@ -2338,9 +2477,16 @@ function downloadTextFile(filename, content, mime) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+// Owned ticket metadata can contain a private mobile-ticket URL. Exports keep
+// the concert record useful without exposing those private access links (and
+// PDF bytes never exist in concert JSON in the first place).
+function exportConcertRows(rows) {
+  return rows.map(({ ownedTickets, ...concert }) => concert);
+}
+
 function exportDataAsCsv() {
   downloadTextFile(`bands-${todayStamp()}.csv`, arrayToCsv(bands), 'text/csv');
-  downloadTextFile(`concerts-${todayStamp()}.csv`, arrayToCsv(concerts), 'text/csv');
+  downloadTextFile(`concerts-${todayStamp()}.csv`, arrayToCsv(exportConcertRows(concerts)), 'text/csv');
 }
 
 // The Excel export loads SheetJS from a CDN on demand (only when this
@@ -2368,7 +2514,7 @@ async function exportDataAsExcel() {
   await loadXlsxLib();
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bands), 'Bands');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(concerts), 'Concerts');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportConcertRows(concerts)), 'Concerts');
   XLSX.writeFile(wb, `concert-tracker-export-${todayStamp()}.xlsx`);
 }
 
