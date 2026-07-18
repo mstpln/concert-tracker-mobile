@@ -205,12 +205,9 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   color: var(--text-muted);
 }
 .delete-corner-btn:hover { background: var(--surface-muted); }
-/* My Concerts card redesign — scoped entirely to .row-card-mc (only ever
+/* My Concerts card layout — scoped entirely to .row-card-mc (only ever
    added by myConcertRowHtml) so the Concerts tab, My Bands, and the band
-   profile page's own Upcoming section (none of which use this class) are
-   completely unaffected. Splits the card into 3 visually separated groups
-   via .row-divider lines: (1) avatar/name/tour/venue/address/distance,
-   (2) Playlist/Photos/Setlist, (3) star rating + notes (past only). */
+   profile page's own Upcoming section remain unaffected. */
 .row-card-mc .row-header { display: flex; gap: 12px; align-items: center; }
 .row-card-mc .row-avatar {
   width: 84px; height: 84px; border-radius: 50%; background: var(--header-bg);
@@ -232,48 +229,6 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .row-card-mc .row-sub { margin: 10px 0 0; }
 .row-card-mc .venue-address-link { margin: 6px 0 0; }
 .row-card-mc .row-km { margin: 9px 0 0; }
-.row-card-mc .row-divider { border-top: 1px solid var(--border); margin: 14px 0; }
-.row-card-mc .row-divider + .review-block { margin-top: 0; }
-/* Playlist/Photos/Setlist links row (see mcLinksRowHtml in app.js) — two
-   aligned flex rows (link/trigger row, then a short Edit/Add row under it)
-   so the three sit side by side instead of stacking underneath each other.
-   Setlist's column is wider (flex: 1.3) since "Setlist (24 songs)" is the
-   longest label; the Edit row's spacer under it uses the same ratio so the
-   two rows' columns stay aligned even though Setlist has no row-2 control. */
-.row-card-mc .row-links-row, .row-card-mc .row-edit-row { display: flex; gap: 10px; }
-.row-card-mc .row-edit-row { margin-top: 6px; }
-.row-card-mc .row-links-row > *, .row-card-mc .row-edit-row > * { flex: 1; min-width: 0; }
-.row-card-mc .row-links-row > .setlist-trigger, .row-card-mc .row-edit-row > .row-edit-spacer { flex: 1.3; }
-/* The label lives in its own .link-trigger-label span so IT truncates with
-   an ellipsis on narrow phones — the leading icon svg and (for Setlist) the
-   trailing .details-chevron are flex-shrink:0 so they never get clipped.
-   Before this split, overflow/ellipsis sat on the whole button, which is
-   what was silently cutting off the Setlist chevron on real (narrower than
-   this sandbox's test viewport) phone widths. */
-.row-card-mc .link-trigger {
-  display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--text);
-  text-decoration: none; background: none; border: none; padding: 0; margin: 0;
-  font-family: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent;
-  min-width: 0; overflow: hidden;
-}
-.row-card-mc .link-trigger > svg { flex-shrink: 0; }
-.row-card-mc .link-trigger-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-card-mc a.link-trigger:hover, .row-card-mc a.link-trigger:active, .row-card-mc a.link-trigger:visited { color: var(--text); }
-.row-card-mc a.link-trigger:hover { text-decoration: underline; }
-.row-card-mc .link-trigger.is-empty { color: var(--text-muted); cursor: default; }
-.row-card-mc .link-edit-btn {
-  display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-muted);
-  background: none; border: none; padding: 0; margin: 0; font-family: inherit;
-  cursor: pointer; -webkit-tap-highlight-color: transparent;
-}
-.row-card-mc .link-edit-btn:hover, .row-card-mc .link-edit-btn.is-open { color: var(--text); }
-.row-card-mc [data-toggle-panel] .details-chevron { display: flex; margin-left: 2px; transition: transform 0.15s ease; }
-.row-card-mc [data-toggle-panel].is-open .details-chevron { transform: rotate(180deg); }
-.row-card-mc .expand-panel { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
-.row-card-mc .expand-panel .playlist-form, .row-card-mc .expand-panel .photo-form { margin-top: 0; }
-/* Stars enlarged specifically for the past-concert display context (not the
-   interactive picker in the edit form, which keeps its own 20px sizing). */
-.row-card-mc .concert-review .stars-display svg { width: 26px; height: 26px; }
 
 .pill-going { background: var(--accent-bg); color: var(--accent); }
 .pill-attended { background: var(--surface-muted); color: var(--text-secondary); }
@@ -568,22 +523,12 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 }
 .password-toggle-btn:hover { background: var(--surface-muted); }
 
-/* Concert rating, notes & photo link (My Concerts, past shows only). Stars
-   use --accent (the app's one blue) for the filled state and --border-strong
-   for the unfilled state — no new hues introduced, same grey/white/black/
-   blue palette as the rest of the app. */
-.review-block { margin-top: 10px; }
+/* Concert rating and notes. Stars use the existing blue and grey tokens. */
 .stars-display, .star-picker { display: inline-flex; gap: 2px; }
 .star-btn { background: none; border: none; padding: 1px; display: flex; color: var(--border-strong); }
 .star-picker .star-btn { cursor: pointer; }
 .star-btn.filled { color: var(--accent); }
 .review-notes { color: var(--text-secondary); font-size: 13px; line-height: 1.5; margin: 6px 0 0; }
-/* Ticket cost — its own standalone block (ticketCostBlockHtml in app.js),
-   separate from the rating/notes review above, shown on both upcoming and
-   past cards. Extra bottom margin (vs the 6px used elsewhere in this file)
-   is deliberate — gives the cost line more breathing room before the "Edit
-   ticket cost" toggle row below it. */
-.ticket-cost-block { margin-top: 10px; }
 /* Free toggle (ticketCostFormHtml) — reuses the existing .toggle-pill look
    (same shape as the My Bands "Hide inactive bands" toggle) rather than
    inventing a new control style. */
@@ -605,35 +550,22 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
    toggle/summary/chevron rules below apply to .review-*, .playlist-*,
    .photo-* and .ticket-cost-* variants rather than being duplicated four
    times. */
-.review-edit-toggle, .review-add-toggle, .playlist-edit-toggle, .playlist-add-toggle,
-.photo-edit-toggle, .photo-add-toggle, .ticket-cost-edit-toggle, .ticket-cost-add-toggle { margin-top: 8px; }
-.review-edit-toggle summary, .review-add-toggle summary,
+.playlist-edit-toggle, .playlist-add-toggle, .photo-edit-toggle, .photo-add-toggle { margin-top: 8px; }
 .playlist-edit-toggle summary, .playlist-add-toggle summary,
-.photo-edit-toggle summary, .photo-add-toggle summary,
-.ticket-cost-edit-toggle summary, .ticket-cost-add-toggle summary {
+.photo-edit-toggle summary, .photo-add-toggle summary {
   cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text-secondary);
   display: inline-flex; align-items: center; gap: 4px; list-style: none;
 }
-.review-edit-toggle summary:hover, .review-add-toggle summary:hover,
 .playlist-edit-toggle summary:hover, .playlist-add-toggle summary:hover,
-.photo-edit-toggle summary:hover, .photo-add-toggle summary:hover,
-.ticket-cost-edit-toggle summary:hover, .ticket-cost-add-toggle summary:hover { color: var(--text); }
-.review-edit-toggle summary::-webkit-details-marker, .review-add-toggle summary::-webkit-details-marker,
+.photo-edit-toggle summary:hover, .photo-add-toggle summary:hover { color: var(--text); }
 .playlist-edit-toggle summary::-webkit-details-marker, .playlist-add-toggle summary::-webkit-details-marker,
-.photo-edit-toggle summary::-webkit-details-marker, .photo-add-toggle summary::-webkit-details-marker,
-.ticket-cost-edit-toggle summary::-webkit-details-marker, .ticket-cost-add-toggle summary::-webkit-details-marker { display: none; }
-.review-edit-toggle summary::marker, .review-add-toggle summary::marker,
+.photo-edit-toggle summary::-webkit-details-marker, .photo-add-toggle summary::-webkit-details-marker { display: none; }
 .playlist-edit-toggle summary::marker, .playlist-add-toggle summary::marker,
-.photo-edit-toggle summary::marker, .photo-add-toggle summary::marker,
-.ticket-cost-edit-toggle summary::marker, .ticket-cost-add-toggle summary::marker { content: ''; }
-.review-edit-toggle .details-chevron, .review-add-toggle .details-chevron,
+.photo-edit-toggle summary::marker, .photo-add-toggle summary::marker { content: ''; }
 .playlist-edit-toggle .details-chevron, .playlist-add-toggle .details-chevron,
-.photo-edit-toggle .details-chevron, .photo-add-toggle .details-chevron,
-.ticket-cost-edit-toggle .details-chevron, .ticket-cost-add-toggle .details-chevron { display: flex; transition: transform 0.15s ease; }
-.review-edit-toggle[open] .details-chevron, .review-add-toggle[open] .details-chevron,
+.photo-edit-toggle .details-chevron, .photo-add-toggle .details-chevron { display: flex; transition: transform 0.15s ease; }
 .playlist-edit-toggle[open] .details-chevron, .playlist-add-toggle[open] .details-chevron,
-.photo-edit-toggle[open] .details-chevron, .photo-add-toggle[open] .details-chevron,
-.ticket-cost-edit-toggle[open] .details-chevron, .ticket-cost-add-toggle[open] .details-chevron { transform: rotate(180deg); }
+.photo-edit-toggle[open] .details-chevron, .photo-add-toggle[open] .details-chevron { transform: rotate(180deg); }
 .review-form, .ticket-cost-form { margin-top: 8px; }
 .review-form .star-picker { margin-bottom: 8px; }
 .review-form .star-picker .star-btn svg { width: 20px; height: 20px; }
@@ -732,7 +664,8 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .setlist-insight-tag { display: inline-flex; align-items: center; min-height: 18px; padding: 1px 5px; border: 1px solid var(--border-strong); border-radius: 9px; color: var(--text-secondary); background: var(--surface-muted); font-size: 10.5px; line-height: 1.2; white-space: nowrap; }
 .setlist-insight-context { margin: 8px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.35; }
 
-/* Upcoming My Concerts preparation rows only. */
+/* My Concerts row-and-panel details. Upcoming cards use this for preparation;
+   past cards reuse it for their attended-show details below. */
 .concert-prep-group { margin-top: 8px; border-top: 1px solid var(--border); }
 .concert-prep-row { width: 100%; min-height: 52px; display: flex; align-items: center; gap: 11px; padding: 9px 0; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border); text-align: left; }
 .concert-prep-row > span:nth-child(2) { flex: 1; min-width: 0; }
@@ -744,6 +677,20 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .concert-prep-row.is-open .details-chevron { transform: rotate(180deg); }
 .concert-prep-panel { padding: 10px 0 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--text-secondary); }
 .concert-prep-panel p { margin: 4px 0 8px; }
+.past-concert-details-group { background: var(--surface-muted); }
+.past-concert-details-group .concert-prep-row { padding-left: 0; padding-right: 0; }
+.past-concert-details-group .concert-prep-panel { padding-left: 0; padding-right: 0; }
+.past-concert-details-group .past-detail-row.is-unavailable { color: var(--text-muted); }
+.past-concert-details-group .past-detail-row.is-unavailable strong,
+.past-concert-details-group .past-detail-row.is-unavailable small { color: var(--text-muted); }
+.past-rating-details .concert-prep-row { border-bottom: 0; }
+.past-rating-saved { padding: 0 0 10px 31px; }
+.past-rating-saved .stars-display { display: inline-flex; }
+.past-rating-saved .review-notes { margin: 6px 0 0; overflow-wrap: anywhere; white-space: normal; }
+.past-review-empty { color: var(--text-muted); }
+.past-link-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.past-link-panel .btn-secondary { margin-right: 0; }
+.past-setlist-panel .setlist-song-list { margin-top: 0; }
 .prep-section + .prep-section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
 .prep-section .btn-secondary, .prep-section button { margin-right: 7px; }
 .playlist-review input[type="text"], .playlist-review input:not([type]) { width:100%; margin:5px 0 8px; }

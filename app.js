@@ -51,6 +51,7 @@ const ticketPanelViews = new Map(); // add/edit form state only; never concert d
 const ticketOperations = new Map();
 const ticketCacheStatus = new Map();
 const ticketNotices = new Map();
+const pastDetailEditing = new Map(); // transient manual Playlist/Photos form state only
 let spotifyAuthMessage = '';
 // Settings starts on Research each time it is opened. These are deliberately
 // browser-local display choices, never stored with the user's concert data.
@@ -900,12 +901,11 @@ function rowAvatarHtml(bandId) {
 // would just repeat the page you're already on there. My Concerts (where a
 // single list mixes every band) always passes the default true.
 //
-// Card is split into three visually separated groups (divider lines
-// between each): (1) avatar/name/tour/date/venue/address/distance,
-// (2) Playlist/Photos/Setlist, (3) star rating + notes (past only) — see
-// the .row-card-mc rules in app.css. The Festival/Attended pills sit on
-// their own row above the band name (rather than sharing its line) so a
-// long band name never crowds them.
+// The shared header stays above a focused detail section: upcoming cards use
+// their preparation rows, while past cards use the matching row-and-panel
+// pattern for ticket, links, the actual setlist, and the saved review. The
+// Festival/Attended pills sit on their own row above the band name so a long
+// band name never crowds them.
 function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
   const tourName = isPast ? c.setlist?.tourName : null;
   const showPillRow = c.type === 'festival' || isPast;
@@ -929,10 +929,7 @@ function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
       <p class="row-sub">${formatDate(c.date, c.time)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
       ${venueAddressLinkHtml(c)}
       ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
-      ${isPast ? ticketCostBlockHtml(c) : ''}
-      ${isPast ? '<div class="row-divider"></div>' : ''}
-      ${isPast ? mcLinksRowHtml(c, true) : concertPrepGroupHtml(c)}
-      ${isPast ? `<div class="row-divider"></div>${concertReviewHtml(c)}` : ''}
+      ${isPast ? pastConcertDetailsGroupHtml(c) : concertPrepGroupHtml(c)}
       <button class="icon-btn remove-going-btn delete-corner-btn" data-concert-id="${c.id}" aria-label="Remove">${icon('trash')}</button>
     </div>`;
 }
@@ -946,13 +943,8 @@ function venueAddressLinkHtml(c) {
   return `<a class="venue-address-link" href="${escapeAttr(buildGoogleMapsUrl(c))}" target="_blank" rel="noopener">${escapeHtml(c.venueAddress)}</a>`;
 }
 
-// Playlist link — unlike rating/notes/photo (concertReviewHtml below),
-// this is meant for both upcoming and past shows: a pre-show hype playlist
-// is just as useful as a "what we heard" one, so it's its own standalone
-// block rather than living inside the past-only review block. Same two-state
-// shape as the review block (collapsed "Add" toggle vs. always-visible link
-// with an "Edit" toggle), just with a single URL field instead of
-// rating+notes+photo.
+// Standalone playlist link used outside the redesigned My Concerts past-card
+// details, where the manual Playlist row has its own shared panel instead.
 function playlistLinkHtml(c) {
   if (c.playlistUrl) {
     return `
@@ -979,11 +971,7 @@ function playlistFormHtml(c) {
     </div>`;
 }
 
-// Photo entry form — the actual input+Save pair, reused directly by the new
-// My Concerts links row below (mcLinksRowHtml). photoLinkHtml() used to wrap
-// this in its own standalone <details> block; that wrapper is gone (see the
-// My Concerts links row comment below for why), but this form generator is
-// still exactly what gets shown once the Photos panel is opened.
+// Photo entry form, reused by the past-card Photos panel.
 function photoFormHtml(c) {
   return `
     <div class="photo-form">
@@ -1013,50 +1001,6 @@ function mcLinkFieldConfig(kind) {
   return kind === 'playlist'
     ? { field: 'playlistUrl', iconName: 'spotify', label: 'Playlist', formFn: playlistFormHtml }
     : { field: 'photoUrl', iconName: 'photo', label: 'Photos', formFn: photoFormHtml };
-}
-
-// Row 1 cell: the real link once a URL exists (opens it in a new tab, same
-// as before); otherwise a muted, non-clickable label so the column still
-// holds its place and every card's columns line up while scrolling.
-function mcLinkTriggerCellHtml(kind, c) {
-  const cfg = mcLinkFieldConfig(kind);
-  const url = c[cfg.field];
-  // Label text lives in its own span so IT alone truncates with an ellipsis
-  // on narrow phones — the leading icon and (for Setlist, see
-  // mcSetlistTriggerCellHtml) the trailing chevron are flex-shrink:0 in CSS
-  // so they're never the part that gets clipped off.
-  if (url) {
-    return `<a class="link-trigger" href="${escapeAttr(url)}" target="_blank" rel="noopener">${icon(cfg.iconName)}<span class="link-trigger-label">${cfg.label}</span></a>`;
-  }
-  return `<span class="link-trigger is-empty">${icon(cfg.iconName)}<span class="link-trigger-label">${cfg.label}</span></span>`;
-}
-
-// Row 2 cell: a short Edit/Add toggle sitting directly under its matching
-// row-1 cell — replaces the old, too-long-to-share-a-row "Edit playlist
-// link"/"Add photos link" wording.
-function mcLinkEditCellHtml(kind, c) {
-  const cfg = mcLinkFieldConfig(kind);
-  const hasUrl = !!c[cfg.field];
-  return `<button type="button" class="link-edit-btn" data-toggle-panel="${kind}" data-concert-id="${escapeAttr(c.id)}">${hasUrl ? 'Edit' : 'Add'}<span class="details-chevron">${icon('chevronDown')}</span></button>`;
-}
-
-// Setlist (My Concerts, past shows only) — read-only, populated solely by
-// the automatic setlist.fm pipeline (scripts/lib/setlistfm.js). Has no row-2
-// counterpart since there's nothing to edit — its row-1 cell IS its own
-// open/close toggle, matching how it behaved before this restructure.
-function mcSetlistTriggerCellHtml(c) {
-  const songCount = Array.isArray(c.setlist?.songs) ? c.setlist.songs.length : 0;
-  // Past cards always reserve the third column.  A missing setlist is shown
-  // as a muted, non-interactive value, matching unavailable playlist/photo
-  // fields without adding an empty panel or keyboard stop.
-  if (!songCount) {
-    return `<span class="link-trigger setlist-trigger is-empty">${icon('setlistOrdered')}<span class="link-trigger-label">Setlist (0)</span></span>`;
-  }
-  // Deliberately just the count, not "N songs" — at real phone widths (tested
-  // down to 375px) the word "songs" pushed the label past the column's
-  // available width and got ellipsis-truncated, sometimes eating into the
-  // chevron too. The chevron itself is untouched.
-  return `<button type="button" class="link-trigger setlist-trigger" data-toggle-panel="setlist" data-concert-id="${escapeAttr(c.id)}">${icon('setlistOrdered')}<span class="link-trigger-label">Setlist (${songCount})</span><span class="details-chevron">${icon('chevronDown')}</span></button>`;
 }
 
 function actualSetlistNormalizedName(value) {
@@ -1097,28 +1041,38 @@ function mcSetlistPanelContentHtml(c) {
     ${c.setlist.url ? `<a class="setlist-attribution" href="${escapeAttr(c.setlist.url)}" target="_blank" rel="noopener">View on setlist.fm</a>` : ''}`;
 }
 
-// Assembles the two rows plus the hidden full-width panels described above.
-// Only one panel is ever open at a time per card (see wireMyConcertsHandlers)
-// — opening a different one closes whichever was already open, so the card
-// never has to show two expanded panels stacked at once.
-function mcLinksRowHtml(c, isPast) {
-  const hasSetlist = isPast && c.setlist && Array.isArray(c.setlist.songs) && c.setlist.songs.length > 0;
-  return `
-    <div class="row-links-group" data-open="">
-      <div class="row-links-row">
-        ${mcLinkTriggerCellHtml('playlist', c)}
-        ${isPast ? mcLinkTriggerCellHtml('photo', c) : ''}
-        ${isPast ? mcSetlistTriggerCellHtml(c) : ''}
-      </div>
-      <div class="row-edit-row">
-        ${mcLinkEditCellHtml('playlist', c)}
-        ${isPast ? mcLinkEditCellHtml('photo', c) : ''}
-        ${isPast ? '<span class="row-edit-spacer"></span>' : ''}
-      </div>
-      <div class="expand-panel" data-panel="playlist" hidden>${playlistFormHtml(c)}</div>
-      ${isPast ? `<div class="expand-panel" data-panel="photo" hidden>${photoFormHtml(c)}</div>` : ''}
-      ${hasSetlist ? `<div class="expand-panel" data-panel="setlist" hidden>${mcSetlistPanelContentHtml(c)}</div>` : ''}
-    </div>`;
+function pastManualLinkPanelHtml(kind, c) {
+  const cfg = mcLinkFieldConfig(kind);
+  const url = c[cfg.field];
+  const editing = pastDetailEditing.get(c.id) === kind;
+  if (!url || editing) return `<div class="prep-section past-link-panel">${cfg.formFn(c)}${url ? `<button type="button" class="btn-secondary past-link-cancel-btn" data-concert-id="${escapeAttr(c.id)}" data-kind="${kind}">Cancel</button>` : ''}</div>`;
+  return `<div class="prep-section past-link-panel"><a class="btn-secondary" href="${escapeAttr(url)}" target="_blank" rel="noopener">Open ${cfg.label.toLowerCase()}</a><button type="button" class="btn-secondary past-link-edit-btn" data-concert-id="${escapeAttr(c.id)}" data-kind="${kind}">Edit</button><button type="button" class="btn-secondary past-link-remove-btn" data-concert-id="${escapeAttr(c.id)}" data-kind="${kind}">Remove</button></div>`;
+}
+
+function pastDetailRowHtml(c, id, iconName, title, status, panel, { expandable = true, statusHtml = false } = {}) {
+  if (!expandable) return `<div class="concert-prep-row past-detail-row is-unavailable">${icon(iconName)}<span><strong>${title}</strong><small>${escapeHtml(status)}</small></span></div>`;
+  const open = prepOpenPanels.get(c.id) === id;
+  const panelId = `past-${c.id}-${id}`;
+  return `<button type="button" class="concert-prep-row past-detail-row${open ? ' is-open' : ''}" data-prep-toggle="${id}" aria-expanded="${open}" aria-controls="prep-${escapeAttr(panelId)}">${icon(iconName)}<span><strong>${title}</strong><small>${statusHtml ? status : escapeHtml(status)}</small></span><span class="details-chevron">${icon('chevronDown')}</span></button>${prepPanel(panelId, panel, open)}`;
+}
+
+function pastRatingDetailsHtml(c) {
+  const open = prepOpenPanels.get(c.id) === 'rating';
+  const panelId = `past-${c.id}-rating`;
+  const savedRating = c.rating ? starsHtml(c.rating) : '<p class="past-review-empty">Not rated</p>';
+  const savedNotes = c.notes ? `<p class="review-notes">${escapeHtml(c.notes)}</p>` : '<p class="past-review-empty">No notes added</p>';
+  return `<div class="past-rating-details"><button type="button" class="concert-prep-row past-detail-row${open ? ' is-open' : ''}" data-prep-toggle="rating" aria-expanded="${open}" aria-controls="prep-${escapeAttr(panelId)}">${icon('star')}<span><strong>Rating &amp; notes</strong></span><span class="details-chevron">${icon('chevronDown')}</span></button><div class="past-rating-saved">${savedRating}${savedNotes}</div>${prepPanel(panelId, reviewFormHtml(c, { includeCancel: true }), open)}</div>`;
+}
+
+function pastConcertDetailsGroupHtml(c) {
+  const hasSetlist = Array.isArray(c.setlist?.songs) && c.setlist.songs.length > 0;
+  const rows = [
+    pastDetailRowHtml(c, 'ticket', 'ticket', 'Ticket', ticketPrepSummaryHtml(c), ticketPreparationPanelHtml(c), { statusHtml: true }),
+    pastDetailRowHtml(c, 'playlist', 'spotify', 'Playlist', c.playlistUrl ? 'Playlist linked' : 'No playlist added', pastManualLinkPanelHtml('playlist', c)),
+    pastDetailRowHtml(c, 'photo', 'photo', 'Photos', c.photoUrl ? 'Photos link added' : 'No photos added', pastManualLinkPanelHtml('photo', c)),
+    pastDetailRowHtml(c, 'setlist', 'setlistOrdered', 'Setlist', hasSetlist ? `${c.setlist.songs.length} songs` : 'Not available', hasSetlist ? `<div class="prep-section past-setlist-panel">${mcSetlistPanelContentHtml(c)}</div>` : '', { expandable: hasSetlist }),
+  ];
+  return `<div class="concert-prep-group past-concert-details-group" data-concert-id="${escapeAttr(c.id)}">${rows.join('')}${pastRatingDetailsHtml(c)}</div>`;
 }
 
 const PREP_CHECKLIST = [
@@ -1217,64 +1171,6 @@ function concertPrepGroupHtml(c) {
   return `<div class="concert-prep-group" data-open="" data-concert-id="${escapeAttr(c.id)}">${rows.map(([id, iconName, title, status, panel]) => { const isOpen = openPanel === id; return `<button type="button" class="concert-prep-row${isOpen ? ' is-open' : ''}" data-prep-toggle="${id}" aria-expanded="${isOpen}" aria-controls="prep-${escapeAttr(c.id)}-${id}">${icon(iconName)}<span><strong>${title}</strong><small>${id === 'ticket' ? status : escapeHtml(status)}</small></span><span class="details-chevron">${icon('chevronDown')}</span></button>${prepPanel(`${c.id}-${id}`, panel, isOpen)}`; }).join('')}</div>`;
 }
 
-// Rating (1-5) and notes, only ever shown for past + attended concerts —
-// never upcoming "going" shows. Two states: once either field has been
-// filled in, they're always visible on the card (rating + full notes text,
-// no expand needed); until then, a collapsed "Add rating & notes" accordion
-// holds the entry form so it doesn't clutter the ~1000+ already-logged
-// historical shows that will likely never get rated. Photos used to live
-// inside this same block/condition, and ticket cost briefly did too — both
-// are now their own standalone peer elements (photoLinkHtml, ticketCostBlockHtml
-// below), so this only ever tracks rating/notes.
-function dlHasReview(c) {
-  return !!(c.rating || c.notes);
-}
-
-// Ticket cost display line — shows the total actually paid for the show
-// (price * quantity), with a "· 2 tickets" note when more than one ticket
-// was bought (e.g. going with a partner) so the total doesn't read as a
-// single-ticket price. Returns null when no cost has been entered, so
-// ticketCostBlockHtml can skip the line entirely rather than showing "0 kr".
-// A ticketPrice of exactly 0 means "marked free" (see the Free toggle in
-// ticketCostFormHtml) — deliberately distinct from ticketPrice being
-// missing/null, which means no cost has been entered at all. Free shows
-// still count as a "known" price for the average-ticket-price calculation
-// in dlConcertStats (0 is a valid number there, not skipped), so marking a
-// free show is what lets it pull the average down instead of being quietly
-// left out.
-function dlTicketCostLabel(c) {
-  if (typeof c.ticketPrice !== 'number' || Number.isNaN(c.ticketPrice)) return null;
-  const qty = c.ticketQuantity || 1;
-  if (c.ticketPrice === 0) {
-    return qty > 1 ? `Free · ${qty} tickets` : 'Free';
-  }
-  const total = c.ticketPrice * qty;
-  const totalLabel = `${total.toLocaleString('sv-SE')} kr`;
-  return qty > 1 ? `${totalLabel} · ${qty} tickets` : totalLabel;
-}
-
-// Ticket cost — standalone only on past cards. Upcoming cards use the same
-// underlying fields inside their Ticket preparation panel so Build 1 can add
-// private owned-ticket files/links without changing historical-card visuals.
-function ticketCostBlockHtml(c) {
-  const costLabel = dlTicketCostLabel(c);
-  if (costLabel) {
-    return `
-      <div class="ticket-cost-block">
-        <p class="review-cost">${icon('ticket')}<span>${escapeHtml(costLabel)}</span></p>
-        <details class="ticket-cost-edit-toggle">
-          <summary>Edit ticket cost<span class="details-chevron">${icon('chevronDown')}</span></summary>
-          ${ticketCostFormHtml(c)}
-        </details>
-      </div>`;
-  }
-  return `
-    <details class="ticket-cost-block ticket-cost-add-toggle">
-      <summary>Add ticket cost<span class="details-chevron">${icon('chevronDown')}</span></summary>
-      ${ticketCostFormHtml(c)}
-    </details>`;
-}
-
 function ticketCostFormHtml(c, { inPreparation = false } = {}) {
   const isFree = c.ticketPrice === 0;
   const hasPrice = typeof c.ticketPrice === 'number' && !Number.isNaN(c.ticketPrice);
@@ -1304,25 +1200,6 @@ function ticketCostFormHtml(c, { inPreparation = false } = {}) {
     </div>`;
 }
 
-function concertReviewHtml(c) {
-  if (dlHasReview(c)) {
-    return `
-      <div class="review-block concert-review">
-        ${c.rating ? starsHtml(c.rating) : ''}
-        ${c.notes ? `<p class="review-notes">${escapeHtml(c.notes)}</p>` : ''}
-        <details class="review-edit-toggle">
-          <summary>Edit rating &amp; notes<span class="details-chevron">${icon('chevronDown')}</span></summary>
-          ${reviewFormHtml(c)}
-        </details>
-      </div>`;
-  }
-  return `
-    <details class="review-block review-add-toggle">
-      <summary>Add rating &amp; notes<span class="details-chevron">${icon('chevronDown')}</span></summary>
-      ${reviewFormHtml(c)}
-    </details>`;
-}
-
 function starsHtml(rating, { interactive = false } = {}) {
   const r = Number(rating) || 0;
   let html = interactive ? `<span class="star-picker" data-rating="${r}">` : `<span class="stars-display">`;
@@ -1338,12 +1215,13 @@ function starsHtml(rating, { interactive = false } = {}) {
 // Larger textarea than the app's other free-text inputs (rows="4"), since
 // this is meant to hold an actual few-sentence review rather than a single
 // line like the "Add a band"/"Add a past concert" forms.
-function reviewFormHtml(c) {
+function reviewFormHtml(c, { includeCancel = false } = {}) {
   return `
     <div class="review-form">
       ${starsHtml(c.rating, { interactive: true })}
       <textarea class="review-notes-input" rows="4" placeholder="What did you think of this show?">${escapeHtml(c.notes || '')}</textarea>
       <button type="button" class="btn-primary review-save-btn" data-concert-id="${escapeAttr(c.id)}">Save</button>
+      ${includeCancel ? `<button type="button" class="btn-secondary past-review-cancel-btn" data-concert-id="${escapeAttr(c.id)}">Cancel</button>` : ''}
     </div>`;
 }
 
@@ -1408,9 +1286,6 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
       if (
         ev.target.closest('.icon-btn') ||
         ev.target.closest('.venue-address-link') ||
-        ev.target.closest('.review-block') ||
-        ev.target.closest('.ticket-cost-block') ||
-        ev.target.closest('.row-links-group') ||
         ev.target.closest('.concert-prep-group')
       ) return;
       openProfile(row.dataset.bandId);
@@ -1424,30 +1299,6 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
     group.addEventListener('click', (ev) => ev.stopPropagation());
   });
 
-  // Playlist/Photos/Setlist row (see mcLinksRowHtml) — tapping a trigger or
-  // an Edit/Add button shows the matching full-width panel below both rows;
-  // only one panel stays open at a time per card.
-  container.querySelectorAll('[data-toggle-panel]').forEach((btn) => {
-    btn.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      const group = btn.closest('.row-links-group');
-      if (!group) return;
-      const which = btn.dataset.togglePanel;
-      const target = group.querySelector(`.expand-panel[data-panel="${which}"]`);
-      if (!target) return;
-      const isOpening = target.hidden;
-      group.querySelectorAll('.expand-panel').forEach((p) => { p.hidden = true; });
-      group.querySelectorAll('[data-toggle-panel]').forEach((b) => b.classList.remove('is-open'));
-      if (isOpening) {
-        target.hidden = false;
-        btn.classList.add('is-open');
-        group.dataset.open = which;
-      } else {
-        group.dataset.open = '';
-      }
-    });
-  });
-
   container.querySelectorAll('[data-prep-toggle]').forEach((btn) => btn.addEventListener('click', (ev) => {
     ev.stopPropagation(); const group = btn.closest('.concert-prep-group'); const id = btn.getAttribute('aria-controls'); const panel = group?.querySelector(`#${CSS.escape(id)}`); if (!panel) return;
     const open = panel.hidden; group.querySelectorAll('.concert-prep-panel').forEach((item) => { item.hidden = true; }); group.querySelectorAll('[data-prep-toggle]').forEach((item) => { item.setAttribute('aria-expanded', 'false'); item.classList.remove('is-open'); });
@@ -1455,6 +1306,27 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
       panel.hidden = false; btn.setAttribute('aria-expanded', 'true'); btn.classList.add('is-open'); prepOpenPanels.set(group.dataset.concertId, btn.dataset.prepToggle);
       if (btn.dataset.prepToggle === 'ticket') { const concert = concerts.find((item) => item.id === group.dataset.concertId); if (concert) hydrateTicketCacheStatus(concert, refresh); }
     } else prepOpenPanels.delete(group.dataset.concertId);
+  }));
+  container.querySelectorAll('.past-link-edit-btn').forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation(); pastDetailEditing.set(btn.dataset.concertId, btn.dataset.kind); prepOpenPanels.set(btn.dataset.concertId, btn.dataset.kind); refresh();
+  }));
+  container.querySelectorAll('.past-link-cancel-btn').forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation(); pastDetailEditing.delete(btn.dataset.concertId); prepOpenPanels.set(btn.dataset.concertId, btn.dataset.kind); refresh();
+  }));
+  container.querySelectorAll('.past-link-remove-btn').forEach((btn) => btn.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
+    const concertId = btn.dataset.concertId;
+    const cfg = mcLinkFieldConfig(btn.dataset.kind);
+    if (!confirm(`Remove this ${cfg.label.toLowerCase()} link?`)) return;
+    try {
+      await patchLatestConcert(concertId, (latest) => ({ ...latest, [cfg.field]: null }));
+      pastDetailEditing.delete(concertId);
+      prepOpenPanels.set(concertId, btn.dataset.kind);
+      refresh();
+    } catch (error) { alert(error.message || `Could not remove this ${cfg.label.toLowerCase()} link.`); }
+  }));
+  container.querySelectorAll('.past-review-cancel-btn').forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation(); prepOpenPanels.delete(btn.dataset.concertId); refresh();
   }));
   container.querySelectorAll('.weather-retry').forEach((btn) => btn.addEventListener('click', (ev) => { ev.stopPropagation(); const concert = concerts.find((item) => item.id === btn.dataset.concertId); if (concert) ensureConcertWeather(concert, true); }));
   container.querySelectorAll('.playlist-review-open').forEach((btn) => btn.addEventListener('click', (ev) => { ev.stopPropagation(); const c = concerts.find((item) => item.id === btn.dataset.concertId); if (!c) return; playlistReviews.set(c.id, { name: predictedMixName(c), uris: predictedMixSongs(c).map((song) => song.spotifyUri), message: '' }); prepOpenPanels.set(c.id, 'playlist'); refresh(); }));
@@ -1496,9 +1368,7 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
   });
 
   // Rating stars: clicking one just updates the pending value + visual fill
-  // in place — the actual write happens once via the Save button below, so
-  // stars/notes/photo link all land in a single dlWriteJsonFile call rather
-  // than racing each other.
+  // in place — the actual write happens once via the Save button below.
   container.querySelectorAll('.star-picker').forEach((picker) => {
     picker.addEventListener('click', (ev) => {
       const btn = ev.target.closest('.star-btn');
@@ -1518,22 +1388,21 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
     btn.addEventListener('click', async (ev) => {
       ev.stopPropagation();
       const concertId = btn.dataset.concertId;
-      const c = concerts.find((x) => x.id === concertId);
-      if (!c) return;
       const form = btn.closest('.review-form');
       const picker = form.querySelector('.star-picker');
       const rating = picker ? Number(picker.dataset.rating) || null : null;
       const notes = form.querySelector('.review-notes-input').value.trim();
-      c.rating = rating || null;
-      c.notes = notes || null;
-      await dlWriteJsonFile(remote, 'concerts.json', concerts);
-      refresh();
+      try {
+        await patchLatestConcert(concertId, (latest) => ({ ...latest, rating: rating || null, notes: notes || null }));
+        if (btn.closest('.past-concert-details-group')) prepOpenPanels.delete(concertId);
+        refresh();
+      } catch (error) { alert(error.message || 'Could not save rating and notes.'); }
     });
   });
 
   // Ticket cost — separate save action from rating/notes above (see
-  // ticketCostBlockHtml/ticketCostFormHtml), used on both upcoming and past
-  // cards, unlike the review form which is past-only.
+  // ticketCostFormHtml, used by the shared Ticket panel on both upcoming and
+  // past cards, unlike the review form which is past-only.
   container.querySelectorAll('.ticket-cost-save-btn').forEach((btn) => {
     btn.addEventListener('click', async (ev) => {
       ev.stopPropagation();
@@ -1665,14 +1534,14 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
     btn.addEventListener('click', async (ev) => {
       ev.stopPropagation();
       const concertId = btn.dataset.concertId;
-      const c = concerts.find((x) => x.id === concertId);
-      if (!c) return;
       const form = btn.closest('.playlist-form');
       let playlistUrl = form.querySelector('.playlist-url-input').value.trim();
       if (playlistUrl && !/^https?:\/\//i.test(playlistUrl)) playlistUrl = 'https://' + playlistUrl;
-      c.playlistUrl = playlistUrl || null;
-      await dlWriteJsonFile(remote, 'concerts.json', concerts);
-      refresh();
+      try {
+        await patchLatestConcert(concertId, (latest) => ({ ...latest, playlistUrl: playlistUrl || null }));
+        pastDetailEditing.delete(concertId);
+        refresh();
+      } catch (error) { alert(error.message || 'Could not save playlist link.'); }
     });
   });
 
@@ -1680,14 +1549,14 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
     btn.addEventListener('click', async (ev) => {
       ev.stopPropagation();
       const concertId = btn.dataset.concertId;
-      const c = concerts.find((x) => x.id === concertId);
-      if (!c) return;
       const form = btn.closest('.photo-form');
       let photoUrl = form.querySelector('.photo-url-input').value.trim();
       if (photoUrl && !/^https?:\/\//i.test(photoUrl)) photoUrl = 'https://' + photoUrl;
-      c.photoUrl = photoUrl || null;
-      await dlWriteJsonFile(remote, 'concerts.json', concerts);
-      refresh();
+      try {
+        await patchLatestConcert(concertId, (latest) => ({ ...latest, photoUrl: photoUrl || null }));
+        pastDetailEditing.delete(concertId);
+        refresh();
+      } catch (error) { alert(error.message || 'Could not save photos link.'); }
     });
   });
 }

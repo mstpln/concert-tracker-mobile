@@ -7,7 +7,7 @@ const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const icons = fs.readFileSync(path.join(__dirname, '..', 'icons.js'), 'utf8');
 
 test('Stage 1 renders the four preparation rows only through the upcoming card path', () => {
-  assert.match(app, /isPast \? mcLinksRowHtml\(c, true\) : concertPrepGroupHtml\(c\)/);
+  assert.match(app, /isPast \? pastConcertDetailsGroupHtml\(c\) : concertPrepGroupHtml\(c\)/);
   const order = ['Playlist', 'Weather forecast', 'Predicted setlist', 'Checklist'];
   let at = 0; for (const label of order) { const next = app.indexOf(`'${label}'`, at); assert.ok(next >= at); at = next + 1; }
 });
