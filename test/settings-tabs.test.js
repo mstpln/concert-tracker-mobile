@@ -40,7 +40,7 @@ test('Settings keeps Groq details in its expanded research card, MusicBrainz in 
   assert.match(app, /<p class="section-label">Data export<\/p>/);
 });
 
-test('Data shows duplicate-aware Artist identity coverage without rendering provider secrets', () => {
+test('Data shows duplicate-aware Artist identity coverage with primary statuses, retry timing, and safe compact candidates', () => {
   const coverage = app.slice(app.indexOf('function providerIdentityCoverageHtml'), app.indexOf('async function renderSettingsScreen'));
   assert.match(app, /function providerIdentityCoverageHtml/);
   assert.match(coverage, /Artist identity coverage/);
@@ -48,7 +48,13 @@ test('Data shows duplicate-aware Artist identity coverage without rendering prov
   assert.match(coverage, /providerDetail\('Ticketmaster'/);
   assert.match(coverage, /providerDetail\('Spotify'/);
   assert.match(coverage, /duplicate conflict/i);
+  assert.match(coverage, /temporary error/);
+  assert.match(coverage, /retries scheduled/);
+  assert.match(coverage, /providerIdentityCandidatesHtml/);
+  assert.match(app, /providerIdentityCandidateUrl/);
+  assert.doesNotMatch(coverage, /Retry pending/);
   assert.match(css, /\.provider-identity-row/);
+  assert.match(css, /\.provider-identity-candidate/);
   assert.doesNotMatch(coverage, /token|secret|apikey/i);
 });
 

@@ -28,7 +28,7 @@ test('provider coverage flags duplicate MusicBrainz, Ticketmaster, and Spotify I
   assert.deepEqual(coverage.spotify.duplicateConflicts[0].bandIds, ['a', 'b']);
 });
 
-test('provider coverage reports explicit retry, review, no-match, error, and unchecked states', () => {
+test('provider coverage preserves actual outcomes and reports retry scheduling separately', () => {
   const now = new Date('2026-07-10T00:00:00.000Z');
   const bands = [
     confirmedBand('review', { musicbrainz: { mbid: 'm1', status: 'confirmed', ticketmaster: { status: 'needs_review' } } }),
@@ -39,10 +39,22 @@ test('provider coverage reports explicit retry, review, no-match, error, and unc
   ];
   const counts = identities.providerCoverage(bands, 'ticketmaster', now).counts;
   assert.equal(counts.needs_review, 1);
-  assert.equal(counts.retry_pending, 1);
   assert.equal(counts.no_match, 1);
-  assert.equal(counts.error, 1);
+  assert.equal(counts.error, 2);
   assert.equal(counts.unchecked, 1);
+  assert.equal(identities.providerCoverage(bands, 'ticketmaster', now).retryScheduledCount, 1);
+  assert.equal(Object.values(counts).reduce((sum, value) => sum + value, 0), bands.length);
+});
+
+test('provider coverage keeps future no-match, needs-review, error, and unavailable outcomes primary', () => {
+  const now = new Date('2026-07-10T00:00:00.000Z');
+  const future = '2026-07-11T00:00:00.000Z';
+  const bands = ['no_match', 'needs_review', 'error', 'unavailable'].map((status, index) => confirmedBand(String(index), { musicbrainz: { mbid: `m-${index}`, status: 'confirmed', spotify: { status, nextEligibleCheckAt: future } } }));
+  const coverage = identities.providerCoverage(bands, 'spotify', now);
+  for (const status of ['no_match', 'needs_review', 'error', 'unavailable']) assert.equal(coverage.counts[status], 1);
+  assert.equal(coverage.retryScheduledCount, 4);
+  assert.equal(identities.statusForRecord({ status: 'confirmed', nextEligibleCheckAt: future }, 'spotify', true, now), 'duplicate_conflict');
+  assert.equal(identities.retryInfo({ nextEligibleCheckAt: 'not-a-date' }, now).retryScheduled, false);
 });
 
 test('provider update merge preserves unrelated fields, newer manual decisions, and deleted bands', () => {
@@ -91,6 +103,23 @@ test('provider backfill persists real usage summary after a partial failure', as
   await assert.rejects(runProviderIdentityBackfill({ readBands: async () => [confirmedBand('a')], loadUsage: async () => usage, resolveTicketmaster: async () => { throw new Error('temporary failure'); }, log: () => {} }), /temporary failure/);
   assert.equal(saved, true);
   assert.equal(recorded.status, 'error');
+});
+
+test('provider backfill summary separates actual outcomes, future retries, protected decisions, and duplicates', async () => {
+  const bands = [
+    confirmedBand('confirmed', { musicbrainz: { mbid: 'm1', status: 'confirmed', ticketmaster: identity('tm', 'ticketmaster') } }),
+    confirmedBand('retry', { musicbrainz: { mbid: 'm2', status: 'confirmed', ticketmaster: { status: 'no_match', nextEligibleCheckAt: '2026-07-11T00:00:00.000Z' } } }),
+    confirmedBand('manual', { musicbrainz: { mbid: 'm3', status: 'confirmed', ticketmaster: { status: 'manual_rejected' } } }),
+    confirmedBand('open'),
+  ];
+  const usage = { finishProviderIdentityRun() {}, save: async () => {} };
+  const summary = await runProviderIdentityBackfill({ readBands: async () => bands, writeBands: async () => {}, loadUsage: async () => usage, resolveTicketmaster: async () => ({ kind: 'no_match', identity: { status: 'no_match', nextEligibleCheckAt: '2026-07-20T00:00:00.000Z' } }), resolveSpotify: async () => ({ kind: 'needs_review', identity: { status: 'needs_review', nextEligibleCheckAt: '2026-07-20T00:00:00.000Z' } }), now: '2026-07-10T00:00:00.000Z', log: () => {} });
+  assert.equal(summary.ticketmaster.alreadyConfirmed, 1);
+  assert.equal(summary.ticketmaster.skippedRetryWindow, 1);
+  assert.equal(summary.ticketmaster.manuallyProtected, 1);
+  assert.equal(summary.ticketmaster.noMatch, 1);
+  assert.equal(summary.ticketmaster.retryDatesAssigned, 1);
+  assert.equal(summary.spotify.needsReview, 4);
 });
 
 test('Ticketmaster events retain stable provider provenance for attraction and fallback matches', async () => {
