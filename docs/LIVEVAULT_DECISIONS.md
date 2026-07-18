@@ -1,25 +1,57 @@
-# LiveVault Durable Decisions
+# LiveVault Decisions
 
-## 2026-07-18 — GitHub and QA operating model
+## 2026-07-18 — GitHub main is authoritative
 
-**Decision:** GitHub `main` is authoritative; chats are work sessions, not project history. QA uses synthetic data and public QA previews may be reachable because they contain no real data.  
-**Reason:** Enables durable webview-first work without production exposure.  
-**Consequence:** State/build documents and Git history are maintained; merge needs explicit user approval.
+**Decision:** Treat merged `main`, not a chat transcript or local clone, as the product source of truth.
 
-## 2026-07-18 — Concert data integrity
+**Reason:** Conversations and local checkouts can be stale.
 
-**Decision:** Stable concert IDs and user-owned/unknown fields survive all provider enrichment. Ticketmaster has precedence only for confident matches; exact event matching also requires same band and date.  
-**Reason:** Avoid destructive false merges and preserve personal data.  
-**Consequence:** Different dates are not reschedules; ambiguous/different event records remain separate.
+**Consequence:** Inspect main, state, decisions and build state before work; pull local clones before local work.
 
-## 2026-07-18 — Product structure and exclusions
+## 2026-07-18 — Durable project memory lives in the repository
 
-**Decision:** Band profiles use Concerts, Alerts, News, Data (Concerts default); bottom navigation is Concerts, Dates, Bands, Alerts. Cancellation/reschedule/freshness conflict features are out of scope.  
-**Reason:** Keep navigation concise and research claims conservative.  
-**Consequence:** Do not reintroduce excluded review/badge concepts without explicit reconsideration.
+**Decision:** State, decision and generated build-state documents supplement chats.
 
-## 2026-07-18 — Security
+**Reason:** Work must survive project-chat limits.
 
-**Decision:** Owned-ticket PDFs remain private behind authenticated Worker routes; smoke checks use a separate read-only token and sanitized aggregates.  
-**Reason:** A QA check must not expose personal records.  
-**Consequence:** Read-only tokens cannot access raw JSON, tickets, or writes.
+**Consequence:** Update durable facts with the matching implementation.
+
+## 2026-07-18 — Concert identity and ownership are preserved
+
+**Decision:** Stable concert IDs, user fields and unknown fields survive enrichment.
+
+**Reason:** Research must never replace a person’s concert history.
+
+**Consequence:** Use in-place, latest-record merges and provider-owned allowlists.
+
+## 2026-07-18 — Ticketmaster precedence is conservative
+
+**Decision:** Ticketmaster may enrich a record only on confident same-band/same-date evidence.
+
+**Reason:** Different dates are not evidence of a reschedule.
+
+**Consequence:** Ambiguous/different records remain separate; cancellation/reschedule monitoring is out of scope.
+
+## 2026-07-18 — Band profiles use four tabs
+
+**Decision:** Band profiles use Concerts, Alerts, News and Data, with Concerts default.
+
+**Reason:** It groups existing information without changing ownership.
+
+**Consequence:** Exact `bandId` filtering and keyboard tab navigation are required.
+
+## 2026-07-18 — Synthetic QA and sanitized smoke
+
+**Decision:** QA uses fictional data; production smoke is read-only and aggregate-only.
+
+**Reason:** Browser review must never expose personal records or use providers.
+
+**Consequence:** QA may be publicly reachable only with synthetic data; `READ_ONLY_TOKEN` is limited to `/qa-smoke`.
+
+## 2026-07-18 — Explicit release authorization
+
+**Decision:** A merge requires the explicit phrase `Merge it`.
+
+**Reason:** A branch, PR, cache bump or passing tests is not deployment approval.
+
+**Consequence:** Version/cache bump together once per build; focused pre-merge corrections stay on that version.

@@ -1,11 +1,7 @@
 # Webview-first development
 
-1. Discuss and approve scope in ChatGPT.
-2. ChatGPT reads current GitHub state and creates a branch.
-3. It implements, tests, commits and opens/updates a PR.
-4. PR QA and the synthetic Cloudflare Pages preview run.
-5. ChatGPT reviews checks/artifacts and corrects issues.
-6. You inspect the preview and say **merge it** when satisfied.
-7. ChatGPT verifies final SHA/checks and merges; GitHub can delete the branch.
+For normal work, start a ChatGPT Project chat with the requested outcome and scope. ChatGPT can inspect GitHub, create a branch, edit, test, commit, push and open a PR after scope approval. A push writes the branch to GitHub; it is not a merge or deployment. The PR is reviewed with synthetic QA artifacts, then the user explicitly says `Merge it` when ready.
 
-ChatGPT can handle normal repository work, PR text and QA evidence. You still confirm real-device installation, file-picker/PDF opening, permissions and phone-specific Chrome behaviour. Codex Desktop remains useful for local experiments; pull first before using it. A fresh Project chat remains safe because the state/decision documents and Git history hold the context; tell ChatGPT to read them when a chat reaches its limit.
+GitHub Desktop is normally unnecessary for webview-first work. Pull it only before starting later work in a local Codex checkout, or when terminal authentication requires its **Push origin** action. Cloudflare Pages QA previews show the generated app with fictional data, never personal concert data. Review screenshots, reports and manual preview behaviour before merging.
+
+Chat sessions can end without losing continuity: code, PRs, `AGENTS.md`, `LIVEVAULT_STATE.md`, decisions and build state are the durable record. A new chat should read those files, inspect main and recent PRs, then continue. Device checks remain useful for PWA installation, real file picking/PDF opening, phone permissions/storage and actual mobile Chrome behaviour.

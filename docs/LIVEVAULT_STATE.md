@@ -2,47 +2,53 @@
 
 ## Repository and current build
 
-`mstpln/concert-tracker-mobile`; `main` is authoritative. Current app/cache version is v68. Production is a static GitHub Pages PWA. Browser data uses an authenticated Cloudflare Worker with private R2 JSON and ticket-PDF objects. The latest significant merged build is Ticketmaster source precedence: confident Ticketmaster data enriches a matching concert in place.
+LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by an authenticated Cloudflare Worker and private R2. The current production data files are `bands.json`, `concerts.json`, `news.json`, and `apiUsage.json`; ticket PDF bytes are separate authenticated R2 objects. `APP_VERSION` and the service-worker cache literal are both v68 on this unreleased feature branch. This branch is not merged or deployed.
 
 ## Product purpose and navigation
 
-LiveVault is a single-user PWA for followed bands, future and attended concerts, alerts/news, and user-owned concert details. Bottom navigation is **Concerts**, **Dates**, **Bands**, **Alerts**; corresponding headers include MYCONCERTS, CONCERTDATES, MYBANDS, and ALERTS.
+This is a single-user concert tracker for followed bands, upcoming shows, attended-history, alerts/news, releases, venues, statistics and user-owned concert preparation. Bottom navigation is **Concerts**, **Dates**, **Bands**, and **Alerts**, with MYCONCERTS, CONCERTDATES, MYBANDS and ALERTS headers. Settings, Statistics, band profiles and venue details are secondary screens; back returns to the originating screen.
 
-## Screens and interaction model
+## Major screens
 
-My Concerts shows future/attended cards, stats, preparation and show-day actions. Concert Dates supports concert and venue views. My Bands lists followed artists and opens profiles. Alerts contains alerts/news. Settings contains research usage, data/identity coverage and app settings. Back returns from details to the originating screen.
+My Concerts shows summary cards, upcoming/attended shows and preparation. Concert Dates provides concert and venue browsing. My Bands lists followed artists. Alerts has alerts/news subtabs. Settings contains usage, identity coverage and app options. Statistics summarises concert history. Band profiles retain a permanent header and use Concerts, Alerts, News and Data tabs; Concerts is default. Tabs filter by stable `bandId`, support ArrowLeft/ArrowRight/Home/End, and restore focus after rerender.
 
-Band profiles have a permanent header and **Concerts · Alerts · News · Data** tabs; Concerts is default. Alerts/News filter by stable `bandId`; Data shows provider identity state and retry timing. Tabs support ArrowLeft/ArrowRight/Home/End keyboard navigation.
+## Concert preparation and show day
 
-## Concert preparation and data ownership
+Upcoming attending concerts support a readiness checklist, manual or generated playlist state, weather, predicted setlist, owned tickets and directions. Past cards can show actual setlists, Spotify song links, ratings, notes, photos and live-performance insights. One saved ticket uses the established yellow ticket CTA with an outlined directions CTA beside it; two PDFs use equal Ticket 1/Ticket 2 controls and full-width outlined directions beneath. Show-day behaviour remains limited to implemented countdown/ticket actions.
 
-Upcoming attending concerts support readiness checklist, manual/generated playlists, weather, predicted setlists, owned tickets and directions. Past concerts can contain actual setlists, Spotify links and live-performance insights. Tickets can be one link/PDF or multiple PDFs; PDF bytes remain private. User-owned fields include attendance, tickets, playlists, checklist, notes, ratings, photos and manual links. Provider/research enrichments are additive and must preserve unknown future fields.
+## Data model and ownership
+
+Bands contain stable IDs, artist identity and follow state. Concerts contain stable IDs, date/venue/source observations and additive preparation/research data. Alerts/news use stable band IDs. User-owned fields include attendance, manual concerts, ticket price/quantity, ticket PDFs/links, playlists, checklist, ratings, notes, photos, favourites, mute state and review decisions. Provider-owned fields are confined to their owned allowlists. Research-owned fields include predictions, observations and insights. Browser-local state includes settings, caches and OAuth state. R2 stores JSON and private ticket bytes; PDF metadata lives with the concert record.
 
 ## Identity and research
 
-MusicBrainz MBID underpins artist identity; Ticketmaster attraction and Spotify artist IDs are nested provider identities. Confirmed/manual-confirmed identities are reused; unresolved states retain candidates/retry metadata and Settings reports coverage/duplicates without raw editing. Research uses Ticketmaster, supplemental Tavily/Groq, MusicBrainz, Spotify and setlist.fm through usage caps/pacing, with coordinated production writes.
+MusicBrainz MBID is the artist backbone. Ticketmaster attraction and Spotify artist identifiers are nested under the MusicBrainz identity. `confirmed`, `manual_confirmed` and `auto_confirmed` are trusted; `needs_review`, `no_match`, `error` and manual rejection retain retry/candidate metadata. Settings reports coverage, duplicates and review candidates without raw identity editing.
 
-Ticketmaster may enrich a Tavily/Groq concert only in place, using its provider allowlist. Exact event matching requires same event ID, band ID and date. Fallback requires same band/date/city, compatible country and sufficiently similar venue. Different dates/bands/event IDs and ambiguous records remain separate; cancellation/reschedule handling is excluded.
+Research uses Ticketmaster, Tavily, Groq, MusicBrainz, Spotify, setlist.fm and geocoding through UsageTracker pacing/caps. Structured release monitoring, predicted setlists and performance insights reuse trusted identity where applicable. Coordinated writes reread latest records. Manual workflows are narrowly scoped and share data-write concurrency.
 
-## Data-safety and design invariants
+## Ticketmaster precedence and data safety
 
-Stable IDs never change. Latest records are reread before coordinated writes. User-owned and unknown fields survive. Ticket PDFs are private. QA uses synthetic data only and never calls providers or production workflows. Focused UI work preserves unrelated design, keeps mobile-first conventions and existing renderers/navigation.
+Ticketmaster can enrich an existing Tavily/Groq concert in place only for confident matches. Exact event-ID matches also require the same band and date. Fallback matching requires compatible band/date/city/country and venue evidence. Different dates, IDs or ambiguous records remain separate; the app does not interpret cancellation or rescheduling. Stable IDs are never recreated, user fields and unknown future fields survive, and latest remote records are reread before merging.
+
+## Design rules
+
+The app is mobile-first. Focused changes preserve unrelated blue/black/grey/white design, text-only top banner, current headers, bottom navigation, ticket CTA hierarchy and profile tabs. Reuse existing renderers/icons; maintain accessible controls, narrow-width readability and no horizontal overflow. Number visual concepts clearly.
 
 ## Completed features
 
-Readiness checklist; playlist builder; weather; predicted setlists; live-performance rarity insights; owned tickets; provider identity backbone; identity-aware research; band-profile tabs; contextual links; Ticketmaster precedence; bottom-navigation update.
+Readiness checklist; playlist builder; concert weather; predicted and actual setlist support; live-performance insights; owned tickets; MusicBrainz/provider identity backbone and backfill; identity-aware research; band-profile tabs; contextual links; Ticketmaster source precedence; updated bottom navigation.
 
 ## Active backlog
 
-1. Concert Map View — visual map of concert locations.
-2. Expanded Backup, Restore and Export — user-controlled portable data tools.
-3. Structured Album-Release Tracking — deeper release monitoring.
-4. Native Push Notifications — device notification delivery.
+1. Concert Map View
+2. Expanded Backup, Restore and Export
+3. Structured Album-Release Tracking
+4. Native Push Notifications
 
-## Excluded directions
+## Intentionally excluded
 
-Cancellation/reschedule monitoring, recurring freshness verification, cancellation/freshness badges, broad source-conflict UI, standalone disagreement queue, and social/multi-user features are excluded until explicitly reconsidered.
+Cancellation/reschedule monitoring, repeated concert freshness verification, freshness/cancellation badges, broad source-conflict UI, a conflict-review queue, social features and multi-user features are excluded until explicitly reconsidered.
 
-## Development and QA
+## Development workflow and QA
 
-Approve scope, branch, test, update state/build state, create PR and inspect synthetic QA preview/artifacts. Only explicit `merge it` authorizes merge. QA has unit/static checks, desktop/mobile Chromium, full PWA workflow, synthetic preview and sanitized read-only production smoke. Physical install, picker/PDF behaviour, permissions, phone Chrome and Worker deployment still require device/manual confirmation.
+Approve scope, use a branch, implement and test, maintain state/build state, push and review a PR, then merge only after explicit `Merge it`. Pull local GitHub Desktop only before later local Codex work. This branch has early synthetic QA/build-state/smoke foundations; QA runtime, expanded fixtures, browser coverage and final hardening remain for Stages 2–4. Physical installation, file pickers, PDF opening, phone storage/permissions, real Chrome behaviour, Cloudflare setup/deployment and production secrets require manual/device confirmation.
