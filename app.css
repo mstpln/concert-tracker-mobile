@@ -448,6 +448,22 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .identity-retry-label { margin-top: 18px; }
 .identity-candidate { border-top: 1px solid var(--border); margin-top: 9px; padding-top: 9px; }
 .identity-candidate p { color: var(--text-muted); font-size: 12px; margin: 3px 0; overflow-wrap: anywhere; }
+.provider-identity-coverage { padding-bottom: 8px; }
+.provider-identity-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 3px 10px; align-items: baseline; padding: 9px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
+.provider-identity-row:first-of-type { border-top: none; }
+.provider-identity-row strong { font-size: 13px; }
+.provider-identity-row small { grid-column: 1 / -1; color: var(--text-muted); font-size: 11.5px; }
+.provider-identity-issue-count { color: var(--text-muted); white-space: nowrap; }
+.provider-identity-summary { margin-bottom: 6px; }
+.provider-identity-details { padding: 0; overflow: hidden; }
+.provider-identity-details summary { display: flex; justify-content: space-between; gap: 12px; padding: 12px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.provider-identity-details summary::-webkit-details-marker { display: none; }
+.provider-identity-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; border-top: 1px solid var(--border); padding: 10px 12px; color: var(--text-muted); font-size: 12px; }
+.provider-identity-issues { border-top: 1px solid var(--border); }
+.provider-identity-issue { display: grid; gap: 2px; padding: 9px 12px; border-top: 1px solid var(--border); font-size: 12px; }
+.provider-identity-issue:first-child { border-top: none; }
+.provider-identity-issue span { color: var(--text-muted); overflow-wrap: anywhere; }
+@media (max-width: 390px) { .provider-identity-row { grid-template-columns: minmax(0, 1fr) auto auto; } .provider-identity-row .provider-identity-issue-count { grid-column: 2 / -1; } }
 .identity-candidate .btn-secondary, .identity-review-card > .btn-secondary { margin-top: 5px; }
 
 .usage-bar-row { margin-bottom: 8px; }

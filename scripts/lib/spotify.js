@@ -147,7 +147,7 @@ function spotifyIdentity(mbidMetadata, candidate, now = new Date().toISOString()
   return {
     id: candidate.id, url: candidate.url || candidate.external_urls?.spotify || `https://open.spotify.com/artist/${candidate.id}`,
     artistName: candidate.name || null, status: 'confirmed', matchMethod: method, confidence: 100,
-    matchedAt: now, lastAttemptedAt: now, lastSuccessfulAt: now, nextEligibleCheckAt: null, errorCategory: null,
+    matchedAt: now, lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: now, nextEligibleCheckAt: null, errorCategory: null,
   };
 }
 
@@ -155,13 +155,14 @@ function retryableIdentity(prior, status, now, errorCategory = null) {
   const retryDays = config.STRUCTURED_RESEARCH.unresolvedIdentityRetryDays;
   const retryHours = config.STRUCTURED_RESEARCH.temporaryErrorRetryHours;
   return { ...prior, id: null, url: null, artistName: null, status, matchMethod: null, confidence: null,
-    matchedAt: null, lastAttemptedAt: now, lastSuccessfulAt: prior?.lastSuccessfulAt || null,
+    matchedAt: null, lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: prior?.lastSuccessfulAt || null,
     nextEligibleCheckAt: new Date(Date.parse(now) + (status === 'error' ? retryHours * 3600000 : retryDays * 86400000)).toISOString(), errorCategory };
 }
 
 async function resolveArtistIdentity({ band, metadata, usage, fetchImpl = fetch, getToken = getAppToken, now = new Date().toISOString() }) {
   const prior = band.musicbrainz?.spotify;
-  if (prior?.status === 'confirmed' && prior.id) return { kind: 'reused', identity: prior };
+  if (['confirmed', 'manual_confirmed'].includes(prior?.status) && prior.id) return { kind: 'reused', identity: prior };
+  if (prior?.status === 'manual_rejected') return { kind: 'skipped', identity: prior };
   if (prior?.nextEligibleCheckAt && Date.parse(prior.nextEligibleCheckAt) > Date.parse(now)) return { kind: 'skipped', identity: prior };
   const direct = metadata?.spotify;
   if (direct?.id) return { kind: 'confirmed', identity: spotifyIdentity(metadata, { id: direct.id, url: direct.url, name: metadata.artistName }, now, 'musicbrainz_url_relation') };
@@ -179,7 +180,7 @@ async function resolveArtistIdentity({ band, metadata, usage, fetchImpl = fetch,
     const acceptedNames = new Set([band.name, metadata?.artistName, ...(metadata?.aliases || [])].map(norm).filter(Boolean));
     const candidates = (data?.artists?.items || []).filter((artist) => acceptedNames.has(norm(artist.name)) && !IMPERSONATOR.test(`${artist.name} ${artist.description || ''}`));
     if (candidates.length === 1) return { kind: 'confirmed', identity: spotifyIdentity(metadata, candidates[0], now) };
-    return { kind: candidates.length ? 'unresolved' : 'no_match', identity: retryableIdentity(prior, candidates.length ? 'unresolved' : 'no_match', now) };
+    return { kind: candidates.length ? 'needs_review' : 'no_match', identity: retryableIdentity(prior, candidates.length ? 'needs_review' : 'no_match', now) };
   } catch (error) {
     return { kind: 'error', identity: retryableIdentity(prior, 'error', now, error.message || 'request_failed') };
   }
