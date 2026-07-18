@@ -41,11 +41,20 @@
     return new Set(duplicateAssignments(bands, provider).flatMap((conflict) => conflict.bandIds));
   }
 
+  function retryInfo(record, now = new Date()) {
+    const value = record?.nextEligibleCheckAt || null;
+    const timestamp = value ? Date.parse(value) : NaN;
+    return {
+      nextEligibleCheckAt: Number.isFinite(timestamp) ? value : null,
+      retryScheduled: Number.isFinite(timestamp) && timestamp > now.getTime(),
+      retryEligibleNow: !Number.isFinite(timestamp) || timestamp <= now.getTime(),
+    };
+  }
+
   function statusForRecord(record, provider, isDuplicate, now = new Date()) {
     if (isDuplicate) return 'duplicate_conflict';
     if (isConfirmed(record, provider)) return 'confirmed';
     if (!record?.status) return 'unchecked';
-    if (record.nextEligibleCheckAt && Date.parse(record.nextEligibleCheckAt) > now.getTime()) return 'retry_pending';
     if (record.status === 'unresolved') return 'needs_review';
     return record.status;
   }
@@ -53,13 +62,16 @@
   function providerCoverage(bands, provider, now = new Date()) {
     const rows = bands || [];
     const duplicateIds = duplicateBandIds(rows, provider);
-    const counts = { confirmed: 0, needs_review: 0, no_match: 0, retry_pending: 0, error: 0, unchecked: 0, duplicate_conflict: 0 };
+    const counts = { confirmed: 0, needs_review: 0, no_match: 0, error: 0, unavailable: 0, manual_rejected: 0, unchecked: 0, duplicate_conflict: 0 };
     const issues = [];
+    let retryScheduledCount = 0;
     for (const band of rows) {
       const record = providerRecord(band, provider);
       const status = statusForRecord(record, provider, duplicateIds.has(band.id), now);
+      const retry = retryInfo(record, now);
       if (!(status in counts)) counts[status] = 0;
       counts[status] += 1;
+      if (retry.retryScheduled) retryScheduledCount += 1;
       if (status !== 'confirmed') issues.push({
         bandId: band.id,
         bandName: band.name || band.id,
@@ -67,7 +79,10 @@
         status,
         candidateName: record?.artistName || record?.attractionName || null,
         errorCategory: record?.errorCategory || null,
-        nextEligibleCheckAt: record?.nextEligibleCheckAt || null,
+        nextEligibleCheckAt: retry.nextEligibleCheckAt,
+        retryScheduled: retry.retryScheduled,
+        retryEligibleNow: retry.retryEligibleNow,
+        reviewCandidates: Array.isArray(record?.reviewCandidates) ? record.reviewCandidates.slice(0, 5) : [],
       });
     }
     return {
@@ -78,6 +93,7 @@
       coveragePercent: rows.length ? Math.round((counts.confirmed / rows.length) * 100) : 0,
       issueCount: rows.length - counts.confirmed,
       counts,
+      retryScheduledCount,
       duplicateConflicts: duplicateAssignments(rows, provider),
       issues,
     };
@@ -95,10 +111,10 @@
     if (!trustedMusicbrainzBand(band)) return false;
     const record = providerRecord(band, provider);
     if (isConfirmed(record, provider) || record?.status === 'manual_rejected') return false;
-    return !record?.nextEligibleCheckAt || Date.parse(record.nextEligibleCheckAt) <= now.getTime();
+    return retryInfo(record, now).retryEligibleNow;
   }
 
-  const api = { PROVIDERS, TRUSTED_MUSICBRAINZ_STATUSES, TRUSTED_PROVIDER_STATUSES, providerRecord, providerId, isConfirmed, trustedMusicbrainzBand, providerBackfillEligible, duplicateAssignments, duplicateBandIds, statusForRecord, providerCoverage, identityCoverage };
+  const api = { PROVIDERS, TRUSTED_MUSICBRAINZ_STATUSES, TRUSTED_PROVIDER_STATUSES, providerRecord, providerId, isConfirmed, trustedMusicbrainzBand, providerBackfillEligible, duplicateAssignments, duplicateBandIds, retryInfo, statusForRecord, providerCoverage, identityCoverage };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.ProviderIdentityState = api;
 })(typeof window !== 'undefined' ? window : globalThis);

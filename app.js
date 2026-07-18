@@ -2494,14 +2494,29 @@ function showSettingsScreen({ fromHistory = false } = {}) {
 }
 
 function providerIdentityStatusLabel(status) {
-  return ({ confirmed: 'Confirmed', needs_review: 'Needs review', no_match: 'No match', retry_pending: 'Retry pending', error: 'Error', unchecked: 'Not yet checked', duplicate_conflict: 'Duplicate conflict', manual_rejected: 'Manually rejected', unavailable: 'Unavailable' })[status] || 'Not yet checked';
+  return ({ confirmed: 'Confirmed', needs_review: 'Needs review', no_match: 'No match', error: 'Temporary error', unchecked: 'Not yet checked', duplicate_conflict: 'Duplicate conflict', manual_rejected: 'Manually rejected', unavailable: 'Unavailable' })[status] || 'Not yet checked';
 }
 
 function providerIdentityReason(issue) {
-  if (issue.status === 'retry_pending' && issue.nextEligibleCheckAt) return `Retry after ${formatSettingsDate(issue.nextEligibleCheckAt)}`;
   if (issue.errorCategory) return issue.errorCategory.replace(/_/g, ' ');
   if (issue.candidateName) return issue.candidateName;
-  return providerIdentityStatusLabel(issue.status);
+  return '';
+}
+
+function providerIdentityCandidateUrl(url, provider) {
+  try {
+    const parsed = new URL(url);
+    const allowed = provider === 'spotify' ? /(^|\.)spotify\.com$/i : /(^|\.)ticketmaster\.(com|[a-z]{2,})$/i;
+    return parsed.protocol === 'https:' && allowed.test(parsed.hostname) ? parsed.href : null;
+  } catch (_) { return null; }
+}
+
+function providerIdentityCandidatesHtml(issue) {
+  return (issue.reviewCandidates || []).map((candidate) => {
+    const name = candidate.artistName || candidate.attractionName || 'Unnamed candidate';
+    const href = providerIdentityCandidateUrl(candidate.url, issue.provider);
+    return `<div class="provider-identity-candidate"><span>${escapeHtml(name)}</span><code>${escapeHtml(String(candidate.id || ''))}</code>${href ? `<a href="${escapeAttr(href)}" target="_blank" rel="noopener">Open provider</a>` : ''}</div>`;
+  }).join('');
 }
 
 function providerIdentityCoverageHtml() {
@@ -2514,8 +2529,8 @@ function providerIdentityCoverageHtml() {
   ];
   const providerDetail = (label, data) => {
     const counts = data.counts;
-    const issueRows = data.issues.map((issue) => `<div class="provider-identity-issue"><strong>${escapeHtml(issue.bandName)}</strong><span>${escapeHtml(providerIdentityStatusLabel(issue.status))}${issue.candidateName || issue.errorCategory || issue.nextEligibleCheckAt ? ` · ${escapeHtml(providerIdentityReason(issue))}` : ''}</span></div>`).join('');
-    return `<details class="settings-card provider-identity-details"><summary><span>${escapeHtml(label)} details</span><span>${data.issueCount ? `${data.issueCount} issue${data.issueCount === 1 ? '' : 's'}` : 'All clear'}</span></summary><div class="provider-identity-breakdown"><span>${counts.confirmed} confirmed</span><span>${counts.needs_review || 0} need review</span><span>${counts.no_match || 0} no match</span><span>${counts.retry_pending || 0} retry pending</span><span>${counts.error || 0} error</span><span>${counts.unchecked || 0} not yet checked</span><span>${counts.duplicate_conflict || 0} duplicate conflict</span></div>${issueRows ? `<div class="provider-identity-issues">${issueRows}</div>` : ''}</details>`;
+    const issueRows = data.issues.map((issue) => `<div class="provider-identity-issue"><strong>${escapeHtml(issue.bandName)}</strong><span>${escapeHtml(providerIdentityStatusLabel(issue.status))}${providerIdentityReason(issue) ? ` · ${escapeHtml(providerIdentityReason(issue))}` : ''}</span>${issue.retryScheduled ? `<small>Retry after ${escapeHtml(formatSettingsDate(issue.nextEligibleCheckAt))}</small>` : ''}${providerIdentityCandidatesHtml(issue)}</div>`).join('');
+    return `<details class="settings-card provider-identity-details"><summary><span>${escapeHtml(label)} details</span><span>${data.issueCount ? `${data.issueCount} issue${data.issueCount === 1 ? '' : 's'}` : 'All clear'}</span></summary><div class="provider-identity-breakdown"><span>${counts.confirmed} confirmed</span><span>${counts.needs_review || 0} need review</span><span>${counts.no_match || 0} no match</span><span>${counts.error || 0} temporary error</span><span>${counts.unavailable || 0} unavailable</span><span>${counts.manual_rejected || 0} manually rejected</span><span>${counts.unchecked || 0} not yet checked</span><span>${counts.duplicate_conflict || 0} duplicate conflict</span><span>${data.retryScheduledCount || 0} retries scheduled</span></div>${issueRows ? `<div class="provider-identity-issues">${issueRows}</div>` : ''}</details>`;
   };
   const providerDates = (provider) => bands.map((band) => band.musicbrainz?.[provider]).filter(Boolean);
   const latest = (provider, key) => providerDates(provider).map((value) => value[key]).filter(Boolean).sort().at(-1) || null;

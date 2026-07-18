@@ -210,12 +210,18 @@ async function fetchUpcomingEvents(band, usage) {
 const identityNorm = (value) => String(value || '').toLocaleLowerCase().normalize('NFKD').replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/^the\s+/u, '').replace(/\s+/g, ' ');
 function attractionIdentity(candidate, now = new Date().toISOString()) {
   return { id: candidate.id, attractionName: candidate.name || null, url: candidate.url || null, status: 'confirmed', matchMethod: 'exact_music_attraction', confidence: 100,
-    matchedAt: now, lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: now, nextEligibleCheckAt: null, errorCategory: null };
+    matchedAt: now, lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: now, nextEligibleCheckAt: null, errorCategory: null, reviewCandidates: [] };
 }
-function unresolvedAttraction(prior, status, now, errorCategory = null) {
+function attractionReviewCandidates(candidates) {
+  const seen = new Set();
+  return (candidates || []).filter((candidate) => candidate?.id && !seen.has(candidate.id) && seen.add(candidate.id)).slice(0, 5)
+    .map((candidate) => ({ id: candidate.id, attractionName: candidate.name || null, url: candidate.url || null }));
+}
+function unresolvedAttraction(prior, status, now, errorCategory = null, candidates = []) {
   const retryMs = (status === 'error' ? config.STRUCTURED_RESEARCH.temporaryErrorRetryHours * 3600000 : config.STRUCTURED_RESEARCH.unresolvedIdentityRetryDays * 86400000);
   return { ...prior, id: null, attractionName: null, url: null, status, matchMethod: null, confidence: null, matchedAt: null,
-    lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: prior?.lastSuccessfulAt || null, nextEligibleCheckAt: new Date(Date.parse(now) + retryMs).toISOString(), errorCategory };
+    lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: prior?.lastSuccessfulAt || null, nextEligibleCheckAt: new Date(Date.parse(now) + retryMs).toISOString(), errorCategory,
+    reviewCandidates: status === 'needs_review' ? attractionReviewCandidates(candidates) : [] };
 }
 async function resolveAttractionIdentity({ band, metadata, usage, fetchImpl = fetch, now = new Date().toISOString() }) {
   const prior = band.musicbrainz?.ticketmaster;
@@ -237,8 +243,8 @@ async function resolveAttractionIdentity({ band, metadata, usage, fetchImpl = fe
       return music && names.has(identityNorm(candidate.name)) && !TRIBUTE_ACT_PATTERN.test(`${candidate.name} ${candidate.url || ''}`);
     });
     if (matches.length === 1) return { kind: 'confirmed', identity: attractionIdentity(matches[0], now) };
-    return { kind: matches.length ? 'needs_review' : 'no_match', identity: unresolvedAttraction(prior, matches.length ? 'needs_review' : 'no_match', now) };
+    return { kind: matches.length ? 'needs_review' : 'no_match', identity: unresolvedAttraction(prior, matches.length ? 'needs_review' : 'no_match', now, null, matches) };
   } catch (error) { return { kind: 'error', identity: unresolvedAttraction(prior, 'error', now, error.message || 'request_failed') }; }
 }
 
-module.exports = { fetchUpcomingEvents, resolveAttractionIdentity, namesMatch };
+module.exports = { fetchUpcomingEvents, resolveAttractionIdentity, namesMatch, attractionReviewCandidates, unresolvedAttraction };
