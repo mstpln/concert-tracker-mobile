@@ -852,6 +852,28 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 }
 .countdown-directions-btn:hover { background: #232427; }
 .countdown-directions-btn svg { flex-shrink: 0; }
+/* Show-day ticket actions stay entirely in the left half of the ticket card.
+   One saved PDF or link uses the compact stacked layout; two to four PDFs use
+   named buttons, capped so the countdown remains practical on mobile. */
+.countdown-ticket-actions { display: grid; gap: 8px; margin-top: 10px; }
+.countdown-ticket-actions-single { grid-template-columns: minmax(0, 1fr); }
+.countdown-ticket-actions-multiple { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.countdown-ticket-action {
+  min-width: 0; min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 10px; border-radius: 8px; font-size: 11.5px; font-weight: 600; line-height: 1; text-decoration: none; white-space: nowrap;
+}
+.countdown-ticket-action svg { flex-shrink: 0; }
+.countdown-ticket-open { border: 1px solid #f2c230; background: #f2c230; color: #1c1400; }
+.countdown-ticket-directions { border: 1px solid #343537; background: #1c1d1f; color: #fff; }
+.countdown-ticket-actions-multiple .countdown-ticket-directions { grid-column: 1 / -1; }
+.countdown-ticket-open:hover { background: #e7b627; }
+.countdown-ticket-directions:hover { background: #232427; }
+.countdown-ticket-action:disabled { opacity: .65; }
+.countdown-ticket-error { grid-column: 1 / -1; margin: 0; color: #ffaaa5; font-size: 11.5px; line-height: 1.35; }
+@media (max-width: 420px) {
+  .countdown-ticket-actions-multiple { grid-template-columns: minmax(0, 1fr); }
+  .countdown-ticket-actions-multiple .countdown-ticket-directions { grid-column: auto; }
+}
 .stats-teaser-footer {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
   background: #4d8dff; border: none; border-top: 1px solid #2c2d30;
