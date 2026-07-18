@@ -35,6 +35,19 @@ Cloudflare's dashboard — no coding required. Should take about 15-20 minutes.
    `https://concert-tracker-api.<your-subdomain>.workers.dev`. You'll need
    this too.
 
+### Private concert-ticket PDFs
+
+The Worker code also supports private ticket PDFs at authenticated
+`/ticket-files/{concertId}/{ticketId}.pdf` routes. They use the same
+`API_TOKEN` as the JSON data, accept only real `application/pdf` files up to
+10 MB, and remain private in the R2 bucket — the app never creates a public
+R2 URL. R2 plus `concerts.json` metadata are the permanent ticket record;
+the browser's IndexedDB copy is only an optional offline cache and does not
+block upload, opening, or removal when it is unavailable. If you update
+`worker.js` in the repository, copy the updated code into the Cloudflare Worker
+editor and click **Deploy** after the GitHub change
+is merged. Pushing or merging the GitHub change does not deploy the Worker.
+
 ## Part 3 — Hosting the app itself (GitHub Pages)
 
 1. Create a free GitHub account at https://github.com if you don't have one.
