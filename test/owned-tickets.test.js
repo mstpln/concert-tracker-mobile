@@ -165,12 +165,42 @@ test('a failed PDF load closes its temporary destination and does not report a c
   assert.equal(closed, true);
 });
 
-test('upcoming Ticket row is first while past ticket-cost presentation remains intact', () => {
+test('upcoming Ticket row is first, its cost form is scoped for aligned fields, and past ticket cost stays intact', () => {
   assert.match(app, /const rows = \[\n    \['ticket', 'ticket', 'Ticket', ticketPrepSummaryHtml\(c\), ticketPreparationPanelHtml\(c\)\],\n    \['playlist'/);
   assert.match(app, /\$\{isPast \? ticketCostBlockHtml\(c\) : ''\}/);
   assert.match(app, /\$\{isPast \? mcLinksRowHtml\(c, true\) : concertPrepGroupHtml\(c\)\}/);
   assert.match(app, /<strong>My ticket<\/strong><p>Upload a ticket PDF for offline access, or save a link to your mobile ticket\.<\/p>/);
+  assert.match(app, /<div class="ticket-cost-form\$\{inPreparation \? ' ticket-cost-form-preparation' : ''\}">/);
+  assert.match(app, /\$\{inPreparation \? 'Price per ticket' : 'Price'\}/);
+  assert.match(app, /<span class="review-cost-label">Tickets<\/span>/);
+  assert.doesNotMatch(app, /Number of tickets/);
   assert.doesNotMatch(app, /Optional label|Rename ticket|ticket-name-input/);
+});
+
+test('PDF Open actions are ordered in the shared action row while PDF item rows retain only Remove', () => {
+  const itemStart = app.indexOf('function ownedTicketItemHtml');
+  const itemEnd = app.indexOf('function ticketOwnedPanelHtml', itemStart);
+  const itemHtml = app.slice(itemStart, itemEnd);
+  assert.match(itemHtml, /item\.type === 'pdf'\n    \? `<button[^`]*ticket-remove-btn/);
+  assert.doesNotMatch(itemHtml, /item\.type === 'pdf'[\s\S]*ticket-pdf-open-btn/);
+  assert.match(itemHtml, /ticket-link-edit-btn[\s\S]*ticket-remove-btn/);
+  const panelStart = app.indexOf('function ticketOwnedPanelHtml');
+  const panelEnd = app.indexOf('function ticketPreparationPanelHtml', panelStart);
+  const panelHtml = app.slice(panelStart, panelEnd);
+  assert.match(panelHtml, /const pdfOpenButtons = items\.filter\(\(item\) => item\.type === 'pdf'\)\.map/);
+  assert.match(panelHtml, /class="btn-primary ticket-pdf-open-btn owned-ticket-open-btn"[^`]*>Open \$\{escapeHtml\(item\.displayName\)\}<\/button>/);
+  assert.ok(panelHtml.indexOf('${pdfOpenButtons}') < panelHtml.indexOf('ticket-pdf-select-btn'));
+  assert.ok(panelHtml.indexOf('ticket-pdf-select-btn') < panelHtml.indexOf('ticket-link-add-btn'));
+  assert.match(app, /OwnedTickets\.openPdf\(remote, btn\.dataset\.concertId, btn\.dataset\.ticketId\)/);
+});
+
+test('Ticket panel CSS scopes the aligned grid and keeps primary open buttons distinct from per-item removal', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'app.css'), 'utf8');
+  assert.match(css, /\.ticket-cost-form-preparation \.review-cost-row \{\n  display: grid; grid-template-columns: minmax\(0, 1fr\) 112px;/);
+  assert.match(css, /\.ticket-cost-form-preparation \.review-cost-label \{ white-space: nowrap; \}/);
+  assert.match(css, /@media \(max-width: 360px\) \{\n  \.ticket-cost-form-preparation \.review-cost-row \{ grid-template-columns: minmax\(0, 1fr\) 104px;/);
+  assert.match(css, /\.owned-ticket-open-btn \{ white-space: nowrap; \}/);
+  assert.match(css, /\.owned-ticket-item-actions \.btn-secondary \{ margin: 0; padding: 6px 8px; font-size: 11\.5px; \}/);
 });
 
 test('ticket metadata changes merge latest concert records and leave public ticketUrl and cost data independent', () => {
@@ -221,12 +251,12 @@ test('Worker rejects oversized ticket PDFs and keeps private paths separate from
   assert.equal(unknown.status, 404);
 });
 
-test('release shell includes owned-ticket code and keeps the v56 cache pair synchronized', () => {
+test('release shell includes owned-ticket code and keeps the v57 cache pair synchronized', () => {
   const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const sw = fs.readFileSync(path.join(__dirname, '..', 'service-worker.js'), 'utf8');
   const version = fs.readFileSync(path.join(__dirname, '..', 'version.js'), 'utf8');
   assert.match(index, /<script src="ownedTickets\.js"><\/script>/);
   assert.match(sw, /'\.\/ownedTickets\.js'/);
-  assert.match(sw, /CACHE_NAME_LITERAL = 'v56'/);
-  assert.match(version, /APP_VERSION = 'v56'/);
+  assert.match(sw, /CACHE_NAME_LITERAL = 'v57'/);
+  assert.match(version, /APP_VERSION = 'v57'/);
 });
