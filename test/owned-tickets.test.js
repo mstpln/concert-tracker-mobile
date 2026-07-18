@@ -8,6 +8,7 @@ const vm = require('node:vm');
 const Tickets = require('../ownedTickets.js');
 
 const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+const css = fs.readFileSync(path.join(__dirname, '..', 'app.css'), 'utf8');
 
 function ticket(id, type, extra = {}) { return { id, type, addedAt: extra.addedAt || `2026-07-18T00:00:0${id.slice(-1)}.000Z`, ...(type === 'pdf' ? { sizeBytes: 100 } : { url: 'https://tickets.example/item' }), ...extra }; }
 
@@ -251,12 +252,29 @@ test('Worker rejects oversized ticket PDFs and keeps private paths separate from
   assert.equal(unknown.status, 404);
 });
 
-test('release shell includes owned-ticket code and keeps the v61 cache pair synchronized', () => {
+test('release shell includes owned-ticket code and keeps the v62 cache pair synchronized', () => {
   const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const sw = fs.readFileSync(path.join(__dirname, '..', 'service-worker.js'), 'utf8');
   const version = fs.readFileSync(path.join(__dirname, '..', 'version.js'), 'utf8');
   assert.match(index, /<script src="ownedTickets\.js"><\/script>/);
   assert.match(sw, /'\.\/ownedTickets\.js'/);
-  assert.match(sw, /CACHE_NAME_LITERAL = 'v61'/);
-  assert.match(version, /APP_VERSION = 'v61'/);
+  assert.match(sw, /CACHE_NAME_LITERAL = 'v62'/);
+  assert.match(version, /APP_VERSION = 'v62'/);
+});
+
+test('show-day ticket actions open a saved link directly and expose at most four PDF tickets', () => {
+  const showDayStart = app.indexOf('function showDayTicketActionsHtml');
+  const showDayEnd = app.indexOf('function countdownCardHtml', showDayStart);
+  const showDay = app.slice(showDayStart, showDayEnd);
+
+  assert.match(showDay, /OwnedTickets\.orderedTickets\(concert\.ownedTickets\)/);
+  assert.match(showDay, /filter\(\(item\) => item\.type === 'pdf'\)\.slice\(0, 4\)/);
+  assert.match(showDay, /tickets\.find\(\(item\) => item\.type === 'url'\)/);
+  assert.match(showDay, /href="\$\{escapeAttr\(link\.url\)\}"/);
+  assert.match(showDay, /countdown-pdf-open-btn/);
+  assert.match(showDay, /Ticket \$\{index \+ 1\}/);
+  assert.match(app, /\$\{showDayTicketActionsHtml\(nextConcert\)\}/);
+  assert.match(app, /OwnedTickets\.openPdf\(remote, btn\.dataset\.concertId, btn\.dataset\.ticketId\)/);
+  assert.match(css, /\.countdown-ticket-actions-multiple \{ grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\); \}/);
+  assert.match(css, /@media \(max-width: 420px\) \{[\s\S]*?\.countdown-ticket-actions-multiple \{ grid-template-columns: minmax\(0, 1fr\); \}/);
 });
