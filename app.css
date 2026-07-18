@@ -728,6 +728,8 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .concert-prep-row > span:nth-child(2) { flex: 1; min-width: 0; }
 .concert-prep-row strong, .concert-prep-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .concert-prep-row small { color: var(--text-muted); margin-top: 2px; font-size: 12px; }
+.concert-prep-row .ticket-summary-primary { color: var(--accent); }
+.concert-prep-row .ticket-summary-primary.is-empty, .concert-prep-row .ticket-summary-secondary { color: var(--text-muted); }
 .concert-prep-row .details-chevron { transition: transform .15s ease; }
 .concert-prep-row.is-open .details-chevron { transform: rotate(180deg); }
 .concert-prep-panel { padding: 10px 0 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--text-secondary); }
@@ -752,6 +754,21 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .prep-checklist label { display: block; padding: 7px 0; color: var(--text); }
 .prep-checklist input { margin-right: 8px; accent-color: var(--accent); }
 .prep-save-error { color: var(--danger); }
+.owned-ticket-section { min-width: 0; }
+.ticket-operation-status { min-height: 16px; color: var(--text-secondary); }
+.owned-ticket-add-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.owned-ticket-add-actions small { flex-basis: 100%; color: var(--text-muted); font-size: 11px; }
+.owned-ticket-link-form { margin-top: 8px; }
+.owned-ticket-link-form label { display: block; color: var(--text-muted); font-size: 11px; }
+.owned-ticket-link-form input { width: 100%; margin: 4px 0 8px; }
+.owned-ticket-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); }
+.owned-ticket-item strong, .owned-ticket-item small { display: block; }
+.owned-ticket-item strong { color: var(--text); font-size: 12.5px; }
+.owned-ticket-item small { color: var(--text-muted); font-size: 11.5px; margin-top: 2px; }
+.owned-ticket-item-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; flex-shrink: 0; }
+.owned-ticket-item-actions .btn-secondary { margin: 0; padding: 6px 8px; font-size: 11.5px; }
+.ticket-cost-save-error { margin: 8px 0 0; }
+.ticket-cost-heading { display: block; color: var(--text); margin-bottom: 8px; }
 
 /* Total band count (top of My Bands, above the filter rows) — a lightweight
    inline stat rather than a card, since it's only one number; echoes the
