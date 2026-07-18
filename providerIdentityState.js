@@ -51,6 +51,19 @@
     };
   }
 
+  function providerRetrySummary(records, now = new Date()) {
+    const futureRetries = [];
+    let eligibleNow = false;
+    for (const { provider, record } of records || []) {
+      if (!record || isConfirmed(record, provider) || ['confirmed', 'manual_confirmed', 'manual_rejected'].includes(record.status)) continue;
+      const retry = retryInfo(record, now);
+      if (retry.retryScheduled) futureRetries.push(retry.nextEligibleCheckAt);
+      else if (retry.nextEligibleCheckAt && ['unresolved', 'needs_review', 'no_match', 'error', 'unavailable'].includes(record.status)) eligibleNow = true;
+    }
+    futureRetries.sort();
+    return { nextRetryAt: futureRetries[0] || null, eligibleNow };
+  }
+
   function statusForRecord(record, provider, isDuplicate, now = new Date()) {
     if (isDuplicate) return 'duplicate_conflict';
     if (isConfirmed(record, provider)) return 'confirmed';
@@ -114,7 +127,7 @@
     return retryInfo(record, now).retryEligibleNow;
   }
 
-  const api = { PROVIDERS, TRUSTED_MUSICBRAINZ_STATUSES, TRUSTED_PROVIDER_STATUSES, providerRecord, providerId, isConfirmed, trustedMusicbrainzBand, providerBackfillEligible, duplicateAssignments, duplicateBandIds, retryInfo, statusForRecord, providerCoverage, identityCoverage };
+  const api = { PROVIDERS, TRUSTED_MUSICBRAINZ_STATUSES, TRUSTED_PROVIDER_STATUSES, providerRecord, providerId, isConfirmed, trustedMusicbrainzBand, providerBackfillEligible, duplicateAssignments, duplicateBandIds, retryInfo, providerRetrySummary, statusForRecord, providerCoverage, identityCoverage };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.ProviderIdentityState = api;
 })(typeof window !== 'undefined' ? window : globalThis);
