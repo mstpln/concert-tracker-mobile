@@ -13,10 +13,9 @@ test('My Concerts feature cards gain inset outlines without changing their box d
   assert.match(css, /\.countdown-ring-wrap::before, \.countdown-ring-wrap::after \{[\s\S]*box-shadow: 0 0 0 1px var\(--border\);/);
 });
 
-test('countdown text is 20px and upcoming cards use the preparation-group divider only', () => {
+test('countdown text is 20px and both card types use their focused preparation-group detail path', () => {
   const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
   assert.match(css, /#countdown-ring-day \{ fill: #ffffff; font-size: 20px; font-weight: 700; font-family: inherit; \}/);
   assert.match(css, /\.concert-prep-group \{ margin-top: 8px; border-top: 1px solid var\(--border\); \}/);
-  assert.ok(app.includes("      ${isPast ? '<div class=\"row-divider\"></div>' : ''}\n      ${isPast ? mcLinksRowHtml(c, true) : concertPrepGroupHtml(c)}"));
-  assert.ok(app.includes("      ${isPast ? `<div class=\"row-divider\"></div>${concertReviewHtml(c)}` : ''}"));
+  assert.ok(app.includes('      ${isPast ? pastConcertDetailsGroupHtml(c) : concertPrepGroupHtml(c)}'));
 });
