@@ -48,6 +48,14 @@ block upload, opening, or removal when it is unavailable. If you update
 editor and click **Deploy** after the GitHub change
 is merged. Pushing or merging the GitHub change does not deploy the Worker.
 
+### Read-only production smoke check
+
+The Worker also supports a separate `READ_ONLY_TOKEN` secret. It authorizes only `GET /qa-smoke`, which returns sanitized file-health/count information; it cannot read raw JSON, access ticket PDFs, or write. After manually deploying updated `worker.js`, add the same value to GitHub repository **Settings → Secrets and variables → Actions** as `CF_WORKER_READ_TOKEN`. Do not replace `API_TOKEN`.
+
+## Current project documentation
+
+For current behaviour, workflow and QA guidance, see [docs/LIVEVAULT_STATE.md](docs/LIVEVAULT_STATE.md), [webview-first development](docs/WEBVIEW_FIRST_DEVELOPMENT.md), and [Cloudflare Pages QA setup](docs/CLOUDFLARE_PAGES_QA_SETUP.md). The state document is canonical.
+
 ## Part 3 — Hosting the app itself (GitHub Pages)
 
 1. Create a free GitHub account at https://github.com if you don't have one.

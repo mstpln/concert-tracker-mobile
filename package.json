@@ -1,0 +1,22 @@
+{
+  "name": "live-vault",
+  "private": true,
+  "version": "0.0.0",
+  "engines": { "node": ">=20 <21" },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "test:unit": "node --test test/*.test.js",
+    "qa:syntax": "node scripts/qa-syntax.js",
+    "qa:version": "node scripts/qa-version.js",
+    "qa:workflows": "node scripts/qa-workflows.js",
+    "qa:safety": "node scripts/qa-safety.js",
+    "state:generate": "node scripts/generate-build-state.js",
+    "state:check": "node scripts/generate-build-state.js --check",
+    "build:qa": "node scripts/build-qa.js",
+    "serve:qa": "node scripts/serve-qa.js",
+    "qa:e2e": "playwright test",
+    "qa:pwa": "playwright test playwright/pwa.spec.js",
+    "qa:all": "npm run test && npm run qa:syntax && npm run qa:version && npm run qa:workflows && npm run qa:safety && npm run state:check && npm run build:qa && npm run qa:e2e"
+  },
+  "devDependencies": { "@playwright/test": "^1.55.0", "yaml": "^2.8.1" }
+}

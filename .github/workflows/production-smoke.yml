@@ -1,0 +1,16 @@
+name: Production smoke
+on: { workflow_dispatch: {} }
+permissions: { contents: read }
+concurrency: { group: live-vault-production-smoke, cancel-in-progress: false }
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: node scripts/production-smoke.js
+        env:
+          CF_WORKER_ENDPOINT: "${{ secrets.CF_WORKER_ENDPOINT }}"
+          CF_WORKER_READ_TOKEN: "${{ secrets.CF_WORKER_READ_TOKEN }}"
+          PRODUCTION_APP_URL: "${{ vars.PRODUCTION_APP_URL }}"
