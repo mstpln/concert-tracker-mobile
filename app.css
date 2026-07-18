@@ -677,7 +677,7 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .concert-prep-row.is-open .details-chevron { transform: rotate(180deg); }
 .concert-prep-panel { padding: 10px 0 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--text-secondary); }
 .concert-prep-panel p { margin: 4px 0 8px; }
-.past-concert-details-group { background: var(--surface-muted); }
+.past-concert-details-group { background: transparent; }
 .past-concert-details-group .concert-prep-row { padding-left: 0; padding-right: 0; }
 .past-concert-details-group .concert-prep-panel { padding-left: 0; padding-right: 0; }
 .past-concert-details-group .past-detail-row.is-unavailable { color: var(--text-muted); }
@@ -689,8 +689,18 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .past-rating-saved .review-notes { margin: 6px 0 0; overflow-wrap: anywhere; white-space: normal; }
 .past-review-empty { color: var(--text-muted); }
 .past-link-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.past-link-panel .btn-secondary { margin-right: 0; }
+.past-link-panel .btn-primary, .past-link-panel .btn-secondary { margin-right: 0; }
 .past-setlist-panel .setlist-song-list { margin-top: 0; }
+.predicted-setlist-context { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin-bottom: 8px; }
+.predicted-setlist-context p { margin: 0; }
+.predicted-setlist-song-list { margin-top: 8px; margin-bottom: 0; }
+.predicted-setlist-song { padding: 5px 0; }
+.predicted-setlist-song-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; min-width: 0; }
+.predicted-setlist-song-title { color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.predicted-setlist-song-main .setlist-insight-tags { margin-left: 0; }
+.predicted-setlist-song-meta { display: block; margin-top: 2px; color: var(--text-muted); font-size: 11.5px; line-height: 1.35; }
+.predicted-setlist-footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+.predicted-setlist-footer p { margin: 2px 0; color: var(--text-muted); font-size: 11px; }
 .prep-section + .prep-section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
 .prep-section .btn-secondary, .prep-section button { margin-right: 7px; }
 .playlist-review input[type="text"], .playlist-review input:not([type]) { width:100%; margin:5px 0 8px; }
