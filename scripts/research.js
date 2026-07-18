@@ -345,7 +345,7 @@ function isTicketmasterConcert(concert) {
 
 function findTicketmasterConcertMatch(records, candidate, { existingTicketmasterOnly = false } = {}) {
   const candidateEventId = ticketmasterEventId(candidate);
-  const exactProviderMatches = candidateEventId ? records.filter((concert) => ticketmasterEventId(concert) === candidateEventId) : [];
+  const exactProviderMatches = candidateEventId ? records.filter((concert) => ticketmasterEventId(concert) === candidateEventId && concert.bandId === candidate.bandId && concert.date === candidate.date) : [];
   if (exactProviderMatches.length === 1) return { kind: 'match', concert: exactProviderMatches[0], reason: 'provider_event_id' };
   if (exactProviderMatches.length > 1) return { kind: 'ambiguous' };
 
