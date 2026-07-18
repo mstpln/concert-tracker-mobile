@@ -33,11 +33,11 @@ test('synthetic app starts, navigates, persists checklist, and resets', async ({
   const prepGroup = page.locator('.concert-prep-group[data-concert-id="qa-show-day"]');
   await prepGroup.locator('[data-prep-toggle="checklist"]').click();
 
-  const unchecked = prepGroup.locator('input[data-prep-key]:not(:checked)').first();
-  await expect(unchecked).toBeVisible();
-  const prepKey = await unchecked.getAttribute('data-prep-key');
+  const prepKey = await prepGroup.locator('input[data-prep-key]:not(:checked)').first().getAttribute('data-prep-key');
   expect(prepKey).toBeTruthy();
-  await unchecked.check();
+  const targetCheckbox = prepGroup.locator(`input[data-prep-key="${prepKey}"]`);
+  await expect(targetCheckbox).toBeVisible();
+  await targetCheckbox.click();
 
   await expect.poll(async () => page.evaluate(({ concertId, key }) => {
     const stored = JSON.parse(localStorage.getItem('livevault-qa:data') || '{}');
