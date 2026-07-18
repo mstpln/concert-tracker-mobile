@@ -567,3 +567,25 @@ When uncertain, choose the option that is:
 7. less likely to consume API quota unnecessarily
 
 Stop and ask before taking an irreversible, production-affecting, security-sensitive, or scope-expanding action.
+
+---
+
+## 25. Canonical project continuity
+
+GitHub `main` is authoritative. Chat conversations are work sessions, not the project record. Before work, also read `docs/LIVEVAULT_STATE.md`, relevant `docs/LIVEVAULT_DECISIONS.md`, and the generated `docs/LIVEVAULT_BUILD_STATE.json`.
+
+- Update the state document when durable product, architecture, design, workflow, backlog, or limitation facts change.
+- Record durable choices in the decision log, not implementation trivia.
+- Regenerate build state whenever its source facts change; it must contain no timestamp, username, local path, commit SHA, or secret.
+- User-visible or architectural work bumps `APP_VERSION` and `CACHE_NAME_LITERAL` together exactly once. Focused corrections on the same unreleased branch do not bump again.
+
+## 26. Webview-first development and QA
+
+The standard flow is scope approval → branch → local/synthetic checks → commit → push → PR → QA review → explicit merge authorization.
+
+- Create commits and PRs only within approved scope. Never merge, enable auto-merge, or deploy unless the user explicitly says `Merge it`.
+- QA previews contain fictional synthetic data only. They may never read or write production browser storage, Worker/R2 data, tickets, secrets, or provider APIs.
+- QA service-worker caches use an isolated namespace and never contain Worker/R2 data.
+- Automated browser tests must fail on unexpected external requests and unexpected page/console errors, while retaining successful screenshots as artifacts.
+- The read-only production smoke endpoint is sanitized. `READ_ONLY_TOKEN` authorizes only `GET /qa-smoke`; it must not expose raw records, ticket files, identifiers, names, URLs, tokens, R2 keys, or stacks.
+- Manual smoke may fetch only public shell files plus the sanitized endpoint, and must print only safe aggregate results.

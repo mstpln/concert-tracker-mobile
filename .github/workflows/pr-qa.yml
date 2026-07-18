@@ -1,0 +1,114 @@
+name: PR QA
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-qa-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  unit-and-safety:
+    name: Unit and safety checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Unit tests
+        run: npm run test
+      - name: JavaScript syntax
+        run: npm run qa:syntax
+      - name: Version and cache synchronization
+        run: npm run qa:version
+      - name: Workflow YAML validation
+        run: npm run qa:workflows
+      - name: Synthetic fixture validation
+        run: npm run qa:fixtures
+      - name: Deterministic build state
+        run: npm run state:check
+      - name: Build synthetic QA preview
+        run: npm run build:qa
+        env:
+          QA_BUILD_ID: pr-${{ github.event.pull_request.number }}-${{ github.sha }}
+      - name: QA safety checks
+        run: npm run qa:safety
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha }}
+      - name: Whitespace validation
+        run: git diff --check ${{ github.event.pull_request.base.sha }}...HEAD
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-and-safety-artifacts
+          path: |
+            dist/qa-build.json
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  desktop:
+    name: Desktop Chromium QA
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies and Chromium
+        run: npm ci && npx playwright install --with-deps chromium
+      - name: Build synthetic QA preview
+        run: npm run build:qa
+        env:
+          QA_BUILD_ID: pr-${{ github.event.pull_request.number }}-${{ github.sha }}-desktop
+      - name: Run desktop Chromium QA
+        run: npx playwright test --project=desktop-chromium
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-chromium-artifacts
+          path: |
+            playwright-report/
+            test-results/
+            dist/qa-build.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  mobile:
+    name: Mobile Chromium QA
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies and Chromium
+        run: npm ci && npx playwright install --with-deps chromium
+      - name: Build synthetic QA preview
+        run: npm run build:qa
+        env:
+          QA_BUILD_ID: pr-${{ github.event.pull_request.number }}-${{ github.sha }}-mobile
+      - name: Run mobile Chromium QA
+        run: npx playwright test --project=mobile-chromium
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-chromium-artifacts
+          path: |
+            playwright-report/
+            test-results/
+            dist/qa-build.json
+          if-no-files-found: ignore
+          retention-days: 14
