@@ -39,7 +39,8 @@ test('past rows reuse the shared preparation structure with accessible up/down c
   assert.doesNotMatch(detailRow, /chevronRight/);
   assert.match(app, /group\.querySelectorAll\('\.concert-prep-panel'\).*item\.hidden = true/);
   assert.match(app, /prepOpenPanels\.set\(group\.dataset\.concertId, btn\.dataset\.prepToggle\)/);
-  assert.match(css, /\.past-concert-details-group \{ background: var\(--surface-muted\); \}/);
+  assert.match(css, /\.past-concert-details-group \{ background: transparent; \}/);
+  assert.doesNotMatch(css, /\.past-concert-details-group \{[^}]*var\(--surface-muted\)/);
   assert.match(css, /\.past-rating-details \.concert-prep-row \{ border-bottom: 0; \}/);
 });
 
@@ -53,8 +54,11 @@ test('past Ticket uses the exact current summary and panel while preserving tick
 
 test('past manual Playlist and Photos panels have their own add, edit, remove and save path without prediction content', () => {
   const panel = functionSource('pastManualLinkPanelHtml', 'pastDetailRowHtml');
+  assert.match(panel, /<a class="btn-primary"[^>]*>Open \$\{cfg\.label\.toLowerCase\(\)\}<\/a>/);
   assert.match(panel, /past-link-edit-btn/);
   assert.match(panel, /past-link-remove-btn/);
+  assert.match(panel, /class="btn-secondary past-link-edit-btn"/);
+  assert.match(panel, /class="btn-secondary past-link-remove-btn"/);
   assert.match(panel, /cfg\.formFn\(c\)/);
   assert.doesNotMatch(panel, /Predicted mix|Create from Predicted Setlist|confidence/i);
   const handler = functionSource('wireMyConcertsHandlers', 'pastConcertYearOptionsHtml');
@@ -63,6 +67,7 @@ test('past manual Playlist and Photos panels have their own add, edit, remove an
   assert.match(handler, /patchLatestConcert\(concertId, \(latest\) => \(\{ \.\.\.latest, \[cfg\.field\]: null \}\)\)/);
   assert.match(handler, /patchLatestConcert\(concertId, \(latest\) => \(\{ \.\.\.latest, playlistUrl: playlistUrl \|\| null \}\)\)/);
   assert.match(handler, /patchLatestConcert\(concertId, \(latest\) => \(\{ \.\.\.latest, photoUrl: photoUrl \|\| null \}\)\)/);
+  assert.match(css, /\.past-link-panel \.btn-primary, \.past-link-panel \.btn-secondary \{ margin-right: 0; \}/);
 });
 
 test('past Setlist shows the real song count and preserves actual-setlist content, while a missing setlist is noninteractive', () => {
