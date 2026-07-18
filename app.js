@@ -413,7 +413,11 @@ function wireHeader() {
 // every reference would touch a lot of code for a purely cosmetic change) —
 // only the visible icon/label become Alerts. The tab now covers both the
 // original News feed and the new Alerts sub-view (see renderNewsScreen).
-const TAB_ICONS = { concerts: 'music', myconcerts: 'ticketStub', mybands: 'users', news: 'bell' };
+// Bottom navigation and page headers deliberately use separate icon maps:
+// Dates needs a calendar at the bottom, while the CONCERTDATES header keeps
+// its established music icon.
+const TAB_NAV_ICONS = { concerts: 'calendarPlain', myconcerts: 'ticketStub', mybands: 'users', news: 'bell' };
+const TAB_HEADER_ICONS = { concerts: 'music', myconcerts: 'ticketStub', mybands: 'users', news: 'bell' };
 const TAB_TITLES = { concerts: 'ConcertDates', myconcerts: 'My Concerts', mybands: 'My Bands', news: 'Alerts' };
 const TAB_SCREENS = { concerts: 'screen-concerts', myconcerts: 'screen-myconcerts', mybands: 'screen-mybands', news: 'screen-news' };
 // Two-tone brand header markup per root tab (first part blue, rest white),
@@ -428,7 +432,7 @@ const TAB_BRAND_HTML = {
 
 function wireTabs() {
   el('tabbar').querySelectorAll('.tabitem').forEach((btn) => {
-    btn.querySelector('.tab-icon').innerHTML = icon(TAB_ICONS[btn.dataset.tab] || 'music');
+    btn.querySelector('.tab-icon').innerHTML = icon(TAB_NAV_ICONS[btn.dataset.tab] || 'music');
     btn.addEventListener('click', () => {
       // Tapping the bottom-nav "Alerts" tab should always land on the Alerts
       // sub-view, not whichever of News/Alerts was last viewed — found via
@@ -457,7 +461,7 @@ function goToTab(tab, { fromHistory = false } = {}) {
   el('tabbar').classList.remove('hidden');
   el('tabbar').querySelectorAll('.tabitem').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   setHeaderChrome({ showBack: false, title: TAB_TITLES[tab] || 'ConcertDates', isBrand: true, brandHtml: TAB_BRAND_HTML[tab] });
-  el('header-icon').innerHTML = icon(TAB_ICONS[tab] || 'music');
+  el('header-icon').innerHTML = icon(TAB_HEADER_ICONS[tab] || 'music');
   el('europe-toggle-btn').classList.toggle('hidden', tab !== 'concerts');
   el('nearby-toggle-btn').classList.toggle('hidden', tab !== 'concerts');
   showScreen(TAB_SCREENS[tab] || 'screen-concerts');
