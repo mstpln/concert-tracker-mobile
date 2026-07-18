@@ -76,6 +76,7 @@ function freshState() {
     rotation: { nextBandIndex: 0 },
     lastRun: null,
     lastMusicbrainzRun: null,
+    lastProviderIdentityRun: null,
   };
 }
 
@@ -135,6 +136,7 @@ class UsageTracker {
     if (!state.setlistfm) state.setlistfm = freshState().setlistfm;
     if (!state.spotify) state.spotify = freshState().spotify;
     ensureMusicbrainzState(state);
+    if (!('lastProviderIdentityRun' in state)) state.lastProviderIdentityRun = null;
     ensureStructuredResearchState(state);
     if (!state.rotation || typeof state.rotation.nextBandIndex !== 'number') {
       state.rotation = { nextBandIndex: 0 };
@@ -388,6 +390,18 @@ class UsageTracker {
       mode: 'musicbrainz-only',
       musicbrainzCalls: this.state.musicbrainz.callsThisRun,
       identityUpdates: 0,
+      notes: this._notes,
+      ...summary,
+    };
+  }
+
+  finishProviderIdentityRun(summary) {
+    this.state.lastProviderIdentityRun = {
+      startedAt: this._startedAt || new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      mode: 'provider-identity-only',
+      ticketmasterCalls: this.state.ticketmaster.callsThisRun,
+      spotifyCalls: this.state.spotify.callsThisRun,
       notes: this._notes,
       ...summary,
     };

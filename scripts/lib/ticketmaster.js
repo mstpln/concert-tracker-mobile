@@ -119,7 +119,7 @@ async function fetchUpcomingEvents(band, usage) {
 
   const url = new URL(`${config.TICKETMASTER.baseUrl}/events.json`);
   url.searchParams.set('apikey', apiKey());
-  const attractionId = config.STRUCTURED_RESEARCH.enabled && band.musicbrainz?.ticketmaster?.status === 'confirmed' ? band.musicbrainz.ticketmaster.id : null;
+  const attractionId = config.STRUCTURED_RESEARCH.enabled && ['confirmed', 'manual_confirmed'].includes(band.musicbrainz?.ticketmaster?.status) ? band.musicbrainz.ticketmaster.id : null;
   if (attractionId) url.searchParams.set('attractionId', attractionId);
   else url.searchParams.set('keyword', band.name);
   url.searchParams.set('classificationName', 'Music');
@@ -161,10 +161,10 @@ async function fetchUpcomingEvents(band, usage) {
   const results = [];
   for (const event of events) {
     const attractions = event?._embedded?.attractions || [];
-    const matched = attractionId
-      ? attractions.some((a) => a?.id === attractionId)
-      : attractions.some((a) => namesMatch(band.name, a.name, event.name, event.url));
-    if (!matched) continue;
+    const matchingAttraction = attractionId
+      ? attractions.find((a) => a?.id === attractionId)
+      : attractions.find((a) => namesMatch(band.name, a.name, event.name, event.url));
+    if (!matchingAttraction) continue;
 
     const localDate = event?.dates?.start?.localDate;
     const tbd = event?.dates?.start?.dateTBD || event?.dates?.start?.dateTBA;
@@ -198,6 +198,10 @@ async function fetchUpcomingEvents(band, usage) {
       isNew: true,
       foundAt: new Date().toISOString(),
       venueAddress,
+      sourceProvider: 'ticketmaster',
+      providerEventId: event.id || null,
+      providerAttractionId: matchingAttraction.id || null,
+      artistMatchMethod: attractionId ? 'confirmed_attraction_id' : 'validated_name_fallback',
     });
   }
   return results;
@@ -206,16 +210,17 @@ async function fetchUpcomingEvents(band, usage) {
 const identityNorm = (value) => String(value || '').toLocaleLowerCase().normalize('NFKD').replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/^the\s+/u, '').replace(/\s+/g, ' ');
 function attractionIdentity(candidate, now = new Date().toISOString()) {
   return { id: candidate.id, attractionName: candidate.name || null, url: candidate.url || null, status: 'confirmed', matchMethod: 'exact_music_attraction', confidence: 100,
-    matchedAt: now, lastAttemptedAt: now, lastSuccessfulAt: now, nextEligibleCheckAt: null, errorCategory: null };
+    matchedAt: now, lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: now, nextEligibleCheckAt: null, errorCategory: null };
 }
 function unresolvedAttraction(prior, status, now, errorCategory = null) {
   const retryMs = (status === 'error' ? config.STRUCTURED_RESEARCH.temporaryErrorRetryHours * 3600000 : config.STRUCTURED_RESEARCH.unresolvedIdentityRetryDays * 86400000);
   return { ...prior, id: null, attractionName: null, url: null, status, matchMethod: null, confidence: null, matchedAt: null,
-    lastAttemptedAt: now, lastSuccessfulAt: prior?.lastSuccessfulAt || null, nextEligibleCheckAt: new Date(Date.parse(now) + retryMs).toISOString(), errorCategory };
+    lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: prior?.lastSuccessfulAt || null, nextEligibleCheckAt: new Date(Date.parse(now) + retryMs).toISOString(), errorCategory };
 }
 async function resolveAttractionIdentity({ band, metadata, usage, fetchImpl = fetch, now = new Date().toISOString() }) {
   const prior = band.musicbrainz?.ticketmaster;
-  if (prior?.status === 'confirmed' && prior.id) return { kind: 'reused', identity: prior };
+  if (['confirmed', 'manual_confirmed'].includes(prior?.status) && prior.id) return { kind: 'reused', identity: prior };
+  if (prior?.status === 'manual_rejected') return { kind: 'skipped', identity: prior };
   if (prior?.nextEligibleCheckAt && Date.parse(prior.nextEligibleCheckAt) > Date.parse(now)) return { kind: 'skipped', identity: prior };
   if (!usage.canCallTicketmaster()) return { kind: 'skipped', identity: prior || null };
   try {
@@ -232,7 +237,7 @@ async function resolveAttractionIdentity({ band, metadata, usage, fetchImpl = fe
       return music && names.has(identityNorm(candidate.name)) && !TRIBUTE_ACT_PATTERN.test(`${candidate.name} ${candidate.url || ''}`);
     });
     if (matches.length === 1) return { kind: 'confirmed', identity: attractionIdentity(matches[0], now) };
-    return { kind: matches.length ? 'unresolved' : 'no_match', identity: unresolvedAttraction(prior, matches.length ? 'unresolved' : 'no_match', now) };
+    return { kind: matches.length ? 'needs_review' : 'no_match', identity: unresolvedAttraction(prior, matches.length ? 'needs_review' : 'no_match', now) };
   } catch (error) { return { kind: 'error', identity: unresolvedAttraction(prior, 'error', now, error.message || 'request_failed') }; }
 }
 

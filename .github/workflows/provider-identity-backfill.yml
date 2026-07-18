@@ -1,0 +1,42 @@
+name: Provider artist identity backfill
+run-name: Provider artist identity backfill — @${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      BACKFILL_PROVIDER_IDENTITIES:
+        description: Confirm that this may update Ticketmaster and Spotify identities in bands.json
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-vault-data-writes
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  provider-identity-backfill:
+    if: ${{ inputs.BACKFILL_PROVIDER_IDENTITIES == true && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run provider identity backfill
+        env:
+          CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
+          CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
+          TICKETMASTER_API_KEY: ${{ secrets.TICKETMASTER_API_KEY }}
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+        run: node scripts/provider-identity-backfill.js
