@@ -758,6 +758,16 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
   box-shadow: inset 0 0 0 1px var(--border); border-radius: 10px;
   background: var(--header-bg); margin-bottom: 16px; overflow: hidden;
 }
+/* My Concerts summary cards sit 64px from the shared page-header divider and
+   from the following list heading. The top calculation accounts for the
+   shared #content 12px inset; the stats-to-countdown 16px gap remains on the
+   stats card itself. */
+.myconcerts-summary {
+  --myconcerts-summary-outer-gap: 64px;
+  margin-top: calc(var(--myconcerts-summary-outer-gap) - 12px);
+  margin-bottom: var(--myconcerts-summary-outer-gap);
+}
+.myconcerts-summary .countdown-card { margin-bottom: 0; }
 .stats-teaser-row { display: flex; justify-content: space-between; padding: 14px 16px; text-align: center; }
 .stats-teaser-item { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .stats-teaser-value { font-weight: 700; font-size: 17px; color: var(--header-text); white-space: nowrap; }
