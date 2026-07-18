@@ -118,7 +118,24 @@ test('66 conservative Ticketmaster matching accepts clear venue variants and rej
   assert.equal(findTicketmasterConcertMatch([sourceConcert({ providerEventId: 'tm-event-1' })], candidate).reason, 'provider_event_id');
 });
 
-test('67 candidate reconciliation skips same-run Tavily duplicates, retains different Ticketmaster events, and leaves ambiguity untouched', () => {
+test('67 exact Ticketmaster event IDs require the same band and date before upgrading', () => {
+  const existing = sourceConcert({ providerEventId: 'tm-event-1' }); const candidate = ticketmasterConcert();
+  const exact = findTicketmasterConcertMatch([existing], candidate);
+  assert.deepEqual({ kind: exact.kind, reason: exact.reason, id: exact.concert.id }, { kind: 'match', reason: 'provider_event_id', id: existing.id });
+  const reconciliation = reconcileConcertCandidate([existing], [], candidate);
+  assert.equal(reconciliation.action, 'upgrade'); assert.equal(upgradeExistingConcertWithTicketmaster(existing, candidate).id, existing.id);
+
+  const differentDate = ticketmasterConcert({ date: '2026-10-11' }); const beforeDate = structuredClone(existing);
+  assert.equal(findTicketmasterConcertMatch([existing], differentDate).kind, 'none');
+  assert.equal(reconcileConcertCandidate([existing], [], differentDate).action, 'add');
+  assert.deepEqual(existing, beforeDate); assert.deepEqual([existing.date, differentDate.date], ['2026-10-10', '2026-10-11']);
+
+  const differentBand = ticketmasterConcert({ bandId: 'b2', bandName: 'Other Band' });
+  assert.equal(findTicketmasterConcertMatch([existing], differentBand).kind, 'none');
+  assert.equal(reconcileConcertCandidate([existing], [], differentBand).action, 'add');
+});
+
+test('68 candidate reconciliation skips same-run Tavily duplicates, retains different Ticketmaster events, and leaves ambiguity untouched', () => {
   const tm = ticketmasterConcert(); const tavily = sourceConcert({ id: 'tavily-generated-id', venue: 'Royal Arena' });
   assert.equal(reconcileConcertCandidate([], [], tm).action, 'add');
   assert.equal(reconcileConcertCandidate([], [tm], tavily).action, 'skip_ticketmaster_duplicate');
@@ -127,7 +144,7 @@ test('67 candidate reconciliation skips same-run Tavily duplicates, retains diff
   assert.deepEqual({ action: ambiguous.action, ambiguous: ambiguous.ambiguous }, { action: 'add', ambiguous: true });
 });
 
-test('68 upgrade-only concert writes merge provider fields into the latest record without restoring deleted data', () => {
+test('69 upgrade-only concert writes merge provider fields into the latest record without restoring deleted data', () => {
   const initial = sourceConcert(); const latest = sourceConcert({ notes: 'New user note', futureFeatureData: { nested: { keepMe: true, newer: true } } });
   const output = finalConcertWritePayload([initial], [], { latestConcerts: [latest], ticketmasterUpgrades: [{ id: initial.id, candidate: ticketmasterConcert() }] });
   assert.equal(concertWriteRequired({ ticketmasterUpgrades: [{ id: initial.id }] }), true);
