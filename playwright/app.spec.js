@@ -3,7 +3,7 @@ const { test, expect } = require('@playwright/test');
 const LOCAL_ORIGIN = 'http://127.0.0.1:4173';
 const SYNTHETIC_ORIGINS = new Set([LOCAL_ORIGIN, 'https://qa.invalid', 'https://example.invalid']);
 
-test('synthetic app starts, navigates, persists checklist, and resets', async ({ page }, testInfo) => {
+async function installQaGuards(page) {
   const unexpectedRequests = [];
   const pageErrors = [];
   const consoleErrors = [];
@@ -20,6 +20,16 @@ test('synthetic app starts, navigates, persists checklist, and resets', async ({
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text());
   });
+
+  return () => {
+    expect(unexpectedRequests).toEqual([]);
+    expect(pageErrors).toEqual([]);
+    expect(consoleErrors).toEqual([]);
+  };
+}
+
+test('synthetic app starts, navigates, persists checklist, and resets', async ({ page }, testInfo) => {
+  const assertQaGuards = await installQaGuards(page);
 
   await page.goto('/');
   await expect(page.getByTestId('qa-banner')).toContainText('SYNTHETIC DATA');
@@ -60,8 +70,40 @@ test('synthetic app starts, navigates, persists checklist, and resets', async ({
   expect(storageKeys).not.toContain('spotifyUserAuthorization');
   expect(storageKeys).not.toContain('spotifyUserPkcePending');
 
-  expect(unexpectedRequests).toEqual([]);
-  expect(pageErrors).toEqual([]);
-  expect(consoleErrors).toEqual([]);
+  assertQaGuards();
+  await expect(page.locator('body')).not.toHaveCSS('overflow-x', 'scroll');
+});
+
+test('primary screens, settings, and band profile tabs remain navigable', async ({ page }) => {
+  const assertQaGuards = await installQaGuards(page);
+
+  await page.goto('/');
+  await expect(page.locator('#screen-myconcerts')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Dates' }).click();
+  await expect(page.locator('#screen-concerts')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Alerts' }).click();
+  await expect(page.locator('#screen-news')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Bands' }).click();
+  await expect(page.locator('#screen-mybands')).toBeVisible();
+  await page.getByText('QA Artist One', { exact: true }).click();
+  await expect(page.locator('#screen-profile')).toBeVisible();
+
+  for (const tabName of ['Concerts', 'Alerts', 'News', 'Data']) {
+    await page.getByRole('tab', { name: tabName, exact: true }).click();
+    await expect(page.getByRole('tab', { name: tabName, exact: true })).toHaveAttribute('aria-selected', 'true');
+  }
+
+  await page.getByTestId('back-button').click();
+  await expect(page.locator('#screen-mybands')).toBeVisible();
+
+  await page.getByTestId('settings-button').click();
+  await expect(page.locator('#screen-settings')).toBeVisible();
+  await page.getByTestId('back-button').click();
+  await expect(page.locator('#screen-mybands')).toBeVisible();
+
+  assertQaGuards();
   await expect(page.locator('body')).not.toHaveCSS('overflow-x', 'scroll');
 });
