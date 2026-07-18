@@ -116,19 +116,106 @@
     const db = await database();
     return new Promise((resolve, reject) => { const tx = db.transaction(STORE_NAME, 'readwrite'); const store = tx.objectStore(STORE_NAME); const request = store.openCursor(); request.onsuccess = () => { const cursor = request.result; if (!cursor) return; if (String(cursor.key).startsWith(`${concertId}:`)) cursor.delete(); cursor.continue(); }; tx.oncomplete = () => { db.close(); resolve(); }; tx.onerror = () => reject(tx.error); });
   }
-  async function openPdf(remote, concertId, ticketId, openWindow = global.open) {
-    const popup = typeof openWindow === 'function' ? openWindow('', '_blank', 'noopener') : null;
-    let blob = await cacheGet(concertId, ticketId);
-    if (!blob) { blob = await fetchPdf(remote, concertId, ticketId); await cachePut(concertId, ticketId, blob); }
-    const objectUrl = global.URL.createObjectURL(blob);
-    if (popup) popup.location = objectUrl;
-    else {
-      const anchor = global.document.createElement('a'); anchor.href = objectUrl; anchor.target = '_blank'; anchor.rel = 'noopener'; global.document.body.appendChild(anchor); anchor.click(); anchor.remove();
-    }
-    global.setTimeout(() => global.URL.revokeObjectURL(objectUrl), 60 * 1000);
-    return { cached: true };
+  async function isValidPdfBlob(blob) {
+    try {
+      if (!blob || !blob.size || (blob.type && blob.type !== 'application/pdf')) return false;
+      const bytes = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
+      return String.fromCharCode(...bytes) === '%PDF-';
+    } catch { return false; }
   }
-  const api = { MAX_PDF_BYTES, isSafeId, createId, safeUrl, validTicket, normalizedTickets, orderedTickets, ticketNames, statusLabel, summary, validatePdf, uploadPdf, fetchPdf, deletePdf, cachePut, cacheGet, cacheDelete, cacheDeleteConcert, openPdf };
+  // IndexedDB is deliberately optional. These helpers turn only local-cache
+  // errors into structured results; Worker and concerts.json errors are still
+  // allowed to fail the operation visibly.
+  async function readCachedPdf(concertId, ticketId, get = cacheGet) {
+    try {
+      const blob = await get(concertId, ticketId);
+      return await isValidPdfBlob(blob)
+        ? { blob, state: 'cached', cacheError: false }
+        : { blob: null, state: 'missing', cacheError: false };
+    } catch { return { blob: null, state: 'unavailable', cacheError: true }; }
+  }
+  async function writeCachedPdf(concertId, ticketId, blob, put = cachePut) {
+    try { await put(concertId, ticketId, blob); return { cached: true, state: 'cached', cacheError: false }; }
+    catch { return { cached: false, state: 'unavailable', cacheError: true }; }
+  }
+  async function removeCachedPdf(concertId, ticketId, remove = cacheDelete) {
+    try { await remove(concertId, ticketId); return { removed: true, cacheError: false }; }
+    catch { return { removed: false, cacheError: true }; }
+  }
+  async function removeCachedConcert(concertId, remove = cacheDeleteConcert) {
+    try { await remove(concertId); return { removed: true, cacheError: false }; }
+    catch { return { removed: false, cacheError: true }; }
+  }
+  // These small transaction helpers keep the permanent metadata-first rules
+  // testable without making IndexedDB a prerequisite for the remote ticket.
+  async function finalizeUploadedPdf({ saveMetadata, writeCache, cleanupRemote, cleanupCache }) {
+    try { await saveMetadata(); }
+    catch (error) {
+      await Promise.allSettled([cleanupRemote?.(), cleanupCache?.()]);
+      throw error;
+    }
+    return writeCache ? writeCache() : { cached: false, state: 'missing', cacheError: false };
+  }
+  async function removePdfAfterMetadataSave({ saveMetadata, cleanupRemote, cleanupCache }) {
+    await saveMetadata();
+    let remoteError = null;
+    try { await cleanupRemote?.(); } catch (error) { remoteError = error; }
+    const cache = cleanupCache ? await cleanupCache() : { removed: false, cacheError: false };
+    return { remoteError, cache };
+  }
+  async function removeConcertAfterMetadataSave({ saveMetadata, pdfTickets, cleanupRemote, cleanupCache }) {
+    await saveMetadata();
+    const failures = [];
+    for (const ticket of pdfTickets || []) {
+      try { await cleanupRemote?.(ticket); } catch (error) { failures.push(error); }
+    }
+    const cache = cleanupCache ? await cleanupCache() : { removed: false, cacheError: false };
+    return { failures, cache };
+  }
+  function openingPopup(openWindow) {
+    const popup = typeof openWindow === 'function' ? openWindow('about:blank', '_blank') : null;
+    if (!popup) return null;
+    try {
+      popup.opener = null;
+      popup.document?.write?.('<title>Opening ticket…</title><p>Opening ticket…</p>');
+      popup.document?.close?.();
+    } catch { /* The navigation below still works in browsers with restricted WindowProxy access. */ }
+    return popup;
+  }
+  async function openPdf(remote, concertId, ticketId, options = {}) {
+    if (typeof options === 'function') options = { openWindow: options };
+    const popup = openingPopup(options.openWindow || global.open);
+    const urlApi = options.urlApi || global.URL;
+    const schedule = options.setTimeout || global.setTimeout;
+    const navigateFallback = options.navigateFallback || ((url) => global.location.assign(url));
+    const readCache = options.readCache || readCachedPdf;
+    const writeCache = options.writeCache || writeCachedPdf;
+    const fetchImpl = options.fetchImpl || global.fetch;
+    let result = { source: null, fetchedRemotely: false, cacheState: 'missing', cacheWriteFailed: false, popupOpened: !!popup, fallbackUsed: !popup };
+    try {
+      const cached = await readCache(concertId, ticketId);
+      result.cacheState = cached.state;
+      let blob = cached.blob;
+      if (blob) result.source = 'cache';
+      else {
+        blob = await fetchPdf(remote, concertId, ticketId, fetchImpl);
+        result.source = 'remote'; result.fetchedRemotely = true;
+        const write = await writeCache(concertId, ticketId, blob);
+        result.cacheState = write.state;
+        result.cacheWriteFailed = write.cacheError;
+      }
+      const objectUrl = urlApi.createObjectURL(blob);
+      if (popup && !popup.closed) popup.location.href = objectUrl;
+      else navigateFallback(objectUrl);
+      schedule(() => urlApi.revokeObjectURL(objectUrl), 60 * 1000);
+      return result;
+    } catch (error) {
+      try { popup?.close?.(); } catch { /* Best effort: never leave a known blank destination. */ }
+      error.openResult = result;
+      throw error;
+    }
+  }
+  const api = { MAX_PDF_BYTES, isSafeId, createId, safeUrl, validTicket, normalizedTickets, orderedTickets, ticketNames, statusLabel, summary, validatePdf, uploadPdf, fetchPdf, deletePdf, cachePut, cacheGet, cacheDelete, cacheDeleteConcert, isValidPdfBlob, readCachedPdf, writeCachedPdf, removeCachedPdf, removeCachedConcert, finalizeUploadedPdf, removePdfAfterMetadataSave, removeConcertAfterMetadataSave, openPdf };
   global.OwnedTickets = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

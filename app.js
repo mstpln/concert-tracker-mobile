@@ -50,6 +50,7 @@ const prepOpenPanels = new Map(); // browser-local accordion state only; never c
 const ticketPanelViews = new Map(); // add/edit form state only; never concert data
 const ticketOperations = new Map();
 const ticketCacheStatus = new Map();
+const ticketNotices = new Map();
 let spotifyAuthMessage = '';
 // Settings starts on Research each time it is opened. These are deliberately
 // browser-local display choices, never stored with the user's concert data.
@@ -1176,8 +1177,10 @@ function ticketPrepSummaryHtml(c) {
 }
 
 function ownedTicketItemHtml(c, item) {
-  const offline = item.type === 'pdf' && ticketCacheStatus.get(`${c.id}:${item.id}`);
-  const detail = item.type === 'pdf' ? `PDF · ${offline ? 'Available offline' : 'Open once to save offline'}` : 'Internet required';
+  const cacheState = item.type === 'pdf' ? ticketCacheStatus.get(`${c.id}:${item.id}`) : null;
+  const detail = item.type === 'pdf'
+    ? `PDF · ${cacheState === 'cached' ? 'Available offline' : cacheState === 'unavailable' ? 'Offline copy unavailable on this device' : 'Open once to save offline'}`
+    : 'Internet required';
   return `<div class="owned-ticket-item"><div><strong>${escapeHtml(item.displayName)}</strong><small>${detail}</small></div><div class="owned-ticket-item-actions">${item.type === 'pdf' ? `<button type="button" class="btn-secondary ticket-pdf-open-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(item.id)}">Open</button>` : `<a class="btn-secondary" href="${escapeAttr(item.url)}" target="_blank" rel="noopener">Open</a><button type="button" class="btn-secondary ticket-link-edit-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(item.id)}">Edit</button>`}<button type="button" class="btn-secondary ticket-remove-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(item.id)}">Remove</button></div></div>`;
 }
 
@@ -1187,7 +1190,7 @@ function ticketOwnedPanelHtml(c) {
   const editing = view.startsWith('edit:') ? items.find((item) => item.id === view.slice(5) && item.type === 'url') : null;
   const showLinkForm = view === 'add-link' || !!editing;
   const busy = ticketOperations.has(c.id);
-  return `<section class="prep-section owned-ticket-section"><strong>My ticket</strong><p>Upload a ticket PDF for offline access, or save a link to your mobile ticket.</p><p class="ticket-operation-status" aria-live="polite"></p>${items.map((item) => ownedTicketItemHtml(c, item)).join('')}${showLinkForm ? `<div class="owned-ticket-link-form"><label>Ticket link<input type="url" class="owned-ticket-url-input" value="${escapeAttr(editing?.url || '')}" placeholder="https://secure-ticket-provider.example/" /></label><button type="button" class="btn-primary ticket-link-save-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(editing?.id || '')}" ${busy ? 'disabled' : ''}>Save link</button><button type="button" class="btn-secondary ticket-link-cancel-btn" data-concert-id="${escapeAttr(c.id)}">Cancel</button></div>` : `<div class="owned-ticket-add-actions"><button type="button" class="btn-secondary ticket-pdf-select-btn" data-concert-id="${escapeAttr(c.id)}" ${busy ? 'disabled' : ''}>Upload PDF</button><input type="file" class="ticket-pdf-input" data-concert-id="${escapeAttr(c.id)}" accept="application/pdf,.pdf" hidden /><button type="button" class="btn-secondary ticket-link-add-btn" data-concert-id="${escapeAttr(c.id)}" ${busy ? 'disabled' : ''}>Add ticket link</button><small>PDF only · Maximum file size: 10 MB</small></div>`}</section>`;
+  return `<section class="prep-section owned-ticket-section"><strong>My ticket</strong><p>Upload a ticket PDF for offline access, or save a link to your mobile ticket.</p><p class="ticket-operation-status" aria-live="polite">${escapeHtml(ticketNotices.get(c.id) || '')}</p>${items.map((item) => ownedTicketItemHtml(c, item)).join('')}${showLinkForm ? `<div class="owned-ticket-link-form"><label>Ticket link<input type="url" class="owned-ticket-url-input" value="${escapeAttr(editing?.url || '')}" placeholder="https://secure-ticket-provider.example/" /></label><button type="button" class="btn-primary ticket-link-save-btn" data-concert-id="${escapeAttr(c.id)}" data-ticket-id="${escapeAttr(editing?.id || '')}" ${busy ? 'disabled' : ''}>Save link</button><button type="button" class="btn-secondary ticket-link-cancel-btn" data-concert-id="${escapeAttr(c.id)}">Cancel</button></div>` : `<div class="owned-ticket-add-actions"><button type="button" class="btn-secondary ticket-pdf-select-btn" data-concert-id="${escapeAttr(c.id)}" ${busy ? 'disabled' : ''}>Upload PDF</button><input type="file" class="ticket-pdf-input" data-concert-id="${escapeAttr(c.id)}" accept="application/pdf,.pdf" hidden /><button type="button" class="btn-secondary ticket-link-add-btn" data-concert-id="${escapeAttr(c.id)}" ${busy ? 'disabled' : ''}>Add ticket link</button><small>PDF only · Maximum file size: 10 MB</small></div>`}</section>`;
 }
 
 function ticketPreparationPanelHtml(c) {
@@ -1361,23 +1364,28 @@ async function patchLatestConcert(concertId, patch) {
 async function hydrateTicketCacheStatus(concert, refresh) {
   const pdfs = ownedTicketItems(concert).filter((item) => item.type === 'pdf');
   if (!pdfs.length) return;
-  const results = await Promise.all(pdfs.map(async (item) => [item.id, await OwnedTickets.cacheGet(concert.id, item.id).then(Boolean).catch(() => false)]));
+  const results = await Promise.all(pdfs.map(async (item) => [item.id, await OwnedTickets.readCachedPdf(concert.id, item.id)]));
   let changed = false;
-  for (const [id, cached] of results) {
+  for (const [id, cache] of results) {
     const key = `${concert.id}:${id}`;
-    if (ticketCacheStatus.get(key) !== cached) { ticketCacheStatus.set(key, cached); changed = true; }
+    if (ticketCacheStatus.get(key) !== cache.state) { ticketCacheStatus.set(key, cache.state); changed = true; }
   }
   if (changed && prepOpenPanels.get(concert.id) === 'ticket') refresh();
 }
 
-async function cleanupDeletedConcertTickets(concert) {
+async function removeManuallyAddedConcert(concertId) {
+  const latest = await dlReadJsonFile(remote, 'concerts.json', []);
+  const concert = latest.find((item) => item.id === concertId);
+  if (!concert) throw new Error('This concert was removed before it could be saved.');
+  const next = latest.filter((item) => item.id !== concertId);
   const pdfs = ownedTicketItems(concert).filter((item) => item.type === 'pdf');
-  const failures = [];
-  for (const item of pdfs) {
-    try { await OwnedTickets.deletePdf(remote, concert.id, item.id); await OwnedTickets.cacheDelete(concert.id, item.id); } catch (error) { failures.push(error.message || 'Could not delete a ticket PDF.'); }
-  }
-  if (failures.length) throw new Error(failures.join(' '));
-  await OwnedTickets.cacheDeleteConcert(concert.id).catch(() => {});
+  const result = await OwnedTickets.removeConcertAfterMetadataSave({
+    saveMetadata: async () => { await dlWriteJsonFile(remote, 'concerts.json', next); concerts = next; },
+    pdfTickets: pdfs,
+    cleanupRemote: (item) => OwnedTickets.deletePdf(remote, concert.id, item.id),
+    cleanupCache: () => OwnedTickets.removeCachedConcert(concert.id),
+  });
+  return result.failures.map((error) => error.message || 'Could not delete a ticket PDF.');
 }
 
 // refresh defaults to My Concerts' own re-render; the band-profile page
@@ -1469,8 +1477,12 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
       if (!c) return;
       if (c.manuallyAdded) {
         if (!confirm('Remove this concert from your history? This deletes it completely since it was added by hand.')) return;
-        try { await cleanupDeletedConcertTickets(c); } catch (error) { alert(`This concert was not removed because its private tickets could not be cleaned up. ${error.message || ''}`); return; }
-        concerts = concerts.filter((x) => x.id !== concertId);
+        try {
+          const failures = await removeManuallyAddedConcert(concertId);
+          refresh();
+          if (failures.length) alert(`Concert removed, but ${failures.length === 1 ? 'a private ticket file could not be cleaned up' : 'some private ticket files could not be cleaned up'}.`);
+        } catch (error) { alert(error.message || 'Could not remove this concert.'); }
+        return;
       } else {
         c.attending = false;
       }
@@ -1599,16 +1611,25 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
     ticketOperations.set(concertId, true); status.textContent = 'Uploading PDF…'; const ticketId = OwnedTickets.createId();
     try {
       const metadata = await OwnedTickets.uploadPdf(remote, concertId, ticketId, file);
-      await OwnedTickets.cachePut(concertId, ticketId, file);
-      ticketCacheStatus.set(`${concertId}:${ticketId}`, true);
-      try { await patchLatestConcert(concertId, (latest) => ({ ...latest, ownedTickets: [...OwnedTickets.orderedTickets(latest.ownedTickets), metadata] })); }
-      catch (error) { await OwnedTickets.deletePdf(remote, concertId, ticketId).catch(() => {}); await OwnedTickets.cacheDelete(concertId, ticketId).catch(() => {}); throw error; }
+      const cache = await OwnedTickets.finalizeUploadedPdf({
+        saveMetadata: () => patchLatestConcert(concertId, (latest) => ({ ...latest, ownedTickets: [...OwnedTickets.orderedTickets(latest.ownedTickets), metadata] })),
+        writeCache: () => OwnedTickets.writeCachedPdf(concertId, ticketId, file),
+        cleanupRemote: () => OwnedTickets.deletePdf(remote, concertId, ticketId),
+        cleanupCache: () => OwnedTickets.removeCachedPdf(concertId, ticketId),
+      });
+      ticketCacheStatus.set(`${concertId}:${ticketId}`, cache.state);
+      ticketNotices.set(concertId, cache.cacheError ? 'PDF saved. Offline copy unavailable on this device.' : 'PDF saved.');
       prepOpenPanels.set(concertId, 'ticket'); ticketOperations.delete(concertId); refresh();
     } catch (error) { status.textContent = error.message || 'Could not upload PDF.'; input.value = ''; } finally { ticketOperations.delete(concertId); }
   }));
   container.querySelectorAll('.ticket-pdf-open-btn').forEach((btn) => btn.addEventListener('click', async (ev) => {
     ev.stopPropagation(); const status = btn.closest('.owned-ticket-section').querySelector('.ticket-operation-status');
-    try { await OwnedTickets.openPdf(remote, btn.dataset.concertId, btn.dataset.ticketId); ticketCacheStatus.set(`${btn.dataset.concertId}:${btn.dataset.ticketId}`, true); prepOpenPanels.set(btn.dataset.concertId, 'ticket'); refresh(); }
+    try {
+      const result = await OwnedTickets.openPdf(remote, btn.dataset.concertId, btn.dataset.ticketId);
+      ticketCacheStatus.set(`${btn.dataset.concertId}:${btn.dataset.ticketId}`, result.cacheState);
+      ticketNotices.set(btn.dataset.concertId, result.cacheWriteFailed ? 'Ticket opened. Offline copy unavailable on this device.' : '');
+      prepOpenPanels.set(btn.dataset.concertId, 'ticket'); refresh();
+    }
     catch (error) { status.textContent = error.message || 'Could not open PDF.'; }
   }));
   container.querySelectorAll('.ticket-remove-btn').forEach((btn) => btn.addEventListener('click', async (ev) => {
@@ -1617,8 +1638,21 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
     if (!item || !confirm(`Remove ${item.type === 'pdf' ? 'this PDF ticket' : 'this ticket link'}?`)) return;
     if (ticketOperations.has(concertId)) return; ticketOperations.set(concertId, true); btn.disabled = true; status.textContent = 'Removing ticket…';
     try {
-      if (item.type === 'pdf') { await OwnedTickets.deletePdf(remote, concertId, ticketId); await OwnedTickets.cacheDelete(concertId, ticketId); ticketCacheStatus.delete(`${concertId}:${ticketId}`); }
-      await patchLatestConcert(concertId, (latest) => ({ ...latest, ownedTickets: OwnedTickets.orderedTickets(latest.ownedTickets).filter((candidate) => candidate.id !== ticketId) }));
+      let removed;
+      const result = await OwnedTickets.removePdfAfterMetadataSave({
+        saveMetadata: () => patchLatestConcert(concertId, (latest) => {
+          const items = OwnedTickets.orderedTickets(latest.ownedTickets);
+          removed = items.find((candidate) => candidate.id === ticketId);
+          if (!removed) throw new Error('This ticket was already removed.');
+          return { ...latest, ownedTickets: items.filter((candidate) => candidate.id !== ticketId) };
+        }),
+        cleanupRemote: () => removed.type === 'pdf' ? OwnedTickets.deletePdf(remote, concertId, ticketId) : null,
+        cleanupCache: () => removed.type === 'pdf' ? OwnedTickets.removeCachedPdf(concertId, ticketId) : null,
+      });
+      if (removed.type === 'pdf') {
+        ticketCacheStatus.delete(`${concertId}:${ticketId}`);
+      }
+      ticketNotices.set(concertId, result.remoteError ? 'Ticket removed from the app, but remote file cleanup failed.' : '');
       prepOpenPanels.set(concertId, 'ticket'); ticketOperations.delete(concertId); refresh();
     } catch (error) { status.textContent = error.message || 'Could not remove ticket.'; btn.disabled = false; } finally { ticketOperations.delete(concertId); }
   }));

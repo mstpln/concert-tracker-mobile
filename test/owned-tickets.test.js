@@ -72,6 +72,99 @@ test('ticket PDF fetch/delete use only authenticated private endpoints and rejec
   await assert.rejects(Tickets.fetchPdf(remote, 'concert-1', 'ticket-1', async () => new Response('not a PDF', { headers: { 'Content-Type': 'application/pdf' } })), /not a valid PDF/);
 });
 
+test('optional cache helpers convert IndexedDB failures into safe cache states', async () => {
+  const pdf = new Blob(['%PDF-1.7 cached'], { type: 'application/pdf' });
+  assert.equal((await Tickets.readCachedPdf('concert-1', 'ticket-1', async () => pdf)).state, 'cached');
+  const unavailableRead = await Tickets.readCachedPdf('concert-1', 'ticket-1', async () => { throw new Error('blocked'); });
+  assert.deepEqual(unavailableRead, { blob: null, state: 'unavailable', cacheError: true });
+  assert.deepEqual(await Tickets.writeCachedPdf('concert-1', 'ticket-1', pdf, async () => { throw new Error('full'); }), { cached: false, state: 'unavailable', cacheError: true });
+  assert.deepEqual(await Tickets.removeCachedPdf('concert-1', 'ticket-1', async () => { throw new Error('blocked'); }), { removed: false, cacheError: true });
+  assert.deepEqual(await Tickets.removeCachedConcert('concert-1', async () => { throw new Error('blocked'); }), { removed: false, cacheError: true });
+});
+
+test('upload finalization saves permanent metadata before optional caching and cleans up on metadata failure', async () => {
+  const order = [];
+  const cache = await Tickets.finalizeUploadedPdf({
+    saveMetadata: async () => { order.push('metadata'); },
+    writeCache: async () => { order.push('cache'); return { cached: true, state: 'cached', cacheError: false }; },
+    cleanupRemote: async () => { order.push('remote-cleanup'); }, cleanupCache: async () => { order.push('cache-cleanup'); },
+  });
+  assert.deepEqual(order, ['metadata', 'cache']);
+  assert.equal(cache.cached, true);
+  const cleanup = [];
+  await assert.rejects(Tickets.finalizeUploadedPdf({
+    saveMetadata: async () => { throw new Error('JSON save failed'); }, writeCache: async () => { throw new Error('must not cache'); },
+    cleanupRemote: async () => { cleanup.push('remote'); }, cleanupCache: async () => { cleanup.push('cache'); },
+  }), /JSON save failed/);
+  assert.deepEqual(cleanup.sort(), ['cache', 'remote']);
+});
+
+test('metadata-first deletion keeps metadata removed after remote or cache cleanup failures', async () => {
+  const order = [];
+  const result = await Tickets.removePdfAfterMetadataSave({
+    saveMetadata: async () => { order.push('metadata'); },
+    cleanupRemote: async () => { order.push('remote'); throw new Error('R2 unavailable'); },
+    cleanupCache: async () => { order.push('cache'); return { removed: false, cacheError: true }; },
+  });
+  assert.deepEqual(order, ['metadata', 'remote', 'cache']);
+  assert.match(result.remoteError.message, /R2 unavailable/);
+  const targeted = [];
+  const whole = await Tickets.removeConcertAfterMetadataSave({
+    saveMetadata: async () => { targeted.push('metadata'); },
+    pdfTickets: [{ id: 'ticket-1' }, { id: 'ticket-2' }],
+    cleanupRemote: async (item) => { targeted.push(item.id); if (item.id === 'ticket-2') throw new Error('R2 failure'); },
+    cleanupCache: async () => { targeted.push('cache'); return { removed: false, cacheError: true }; },
+  });
+  assert.deepEqual(targeted, ['metadata', 'ticket-1', 'ticket-2', 'cache']);
+  assert.equal(whole.failures.length, 1);
+});
+
+test('opening a cached PDF uses one synchronous popup and no network request', async () => {
+  const pdf = new Blob(['%PDF-1.7 cached'], { type: 'application/pdf' });
+  const calls = []; let destination = '';
+  const popup = { closed: false, opener: 'app', document: { write() {}, close() {} }, location: { set href(value) { destination = value; } } };
+  const result = await Tickets.openPdf({ endpoint: 'https://worker.example', token: 'secret' }, 'concert-1', 'ticket-1', {
+    openWindow: (...args) => { calls.push(args); return popup; },
+    readCache: async () => ({ blob: pdf, state: 'cached', cacheError: false }),
+    fetchImpl: async () => { throw new Error('network must not run'); },
+    urlApi: { createObjectURL: () => 'blob:cached', revokeObjectURL() {} }, setTimeout() {},
+  });
+  assert.deepEqual(calls, [['about:blank', '_blank']]);
+  assert.equal(popup.opener, null);
+  assert.equal(destination, 'blob:cached');
+  assert.deepEqual(result, { source: 'cache', fetchedRemotely: false, cacheState: 'cached', cacheWriteFailed: false, popupOpened: true, fallbackUsed: false });
+});
+
+test('remote PDF opens when cache is unavailable, and a blocked popup uses the current-tab fallback', async () => {
+  let fallback = ''; let opens = 0;
+  const result = await Tickets.openPdf({ endpoint: 'https://worker.example', token: 'secret' }, 'concert-1', 'ticket-1', {
+    openWindow: () => { opens += 1; return null; },
+    readCache: async () => ({ blob: null, state: 'unavailable', cacheError: true }),
+    writeCache: async () => ({ cached: false, state: 'unavailable', cacheError: true }),
+    fetchImpl: async () => new Response('%PDF-1.7 remote', { headers: { 'Content-Type': 'application/pdf' } }),
+    navigateFallback: (url) => { fallback = url; },
+    urlApi: { createObjectURL: () => 'blob:remote', revokeObjectURL() {} }, setTimeout() {},
+  });
+  assert.equal(opens, 1);
+  assert.equal(fallback, 'blob:remote');
+  assert.deepEqual(result, { source: 'remote', fetchedRemotely: true, cacheState: 'unavailable', cacheWriteFailed: true, popupOpened: false, fallbackUsed: true });
+});
+
+test('a failed PDF load closes its temporary destination and does not report a cached result', async () => {
+  let closed = false;
+  const popup = { closed: false, opener: null, document: { write() {}, close() {} }, location: {}, close() { closed = true; } };
+  await assert.rejects(
+    Tickets.openPdf({ endpoint: 'https://worker.example', token: 'secret' }, 'concert-1', 'ticket-1', {
+      openWindow: () => popup,
+      readCache: async () => ({ blob: null, state: 'missing', cacheError: false }),
+      fetchImpl: async () => { throw new Error('offline'); },
+      urlApi: { createObjectURL() { throw new Error('not reached'); }, revokeObjectURL() {} }, setTimeout() {},
+    }),
+    (error) => error.message === 'Network unavailable. Try again when you are online.' && error.openResult.source === null && error.openResult.cacheState === 'missing',
+  );
+  assert.equal(closed, true);
+});
+
 test('upcoming Ticket row is first while past ticket-cost presentation remains intact', () => {
   assert.match(app, /const rows = \[\n    \['ticket', 'ticket', 'Ticket', ticketPrepSummaryHtml\(c\), ticketPreparationPanelHtml\(c\)\],\n    \['playlist'/);
   assert.match(app, /\$\{isPast \? ticketCostBlockHtml\(c\) : ''\}/);
@@ -85,9 +178,14 @@ test('ticket metadata changes merge latest concert records and leave public tick
   assert.match(app, /ownedTickets: \[\.\.\.OwnedTickets\.orderedTickets\(latest\.ownedTickets\), metadata\]/);
   assert.match(app, /ticketPrice, ticketQuantity:/);
   assert.match(app, /exportConcertRows\(rows\)/);
-  assert.match(app, /cleanupDeletedConcertTickets\(c\)/);
-  assert.match(app, /OwnedTickets\.cachePut\(concertId, ticketId, file\)/);
+  const upload = app.indexOf('const metadata = await OwnedTickets.uploadPdf');
+  const metadataSave = app.indexOf('saveMetadata: () => patchLatestConcert(concertId, (latest) => ({ ...latest, ownedTickets:', upload);
+  const cacheWrite = app.indexOf('writeCache: () => OwnedTickets.writeCachedPdf', upload);
+  assert.ok(upload >= 0 && metadataSave > upload && cacheWrite > metadataSave, 'remote upload, then metadata save, then optional cache write');
+  assert.match(app, /OwnedTickets\.finalizeUploadedPdf\(/);
   assert.match(app, /OwnedTickets\.openPdf\(remote, btn\.dataset\.concertId, btn\.dataset\.ticketId\)/);
+  assert.match(app, /OwnedTickets\.removePdfAfterMetadataSave\(/);
+  assert.match(app, /const failures = await removeManuallyAddedConcert\(concertId\);/);
 });
 
 test('Worker preserves JSON routes and secures private ticket PDF routes', async () => {
