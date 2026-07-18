@@ -790,6 +790,26 @@ function statsTeaserHtml(stats) {
     </div>`;
 }
 
+// Show-day saved-ticket actions intentionally use only the safe, normalized
+// owned-ticket metadata. A saved link opens directly; PDFs use the existing
+// private/offline opening path. The card shows at most four PDFs so it stays
+// usable on a phone without adding a picker or changing the ticket panel.
+function showDayTicketActionsHtml(concert) {
+  const tickets = OwnedTickets.orderedTickets(concert.ownedTickets);
+  const pdfs = tickets.filter((item) => item.type === 'pdf').slice(0, 4);
+  const directions = `<a class="countdown-ticket-action countdown-ticket-directions" href="${escapeAttr(buildGoogleMapsUrl(concert))}" target="_blank" rel="noopener">${icon('mapPin')}Get directions</a>`;
+
+  if (!pdfs.length) {
+    const link = tickets.find((item) => item.type === 'url');
+    if (!link) return `<a class="countdown-directions-btn" href="${escapeAttr(buildGoogleMapsUrl(concert))}" target="_blank" rel="noopener">${icon('mapPin')}Get directions</a>`;
+    return `<div class="countdown-ticket-actions countdown-ticket-actions-single"><a class="countdown-ticket-action countdown-ticket-open" href="${escapeAttr(link.url)}" target="_blank" rel="noopener">${icon('ticket')}Open tickets</a>${directions}</div>`;
+  }
+
+  const pdfActions = pdfs.map((item, index) => `<button type="button" class="countdown-ticket-action countdown-ticket-open countdown-pdf-open-btn" data-concert-id="${escapeAttr(concert.id)}" data-ticket-id="${escapeAttr(item.id)}" aria-label="Open ticket ${index + 1}">${icon('ticket')}${pdfs.length === 1 ? 'Open tickets' : `Ticket ${index + 1}`}</button>`).join('');
+  const layout = pdfs.length === 1 ? 'countdown-ticket-actions-single' : 'countdown-ticket-actions-multiple';
+  return `<div class="countdown-ticket-actions ${layout}">${pdfActions}${directions}<p class="countdown-ticket-error" aria-live="polite" hidden></p></div>`;
+}
+
 // Countdown to the next "going" show. Ticket-stub shaped, styled on
 // --header-bg (always dark, same as the app header bar, in both light and
 // dark mode) rather than --surface, so it reads as a distinct "feature"
@@ -825,7 +845,7 @@ function countdownCardHtml(nextConcert) {
           <p class="countdown-label">Show today</p>
           <p class="countdown-band">${escapeHtml(nextConcert.bandName)}</p>
           <p class="countdown-venue">${escapeHtml(venueLine)}</p>
-          <a class="countdown-directions-btn" href="${escapeAttr(buildGoogleMapsUrl(nextConcert))}" target="_blank" rel="noopener">${icon('mapPin')}Get directions</a>
+          ${showDayTicketActionsHtml(nextConcert)}
         </div>
         <div class="countdown-ring-wrap">
           <svg width="84" height="84" viewBox="0 0 84 84">
@@ -1315,6 +1335,19 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
   container.querySelectorAll('.concert-prep-group').forEach((group) => {
     group.addEventListener('click', (ev) => ev.stopPropagation());
   });
+
+  container.querySelectorAll('.countdown-pdf-open-btn').forEach((btn) => btn.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
+    if (btn.disabled) return;
+    const status = btn.closest('.countdown-ticket-actions')?.querySelector('.countdown-ticket-error');
+    btn.disabled = true;
+    try {
+      const result = await OwnedTickets.openPdf(remote, btn.dataset.concertId, btn.dataset.ticketId);
+      ticketCacheStatus.set(`${btn.dataset.concertId}:${btn.dataset.ticketId}`, result.cacheState);
+    } catch (error) {
+      if (status) { status.hidden = false; status.textContent = error.message || 'Could not open ticket.'; }
+    } finally { btn.disabled = false; }
+  }));
 
   container.querySelectorAll('[data-prep-toggle]').forEach((btn) => btn.addEventListener('click', (ev) => {
     ev.stopPropagation(); const group = btn.closest('.concert-prep-group'); const id = btn.getAttribute('aria-controls'); const panel = group?.querySelector(`#${CSS.escape(id)}`); if (!panel) return;
