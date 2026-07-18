@@ -252,14 +252,14 @@ test('Worker rejects oversized ticket PDFs and keeps private paths separate from
   assert.equal(unknown.status, 404);
 });
 
-test('release shell includes owned-ticket code and keeps the v66 cache pair synchronized', () => {
+test('release shell includes owned-ticket code and keeps the v67 cache pair synchronized', () => {
   const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const sw = fs.readFileSync(path.join(__dirname, '..', 'service-worker.js'), 'utf8');
   const version = fs.readFileSync(path.join(__dirname, '..', 'version.js'), 'utf8');
   assert.match(index, /<script src="ownedTickets\.js"><\/script>/);
   assert.match(sw, /'\.\/ownedTickets\.js'/);
-  assert.match(sw, /CACHE_NAME_LITERAL = 'v66'/);
-  assert.match(version, /APP_VERSION = 'v66'/);
+  assert.match(sw, /CACHE_NAME_LITERAL = 'v67'/);
+  assert.match(version, /APP_VERSION = 'v67'/);
 });
 
 test('show-day ticket actions open a saved link directly and expose at most four PDF tickets', () => {
