@@ -1,15 +1,39 @@
 name: Full PWA QA
-on: { workflow_dispatch: {} }
-permissions: { contents: read }
-concurrency: { group: live-vault-pwa-qa, cancel-in-progress: false }
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-vault-pwa-qa
+  cancel-in-progress: false
+
 jobs:
   pwa:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
-      - run: npm ci && npx playwright install --with-deps chromium && npm run build:qa && npm run qa:pwa
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies and Chromium
+        run: npm ci && npx playwright install --with-deps chromium
+      - name: Build synthetic QA preview
+        run: npm run build:qa
+        env:
+          QA_BUILD_ID: full-pwa-${{ github.sha }}
+      - name: Run PWA QA
+        run: npm run qa:pwa
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: full-pwa-qa-artifacts, path: 'playwright-report test-results dist/qa-build.json', retention-days: 14 }
+        with:
+          name: full-pwa-qa-artifacts
+          path: |
+            playwright-report/
+            test-results/
+            dist/qa-build.json
+          if-no-files-found: ignore
+          retention-days: 14
