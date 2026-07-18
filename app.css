@@ -463,6 +463,10 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .provider-identity-issue { display: grid; gap: 2px; padding: 9px 12px; border-top: 1px solid var(--border); font-size: 12px; }
 .provider-identity-issue:first-child { border-top: none; }
 .provider-identity-issue span { color: var(--text-muted); overflow-wrap: anywhere; }
+.provider-identity-issue small { color: var(--text-muted); overflow-wrap: anywhere; }
+.provider-identity-candidate { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; padding-top: 5px; color: var(--text-muted); overflow-wrap: anywhere; }
+.provider-identity-candidate code { font-size: 11px; user-select: all; overflow-wrap: anywhere; }
+.provider-identity-candidate a { grid-column: 1 / -1; width: fit-content; color: var(--blue); }
 @media (max-width: 390px) { .provider-identity-row { grid-template-columns: minmax(0, 1fr) auto auto; } .provider-identity-row .provider-identity-issue-count { grid-column: 2 / -1; } }
 .identity-candidate .btn-secondary, .identity-review-card > .btn-secondary { margin-top: 5px; }
 

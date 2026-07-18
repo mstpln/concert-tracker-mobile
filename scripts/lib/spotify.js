@@ -147,16 +147,23 @@ function spotifyIdentity(mbidMetadata, candidate, now = new Date().toISOString()
   return {
     id: candidate.id, url: candidate.url || candidate.external_urls?.spotify || `https://open.spotify.com/artist/${candidate.id}`,
     artistName: candidate.name || null, status: 'confirmed', matchMethod: method, confidence: 100,
-    matchedAt: now, lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: now, nextEligibleCheckAt: null, errorCategory: null,
+    matchedAt: now, lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: now, nextEligibleCheckAt: null, errorCategory: null, reviewCandidates: [],
   };
 }
 
-function retryableIdentity(prior, status, now, errorCategory = null) {
+function spotifyReviewCandidates(candidates) {
+  const seen = new Set();
+  return (candidates || []).filter((candidate) => candidate?.id && !seen.has(candidate.id) && seen.add(candidate.id)).slice(0, 5)
+    .map((candidate) => ({ id: candidate.id, artistName: candidate.name || null, url: candidate.url || candidate.external_urls?.spotify || null }));
+}
+
+function retryableIdentity(prior, status, now, errorCategory = null, candidates = []) {
   const retryDays = config.STRUCTURED_RESEARCH.unresolvedIdentityRetryDays;
   const retryHours = config.STRUCTURED_RESEARCH.temporaryErrorRetryHours;
   return { ...prior, id: null, url: null, artistName: null, status, matchMethod: null, confidence: null,
     matchedAt: null, lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: prior?.lastSuccessfulAt || null,
-    nextEligibleCheckAt: new Date(Date.parse(now) + (status === 'error' ? retryHours * 3600000 : retryDays * 86400000)).toISOString(), errorCategory };
+    nextEligibleCheckAt: new Date(Date.parse(now) + (status === 'error' ? retryHours * 3600000 : retryDays * 86400000)).toISOString(), errorCategory,
+    reviewCandidates: status === 'needs_review' ? spotifyReviewCandidates(candidates) : [] };
 }
 
 async function resolveArtistIdentity({ band, metadata, usage, fetchImpl = fetch, getToken = getAppToken, now = new Date().toISOString() }) {
@@ -180,7 +187,7 @@ async function resolveArtistIdentity({ band, metadata, usage, fetchImpl = fetch,
     const acceptedNames = new Set([band.name, metadata?.artistName, ...(metadata?.aliases || [])].map(norm).filter(Boolean));
     const candidates = (data?.artists?.items || []).filter((artist) => acceptedNames.has(norm(artist.name)) && !IMPERSONATOR.test(`${artist.name} ${artist.description || ''}`));
     if (candidates.length === 1) return { kind: 'confirmed', identity: spotifyIdentity(metadata, candidates[0], now) };
-    return { kind: candidates.length ? 'needs_review' : 'no_match', identity: retryableIdentity(prior, candidates.length ? 'needs_review' : 'no_match', now) };
+    return { kind: candidates.length ? 'needs_review' : 'no_match', identity: retryableIdentity(prior, candidates.length ? 'needs_review' : 'no_match', now, null, candidates) };
   } catch (error) {
     return { kind: 'error', identity: retryableIdentity(prior, 'error', now, error.message || 'request_failed') };
   }
@@ -246,4 +253,4 @@ async function matchPredictedSong(song, spotifyArtistId, usage, { bandName = '',
   return { kind: 'no_match' };
 }
 
-module.exports = { resolveSongLinks, searchTrack, resolveArtistIdentity, listArtistReleases, getReleaseTracks, spotifyIdentity, retryableIdentity, artistMatches, predictedTrackCandidate, predictedTrackFields, matchPredictedSong };
+module.exports = { resolveSongLinks, searchTrack, resolveArtistIdentity, listArtistReleases, getReleaseTracks, spotifyIdentity, retryableIdentity, spotifyReviewCandidates, artistMatches, predictedTrackCandidate, predictedTrackFields, matchPredictedSong };

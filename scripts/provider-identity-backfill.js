@@ -40,9 +40,8 @@ function mergeProviderIdentityUpdates(latestBands, updates) {
 function blankSummary() {
   return {
     bandsConsidered: 0,
-    skippedAlreadyConfirmed: 0,
-    ticketmaster: { confirmed: 0, noMatch: 0, needsReview: 0, errors: 0, retryPending: 0 },
-    spotify: { confirmed: 0, noMatch: 0, needsReview: 0, errors: 0, retryPending: 0 },
+    ticketmaster: { confirmed: 0, noMatch: 0, needsReview: 0, errors: 0, unavailable: 0, alreadyConfirmed: 0, manuallyProtected: 0, skippedRetryWindow: 0, retryDatesAssigned: 0 },
+    spotify: { confirmed: 0, noMatch: 0, needsReview: 0, errors: 0, unavailable: 0, alreadyConfirmed: 0, manuallyProtected: 0, skippedRetryWindow: 0, retryDatesAssigned: 0 },
     duplicateConflicts: 0,
     updates: 0,
   };
@@ -51,12 +50,14 @@ function blankSummary() {
 function recordResult(summary, provider, result) {
   const bucket = summary[provider];
   const status = result?.identity?.status;
-  if (result?.kind === 'reused') { summary.skippedAlreadyConfirmed += 1; return; }
-  if (result?.kind === 'skipped') { bucket.retryPending += 1; return; }
+  if (result?.kind === 'reused') { bucket.alreadyConfirmed += 1; return; }
+  if (result?.kind === 'skipped') return;
   if (status === 'confirmed') bucket.confirmed += 1;
   else if (status === 'no_match') bucket.noMatch += 1;
   else if (status === 'needs_review') bucket.needsReview += 1;
-  else if (status === 'error' || status === 'unavailable') bucket.errors += 1;
+  else if (status === 'error') bucket.errors += 1;
+  else if (status === 'unavailable') bucket.unavailable += 1;
+  if (result?.identity?.nextEligibleCheckAt && Date.parse(result.identity.nextEligibleCheckAt) > Date.parse(result.identity.lastAttemptedAt || 0)) bucket.retryDatesAssigned += 1;
 }
 
 async function runProviderIdentityBackfill({
@@ -82,8 +83,13 @@ async function runProviderIdentityBackfill({
     const updates = [];
     for (const band of bands) {
       if (!identities.trustedMusicbrainzBand(band)) continue;
-      if (identities.isConfirmed(band.musicbrainz?.ticketmaster, 'ticketmaster')) summary.skippedAlreadyConfirmed += 1;
-      if (identities.isConfirmed(band.musicbrainz?.spotify, 'spotify')) summary.skippedAlreadyConfirmed += 1;
+      for (const provider of ['ticketmaster', 'spotify']) {
+        const record = band.musicbrainz?.[provider];
+        const bucket = summary[provider];
+        if (identities.isConfirmed(record, provider)) bucket.alreadyConfirmed += 1;
+        else if (record?.status === 'manual_rejected') bucket.manuallyProtected += 1;
+        else if (identities.retryInfo(record, new Date(now)).retryScheduled) bucket.skippedRetryWindow += 1;
+      }
       const ticketmasterEligible = identities.providerBackfillEligible(band, 'ticketmaster', new Date(now));
       const spotifyEligible = identities.providerBackfillEligible(band, 'spotify', new Date(now));
       if (!ticketmasterEligible && !spotifyEligible) continue;
@@ -114,7 +120,7 @@ async function runProviderIdentityBackfill({
       summary.duplicateConflicts = coverage.musicbrainz.duplicateConflicts.length + coverage.ticketmaster.duplicateConflicts.length + coverage.spotify.duplicateConflicts.length;
     }
     await saveUsage('ok');
-    log(`Provider identity backfill: ${summary.bandsConsidered} bands considered; Ticketmaster ${summary.ticketmaster.confirmed} confirmed, Spotify ${summary.spotify.confirmed} confirmed; ${summary.duplicateConflicts} duplicate conflict(s).`);
+    log(`Provider identity backfill: ${summary.bandsConsidered} bands considered; Ticketmaster ${summary.ticketmaster.confirmed} confirmed, ${summary.ticketmaster.noMatch} no match, ${summary.ticketmaster.needsReview} need review; Spotify ${summary.spotify.confirmed} confirmed, ${summary.spotify.noMatch} no match, ${summary.spotify.needsReview} need review, ${summary.spotify.unavailable} unavailable; ${summary.ticketmaster.skippedRetryWindow + summary.spotify.skippedRetryWindow} records have future retry dates; ${summary.duplicateConflicts} duplicate conflict(s).`);
     return summary;
   } catch (error) {
     if (usage && !usageSaveAttempted) {
