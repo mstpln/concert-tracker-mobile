@@ -713,7 +713,9 @@ function renderMyConcertsScreen() {
     .map((b) => `<option value="${escapeAttr(b.id)}">${escapeHtml(b.name)}</option>`)
     .join('');
 
-  let html = '';
+  // Keep the summary cards together so their outer spacing is independent
+  // from the unchanged 16px rhythm between the stats and countdown cards.
+  let html = '<div class="myconcerts-summary">';
 
   // Stats teaser only once there's at least one past show to summarize —
   // otherwise it'd just be a row of zeroes above an empty list. `upcoming`
@@ -725,6 +727,7 @@ function renderMyConcertsScreen() {
   // state when nothing's upcoming) so it stays in a fixed spot: under the
   // stats card, above the upcoming/past lists.
   html += countdownCardHtml(upcoming[0] || null);
+  html += '</div>';
 
   if (upcoming.length === 0 && past.length === 0) {
     html += `<p class="screen-empty">No concerts saved yet. Tap "I'm going" on a band's page to add one, or backlog a past show below.</p>`;
