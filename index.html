@@ -33,14 +33,14 @@
 <div id="app" class="hidden">
   <div id="brand-banner" class="brand-banner">THE LIVE VAULT</div>
   <header id="app-header">
-    <button id="back-btn" class="icon-btn hidden" aria-label="Back"></button>
+    <button id="back-btn" class="icon-btn hidden" aria-label="Back" data-testid="back-button"></button>
     <div class="header-brand">
       <span id="header-icon" class="header-icon"></span>
       <span id="header-title" class="header-title"><span class="brand-blue">CONCERT</span>DATES</span>
     </div>
     <button id="nearby-toggle-btn" class="icon-btn" aria-label="Show nearby only" title="Show nearby only"></button>
     <button id="europe-toggle-btn" class="icon-btn" aria-label="Show Europe only" title="Show Europe only"></button>
-    <button id="settings-btn" class="icon-btn" aria-label="Settings"></button>
+    <button id="settings-btn" class="icon-btn" aria-label="Settings" data-testid="settings-button"></button>
   </header>
 
   <main id="content">
@@ -60,7 +60,7 @@
     </section>
   </main>
 
-  <nav id="tabbar">
+  <nav id="tabbar" data-testid="bottom-navigation">
     <button class="tabitem active" data-tab="myconcerts">
       <span class="tab-icon"></span>Concerts
     </button>

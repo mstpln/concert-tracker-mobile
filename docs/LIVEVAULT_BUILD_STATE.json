@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "generatorVersion": 1,
+  "appVersion": "v68",
+  "serviceWorkerCacheVersion": "v68",
+  "versionsMatch": true,
+  "runtime": "plain-html-css-javascript-pwa",
+  "expectedNodeMajor": 20,
+  "qaOutputDirectory": "dist",
+  "playwrightProjects": [
+    "desktop-chromium",
+    "mobile-chromium"
+  ],
+  "workflows": [
+    "pr-qa.yml",
+    "full-pwa-qa.yml",
+    "production-smoke.yml"
+  ],
+  "shellFiles": [
+    "index.html",
+    "app.css",
+    "app.js",
+    "remoteStore.js",
+    "ownedTickets.js",
+    "service-worker.js"
+  ],
+  "flags": {
+    "structuredResearchEnabled": true,
+    "musicbrainzEnabled": false
+  }
+}

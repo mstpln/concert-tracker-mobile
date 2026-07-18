@@ -1,5 +1,11 @@
 # Setup guide — Concert Tracker Mobile
 
+## Project and QA documentation
+
+Read [current project state](docs/LIVEVAULT_STATE.md), the [webview-first workflow](docs/WEBVIEW_FIRST_DEVELOPMENT.md), [Cloudflare Pages QA setup](docs/CLOUDFLARE_PAGES_QA_SETUP.md), and [GitHub repository settings](docs/GITHUB_REPOSITORY_SETTINGS.md) before changing deployment or QA configuration.
+
+`READ_ONLY_TOKEN` is separate from `API_TOKEN`. It authorizes only the Worker’s sanitized `GET /qa-smoke` check: it cannot read raw JSON or ticket files and cannot write. Store it in GitHub Actions as `CF_WORKER_READ_TOKEN`. Worker code changes still need a manual Cloudflare deployment.
+
 This is the part only you can do (account creation and payment details aren't
 something Claude does on your behalf). It's mostly clicking through
 Cloudflare's dashboard — no coding required. Should take about 15-20 minutes.
@@ -47,6 +53,14 @@ block upload, opening, or removal when it is unavailable. If you update
 `worker.js` in the repository, copy the updated code into the Cloudflare Worker
 editor and click **Deploy** after the GitHub change
 is merged. Pushing or merging the GitHub change does not deploy the Worker.
+
+### Read-only production smoke check
+
+The Worker also supports a separate `READ_ONLY_TOKEN` secret. It authorizes only `GET /qa-smoke`, which returns sanitized file-health/count information; it cannot read raw JSON, access ticket PDFs, or write. After manually deploying updated `worker.js`, add the same value to GitHub repository **Settings → Secrets and variables → Actions** as `CF_WORKER_READ_TOKEN`. Do not replace `API_TOKEN`.
+
+## Current project documentation
+
+For current behaviour, workflow and QA guidance, see [docs/LIVEVAULT_STATE.md](docs/LIVEVAULT_STATE.md), [webview-first development](docs/WEBVIEW_FIRST_DEVELOPMENT.md), and [Cloudflare Pages QA setup](docs/CLOUDFLARE_PAGES_QA_SETUP.md). The state document is canonical.
 
 ## Part 3 — Hosting the app itself (GitHub Pages)
 
