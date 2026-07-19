@@ -28,6 +28,6 @@
   ],
   "flags": {
     "structuredResearchEnabled": true,
-    "musicbrainzEnabled": true
+    "musicbrainzEnabled": false
   }
 }
