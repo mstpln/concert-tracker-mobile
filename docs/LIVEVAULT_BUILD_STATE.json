@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v68",
-  "serviceWorkerCacheVersion": "v68",
+  "appVersion": "v69",
+  "serviceWorkerCacheVersion": "v69",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 20,
@@ -19,13 +19,15 @@
   "shellFiles": [
     "index.html",
     "app.css",
+    "releaseAlerts.css",
     "app.js",
+    "releaseAlerts.js",
     "remoteStore.js",
     "ownedTickets.js",
     "service-worker.js"
   ],
   "flags": {
     "structuredResearchEnabled": true,
-    "musicbrainzEnabled": false
+    "musicbrainzEnabled": true
   }
 }
