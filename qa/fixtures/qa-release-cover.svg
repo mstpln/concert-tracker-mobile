@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160" role="img" aria-labelledby="title">
+  <title id="title">Synthetic release cover</title>
+  <rect width="160" height="160" fill="#111214"/>
+  <circle cx="80" cy="80" r="52" fill="#024ddf"/>
+  <circle cx="80" cy="80" r="13" fill="#ffffff"/>
+  <path d="M25 25h40v8H33v32h-8zm110 0v40h-8V33H95v-8zM25 135V95h8v32h32v8zm110 0H95v-8h32V95h8z" fill="#ffffff" opacity=".85"/>
+</svg>
