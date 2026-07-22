@@ -21,7 +21,7 @@ test('QA PWA installs an isolated service worker and serves the shell offline', 
   expect(registration.state).toBe('activated');
 
   const cacheKeys = await page.evaluate(() => caches.keys());
-  const qaCaches = cacheKeys.filter((key) => key.startsWith('concert-tracker-qa-v68-'));
+  const qaCaches = cacheKeys.filter((key) => key.startsWith('concert-tracker-qa-v69-'));
   expect(qaCaches).toHaveLength(1);
   expect(cacheKeys.some((key) => key.startsWith('concert-tracker-shell-'))).toBe(false);
 

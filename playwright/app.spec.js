@@ -9,6 +9,14 @@ async function installQaGuards(page) {
   const consoleErrors = [];
 
   await page.route('https://example.invalid/**', async (route) => {
+    if (route.request().url().endsWith('/release-broken.jpg')) {
+      await route.fulfill({ status: 200, contentType: 'image/svg+xml', body: '<svg' });
+      return;
+    }
+    if (/\/images\//.test(route.request().url())) {
+      await route.fulfill({ status: 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72"><rect width="72" height="72" fill="#1261ff"/></svg>' });
+      return;
+    }
     await route.fulfill({ status: 204, body: '' });
   });
 
@@ -107,4 +115,45 @@ test('primary screens, settings, and band profile tabs remain navigable', async 
 
   assertQaGuards();
   await expect(page.locator('body')).not.toHaveCSS('overflow-x', 'scroll');
+});
+
+test('structured release lifecycle alerts render safely in main Alerts and the matching artist profile only', async ({ page }, testInfo) => {
+  const assertQaGuards = await installQaGuards(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Alerts' }).click();
+
+  for (const tag of ['ALBUM ANNOUNCED', 'NEW SINGLE', 'UPCOMING RELEASE', 'OUT TODAY']) {
+    await expect(page.locator('.release-alert-tag', { hasText: tag }).first()).toBeVisible();
+  }
+  const artworkCard = page.locator('.release-alert-card', { hasText: 'Synthetic Blue Record' });
+  await expect(artworkCard.locator('.release-alert-artwork img')).toHaveAttribute('alt', 'Synthetic Blue Record cover artwork');
+  await expect(artworkCard.getByRole('link', { name: /open synthetic blue record in spotify/i })).toHaveAttribute('href', 'https://open.spotify.com/album/qaRelease001');
+  await expect(page.locator('.release-alert-card', { hasText: 'Untrusted Link Synthetic Album' }).getByRole('link', { name: /spotify/i })).toHaveCount(0);
+  await expect(page.locator('.release-alert-card', { hasText: 'Minimal Synthetic Album' }).locator('.release-alert-artwork.is-placeholder')).toBeVisible();
+  await expect(page.locator('.release-alert-card', { hasText: 'Broken Artwork Synthetic Release' }).locator('.release-alert-artwork.is-placeholder')).toBeVisible();
+  await expect(page.locator('.release-alert-card', { hasText: 'Soon Synthetic EP' })).toContainText('Release date 23 Jul');
+  await expect(page.locator('.release-alert-card', { hasText: 'Legacy Structured Album' })).toContainText('ALBUM ANNOUNCED');
+  await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-release-alerts.png`), fullPage: true });
+
+  await page.getByRole('button', { name: 'Bands' }).click();
+  await page.locator('#screen-mybands').getByText('QA Artist One', { exact: true }).click();
+  await page.getByRole('tab', { name: 'Alerts', exact: true }).click();
+  const profile = page.locator('#screen-profile');
+  await expect(profile.locator('.release-alert-card', { hasText: 'Synthetic Blue Record' })).toBeVisible();
+  await expect(profile.locator('.release-alert-card', { hasText: 'Minimal Synthetic Album' })).toHaveCount(0);
+  await expect(profile.locator('.release-alert-card', { hasText: 'Legacy Structured Album' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  assertQaGuards();
+});
+
+test('structured release lifecycle alerts remain legible in dark mode', async ({ page }) => {
+  const assertQaGuards = await installQaGuards(page);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Alerts' }).click();
+  const card = page.locator('.release-alert-card', { hasText: 'Synthetic Blue Record' });
+  await expect(card).toBeVisible();
+  await expect(card).not.toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  assertQaGuards();
 });
