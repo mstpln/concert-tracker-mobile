@@ -293,7 +293,63 @@ function getAlertItems() {
       lastDate: sorted[sorted.length - 1].date,
     });
   }
-  return items.sort((a, b) => (b.foundAt || '').localeCompare(a.foundAt || ''));
+  const releaseAlerts = news
+    .filter(isReleaseAlert)
+    .filter((item) => bands.some((band) => band.id === item.bandId))
+    .filter((item) => !bands.find((band) => band.id === item.bandId)?.muted)
+    .map((item) => ({ ...item, isReleaseAlert: true }));
+
+  return [...items, ...releaseAlerts].sort((a, b) => (b.foundAt || '').localeCompare(a.foundAt || ''));
+}
+
+const RELEASE_ALERT_STAGES = {
+  album_announced: { tag: 'ALBUM ANNOUNCED', copy: 'A new release was announced.' },
+  new_single: { tag: 'NEW SINGLE', copy: 'A new single is available.' },
+  upcoming_release: { tag: 'UPCOMING RELEASE', copy: 'This release arrives soon.' },
+  out_today: { tag: 'OUT TODAY', copy: 'This release is out today.' },
+};
+
+function isReleaseAlert(item) {
+  return !!(RELEASE_ALERT_STAGES[item?.lifecycleStage]
+    || (item?.structured && item?.category === 'album' && (item.releaseTitle || item.musicbrainzReleaseGroupMbid || item.spotifyReleaseId)));
+}
+
+function trustedSpotifyReleaseUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    const parts = url.pathname.split('/').filter(Boolean);
+    return url.protocol === 'https:' && url.hostname === 'open.spotify.com' && parts.length === 2 && parts[0] === 'album' && /^[A-Za-z0-9]+$/.test(parts[1]) ? url.href : null;
+  } catch (_) { return null; }
+}
+
+function releaseArtworkUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return url.protocol === 'https:' ? url.href : null;
+  } catch (_) { return null; }
+}
+
+function releaseAlertHtml(item, isFavorite) {
+  const stage = RELEASE_ALERT_STAGES[item.lifecycleStage] || RELEASE_ALERT_STAGES.album_announced;
+  const title = item.releaseTitle || item.headline || 'Untitled release';
+  const artwork = releaseArtworkUrl(item.artworkUrl || item.imageUrl);
+  const spotifyUrl = trustedSpotifyReleaseUrl(item.spotifyUrl);
+  const releaseDate = item.releaseDate ? formatShortDate(item.releaseDate) : '';
+  return `
+    <div class="row-card clickable release-alert-card${isFavorite ? ' has-favorite' : ''}" data-band-id="${escapeAttr(item.bandId)}">
+      ${isFavorite ? `<span class="alert-favorite-badge" aria-label="Favorite band">${icon('heartFill')}</span>` : ''}
+      <div class="release-alert-artwork${artwork ? '' : ' is-placeholder'}" data-release-artwork>
+        ${artwork ? `<img src="${escapeAttr(artwork)}" alt="${escapeAttr(title)} cover artwork" />` : icon('music')}
+      </div>
+      <div class="alert-row-body">
+        <p class="release-alert-tag">${escapeHtml(stage.tag)}</p>
+        <p class="alert-title">${escapeHtml(title)}</p>
+        <p class="alert-meta">${escapeHtml(item.bandName || 'Unknown artist')}${releaseDate ? ` · Release date ${escapeHtml(releaseDate)}` : ''}</p>
+        <p class="release-alert-copy">${escapeHtml(stage.copy)}</p>
+        ${spotifyUrl ? `<a class="btn-secondary release-alert-spotify-action" href="${escapeAttr(spotifyUrl)}" target="_blank" rel="noopener" aria-label="Open ${escapeAttr(title)} in Spotify">${icon('spotify')}Open in Spotify</a>` : ''}
+        <p class="alert-time">${daysAgoLabel(item.foundAt)}</p>
+      </div>
+    </div>`;
 }
 
 function updateAlertsBadge() {
@@ -318,6 +374,8 @@ function daysAgoLabel(iso) {
 function alertRowHtml(item) {
   const band = bands.find((b) => b.id === item.bandId);
   const isFavorite = !!band?.favorite;
+
+  if (item.isReleaseAlert || isReleaseAlert(item)) return releaseAlertHtml(item, isFavorite);
 
   if (item.isBatch) {
     const rangeLabel = item.firstDate === item.lastDate
@@ -1945,9 +2003,25 @@ function renderNewsScreen() {
   });
   if (newsSubTab === 'alerts') {
     container.querySelectorAll('.row-card[data-band-id]').forEach((row) => {
-      row.addEventListener('click', () => openProfile(row.dataset.bandId));
+      row.addEventListener('click', (event) => {
+        if (event.target.closest('.release-alert-spotify-action')) return;
+        openProfile(row.dataset.bandId);
+      });
     });
+    wireReleaseAlertArtwork(container);
   }
+}
+
+function wireReleaseAlertArtwork(container) {
+  container.querySelectorAll('[data-release-artwork] img').forEach((image) => {
+    image.addEventListener('error', () => {
+      const holder = image.closest('[data-release-artwork]');
+      if (!holder) return;
+      holder.classList.add('is-placeholder');
+      image.remove();
+      holder.innerHTML = icon('music');
+    }, { once: true });
+  });
 }
 
 function newsCardHtml(n) {
@@ -2216,6 +2290,7 @@ function renderProfileScreen(bandId) {
     </div>
   `;
 
+  if (profileTab === 'alerts') wireReleaseAlertArtwork(container);
   if (profileTab === 'concerts') wireMyConcertsHandlers(container, () => renderProfileScreen(bandId));
   container.querySelectorAll('a').forEach((a) => a.addEventListener('click', (ev) => ev.stopPropagation()));
   container.querySelectorAll('.profile-tab-btn').forEach((button) => {

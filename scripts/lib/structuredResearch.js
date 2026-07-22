@@ -7,6 +7,7 @@
 const config = require('./config');
 const { normalize } = require('./musicbrainz');
 const { daysAgo } = require('./util');
+const { canonicalReleaseId } = require('./releaseLifecycle');
 
 const EXCLUDED = /\b(compilation|live|remix|dj-mix|mixtape|audiobook|interview|spoken word|bootleg|promotion|promotional|reissue|remaster(?:ed)?|deluxe|expanded|anniversary|tribute|karaoke|appears on)\b/i;
 const EDITION_SUFFIX = /\s*[\[(](?:deluxe|expanded|anniversary|remaster(?:ed)?|reissue|clean|explicit|\d{4}\s+edition)[^\])]*[\])]\s*$/i;
@@ -54,7 +55,7 @@ function mergeReleaseObservations(a, b) {
 }
 function mergeReleaseList(releases) {
   const byKey = new Map();
-  for (const release of releases.filter(Boolean)) {
+  for (const release of safeArray(releases).filter(Boolean)) {
     const key = releaseKey(release);
     // Same title/date/type across providers is a conservative temporary
     // bridge; retain both provenance without claiming they are identical
@@ -66,6 +67,22 @@ function mergeReleaseList(releases) {
     byKey.set(loose || key, mergeReleaseObservations(byKey.get(loose || key), release));
   }
   return [...byKey.values()];
+}
+function mergeLifecycleReleases(existing, observations, now = new Date().toISOString(), lifecycleEligibleKeys = []) {
+  const prior = new Map(safeArray(existing).map((release) => [release.canonicalReleaseId || canonicalReleaseId(release), release]));
+  const eligible = new Set(lifecycleEligibleKeys);
+  const merged = mergeReleaseList(observations).map((observation) => {
+    const canonical = canonicalReleaseId(observation); const before = prior.get(canonical) || {};
+    return { ...before, ...observation, canonicalReleaseId: canonical, firstSeenAt: before.firstSeenAt || observation.firstSeenAt || now,
+      updatedAt: now, providerObservations: { ...(before.providerObservations || {}), ...(observation.providerObservations || {}) },
+      lifecycle: { ...(observation.lifecycle || {}), ...(before.lifecycle || {}) },
+      lifecycleEligible: Boolean(before.lifecycleEligible || observation.lifecycleEligible || eligible.has(releaseKey(observation))) };
+  });
+  const mergedIds = new Set(merged.map((release) => release.canonicalReleaseId));
+  // A provider page may be partial or temporarily unavailable.  Keep prior
+  // canonical records so a refresh cannot erase lifecycle history or future
+  // fields merely because an observation was absent from this page.
+  return [...merged, ...safeArray(existing).filter((release) => !mergedIds.has(release.canonicalReleaseId || canonicalReleaseId(release)))];
 }
 function blankProviderBaseline() { return { status: 'not_started', knownKeys: [], continuation: null, lastAttemptedAt: null, lastSuccessfulAt: null, nextEligibleCheckAt: null, errorCategory: null }; }
 function releaseState(band) { return band.structuredResearch?.releases || { musicbrainz: blankProviderBaseline(), spotify: blankProviderBaseline(), knownAlerts: [] }; }
@@ -121,10 +138,19 @@ function mergeStructuredBandUpdates(latestBands, updates) {
     // A newer human MB choice is authoritative. Provider identities and
     // feature state are still additive, but automation may never replace it.
     const musicbrainz = ['manual_confirmed', 'manual_rejected'].includes(currentMb.status) ? { ...incomingMb, ...currentMb } : { ...currentMb, ...incomingMb };
-    return { ...band, musicbrainz, structuredResearch: { ...(band.structuredResearch || {}), ...(update.structuredResearch || {}) } };
+    const currentStructured = band.structuredResearch || {};
+    const incomingStructured = update.structuredResearch || {};
+    const currentReleases = currentStructured.releases || {};
+    const incomingReleases = incomingStructured.releases || {};
+    const releases = { ...currentReleases, ...incomingReleases,
+      musicbrainz: { ...(currentReleases.musicbrainz || {}), ...(incomingReleases.musicbrainz || {}) },
+      spotify: { ...(currentReleases.spotify || {}), ...(incomingReleases.spotify || {}) },
+      observations: incomingReleases.observations || currentReleases.observations,
+      canonical: mergeLifecycleReleases(currentReleases.canonical, incomingReleases.canonical || currentReleases.canonical) };
+    return { ...band, musicbrainz, structuredResearch: { ...currentStructured, ...incomingStructured, releases } };
   });
 }
 
-module.exports = { allowedRelease, musicbrainzRelease, spotifyRelease, releaseKey, alertDeduplicationKey, mergeReleaseObservations, mergeReleaseList,
+module.exports = { allowedRelease, musicbrainzRelease, spotifyRelease, releaseKey, alertDeduplicationKey, mergeReleaseObservations, mergeReleaseList, mergeLifecycleReleases,
   blankProviderBaseline, releaseState, providerBaseline, updateProviderBaseline, newReleasesAfterBaseline, structuredNewsItem, newsHasRelease,
   tavilyEligibility, resultFingerprint, mergeStructuredBandUpdates, fullDate, canonicalTitle };

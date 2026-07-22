@@ -20,6 +20,14 @@
     }
   }
 
+  function trustedLifecycleSpotifyUrl(value) {
+    try {
+      const url = new URL(String(value));
+      const parts = url.pathname.split('/').filter(Boolean);
+      return url.protocol === 'https:' && url.hostname === 'open.spotify.com' && parts.length === 2 && parts[0] === 'album' && /^[A-Za-z0-9]+$/.test(parts[1]);
+    } catch { return false; }
+  }
+
   function uniqueIds(rows, label, errors) {
     const seen = new Set();
     for (const row of rows) {
@@ -70,7 +78,10 @@
       if (!value || typeof value !== 'object') return;
       for (const [key, item] of Object.entries(value)) {
         const next = `${path}.${key}`;
-        if (/url$/i.test(key) && item != null && item !== '') validateUrl(item, next, errors);
+        if (/url$/i.test(key) && item != null && item !== '') {
+          if (key === 'spotifyUrl' && value.lifecycleStage && trustedLifecycleSpotifyUrl(item)) continue;
+          validateUrl(item, next, errors);
+        }
         else inspectUrls(item, next);
       }
     }
