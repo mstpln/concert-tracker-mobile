@@ -2,7 +2,7 @@
 
 ## Repository and current build
 
-LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by an authenticated Cloudflare Worker and private R2. The current production data files are `bands.json`, `concerts.json`, `news.json`, and `apiUsage.json`; ticket PDF bytes are separate authenticated R2 objects. `APP_VERSION` and the service-worker cache literal are both v68 on `main`. The v68 production app is live, the updated Worker is deployed, and the read-only production smoke check is configured.
+LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by an authenticated Cloudflare Worker and private R2. The current production data files are `bands.json`, `concerts.json`, `news.json`, and `apiUsage.json`; ticket PDF bytes are separate authenticated R2 objects. `APP_VERSION` and the service-worker cache literal are both v68 on `main`. The v68 production app is live, the updated Worker is deployed, and the read-only production smoke check is configured. The pending v69 release-alert branch bumps both cache values to v69 but is not merged or deployed.
 
 ## Product purpose and navigation
 
@@ -24,7 +24,13 @@ Bands contain stable IDs, artist identity and follow state. Concerts contain sta
 
 MusicBrainz MBID is the artist backbone. Ticketmaster attraction and Spotify artist identifiers are nested under the MusicBrainz identity. `confirmed`, `manual_confirmed` and `auto_confirmed` are trusted; `needs_review`, `no_match`, `error` and manual rejection retain retry/candidate metadata. Settings reports coverage, duplicates and review candidates without raw identity editing.
 
-Research uses Ticketmaster, Tavily, Groq, MusicBrainz, Spotify, setlist.fm and geocoding through UsageTracker pacing/caps. Structured release monitoring, predicted setlists and performance insights reuse trusted identity where applicable. Coordinated writes reread latest records. Manual workflows are narrowly scoped and share data-write concurrency.
+Research uses Ticketmaster, Tavily, Groq, MusicBrainz, Spotify, setlist.fm and geocoding through UsageTracker pacing/caps. Structured release monitoring, predicted setlists and performance insights reuse trusted identity where applicable. Coordinated writes reread latest records. Manual workflows are narrowly scoped and share data-write concurrency. The pending v69 release lifecycle keeps provider observations, baselines and canonical release records under `band.structuredResearch.releases`; it adds per-release lifecycle state without a new JSON file.
+
+## Pending v69 structured release lifecycle
+
+The pending v69 branch implements four lifecycle stages: Album Announced, New Single, Upcoming Release and Out Today. Initial, partial and historical provider baselines remain silent; only a genuinely new record after a completed baseline becomes lifecycle-eligible. Upcoming Release is album/EP-only, fires exactly seven days before a full date, and is suppressed for 14 days after an Album Announced stage. Singles never receive Upcoming Release; New Single requires a trusted direct Spotify album URL.
+
+Lifecycle alerts render in the existing main Alerts view and the matching artist profile’s Alerts tab, always filtered by stable `bandId`. They use compact optional square artwork and a local placeholder if artwork is absent or fails. The Spotify action appears only for a trusted direct release URL. Existing generic structured album alerts remain readable as compatible lifecycle-style alerts without rewriting user-owned alert state. There is intentionally no Releases screen, discography browser, or new storage file. Remaining manual verification before release is an installed-PWA cache refresh and real-device touch/visual review; no production research or data backfill has been run.
 
 ## Ticketmaster precedence and data safety
 
@@ -36,14 +42,13 @@ The app is mobile-first. Focused changes preserve unrelated blue/black/grey/whit
 
 ## Completed features
 
-Readiness checklist; playlist builder; concert weather; predicted and actual setlist support; live-performance insights; owned tickets; MusicBrainz/provider identity backbone and backfill; identity-aware research; band-profile tabs; contextual links; Ticketmaster source precedence; updated bottom navigation.
+Readiness checklist; playlist builder; concert weather; predicted and actual setlist support; live-performance insights; owned tickets; MusicBrainz/provider identity backbone and backfill; identity-aware research; band-profile tabs; contextual links; Ticketmaster source precedence; updated bottom navigation; pending v69 structured release lifecycle alerts.
 
 ## Active backlog
 
 1. Concert Map View
 2. Expanded Backup, Restore and Export
-3. Structured Album-Release Tracking
-4. Native Push Notifications
+3. Native Push Notifications
 
 ## Intentionally excluded
 

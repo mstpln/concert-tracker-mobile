@@ -73,6 +73,15 @@ test('release and news categories exist', () => {
   for (const category of ['concert', 'album', 'ep', 'single', 'news']) assert.ok(categories.has(category));
 });
 
+test('release lifecycle fixture matrix includes all stages and safe fallback cases', () => {
+  const releases = valid().news.filter((item) => item.structured && (item.lifecycleStage || item.releaseTitle));
+  for (const stage of ['album_announced', 'new_single', 'upcoming_release', 'out_today']) assert.ok(releases.some((item) => item.lifecycleStage === stage));
+  assert.ok(releases.some((item) => item.artworkUrl));
+  assert.ok(releases.some((item) => !item.artworkUrl));
+  assert.ok(releases.some((item) => item.spotifyUrl && !item.spotifyUrl.includes('spotify.com')));
+  assert.ok(releases.some((item) => !item.lifecycleStage && item.releaseTitle));
+});
+
 test('unknown future fields are present for preservation tests', () => {
   const fixtures = valid();
   assert.ok(fixtures.bands.some((band) => band.futureFeatureData?.keep));

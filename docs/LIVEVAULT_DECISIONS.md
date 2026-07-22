@@ -55,3 +55,19 @@
 **Reason:** A branch, PR, cache bump or passing tests is not deployment approval.
 
 **Consequence:** Version/cache bump together once per build; focused pre-merge corrections stay on that version.
+
+## 2026-07-22 — Structured release lifecycle stays internal and additive
+
+**Decision:** Keep release identity, provider observations, baselines and lifecycle state under each band’s existing `structuredResearch.releases` structure. Do not add `releases.json`, a Releases screen, a discography browser, song lists or navigation.
+
+**Reason:** Release data is research identity and deduplication state, not a new user-managed collection. Per-band storage preserves stable ownership and supports the existing coordinated-write model.
+
+**Consequence:** Four lifecycle stages are supported: Album Announced, New Single, Upcoming Release and Out Today. Upcoming Release applies only to album/EP records with a full date exactly seven days away, and is suppressed for 14 days after Album Announced. Singles never receive Upcoming Release. New Single exposes Spotify only with a trusted direct release URL. Artwork is optional and compact, with a local placeholder.
+
+## 2026-07-22 — Release baselines are conservative
+
+**Decision:** Provider baselines are never reset automatically; historical catalogues, first baselines and partial/resumed baselines remain silent.
+
+**Reason:** Alerts must describe genuinely newly observed releases, not replay a back catalogue or promote incomplete provider data.
+
+**Consequence:** Existing generic structured album alerts remain compatible and render safely, while lifecycle state is additive and preserves user-owned and unknown fields.

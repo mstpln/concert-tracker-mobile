@@ -31,6 +31,8 @@ const setlistfm = require('./lib/setlistfm');
 const spotify = require('./lib/spotify');
 const musicbrainz = require('./lib/musicbrainz');
 const structured = require('./lib/structuredResearch');
+const { planLifecycleAlerts } = require('./lib/releaseAlertPlan');
+const { persistLifecyclePlan } = require('./lib/releaseAlertPersistence');
 const setlistInsights = require('./lib/setlistInsights');
 const predictedSetlist = require('./lib/predictedSetlist');
 const { slugify, isValidFullDate, daysAgo, truncate, todayIso } = require('./lib/util');
@@ -127,6 +129,7 @@ async function processStructuredResearch({
       if (ticketmasterResult.identity) nextMb.ticketmaster = ticketmasterResult.identity;
     }
     let releases = structured.releaseState(band);
+    const lifecycleEligibleKeys = [];
     if (config.STRUCTURED_RESEARCH.structuredReleaseMonitoringEnabled) {
       const observed = [];
       const priorMbBaseline = structured.providerBaseline(releases, 'musicbrainz');
@@ -137,8 +140,9 @@ async function processStructuredResearch({
           observed.push(...values);
           const complete = result.offset + result.releaseGroups.length >= result.count || result.releaseGroups.length === 0;
           const newItems = structured.newReleasesAfterBaseline(priorMbBaseline, values);
-          releases = { ...releases, musicbrainz: structured.updateProviderBaseline(priorMbBaseline, values, { complete, now, continuation: complete ? null : { offset: result.offset + result.releaseGroups.length } }), observations: structured.mergeReleaseList([...(releases.observations || []), ...values]).slice(-500) };
-          for (const release of newItems) if (!structured.newsHasRelease(news, band.id, release)) alerts.push(structured.structuredNewsItem(band, release, now));
+          lifecycleEligibleKeys.push(...newItems.map(structured.releaseKey));
+          const observations = structured.mergeReleaseList([...(releases.observations || []), ...values]).slice(-500);
+          releases = { ...releases, musicbrainz: structured.updateProviderBaseline(priorMbBaseline, values, { complete, now, continuation: complete ? null : { offset: result.offset + result.releaseGroups.length } }), observations };
         } else if (result.kind !== 'skipped') releases = { ...releases, musicbrainz: structured.updateProviderBaseline(priorMbBaseline, [], { complete: false, now, errorCategory: result.kind === 'unavailable' ? 'unavailable' : 'error', continuation: priorMbBaseline.continuation }) };
       }
       const spotifyId = ['confirmed', 'manual_confirmed'].includes(nextMb.spotify?.status) ? nextMb.spotify.id : null;
@@ -149,6 +153,7 @@ async function processStructuredResearch({
           const values = result.items.map((raw) => structured.spotifyRelease(raw, spotifyId)).filter(Boolean);
           const complete = result.offset + result.items.length >= result.total || result.items.length === 0;
           const newItems = structured.newReleasesAfterBaseline(priorSpotifyBaseline, values);
+          lifecycleEligibleKeys.push(...newItems.map(structured.releaseKey));
           // Track data is intentionally narrow: only a genuinely new,
           // eligible Spotify single receives one compact track-list request.
           // Baselines and unchanged catalogue entries never fan out.
@@ -157,9 +162,11 @@ async function processStructuredResearch({
             if (tracks.kind === 'ok') release.tracks = (tracks.data?.items || []).map((track) => track?.name).filter(Boolean).slice(0, 50);
           }
           releases = { ...releases, spotify: structured.updateProviderBaseline(priorSpotifyBaseline, values, { complete, now, continuation: complete ? null : { offset: result.offset + result.items.length } }), observations: structured.mergeReleaseList([...(releases.observations || []), ...values]).slice(-500) };
-          for (const release of newItems) if (!structured.newsHasRelease(news, band.id, release)) alerts.push(structured.structuredNewsItem(band, release, now));
         } else if (result.kind !== 'skipped') releases = { ...releases, spotify: structured.updateProviderBaseline(priorSpotifyBaseline, [], { complete: false, now, errorCategory: result.kind === 'unavailable' ? 'unavailable' : 'error', continuation: priorSpotifyBaseline.continuation }) };
       }
+      const canonical = structured.mergeLifecycleReleases(releases.canonical, releases.observations || [], now, lifecycleEligibleKeys)
+        .map((release) => ({ ...release, releaseDeduplicationKey: release.releaseDeduplicationKey || structured.alertDeduplicationKey(band.id, release) }));
+      releases = { ...releases, canonical };
     }
     updates.push({ id: band.id, musicbrainz: nextMb, structuredResearch: { ...(band.structuredResearch || {}), releases } });
   }
@@ -181,7 +188,33 @@ async function processStructuredResearch({
     for (const alert of validAlerts) if (!structured.newsHasRelease(mergedNews, alert.bandId, alert)) mergedNews.push(alert);
     if (mergedNews.length !== latestNews.length) await writeNews('news.json', mergedNews);
   }
-  return { enabled: true, bands: mergedBands, news: mergedNews, updates: meaningful.length, alerts: validAlerts.length };
+  // Lifecycle alerts use the same latest-read pattern as the established
+  // structured news path.  Planning is pure; persistence reads both current
+  // documents again and applies a stage only after its stable alert exists.
+  const lifecycleBands = await readBands('bands.json', []);
+  const lifecycleAlerts = await readNews('news.json', []);
+  const lifecyclePlans = lifecycleBands.map((band) => planLifecycleAlerts({
+    band,
+    releases: band.structuredResearch?.releases?.canonical || [],
+    alerts: lifecycleAlerts,
+    today: now,
+  }));
+  const lifecyclePlan = lifecyclePlans.reduce((combined, plan) => ({
+    alertsToCreate: [...combined.alertsToCreate, ...plan.alertsToCreate],
+    alertsToEnrich: [...combined.alertsToEnrich, ...plan.alertsToEnrich],
+    lifecycleUpdates: [...combined.lifecycleUpdates, ...plan.lifecycleUpdates],
+    skipped: [...combined.skipped, ...plan.skipped],
+  }), { alertsToCreate: [], alertsToEnrich: [], lifecycleUpdates: [], skipped: [] });
+  let lifecycleCreated = 0;
+  if (lifecyclePlan.alertsToCreate.length || lifecyclePlan.alertsToEnrich.length || lifecyclePlan.lifecycleUpdates.length) {
+    lifecycleCreated = lifecyclePlan.alertsToCreate.length;
+    const persisted = await persistLifecyclePlan({ plan: lifecyclePlan,
+      readAlerts: () => readNews('news.json', []), writeAlerts: (value) => writeNews('news.json', value),
+      readBands: () => readBands('bands.json', []), writeBands: (value) => writeBands('bands.json', value), now });
+    mergedBands = persisted.bands;
+    mergedNews = persisted.alerts;
+  }
+  return { enabled: true, bands: mergedBands, news: mergedNews, updates: meaningful.length, alerts: validAlerts.length + lifecycleCreated };
 }
 
 const TRUSTED_MUSICBRAINZ_STATUSES = new Set(['confirmed', 'manual_confirmed', 'auto_confirmed']);
