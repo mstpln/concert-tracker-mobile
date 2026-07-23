@@ -340,7 +340,11 @@
       ],
       apiUsage: {
         ticketmaster: { callsToday: 4, dailyCap: 2500 },
-        tavily: { callsThisMonth: 3, monthlyCap: 900 },
+        tavily: {
+          callsThisMonth: 3,
+          monthlyCap: 900,
+          usageCounterEpoch: 'qa-previous-tavily-key',
+        },
         groq: { tokensToday: 420, dailyCap: 150000 },
         setlistfm: { callsToday: 2, dailyCap: 1200 },
         spotify: { callsToday: 5, dailyCap: 10000 },

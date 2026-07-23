@@ -78,7 +78,11 @@ const SEED_NEWS = [];
 // to match.
 const RESEARCH_KEY_METADATA = {
   ticketmaster: { label: 'Ticketmaster API key', masked: 'iS4B••••••••sraA' },
-  tavily: { label: 'Tavily API key', masked: 'tvly••••••••yzt0' },
+  tavily: {
+    label: 'Tavily API key',
+    masked: 'tvly••••••••MKh',
+    usageCounterEpoch: '2026-07-23-tavily-key-rotation',
+  },
   groq: { label: 'Groq API key (research pipeline)', masked: 'gsk_••••••••rhcu' },
   setlistfm: { label: 'setlist.fm API key', masked: 'lM9u••••••••oLZB' },
   // Client ID: no masked digits — this app never saw the real value (it was
@@ -3085,6 +3089,9 @@ function researchPipelineSectionHtml({ expandedTool = null, groqSettingsHtml = '
   const tmCap = Math.round(tmReal * 0.5);
   const tvReal = tv.freeTierMonthlyLimit ?? 1000;
   const tvCap = tv.monthlyCap ?? 900;
+  const tvUsed = tv.usageCounterEpoch === RESEARCH_KEY_METADATA.tavily.usageCounterEpoch
+    ? tv.callsThisMonth
+    : 0;
   const gqReal = gq.freeTierTpdLimit ?? 200000;
   const gqCap = gq.safeTpd ?? 150000;
   const slReal = sl.freeTierDailyLimit ?? 1440;
@@ -3106,7 +3113,7 @@ function researchPipelineSectionHtml({ expandedTool = null, groqSettingsHtml = '
       providerIcon: 'providerTavily',
       keyMasked: RESEARCH_KEY_METADATA.tavily.masked,
       addedAt: RESEARCH_KEY_METADATA.tavily.addedAt,
-      used: tv.callsThisMonth, ourCap: tvCap, realLimit: tvReal,
+      used: tvUsed, ourCap: tvCap, realLimit: tvReal,
       limitText: `${tvReal.toLocaleString()}/month`,
       capText: `${tvCap.toLocaleString()}/month · ${(tv.perRunCap ?? 180).toLocaleString()}/run`,
     },
