@@ -28,6 +28,7 @@ function freshState() {
       freeTierMonthlyLimit: config.TAVILY.freeTierMonthlyLimit,
       monthlyCap: config.TAVILY.monthlyCap,
       perRunCap: config.TAVILY.perRunCap,
+      usageCounterEpoch: config.TAVILY.usageCounterEpoch,
       monthOfCounts: month,
       callsThisMonth: 0,
       callsThisRun: 0,
@@ -85,6 +86,17 @@ function safeCounter(value) {
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : 0;
 }
 
+function ensureTavilyUsageState(state, month = thisMonthIso()) {
+  if (!state.tavily) state.tavily = freshState().tavily;
+  if (state.tavily.usageCounterEpoch !== config.TAVILY.usageCounterEpoch) {
+    state.tavily.usageCounterEpoch = config.TAVILY.usageCounterEpoch;
+    state.tavily.monthOfCounts = month;
+    state.tavily.callsThisMonth = 0;
+  }
+  state.tavily.callsThisMonth = safeCounter(state.tavily.callsThisMonth);
+  return state;
+}
+
 function ensureMusicbrainzState(state) {
   if (!state.musicbrainz) state.musicbrainz = freshState().musicbrainz;
   if (!('lastMusicbrainzRun' in state)) state.lastMusicbrainzRun = null;
@@ -131,7 +143,7 @@ class UsageTracker {
     const today = todayIso();
     const month = thisMonthIso();
     if (!state.ticketmaster) state.ticketmaster = freshState().ticketmaster;
-    if (!state.tavily) state.tavily = freshState().tavily;
+    ensureTavilyUsageState(state, month);
     if (!state.groq) state.groq = freshState().groq;
     if (!state.setlistfm) state.setlistfm = freshState().setlistfm;
     if (!state.spotify) state.spotify = freshState().spotify;
@@ -412,4 +424,4 @@ class UsageTracker {
   }
 }
 
-module.exports = { UsageTracker, freshState, safeCounter, ensureMusicbrainzState, ensureStructuredResearchState };
+module.exports = { UsageTracker, freshState, safeCounter, ensureTavilyUsageState, ensureMusicbrainzState, ensureStructuredResearchState };

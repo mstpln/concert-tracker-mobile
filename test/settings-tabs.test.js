@@ -23,6 +23,7 @@ test('Research shows compact expandable cards for the four research providers an
   assert.match(app, /aria-expanded="\$\{isExpanded\}"/);
   assert.match(app, /id: 'ticketmaster'/);
   assert.match(app, /id: 'tavily'/);
+  assert.match(app, /tv\.usageCounterEpoch === RESEARCH_KEY_METADATA\.tavily\.usageCounterEpoch/);
   assert.match(app, /id: 'groq'/);
   assert.match(app, /id: 'setlistfm'/);
   assert.doesNotMatch(app, /id: 'spotify',\n      name: 'Spotify'/);
