@@ -56,6 +56,10 @@ module.exports = {
   TAVILY: {
     apiKeyEnv: 'TAVILY_API_KEY',
     baseUrl: 'https://api.tavily.com',
+    // Bump only when Tavily confirms a replacement key starts with a fresh
+    // usage allowance. UsageTracker persists the applied value so the
+    // monthly counter resets exactly once, never on every pipeline run.
+    usageCounterEpoch: '2026-07-23-tavily-key-rotation',
     freeTierMonthlyLimit: 1000,
     // Stop the whole month at 900 credits even if a run's own cap would
     // allow more — this is the real backstop against ever going over.
