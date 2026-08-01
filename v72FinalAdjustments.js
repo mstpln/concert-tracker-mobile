@@ -2,12 +2,9 @@
 
 (function attachV72FinalAdjustments(root) {
   function renderTopBandsPreview(stats) {
-    const firstFive = topBandRowsHtml(stats.topBands.slice(0, 5), { timeframe: stats.timeframe, showMovement: true });
-    const nextFive = topBandRowsHtml(stats.topBands.slice(5, 10), { timeframe: stats.timeframe, showMovement: true })
-      .replaceAll('top-band-row', 'top-band-row-extra');
     return `<section class="listening-card top-bands-card" aria-labelledby="stats-top-bands-title">
       <div class="listening-card-heading"><p id="stats-top-bands-title">TOP BANDS · ${escapeHtml(stats.label.toUpperCase())}</p><button type="button" class="listening-link" data-open-top-bands>View all</button></div>
-      <div class="top-bands-list">${firstFive}${nextFive}</div>
+      <div class="top-bands-list">${topBandRowsHtml(stats.topBands.slice(0, 10), { timeframe: stats.timeframe, showMovement: true })}</div>
       <button type="button" class="listening-card-footer" data-open-top-bands>View full top 100${icon('chevronRight')}</button>
     </section>`;
   }
@@ -19,19 +16,24 @@
     if (attribution) attribution.textContent = 'Listening data from ListenBrainz';
   }
 
-  function wireExtraRows() {
-    root.document?.querySelectorAll('.top-band-row-extra[data-band-id]').forEach((row) => {
-      if (row.dataset.v72Wired === 'true') return;
-      row.dataset.v72Wired = 'true';
-      row.addEventListener('click', () => {
-        if (typeof openProfile === 'function') openProfile(row.dataset.bandId, { selectedTab: 'listening' });
-      });
+  function fixConcertDatesHeaderIcon() {
+    const title = root.document?.getElementById('header-title');
+    const headerIcon = root.document?.getElementById('header-icon');
+    if (!title || !headerIcon || typeof icon !== 'function') return;
+    const normalizedTitle = String(title.textContent || '').replace(/\s+/g, '').toLowerCase();
+    if (normalizedTitle === 'concertdates') headerIcon.innerHTML = icon('calendarPlain');
+  }
+
+  function fixNewLabels() {
+    root.document?.querySelectorAll('.rank-movement.is-new').forEach((label) => {
+      if (label.textContent !== 'NEW') label.textContent = 'NEW';
     });
   }
 
   function applyDomFixes() {
     fixEmptyAttribution();
-    wireExtraRows();
+    fixConcertDatesHeaderIcon();
+    fixNewLabels();
   }
 
   function apply() {

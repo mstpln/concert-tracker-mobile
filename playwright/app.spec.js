@@ -148,7 +148,8 @@ test('listening stats navigation, rankings, timeframes, and band drill-down use 
   await expect(page.getByRole('tab', { name: 'Listening', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.listening-summary')).toContainText('YOUR LISTENING · 3 MONTHS');
   await expect(page.locator('.genre-card')).toBeVisible();
-  await expect(page.locator('.top-bands-card .top-band-row')).toHaveCount(5);
+  await expect(page.locator('.top-bands-card .top-band-row')).toHaveCount(7);
+  await expect(page.locator('.top-bands-card .top-band-row-extra')).toHaveCount(0);
   await settleVisual(page);
   await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-listening-stats.png`) });
 

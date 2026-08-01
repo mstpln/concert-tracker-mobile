@@ -3,7 +3,7 @@
 /* Only the two summary cards on My Concerts use the blue outline. */
 .start-top-bands-card,
 .stats-teaser-card {
-  border-color: var(--accent);
+  border: 1px solid var(--accent);
   background: var(--surface);
 }
 .start-top-bands-card .listening-card-footer,
@@ -12,30 +12,24 @@
   color: var(--accent);
   border-top-color: var(--border);
 }
+.stats-teaser-card .stats-teaser-footer svg,
+.start-top-bands-card .listening-card-footer svg {
+  color: var(--accent);
+  stroke: currentColor;
+}
 .start-top-bands-card .top-band-row.is-compact {
   grid-template-columns: 34px 46px minmax(0, 1fr) 30px;
 }
 
-/* Rows six through ten keep identical styling while preserving legacy QA selectors. */
-.top-band-row-extra {
-  width: 100%;
-  min-width: 0;
-  min-height: 74px;
-  display: grid;
-  grid-template-columns: 38px 52px minmax(0, 1fr) 38px;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-  border: 0;
-  border-top: 1px solid var(--border);
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  font: inherit;
+/* Ranking movement remains compact, but the arrows are visibly stronger. */
+.rank-movement.is-up,
+.rank-movement.is-down {
+  font-weight: 800;
+  -webkit-text-stroke: 0.35px currentColor;
 }
-.top-band-row-extra:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -3px;
+.rank-movement.is-new {
+  text-transform: uppercase;
+  font-weight: 600;
 }
 
 /* Approved subtle blue-tinted concert-card surface across concert contexts. */
@@ -63,7 +57,7 @@
   padding: 11px 0;
   margin-top: 10px;
   border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 0;
   color: var(--text);
 }
 .concert-listening-row > svg {
@@ -111,10 +105,6 @@
 @media (max-width: 390px) {
   .start-top-bands-card .top-band-row.is-compact {
     grid-template-columns: 32px 44px minmax(0, 1fr) 28px;
-  }
-  .top-band-row-extra {
-    grid-template-columns: 34px 46px minmax(0, 1fr) 34px;
-    gap: 6px;
   }
   .past-rating-details .star-btn svg,
   .past-rating-details .stars-display svg {
