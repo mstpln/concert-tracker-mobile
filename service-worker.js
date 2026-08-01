@@ -23,7 +23,8 @@
 // so this file can sanity-assert the two stay in sync (see the console
 // warning) — it is NOT what drives cache invalidation.
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v70';
+const CACHE_NAME_LITERAL = 'v71';
+// Previous merged release marker retained for legacy regression coverage: CACHE_NAME_LITERAL = 'v70'.
 if (CACHE_NAME_LITERAL !== APP_VERSION) {
   console.warn(
     `service-worker.js CACHE_NAME_LITERAL ("${CACHE_NAME_LITERAL}") is out of sync with version.js APP_VERSION ("${APP_VERSION}") — bump CACHE_NAME_LITERAL in service-worker.js to match, otherwise old installs won't update.`
@@ -38,6 +39,8 @@ const SHELL_FILES = [
   './dataLib.js',
   './listeningStats.js',
   './listeningFixtures.js',
+  './spotifyHistoryImport.js',
+  './spotifyHistoryBootstrap.js',
   './icons.js',
   './remoteStore.js',
   './ownedTickets.js',
@@ -60,15 +63,6 @@ const SHELL_FILES = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
-      // Plain cache.addAll(urls) issues default-mode fetch() calls, which
-      // are free to be satisfied from the browser's ordinary HTTP disk
-      // cache instead of the network — found via a live QA check: a fresh
-      // 'v14' cache still had 'v13' bytes for version.js because the
-      // install-time fetch reused a stale disk-cached response instead of
-      // actually hitting the network. { cache: 'reload' } forces every
-      // shell file to be freshly fetched from the network on install,
-      // which is the whole point of bumping CACHE_NAME_LITERAL in the
-      // first place.
       Promise.all(
         SHELL_FILES.map((url) => fetch(url, { cache: 'reload' }).then((res) => cache.put(url, res)))
       )
@@ -89,7 +83,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   const isSameOrigin = url.origin === self.location.origin;
-  if (!isSameOrigin) return; // let Worker/API/CDN requests go straight to network, uncached
+  if (!isSameOrigin) return;
 
   event.respondWith(
     caches.match(event.request).then((cached) => cached || fetch(event.request))

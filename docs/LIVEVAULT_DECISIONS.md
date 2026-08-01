@@ -103,3 +103,11 @@
 **Reason:** Every listening surface must agree on boundaries, totals, ranks and charts.
 
 **Consequence:** `listeningStats.js` is the single pure calculation layer for all pages. Phase 1 QA uses one fixed clock and `listeningFixtures.js` as the sole synthetic ListenBrainz-shaped source; UI renderers do not duplicate calculations.
+
+## 2026-08-01 — Historical Spotify export is a private local import
+
+**Decision:** Historical Spotify listening data is imported only from a sanitized LiveVault file into browser-local IndexedDB. The raw Spotify ZIP, sanitized personal history and any account metadata are never committed to GitHub, written to R2, sent to provider APIs or included in public QA.
+
+**Reason:** Historical listening data is personal. The user explicitly required that passwords, usernames, email addresses, account identifiers, IP addresses, device/platform data, location data and other unnecessary metadata are neither retained nor transmitted.
+
+**Consequence:** The sanitizer excludes Spotify Kids, podcasts, video, audiobooks and plays shorter than 30 seconds. The retained event allowlist is limited to timestamp, artist, track, album, played duration, Spotify track ID, stable import ID and source marker. Tests use synthetic records only. ListenBrainz remains the future ongoing source, and deterministic stable listen IDs are retained to support later cross-source deduplication.
