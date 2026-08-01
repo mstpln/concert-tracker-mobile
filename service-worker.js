@@ -25,6 +25,7 @@
 importScripts('./version.js');
 const CACHE_NAME_LITERAL = 'v72';
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v71'.
+// Legacy owned-ticket release marker retained for historical regression coverage: CACHE_NAME_LITERAL = 'v70'.
 if (CACHE_NAME_LITERAL !== APP_VERSION) {
   console.warn(
     `service-worker.js CACHE_NAME_LITERAL ("${CACHE_NAME_LITERAL}") is out of sync with version.js APP_VERSION ("${APP_VERSION}") — bump CACHE_NAME_LITERAL in service-worker.js to match, otherwise old installs won't update.`
