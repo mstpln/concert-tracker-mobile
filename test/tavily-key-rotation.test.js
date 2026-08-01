@@ -25,7 +25,8 @@ test('a new Tavily key epoch resets an older monthly counter exactly once', () =
   assert.equal(state.tavily.callsThisMonth, 4);
 });
 
-test('the Tavily key epoch remains backward compatible with missing state', () => {
+test('the Tavily key epoch remains backward compatible with missing state', (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-07-15T12:00:00.000Z') });
   const state = {};
 
   ensureTavilyUsageState(state, '2026-07');
