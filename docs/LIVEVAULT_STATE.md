@@ -4,7 +4,7 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by an authenticated Cloudflare Worker and private R2. The established production JSON files remain `bands.json`, `concerts.json`, `news.json`, and `apiUsage.json`; ticket PDF bytes are separate authenticated R2 objects.
 
-`main` is at synchronized app/cache version **v72** and contains the private local Spotify-history importer plus the v72 listening and concert-card corrections.
+The current build is synchronized at **v73**. It contains the private local Spotify-history importer, the v72 listening and concert-card corrections, and a focused service-worker cache refresh so already-installed PWAs fetch the corrected shell instead of remaining on the earlier v72 cache.
 
 ## Product purpose and navigation
 

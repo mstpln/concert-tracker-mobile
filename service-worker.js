@@ -23,8 +23,9 @@
 // so this file can sanity-assert the two stay in sync (see the console
 // warning) — it is NOT what drives cache invalidation.
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v72';
-// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v71'.
+const CACHE_NAME_LITERAL = 'v73';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v72'.
+// Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v71'.
 // Legacy owned-ticket release marker retained for historical regression coverage: CACHE_NAME_LITERAL = 'v70'.
 if (CACHE_NAME_LITERAL !== APP_VERSION) {
   console.warn(
