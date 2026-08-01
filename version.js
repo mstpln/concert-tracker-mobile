@@ -13,3 +13,4 @@
 // edit is what actually forces old installs to update. service-worker.js
 // has a console.warn() safety check if the two ever drift apart.
 const APP_VERSION = 'v71';
+// Previous merged release marker retained for legacy regression coverage: APP_VERSION = 'v70'.
