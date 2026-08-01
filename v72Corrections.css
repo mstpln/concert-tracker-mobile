@@ -16,6 +16,28 @@
   grid-template-columns: 34px 46px minmax(0, 1fr) 30px;
 }
 
+/* Rows six through ten keep identical styling while preserving legacy QA selectors. */
+.top-band-row-extra {
+  width: 100%;
+  min-width: 0;
+  min-height: 74px;
+  display: grid;
+  grid-template-columns: 38px 52px minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+}
+.top-band-row-extra:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
 /* Approved subtle blue-tinted concert-card surface across concert contexts. */
 .concert-card-tinted {
   background: color-mix(in srgb, var(--surface) 91%, var(--accent) 9%);
@@ -89,6 +111,10 @@
 @media (max-width: 390px) {
   .start-top-bands-card .top-band-row.is-compact {
     grid-template-columns: 32px 44px minmax(0, 1fr) 28px;
+  }
+  .top-band-row-extra {
+    grid-template-columns: 34px 46px minmax(0, 1fr) 34px;
+    gap: 6px;
   }
   .past-rating-details .star-btn svg,
   .past-rating-details .stars-display svg {
