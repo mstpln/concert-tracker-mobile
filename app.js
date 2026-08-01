@@ -240,7 +240,13 @@ async function loadDataAndShowApp() {
   // Written by the weekly GitHub Actions research pipeline, not by this
   // app — read-only here, just to power the usage counters in Settings.
   apiUsage = await dlReadJsonFile(remote, 'apiUsage.json', null);
-  listeningEvents = ListeningFixtures.createSyntheticListens(bands, listeningNow());
+  // Phase 1 fixtures are strictly for the isolated synthetic QA preview.
+  // Production remains empty until the real Phase 2 ListenBrainz adapter is
+  // deliberately implemented, so fictional history can never be presented
+  // as the user's own listening data.
+  listeningEvents = window.__LIVEVAULT_QA_SYNTHETIC_LISTENING__ === true
+    ? ListeningFixtures.createSyntheticListens(bands, listeningNow())
+    : [];
   el('onboarding').classList.add('hidden');
   el('app').classList.remove('hidden');
   updateAlertsBadge();

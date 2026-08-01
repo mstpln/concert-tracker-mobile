@@ -60,6 +60,7 @@
   }
 
   window.__LIVEVAULT_QA_NOW__ = QA_NOW;
+  window.__LIVEVAULT_QA_SYNTHETIC_LISTENING__ = true;
   window.rsGetConnection = () => ({ endpoint: 'https://qa.invalid', token: 'qa-synthetic-token' });
   window.rsSaveConnection = () => {};
   window.rsClearConnection = () => resetQaData();

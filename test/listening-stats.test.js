@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const stats = require('../listeningStats');
 const fixtures = require('../listeningFixtures');
 
@@ -35,6 +37,14 @@ test('synthetic fixtures are deterministic and normalized for future ListenBrain
   assert.ok(first.some((item) => !item.musicbrainzRecordingId));
   assert.ok(first.some((item) => item.localBandId === null));
   assert.ok(first.some((item) => item.artworkPath === null));
+});
+
+test('synthetic listening history is enabled only by the isolated QA bootstrap', () => {
+  const root = path.join(__dirname, '..');
+  const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const qaBootstrap = fs.readFileSync(path.join(root, 'qa', 'qa-bootstrap.js'), 'utf8');
+  assert.match(app, /window\.__LIVEVAULT_QA_SYNTHETIC_LISTENING__ === true\s*\? ListeningFixtures\.createSyntheticListens/);
+  assert.match(qaBootstrap, /window\.__LIVEVAULT_QA_SYNTHETIC_LISTENING__ = true;/);
 });
 
 test('three-month and previous-period boundaries are half-open and calendar based', () => {
