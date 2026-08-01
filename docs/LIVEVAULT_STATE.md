@@ -4,7 +4,7 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by an authenticated Cloudflare Worker and private R2. The established production JSON files remain `bands.json`, `concerts.json`, `news.json`, and `apiUsage.json`; ticket PDF bytes are separate authenticated R2 objects.
 
-`main` contains merged v71 with the private local Spotify-history importer. The active correction branch is `fix/listening-ui-v72`, with synchronized `APP_VERSION` and `CACHE_NAME_LITERAL` at **v72**. Nothing from v72 is merged yet.
+`main` is at synchronized app/cache version **v72** and contains the private local Spotify-history importer plus the v72 listening and concert-card corrections.
 
 ## Product purpose and navigation
 
@@ -37,6 +37,14 @@ Bands contain stable IDs, artist identity and follow state. Concerts contain sta
 ## Design and QA rules
 
 The app is mobile-first. Focused changes preserve the existing blue/black/grey/white design, text-only top banner, navigation, ticket CTA hierarchy and profile tabs. QA uses fictional data and the fake backend only. Automated tests must not contain the user's listening history. Physical installation, large-file picker behavior, mobile storage quotas, installed-PWA cache refresh and final real-device touch/visual review remain device-specific manual checks.
+
+## Active backlog
+
+1. Real ListenBrainz account connection and incremental synchronization
+2. MusicBrainz recording/release matching and optional artwork enrichment
+3. Concert Map View
+4. Expanded Backup, Restore and Export
+5. Native Push Notifications
 
 ## Development workflow
 
