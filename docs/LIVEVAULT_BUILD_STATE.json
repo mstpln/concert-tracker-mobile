@@ -19,9 +19,7 @@
   "shellFiles": [
     "index.html",
     "app.css",
-    "v72Corrections.css",
     "app.js",
-    "v72Corrections.js",
     "dataLib.js",
     "listeningStats.js",
     "listeningFixtures.js",
