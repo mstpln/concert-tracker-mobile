@@ -23,7 +23,7 @@
 // so this file can sanity-assert the two stay in sync (see the console
 // warning) — it is NOT what drives cache invalidation.
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v69';
+const CACHE_NAME_LITERAL = 'v70';
 if (CACHE_NAME_LITERAL !== APP_VERSION) {
   console.warn(
     `service-worker.js CACHE_NAME_LITERAL ("${CACHE_NAME_LITERAL}") is out of sync with version.js APP_VERSION ("${APP_VERSION}") — bump CACHE_NAME_LITERAL in service-worker.js to match, otherwise old installs won't update.`
@@ -36,6 +36,8 @@ const SHELL_FILES = [
   './app.css',
   './app.js',
   './dataLib.js',
+  './listeningStats.js',
+  './listeningFixtures.js',
   './icons.js',
   './remoteStore.js',
   './ownedTickets.js',
@@ -49,6 +51,10 @@ const SHELL_FILES = [
   './icons/icon-512.png',
   './icons/icon-192-maskable.png',
   './icons/icon-512-maskable.png',
+  './assets/listening/album-blue.svg',
+  './assets/listening/album-purple.svg',
+  './assets/listening/album-cyan.svg',
+  './assets/listening/album-gold.svg',
 ];
 
 self.addEventListener('install', (event) => {

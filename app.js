@@ -14,12 +14,17 @@ let bands = [];
 let concerts = [];
 let news = [];
 let apiUsage = null;
+let listeningEvents = [];
 let alertsLastOpenedAt = null;
 let newsSubTab = 'news'; // 'news' | 'alerts'
 let currentTab = 'myconcerts';
-let currentScreen = 'main'; // 'main' | 'profile' | 'settings' | 'stats' | 'connection-error' (only reachable pre-navigation)
+let currentScreen = 'main'; // 'main' | 'profile' | 'settings' | 'stats' | 'top-bands' | 'venue-detail' | 'connection-error'
 let activeProfileBandId = null;
 let profileTab = 'concerts';
+let statsSubTab = 'listening';
+let statsListeningTimeframe = 'threeMonths';
+let profileListeningTimeframe = 'threeMonths';
+let topBandsTimeframe = 'threeMonths';
 let editingBandId = null;
 let europeOnly = false;
 let nearbyOnly = false;
@@ -235,6 +240,7 @@ async function loadDataAndShowApp() {
   // Written by the weekly GitHub Actions research pipeline, not by this
   // app — read-only here, just to power the usage counters in Settings.
   apiUsage = await dlReadJsonFile(remote, 'apiUsage.json', null);
+  listeningEvents = ListeningFixtures.createSyntheticListens(bands, listeningNow());
   el('onboarding').classList.add('hidden');
   el('app').classList.remove('hidden');
   updateAlertsBadge();
@@ -428,7 +434,7 @@ function wireHeader() {
   el('nearby-toggle-btn').classList.toggle('active', nearbyOnly);
 
   el('back-btn').addEventListener('click', () => {
-    if (currentScreen === 'settings' || currentScreen === 'profile' || currentScreen === 'stats' || currentScreen === 'venue-detail') {
+    if (currentScreen === 'settings' || currentScreen === 'profile' || currentScreen === 'stats' || currentScreen === 'top-bands' || currentScreen === 'venue-detail') {
       history.back();
     }
   });
@@ -459,13 +465,15 @@ function wireHeader() {
     const state = ev.state;
     if (!state) return;
     if (state.screen === 'profile' && state.bandId) {
-      openProfile(state.bandId, { fromHistory: true });
+      openProfile(state.bandId, { fromHistory: true, selectedTab: state.profileTab });
     } else if (state.screen === 'venue-detail' && state.venueKey) {
       openVenueDetail(state.venueKey, { fromHistory: true });
     } else if (state.screen === 'settings') {
       showSettingsScreen({ fromHistory: true });
+    } else if (state.screen === 'top-bands') {
+      openTopBandsScreen({ fromHistory: true, timeframe: state.timeframe });
     } else if (state.screen === 'stats') {
-      openStatsScreen({ fromHistory: true });
+      openStatsScreen({ fromHistory: true, subTab: state.subTab });
     } else {
       goToTab(state.tab || currentTab, { fromHistory: true });
     }
@@ -479,10 +487,10 @@ function wireHeader() {
 // Bottom navigation and page headers deliberately use separate icon maps:
 // Dates needs a calendar at the bottom, while the CONCERTDATES header keeps
 // its established music icon.
-const TAB_NAV_ICONS = { concerts: 'calendarPlain', myconcerts: 'ticketStub', mybands: 'users', news: 'bell' };
-const TAB_HEADER_ICONS = { concerts: 'music', myconcerts: 'ticketStub', mybands: 'users', news: 'bell' };
-const TAB_TITLES = { concerts: 'ConcertDates', myconcerts: 'My Concerts', mybands: 'My Bands', news: 'Alerts' };
-const TAB_SCREENS = { concerts: 'screen-concerts', myconcerts: 'screen-myconcerts', mybands: 'screen-mybands', news: 'screen-news' };
+const TAB_NAV_ICONS = { concerts: 'calendarPlain', myconcerts: 'ticketStub', mybands: 'users', stats: 'statsBars', news: 'bell' };
+const TAB_HEADER_ICONS = { concerts: 'music', myconcerts: 'ticketStub', mybands: 'users', stats: 'statsBars', news: 'bell' };
+const TAB_TITLES = { concerts: 'ConcertDates', myconcerts: 'My Concerts', mybands: 'My Bands', stats: 'Stats', news: 'Alerts' };
+const TAB_SCREENS = { concerts: 'screen-concerts', myconcerts: 'screen-myconcerts', mybands: 'screen-mybands', stats: 'screen-stats', news: 'screen-news' };
 // Two-tone brand header markup per root tab (first part blue, rest white),
 // matching the CONCERTDATES treatment. "Alerts" has no natural two-part
 // split, so it's rendered plain (no highlighted segment).
@@ -490,6 +498,7 @@ const TAB_BRAND_HTML = {
   concerts: '<span class="brand-blue">CONCERT</span>DATES',
   myconcerts: '<span class="brand-blue">MY</span>CONCERTS',
   mybands: '<span class="brand-blue">MY</span>BANDS',
+  stats: 'STATS',
   news: 'ALERTS',
 };
 
@@ -518,19 +527,33 @@ function setHeaderChrome({ showBack, title, isBrand = false, brandHtml }) {
   }
 }
 
+function setActiveBottomTab(tab) {
+  el('tabbar').querySelectorAll('.tabitem').forEach((button) => {
+    const active = button.dataset.tab === tab;
+    button.classList.toggle('active', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+}
+
 function goToTab(tab, { fromHistory = false } = {}) {
   currentTab = tab;
   currentScreen = 'main';
   el('tabbar').classList.remove('hidden');
-  el('tabbar').querySelectorAll('.tabitem').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  setActiveBottomTab(tab);
   setHeaderChrome({ showBack: false, title: TAB_TITLES[tab] || 'ConcertDates', isBrand: true, brandHtml: TAB_BRAND_HTML[tab] });
   el('header-icon').innerHTML = icon(TAB_HEADER_ICONS[tab] || 'music');
   el('europe-toggle-btn').classList.toggle('hidden', tab !== 'concerts');
   el('nearby-toggle-btn').classList.toggle('hidden', tab !== 'concerts');
+  el('settings-btn').classList.toggle('hidden', tab === 'stats');
   showScreen(TAB_SCREENS[tab] || 'screen-concerts');
   if (tab === 'concerts') renderConcertsScreen();
   else if (tab === 'myconcerts') renderMyConcertsScreen();
   else if (tab === 'mybands') renderMyBandsScreen();
+  else if (tab === 'stats') {
+    statsSubTab = 'listening';
+    renderStatsScreen();
+  }
   else if (tab === 'news') {
     renderNewsScreen();
     if (newsSubTab === 'alerts') markAlertsSeen();
@@ -539,7 +562,7 @@ function goToTab(tab, { fromHistory = false } = {}) {
 }
 
 function showScreen(id) {
-  ['screen-concerts', 'screen-myconcerts', 'screen-mybands', 'screen-news', 'screen-profile', 'screen-venue-detail', 'screen-settings', 'screen-stats', 'screen-connection-error'].forEach((s) => {
+  ['screen-concerts', 'screen-myconcerts', 'screen-mybands', 'screen-news', 'screen-profile', 'screen-venue-detail', 'screen-settings', 'screen-stats', 'screen-top-bands', 'screen-connection-error'].forEach((s) => {
     el(s).classList.toggle('hidden', s !== id);
   });
   // All screens share one scrollable container (#content), so without this
@@ -784,6 +807,8 @@ function renderMyConcertsScreen() {
   // from the unchanged 16px rhythm between the stats and countdown cards.
   let html = '<div class="myconcerts-summary">';
 
+  html += startTopBandsHtml();
+
   // Stats teaser only once there's at least one past show to summarize —
   // otherwise it'd just be a row of zeroes above an empty list. `upcoming`
   // is passed through too so tickets already bought for a not-yet-happened
@@ -853,7 +878,7 @@ function statsTeaserHtml(stats) {
         <div class="stats-teaser-item"><span class="stats-teaser-value">${dlCompactNumber(stats.kmTraveled)} km</span><span class="stats-teaser-label">traveled</span></div>
         <div class="stats-teaser-item"><span class="stats-teaser-value">${dlCompactNumber(stats.totalSpend)} kr</span><span class="stats-teaser-label">spent</span></div>
       </div>
-      <button type="button" id="stats-teaser-cta" class="stats-teaser-footer">See your full stats${icon('chevronRight')}</button>
+      <button type="button" id="stats-teaser-cta" class="stats-teaser-footer">See your full concert stats${icon('chevronRight')}</button>
     </div>`;
 }
 
@@ -1381,7 +1406,10 @@ async function removeManuallyAddedConcert(concertId) {
 // Concerts.
 function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
   container.querySelector('#past-concert-submit')?.addEventListener('click', onAddPastConcert);
-  container.querySelector('#stats-teaser-cta')?.addEventListener('click', () => openStatsScreen());
+  container.querySelector('#stats-teaser-cta')?.addEventListener('click', () => openStatsScreen({ subTab: 'concerts' }));
+  container.querySelector('#start-listening-stats')?.addEventListener('click', () => openStatsScreen({ subTab: 'listening' }));
+  container.querySelector('#start-top-bands-view-all')?.addEventListener('click', () => openTopBandsScreen());
+  container.querySelectorAll('[data-listening-band-id]').forEach((row) => row.addEventListener('click', () => { topBandsTimeframe = 'threeMonths'; openProfile(row.dataset.listeningBandId, { selectedTab: 'listening' }); }));
   container.querySelector('#past-concert-year')?.addEventListener('change', () => refreshPastConcertDayOptions(container));
   container.querySelector('#past-concert-month')?.addEventListener('change', () => refreshPastConcertDayOptions(container));
 
@@ -2054,9 +2082,10 @@ function formatShortDate(dateStr) {
 
 /* ---------------- Band profile screen ---------------- */
 
-function openProfile(bandId, { fromHistory = false } = {}) {
+function openProfile(bandId, { fromHistory = false, selectedTab = 'concerts' } = {}) {
   activeProfileBandId = bandId;
-  profileTab = 'concerts';
+  profileTab = ['concerts', 'alerts', 'news', 'listening', 'data'].includes(selectedTab) ? selectedTab : 'concerts';
+  if (profileTab === 'listening') profileListeningTimeframe = topBandsTimeframe;
   currentScreen = 'profile';
   profileEuropeOnly = false;
   profileNearbyOnly = false;
@@ -2064,9 +2093,10 @@ function openProfile(bandId, { fromHistory = false } = {}) {
   setHeaderChrome({ showBack: true, title: band ? band.name : 'Band' });
   el('europe-toggle-btn').classList.add('hidden');
   el('nearby-toggle-btn').classList.add('hidden');
+  setActiveBottomTab('mybands');
   showScreen('screen-profile');
   renderProfileScreen(bandId);
-  if (!fromHistory) history.pushState({ tab: currentTab, screen: 'profile', bandId }, '');
+  if (!fromHistory) history.pushState({ tab: currentTab, screen: 'profile', bandId, profileTab }, '');
 }
 
 // Editing a band's name/URL now happens on its own profile page rather than
@@ -2104,12 +2134,12 @@ function wireBandEditForm(container, bandId) {
 }
 
 function profileTabsHtml() {
-  const tabs = ['concerts', 'alerts', 'news', 'data'];
+  const tabs = ['concerts', 'alerts', 'news', 'listening', 'data'];
   return `<div class="news-subtab-switch profile-tab-switch" role="tablist" aria-label="Band profile sections">${tabs.map((tab) => `<button type="button" id="profile-tab-${tab}" class="news-subtab-btn profile-tab-btn${profileTab === tab ? ' active' : ''}" data-profile-tab="${tab}" role="tab" aria-selected="${profileTab === tab}" aria-controls="profile-tab-panel"${profileTab === tab ? '' : ' tabindex="-1"'}>${escapeHtml(tab[0].toUpperCase() + tab.slice(1))}</button>`).join('')}</div>`;
 }
 
 function profileTabForKey(tab, key) {
-  const tabs = ['concerts', 'alerts', 'news', 'data'];
+  const tabs = ['concerts', 'alerts', 'news', 'listening', 'data'];
   const index = tabs.indexOf(tab);
   if (index < 0) return null;
   if (key === 'ArrowRight') return tabs[(index + 1) % tabs.length];
@@ -2120,7 +2150,7 @@ function profileTabForKey(tab, key) {
 }
 
 function activateProfileTab(bandId, tab, { focus = false } = {}) {
-  if (!['concerts', 'alerts', 'news', 'data'].includes(tab) || activeProfileBandId !== bandId) return;
+  if (!['concerts', 'alerts', 'news', 'listening', 'data'].includes(tab) || activeProfileBandId !== bandId) return;
   profileTab = tab;
   renderProfileScreen(bandId);
   if (focus) el('screen-profile').querySelector(`#profile-tab-${tab}`)?.focus();
@@ -2235,7 +2265,7 @@ function renderProfileScreen(bandId) {
     // against `new Date()` (current time-of-day) mislabels a show happening
     // later today as "last show" instead of "next show" for most of the
     // day. Compare against today's midnight instead for a date-only check.
-    const todayMidnight = new Date();
+    const todayMidnight = listeningNow();
     todayMidnight.setHours(0, 0, 0, 0);
     metaParts.push(`${activity.status === 'active' && activity.lastDate >= todayMidnight ? 'next show' : 'last show'} ${activity.lastYear}`);
   }
@@ -2290,12 +2320,13 @@ function renderProfileScreen(bandId) {
     </div>` : ''}
     <div class="profile-danger-zone">
       <button class="profile-remove-btn" data-band-id="${escapeAttr(band.id)}">Remove this band</button>
-    </div>` : profileTab === 'alerts' ? profileAlertsHtml(bandId) : profileTab === 'news' ? profileNewsHtml(bandId) : profileDataHtml(band)}
+    </div>` : profileTab === 'alerts' ? profileAlertsHtml(bandId) : profileTab === 'news' ? profileNewsHtml(bandId) : profileTab === 'listening' ? bandListeningHtml(band) : profileDataHtml(band)}
     </div>
   `;
 
   if (profileTab === 'alerts') wireReleaseAlertArtwork(container);
   if (profileTab === 'concerts') wireMyConcertsHandlers(container, () => renderProfileScreen(bandId));
+  if (profileTab === 'listening') wireListeningTimeframe(container, (timeframe) => { profileListeningTimeframe = timeframe; renderProfileScreen(bandId); });
   container.querySelectorAll('a').forEach((a) => a.addEventListener('click', (ev) => ev.stopPropagation()));
   container.querySelectorAll('.profile-tab-btn').forEach((button) => {
     button.addEventListener('click', () => activateProfileTab(bandId, button.dataset.profileTab));
@@ -2433,14 +2464,292 @@ function linkIconBtn(url, name) {
 
 /* ---------------- Stats screen ---------------- */
 
-function openStatsScreen({ fromHistory = false } = {}) {
-  currentScreen = 'stats';
-  setHeaderChrome({ showBack: true, title: 'Your stats' });
+const LISTENING_ATTRIBUTION = {
+  listening: 'ListenBrainz',
+  metadata: 'MusicBrainz',
+  artwork: 'Spotify',
+};
+let genreYearOffset = 0;
+
+function listeningNow() {
+  const fixed = typeof window !== 'undefined' ? window.__LIVEVAULT_QA_NOW__ : null;
+  const parsed = fixed ? new Date(fixed) : new Date();
+  return Number.isFinite(parsed.getTime()) ? parsed : new Date();
+}
+
+function globalListeningStats(timeframe = 'threeMonths') {
+  return ListeningStats.selectedStats(listeningEvents, bands, timeframe, listeningNow());
+}
+
+function timeframeControlHtml(selected, label = 'Listening timeframe') {
+  return `<div class="listening-timeframe" role="group" aria-label="${escapeAttr(label)}">
+    ${[['threeMonths', '3 months'], ['oneYear', '1 year'], ['allTime', 'All time']].map(([key, text]) => `<button type="button" class="listening-timeframe-btn${selected === key ? ' active' : ''}" data-listening-timeframe="${key}" aria-pressed="${selected === key}">${text}</button>`).join('')}
+  </div>`;
+}
+
+function statsTabsHtml() {
+  return `<div class="stats-subtabs" role="tablist" aria-label="Statistics sections">
+    ${[['listening', 'Listening'], ['concerts', 'Concerts']].map(([key, label]) => `<button type="button" id="stats-tab-${key}" class="stats-subtab-btn${statsSubTab === key ? ' active' : ''}" data-stats-tab="${key}" role="tab" aria-selected="${statsSubTab === key}" aria-controls="stats-tab-panel"${statsSubTab === key ? '' : ' tabindex="-1"'}>${label}</button>`).join('')}
+  </div>`;
+}
+
+function lastListenedLabel(listen) {
+  if (!listen) return 'No data';
+  const now = listeningNow();
+  const then = new Date(listen.listenedAt);
+  const nowDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const thenDay = Date.UTC(then.getUTCFullYear(), then.getUTCMonth(), then.getUTCDate());
+  const days = Math.floor((nowDay - thenDay) / 86400000);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return `${days} days ago`;
+  return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(then);
+}
+
+function movementHtml(movement) {
+  if (!movement) return '';
+  if (movement.kind === 'new') return `<span class="rank-movement is-new" aria-label="New ranking entry">New</span>`;
+  const arrow = movement.kind === 'up' ? '↑' : '↓';
+  return `<span class="rank-movement is-${movement.kind}" aria-label="${escapeAttr(movement.label)}">${arrow}<span class="movement-delta">${movement.delta}</span></span>`;
+}
+
+function listeningBandAvatarHtml(item) {
+  const band = item.band || bands.find((candidate) => candidate.id === item.bandId);
+  const name = item.bandName || band?.name || 'Unknown artist';
+  const initials = name.split(/\s+/).slice(0, 2).map((word) => word[0]).join('').toUpperCase();
+  const source = band?.syntheticPhotoPath || band?.photoUrl || band?.imageUrl || '';
+  return `<span class="listening-band-avatar"><span aria-hidden="true">${escapeHtml(initials)}</span>${source ? `<img src="${escapeAttr(source)}" alt="" data-listening-image />` : ''}</span>`;
+}
+
+function topBandRowsHtml(items, { compact = false, timeframe = 'threeMonths', showMovement = true } = {}) {
+  if (!items.length) return `<p class="listening-empty">No matched top bands are available for this period.</p>`;
+  return items.map((item) => `<button type="button" class="top-band-row${compact ? ' is-compact' : ''}" data-listening-band-id="${escapeAttr(item.bandId)}" data-listening-source-timeframe="${timeframe}">
+    <span class="top-band-rank">#${item.rank}</span>
+    ${listeningBandAvatarHtml(item)}
+    <span class="top-band-copy"><strong>${escapeHtml(item.bandName)}</strong><small>${ListeningStats.formatDuration(item.durationMs)} · ${item.listenCount.toLocaleString()} listens</small></span>
+    ${showMovement ? movementHtml(item.movement) : ''}
+  </button>`).join('');
+}
+
+function startTopBandsHtml() {
+  const stats = globalListeningStats('threeMonths');
+  return `<section class="listening-card start-top-bands-card" aria-labelledby="start-top-bands-title">
+    <div class="listening-card-heading"><p id="start-top-bands-title">YOUR TOP BANDS · 3 MONTHS</p><button type="button" id="start-top-bands-view-all" class="listening-link">View all</button></div>
+    <div class="top-bands-list">${topBandRowsHtml(stats.topBands.slice(0, 3), { compact: true, timeframe: 'threeMonths', showMovement: false })}</div>
+    <button type="button" id="start-listening-stats" class="listening-card-footer">See your listening stats${icon('chevronRight')}</button>
+  </section>`;
+}
+
+function summaryMetricHtml(iconName, value, label, extraClass = '') {
+  return `<div class="listening-summary-metric ${extraClass}"><span class="listening-summary-icon" aria-hidden="true">${icon(iconName)}</span><strong>${value}</strong><span>${escapeHtml(label)}</span></div>`;
+}
+
+function listeningSummaryHtml(stats, { bandId = null } = {}) {
+  let thirdValue = '—';
+  let thirdLabel = 'top genre rank';
+  if (bandId) {
+    const item = stats.topBands.find((candidate) => candidate.bandId === bandId);
+    thirdValue = item ? `#${item.rank}${item.movement?.kind === 'up' ? ' ↑' : item.movement?.kind === 'down' ? ' ↓' : item.movement?.kind === 'new' ? ' New' : ''}` : '—';
+    thirdLabel = item ? `of ${stats.distinctMatchedBands} bands` : 'not ranked';
+  } else {
+    const dominant = ListeningStats.dominantGenre(ListeningStats.genreDistributionByYear(stats.listens));
+    thirdValue = dominant ? '#1' : '—';
+    thirdLabel = dominant ? `${dominant.group} genre` : 'top genre rank';
+  }
+  return `<section class="listening-card listening-summary" aria-label="Listening summary for ${escapeAttr(stats.label)}">
+    <p class="listening-section-title">YOUR LISTENING · ${escapeHtml(stats.label.toUpperCase())}</p>
+    <div class="listening-summary-grid">
+      ${summaryMetricHtml('headphones', ListeningStats.formatDuration(stats.durationMs), 'listened')}
+      ${summaryMetricHtml('music', stats.listenCount.toLocaleString(), 'listens')}
+      ${summaryMetricHtml('trendUp', thirdValue, thirdLabel)}
+      ${summaryMetricHtml('clock', lastListenedLabel(stats.lastListened), 'last listened')}
+    </div>
+  </section>`;
+}
+
+function genreChartHtml() {
+  const distribution = ListeningStats.genreDistributionByYear(listeningEvents);
+  if (!distribution.length) return `<section class="listening-card"><p class="listening-section-title">LISTENING BY GENRE (ALL TIME)</p><p class="listening-empty">No genre data is available.</p></section>`;
+  const maxOffset = Math.max(0, distribution.length - 6);
+  genreYearOffset = Math.min(genreYearOffset, maxOffset);
+  const end = distribution.length - genreYearOffset;
+  const visible = distribution.slice(Math.max(0, end - 6), end);
+  const dominant = ListeningStats.dominantGenre(distribution);
+  const colors = { Rock: '#024ddf', Pop: '#7a2fd0', 'Hip-hop/R&B': '#2bb8cf', Electronic: '#d2a62f', Other: '#85868a' };
+  const summary = `All-time genre distribution across ${distribution.length} years. ${dominant ? `${dominant.group} is the most listened genre at ${dominant.percentage} percent.` : ''}`;
+  return `<section class="listening-card genre-card" aria-labelledby="genre-chart-title">
+    <div class="listening-card-heading"><p id="genre-chart-title">LISTENING BY GENRE (ALL TIME)</p>${distribution.length > 6 ? `<div class="genre-range-controls"><button type="button" data-genre-range="older" aria-label="Show older genre years" ${genreYearOffset >= maxOffset ? 'disabled' : ''}>${icon('back')}</button><button type="button" data-genre-range="newer" aria-label="Show newer genre years" ${genreYearOffset === 0 ? 'disabled' : ''}>${icon('chevronRight')}</button></div>` : ''}</div>
+    <p class="sr-only">${escapeHtml(summary)}</p>
+    <div class="genre-chart" role="img" aria-label="${escapeAttr(summary)}">
+      <div class="genre-axis"><span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0%</span></div>
+      <div class="genre-bars">${visible.map((year) => `<div class="genre-year"><div class="genre-stack">${ListeningStats.GENRE_GROUPS.map((group) => `<span style="height:${year.percentages[group]}%;background:${colors[group]}" title="${escapeAttr(`${group}: ${year.percentages[group]}%`)}"></span>`).join('')}</div><span>${year.year}</span></div>`).join('')}</div>
+    </div>
+    <div class="genre-legend">${ListeningStats.GENRE_GROUPS.map((group) => `<span><i style="background:${colors[group]}"></i>${escapeHtml(group)}</span>`).join('')}</div>
+    ${dominant ? `<p class="listening-card-note">Most listened genre: <strong>${escapeHtml(dominant.group)}</strong> · ${dominant.percentage}%</p>` : ''}
+  </section>`;
+}
+
+function topBandsPreviewHtml(stats) {
+  return `<section class="listening-card top-bands-card" aria-labelledby="stats-top-bands-title">
+    <div class="listening-card-heading"><p id="stats-top-bands-title">TOP BANDS · ${escapeHtml(stats.label.toUpperCase())}</p><button type="button" class="listening-link" data-open-top-bands>View all</button></div>
+    <div class="top-bands-list">${topBandRowsHtml(stats.topBands.slice(0, 5), { timeframe: stats.timeframe })}</div>
+    <button type="button" class="listening-card-footer" data-open-top-bands>View full top 100${icon('chevronRight')}</button>
+  </section>`;
+}
+
+function statsListeningHtml() {
+  const stats = globalListeningStats(statsListeningTimeframe);
+  if (!listeningEvents.length) return `<p class="screen-empty">Listening statistics will appear when ListenBrainz data is available.</p>`;
+  return `${listeningSummaryHtml(stats)}${genreChartHtml()}${topBandsPreviewHtml(stats)}`;
+}
+
+function lineChartHtml(stats) {
+  const buckets = stats.buckets;
+  if (!buckets.length) return `<section class="listening-card"><p class="listening-section-title">LISTENING OVER TIME (hours)</p><p class="listening-empty">Insufficient listening data for this chart.</p></section>`;
+  const width = 600;
+  const height = 210;
+  const left = 38;
+  const right = 12;
+  const top = 16;
+  const bottom = 34;
+  const maxHours = Math.max(1, ...buckets.map((bucket) => bucket.hours));
+  const yMax = Math.ceil(maxHours / 2) * 2;
+  const xFor = (index) => left + (buckets.length === 1 ? (width - left - right) / 2 : index * ((width - left - right) / (buckets.length - 1)));
+  const yFor = (hours) => top + (yMax - hours) * ((height - top - bottom) / yMax);
+  const points = buckets.map((bucket, index) => `${xFor(index).toFixed(1)},${yFor(bucket.hours).toFixed(1)}`);
+  const area = `${left},${height - bottom} ${points.join(' ')} ${xFor(buckets.length - 1)},${height - bottom}`;
+  const labelEvery = Math.max(1, Math.ceil(Math.max(1, buckets.length - 1) / 3));
+  const labelIndexes = new Set([0, buckets.length - 1]);
+  for (let index = labelEvery; index < buckets.length - Math.max(1, labelEvery / 2); index += labelEvery) labelIndexes.add(index);
+  const maxBucket = stats.mostActive;
+  const unit = stats.window.bucket;
+  const summary = `${stats.label} listening chart with ${buckets.length} ${unit} periods. Highest period is ${maxBucket?.label || 'not available'} at ${(maxBucket?.hours || 0).toFixed(1)} hours.`;
+  return `<section class="listening-card listening-chart-card" aria-labelledby="listening-chart-title">
+    <p id="listening-chart-title" class="listening-section-title">LISTENING OVER TIME (hours)</p>
+    <svg class="listening-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeAttr(summary)}" preserveAspectRatio="none">
+      ${[0, .25, .5, .75, 1].map((step) => { const y = top + step * (height - top - bottom); const label = Math.round((yMax * (1 - step)) * 10) / 10; return `<line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" class="chart-grid"/><text x="${left - 8}" y="${y + 4}" text-anchor="end">${label}</text>`; }).join('')}
+      <polygon points="${area}" class="chart-area"/>
+      <polyline points="${points.join(' ')}" class="chart-line"/>
+      ${buckets.map((bucket, index) => `<circle cx="${xFor(index)}" cy="${yFor(bucket.hours)}" r="3.5"><title>${escapeHtml(`${bucket.label}: ${bucket.hours.toFixed(1)} hours`)}</title></circle>`).join('')}
+      ${buckets.map((bucket, index) => labelIndexes.has(index) ? `<text x="${xFor(index)}" y="${height - 10}" text-anchor="middle">${escapeHtml(stats.window.bucket === 'week' ? bucket.label.split(' - ')[0] : bucket.label.replace(/\s+\d{4}$/, ''))}</text>` : '').join('')}
+    </svg>
+    ${maxBucket ? `<p class="listening-card-note">Most active ${unit}: ${escapeHtml(maxBucket.label)} · ${ListeningStats.formatDuration(maxBucket.durationMs)}</p>` : ''}
+  </section>`;
+}
+
+function trackArtworkHtml(track) {
+  if (!track.artworkPath) return `<span class="track-artwork is-placeholder" aria-hidden="true">${icon('music')}</span>`;
+  return `<span class="track-artwork"><span aria-hidden="true">${icon('music')}</span><img src="${escapeAttr(track.artworkPath)}" alt="" data-listening-image /></span>`;
+}
+
+function topTracksHtml(stats) {
+  return `<section class="listening-card top-tracks-card" aria-labelledby="top-tracks-title">
+    <p id="top-tracks-title" class="listening-section-title">TOP TRACKS · ${escapeHtml(stats.label.toUpperCase())}</p>
+    <div class="top-tracks-list">${stats.topTracks.length ? stats.topTracks.slice(0, 10).map((track) => `<div class="top-track-row"><span class="top-track-rank">#${track.rank}</span>${trackArtworkHtml(track)}<span class="top-track-copy"><strong>${escapeHtml(track.recordingTitle)}</strong><small>${track.listenCount.toLocaleString()} listens · ${ListeningStats.formatDuration(track.durationMs)}</small></span></div>`).join('') : `<p class="listening-empty">No tracks in this period.</p>`}</div>
+  </section>`;
+}
+
+function bandListeningHtml(band) {
+  const allStats = globalListeningStats(profileListeningTimeframe);
+  const bandListens = allStats.listens.filter((listen) => listen.localBandId === band.id);
+  const bandStats = { ...allStats, listens: bandListens, durationMs: ListeningStats.totalDurationMs(bandListens), listenCount: ListeningStats.listenCount(bandListens), lastListened: ListeningStats.lastListened(bandListens), topTracks: ListeningStats.topTracks(bandListens, 10), buckets: ListeningStats.timeBuckets(listeningEvents.filter((listen) => listen.localBandId === band.id), allStats.window, allStats.window.bucket) };
+  bandStats.mostActive = bandStats.buckets.length ? [...bandStats.buckets].sort((a, b) => b.durationMs - a.durationMs || a.startAt.localeCompare(b.startAt))[0] : null;
+  return `<div class="band-listening-panel">
+    ${timeframeControlHtml(profileListeningTimeframe, `${band.name} listening timeframe`)}
+    ${bandListens.length ? `${listeningSummaryHtml(bandStats, { bandId: band.id })}${lineChartHtml(bandStats)}${topTracksHtml(bandStats)}` : `<p class="screen-empty">No listening data is available for this period.</p>`}
+    <p class="listening-attribution">Listening data from ${LISTENING_ATTRIBUTION.listening} · Metadata from ${LISTENING_ATTRIBUTION.metadata} · Artwork from ${LISTENING_ATTRIBUTION.artwork}</p>
+  </div>`;
+}
+
+function wireListeningImages(container) {
+  container.querySelectorAll('img[data-listening-image]').forEach((image) => {
+    const removeBroken = () => image.remove();
+    image.addEventListener('error', removeBroken, { once: true });
+    if (image.complete && image.naturalWidth === 0) removeBroken();
+  });
+}
+
+function wireListeningTimeframe(container, onChange) {
+  container.querySelectorAll('[data-listening-timeframe]').forEach((button) => button.addEventListener('click', () => onChange(button.dataset.listeningTimeframe)));
+}
+
+function wireListeningBandRows(container) {
+  container.querySelectorAll('[data-listening-band-id]').forEach((row) => row.addEventListener('click', () => {
+    topBandsTimeframe = row.dataset.listeningSourceTimeframe || 'threeMonths';
+    openProfile(row.dataset.listeningBandId, { selectedTab: 'listening' });
+  }));
+}
+
+function statsTabForKey(tab, key) {
+  if (key === 'ArrowRight' || key === 'ArrowLeft') return tab === 'listening' ? 'concerts' : 'listening';
+  if (key === 'Home') return 'listening';
+  if (key === 'End') return 'concerts';
+  return null;
+}
+
+function activateStatsSubTab(tab, { focus = false } = {}) {
+  statsSubTab = tab === 'concerts' ? 'concerts' : 'listening';
+  renderStatsScreen();
+  if (focus) el('screen-stats').querySelector(`#stats-tab-${statsSubTab}`)?.focus();
+}
+
+function renderStatsScreen() {
+  const container = el('screen-stats');
+  container.innerHTML = `${statsTabsHtml()}<div id="stats-tab-panel" role="tabpanel" aria-labelledby="stats-tab-${statsSubTab}">${statsSubTab === 'listening' ? statsListeningHtml() : concertStatsHtml()}</div>`;
+  container.querySelectorAll('[data-stats-tab]').forEach((button) => {
+    button.addEventListener('click', () => activateStatsSubTab(button.dataset.statsTab));
+    button.addEventListener('keydown', (event) => {
+      const next = statsTabForKey(button.dataset.statsTab, event.key);
+      if (!next) return;
+      event.preventDefault();
+      activateStatsSubTab(next, { focus: true });
+    });
+  });
+  wireListeningTimeframe(container, (timeframe) => { statsListeningTimeframe = timeframe; renderStatsScreen(); });
+  container.querySelectorAll('[data-open-top-bands]').forEach((button) => button.addEventListener('click', () => { topBandsTimeframe = statsListeningTimeframe; openTopBandsScreen({ timeframe: statsListeningTimeframe }); }));
+  container.querySelectorAll('[data-genre-range]').forEach((button) => button.addEventListener('click', () => { genreYearOffset += button.dataset.genreRange === 'older' ? 1 : -1; renderStatsScreen(); }));
+  wireListeningBandRows(container);
+  wireListeningImages(container);
+}
+
+function openTopBandsScreen({ fromHistory = false, timeframe = topBandsTimeframe } = {}) {
+  topBandsTimeframe = ['threeMonths', 'oneYear', 'allTime'].includes(timeframe) ? timeframe : 'threeMonths';
+  currentScreen = 'top-bands';
+  setHeaderChrome({ showBack: true, title: 'Top bands' });
   el('europe-toggle-btn').classList.add('hidden');
   el('nearby-toggle-btn').classList.add('hidden');
+  setActiveBottomTab('stats');
+  showScreen('screen-top-bands');
+  renderTopBandsScreen();
+  if (!fromHistory) history.pushState({ tab: currentTab, screen: 'top-bands', timeframe: topBandsTimeframe }, '');
+}
+
+function renderTopBandsScreen() {
+  const container = el('screen-top-bands');
+  const stats = globalListeningStats(topBandsTimeframe);
+  container.innerHTML = `${timeframeControlHtml(topBandsTimeframe, 'Top bands timeframe')}<section class="listening-card full-top-bands-card"><div class="top-bands-list">${topBandRowsHtml(stats.topBands, { timeframe: topBandsTimeframe })}</div></section>`;
+  wireListeningTimeframe(container, (timeframe) => {
+    topBandsTimeframe = timeframe;
+    if (history.state?.screen === 'top-bands') history.replaceState({ ...history.state, timeframe }, '');
+    renderTopBandsScreen();
+  });
+  wireListeningBandRows(container);
+  wireListeningImages(container);
+}
+
+function openStatsScreen({ fromHistory = false, subTab = 'listening' } = {}) {
+  statsSubTab = subTab === 'concerts' ? 'concerts' : 'listening';
+  currentScreen = 'stats';
+  setHeaderChrome({ showBack: false, isBrand: true, brandHtml: 'STATS' });
+  el('header-icon').classList.remove('hidden');
+  el('header-icon').innerHTML = icon('statsBars');
+  el('settings-btn').classList.add('hidden');
+  el('europe-toggle-btn').classList.add('hidden');
+  el('nearby-toggle-btn').classList.add('hidden');
+  setActiveBottomTab('stats');
   showScreen('screen-stats');
   renderStatsScreen();
-  if (!fromHistory) history.pushState({ tab: currentTab, screen: 'stats' }, '');
+  if (!fromHistory) history.pushState({ tab: currentTab, screen: 'stats', subTab: statsSubTab }, '');
 }
 
 // Small "extra detail" line under a stat tile's label, for tiles that pick a
@@ -2452,14 +2761,12 @@ function venueYearCaveat(c) {
   return parts.length ? `<br><span class="stats-kpi-caveat">${escapeHtml(parts.join(', '))}</span>` : '';
 }
 
-function renderStatsScreen() {
-  const container = el('screen-stats');
+function concertStatsHtml() {
   const liveConcerts = concerts.filter((c) => bands.some((b) => b.id === c.bandId));
   const { past, upcoming } = dlMyConcerts(liveConcerts);
 
   if (past.length === 0) {
-    container.innerHTML = `<p class="screen-empty">No past concerts logged yet — your stats will show up here once you've attended a few concerts.</p>`;
-    return;
+    return `<p class="screen-empty">No past concerts logged yet — your stats will show up here once you've attended a few concerts.</p>`;
   }
 
   const stats = dlConcertStats(past, bands, upcoming);
@@ -2488,7 +2795,7 @@ function renderStatsScreen() {
     // literal first-show year — the specific show is demoted to the detail
     // line below, replacing the old plain "first show, [Band]" tile with a
     // single combined card instead of two separate ones.
-    const yearsAgo = Math.floor((Date.now() - new Date(stats.firstShow.date + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+    const yearsAgo = Math.floor((listeningNow().getTime() - new Date(stats.firstShow.date + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24 * 365.25));
     const year = (stats.firstShow.date || '').slice(0, 4);
     const detailParts = [stats.firstShow.bandName, stats.firstShow.venue, year].filter(Boolean).join(', ');
     milestoneTiles.push({
@@ -2563,7 +2870,7 @@ function renderStatsScreen() {
 
   const TOP_RATED_DISPLAY_CAP = 8;
 
-  container.innerHTML = `
+  return `
     ${sectionHtml('Overview', summaryTiles)}
     ${sectionHtml('Milestones', milestoneTiles)}
     ${sectionHtml('Habits', habitTiles)}

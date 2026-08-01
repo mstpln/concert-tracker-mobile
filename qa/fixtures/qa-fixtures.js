@@ -14,6 +14,7 @@
         {
           id: 'qa-artist-one',
           name: 'QA Artist One',
+          syntheticPhotoPath: 'assets/listening/album-blue.svg',
           favorite: true,
           imageUrl: 'https://example.invalid/images/qa-artist-one.jpg',
           musicbrainz: {
@@ -29,6 +30,7 @@
         {
           id: 'qa-artist-two',
           name: 'QA Artist Two',
+          syntheticPhotoPath: 'assets/listening/album-purple.svg',
           musicbrainz: {
             mbid: 'qa-mbid-two',
             status: 'manual_confirmed',
@@ -41,6 +43,7 @@
         {
           id: 'qa-artist-three',
           name: 'QA Artist Three',
+          syntheticPhotoPath: 'assets/listening/album-cyan.svg',
           muted: true,
           musicbrainz: {
             mbid: 'qa-mbid-three',
@@ -61,6 +64,7 @@
         {
           id: 'qa-artist-four',
           name: 'QA Artist Four With An Intentionally Very Long Artist Name For Responsive Testing',
+          syntheticPhotoPath: 'assets/listening/album-gold.svg',
           musicbrainz: {
             mbid: 'qa-mbid-four',
             status: 'confirmed',
@@ -103,6 +107,7 @@
         {
           id: 'qa-artist-empty',
           name: 'QA Empty Profile Artist',
+          syntheticListeningEmpty: true,
           musicbrainz: { mbid: 'qa-mbid-empty', status: 'confirmed', artistName: 'QA Empty Profile Artist' },
         },
       ],

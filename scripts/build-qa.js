@@ -12,6 +12,8 @@ const shell = [
   'app.css',
   'app.js',
   'dataLib.js',
+  'listeningStats.js',
+  'listeningFixtures.js',
   'icons.js',
   'remoteStore.js',
   'ownedTickets.js',
@@ -31,12 +33,16 @@ for (const file of shell) {
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(path.join(out, 'icons'), { recursive: true });
+fs.mkdirSync(path.join(out, 'assets', 'listening'), { recursive: true });
 
 for (const file of shell) {
   fs.copyFileSync(path.join(root, file), path.join(out, file));
 }
 for (const file of fs.readdirSync(path.join(root, 'icons'))) {
   fs.copyFileSync(path.join(root, 'icons', file), path.join(out, 'icons', file));
+}
+for (const file of fs.readdirSync(path.join(root, 'assets', 'listening'))) {
+  fs.copyFileSync(path.join(root, 'assets', 'listening', file), path.join(out, 'assets', 'listening', file));
 }
 for (const file of ['qa/qa-bootstrap.js', 'qa/qa.css', 'qa/fixtures/qa-fixtures.js']) {
   const target = path.join(out, path.basename(file));

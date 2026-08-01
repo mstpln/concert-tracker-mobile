@@ -36,6 +36,10 @@ async function installQaGuards(page) {
   };
 }
 
+async function settleVisual(page) {
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+}
+
 test('synthetic app starts, navigates, persists checklist, and resets', async ({ page }, testInfo) => {
   const assertQaGuards = await installQaGuards(page);
 
@@ -100,7 +104,7 @@ test('primary screens, settings, and band profile tabs remain navigable', async 
   await bandsScreen.getByText('QA Artist One', { exact: true }).click();
   await expect(page.locator('#screen-profile')).toBeVisible();
 
-  for (const tabName of ['Concerts', 'Alerts', 'News', 'Data']) {
+  for (const tabName of ['Concerts', 'Alerts', 'News', 'Listening', 'Data']) {
     await page.getByRole('tab', { name: tabName, exact: true }).click();
     await expect(page.getByRole('tab', { name: tabName, exact: true })).toHaveAttribute('aria-selected', 'true');
   }
@@ -115,6 +119,108 @@ test('primary screens, settings, and band profile tabs remain navigable', async 
 
   assertQaGuards();
   await expect(page.locator('body')).not.toHaveCSS('overflow-x', 'scroll');
+});
+
+test('listening stats navigation, rankings, timeframes, and band drill-down use synthetic local data', async ({ page }, testInfo) => {
+  const assertQaGuards = await installQaGuards(page);
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.setViewportSize(testInfo.project.name === 'mobile-chromium' ? { width: 375, height: 820 } : { width: 480, height: 900 });
+  await page.goto('/');
+
+  const navLabels = await page.getByTestId('bottom-navigation').locator('.tabitem').allTextContents();
+  expect(navLabels.map((label) => label.trim())).toEqual(['Concerts', 'Dates', 'Bands', 'Stats', 'Alerts']);
+  await expect(page.locator('.start-top-bands-card .top-band-row')).toHaveCount(3);
+  await expect(page.locator('.start-top-bands-card')).toContainText('YOUR TOP BANDS · 3 MONTHS');
+  await settleVisual(page);
+  await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-start-listening.png`) });
+
+  await page.getByRole('button', { name: 'See your full concert stats' }).click();
+  await expect(page.getByRole('tab', { name: 'Concerts', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.goBack();
+  await expect(page.locator('#screen-myconcerts')).toBeVisible();
+  await page.getByRole('button', { name: 'View all' }).click();
+  await expect(page.locator('#screen-top-bands')).toBeVisible();
+  await page.getByTestId('back-button').click();
+  await expect(page.locator('#screen-myconcerts')).toBeVisible();
+
+  await page.getByRole('button', { name: 'See your listening stats' }).click();
+  await expect(page.locator('#screen-stats')).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Listening', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.listening-summary')).toContainText('YOUR LISTENING · 3 MONTHS');
+  await expect(page.locator('.genre-card')).toBeVisible();
+  await expect(page.locator('.top-bands-card .top-band-row')).toHaveCount(5);
+  await settleVisual(page);
+  await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-listening-stats.png`) });
+
+  await page.getByRole('tab', { name: 'Concerts', exact: true }).click();
+  await expect(page.locator('#stats-tab-panel')).toContainText('Overview');
+  await expect(page.locator('#stats-tab-panel')).toContainText('concerts attended');
+  await settleVisual(page);
+  await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-concert-stats.png`) });
+
+  await page.getByRole('tab', { name: 'Listening', exact: true }).click();
+  await page.getByRole('button', { name: 'View full top 100' }).click();
+  await expect(page.locator('#screen-top-bands')).toBeVisible();
+  await expect(page.locator('.full-top-bands-card .top-band-row').first()).toContainText('#1');
+  await page.getByRole('button', { name: '1 year' }).click();
+  await expect(page.getByRole('button', { name: '1 year' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'All time' }).click();
+  await expect(page.locator('.full-top-bands-card .rank-movement')).toHaveCount(0);
+  await page.getByRole('button', { name: '3 months' }).click();
+  await settleVisual(page);
+  await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-top-bands.png`) });
+  await page.locator('.full-top-bands-card .top-band-row').first().click();
+
+  await expect(page.locator('#screen-profile')).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Listening', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.band-listening-panel .listening-summary')).toBeVisible();
+  await expect(page.locator('.band-listening-panel .listening-line-chart')).toBeVisible();
+  await expect(page.locator('.band-listening-panel .top-track-row')).toHaveCount(10);
+  const firstTrackArtwork = page.locator('.band-listening-panel .top-track-row img').first();
+  await expect(firstTrackArtwork).toBeVisible();
+  expect(await firstTrackArtwork.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
+  const firstTrackRow = page.locator('.band-listening-panel .top-track-row').first();
+  const [rankBox, artworkBox, copyBox] = await Promise.all([
+    firstTrackRow.locator('.top-track-rank').boundingBox(),
+    firstTrackRow.locator('.track-artwork').boundingBox(),
+    firstTrackRow.locator('.top-track-copy').boundingBox(),
+  ]);
+  expect(rankBox.x).toBeLessThan(artworkBox.x);
+  expect(artworkBox.x).toBeLessThan(copyBox.x);
+  await settleVisual(page);
+  await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-band-listening.png`) });
+  await page.locator('#content').evaluate((content) => {
+    const card = content.querySelector('.top-tracks-card');
+    content.scrollTo({ top: Math.max(0, card.offsetTop - 8), left: 0, behavior: 'instant' });
+  });
+  await settleVisual(page);
+  await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-band-top-tracks.png`) });
+  await page.getByRole('button', { name: '1 year' }).click();
+  await expect(page.locator('.band-listening-panel .listening-summary')).toContainText('YOUR LISTENING · 1 YEAR');
+  await expect(page.locator('.band-listening-panel .top-tracks-card')).toContainText('TOP TRACKS · 1 YEAR');
+  await page.getByRole('button', { name: 'All time' }).click();
+  await expect(page.locator('.band-listening-panel .listening-summary')).toContainText('YOUR LISTENING · ALL TIME');
+  await expect(page.locator('.band-listening-panel .listening-summary')).not.toContainText('↑');
+  await expect(page.locator('.band-listening-panel .listening-summary')).not.toContainText('↓');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  assertQaGuards();
+});
+
+test('listening empty and missing-artwork states remain usable', async ({ page }) => {
+  const assertQaGuards = await installQaGuards(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Bands' }).click();
+  await page.locator('#screen-mybands').getByText('QA Empty Profile Artist', { exact: true }).click();
+  await page.getByRole('tab', { name: 'Listening', exact: true }).click();
+  await expect(page.locator('.band-listening-panel')).toContainText('No listening data is available for this period.');
+  await expect(page.locator('.listening-attribution')).toContainText('Listening data from ListenBrainz');
+
+  await page.getByTestId('back-button').click();
+  await page.locator('#screen-mybands').getByText('Synthetic Ensemble', { exact: true }).click();
+  await page.getByRole('tab', { name: 'Listening', exact: true }).click();
+  await expect(page.locator('.band-listening-panel .track-artwork.is-placeholder').first()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  assertQaGuards();
 });
 
 test('structured release lifecycle alerts render safely in main Alerts and the matching artist profile only', async ({ page }, testInfo) => {
