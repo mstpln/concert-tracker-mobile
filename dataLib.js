@@ -35,9 +35,15 @@ function dlSlugify(name) {
     .replace(/^-+|-+$/g, '');
 }
 
+function dlCurrentDate() {
+  const fixed = typeof globalThis !== 'undefined' ? globalThis.__LIVEVAULT_QA_NOW__ : null;
+  const parsed = fixed ? new Date(fixed) : new Date();
+  return Number.isFinite(parsed.getTime()) ? parsed : new Date();
+}
+
 function dlIsUpcoming(concert) {
   if (!concert.date) return true;
-  const today = new Date();
+  const today = dlCurrentDate();
   today.setHours(0, 0, 0, 0);
   const d = new Date(concert.date + 'T00:00:00');
   return d >= today;
@@ -169,7 +175,7 @@ function dlEffectiveLastShowDate(band, concerts) {
 //                thresholdYears of today
 // - 'inactive' — most recent known date is thresholdYears or more in the past
 // Returns { status, lastDate, lastYear }.
-function dlBandActivity(band, concerts, thresholdYears, today = new Date()) {
+function dlBandActivity(band, concerts, thresholdYears, today = dlCurrentDate()) {
   const lastDate = dlEffectiveLastShowDate(band, concerts);
   if (!lastDate) return { status: 'unknown', lastDate: null, lastYear: null };
   const t = new Date(today);
@@ -273,7 +279,7 @@ function dlMyConcerts(concerts) {
 // in the center, just with the ring maxed at full.
 const DL_COUNTDOWN_MAX_DAYS = 30;
 
-function dlCountdownParts(targetDate, now = new Date()) {
+function dlCountdownParts(targetDate, now = dlCurrentDate()) {
   const diffMs = Math.max(0, targetDate.getTime() - now.getTime());
   const days = Math.floor(diffMs / 86400000);
   const hours = Math.floor((diffMs % 86400000) / 3600000);
@@ -526,7 +532,7 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
   // re-sorting.
   const lastShow = sortedByDate.length ? sortedByDate[sortedByDate.length - 1] : null;
   const daysSinceLastShow = lastShow
-    ? Math.round((Date.now() - new Date(lastShow.date + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24))
+    ? Math.round((dlCurrentDate().getTime() - new Date(lastShow.date + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24))
     : null;
 
   // Ties broken by most recently seen — the most natural reading of "which

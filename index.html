@@ -52,6 +52,7 @@
     <section id="screen-venue-detail" class="screen hidden"></section>
     <section id="screen-settings" class="screen hidden"></section>
     <section id="screen-stats" class="screen hidden"></section>
+    <section id="screen-top-bands" class="screen hidden"></section>
     <section id="screen-connection-error" class="screen hidden">
       <div class="screen-empty">
         <p>Couldn't reach your data. Check your connection and try again.</p>
@@ -70,6 +71,9 @@
     <button class="tabitem" data-tab="mybands">
       <span class="tab-icon"></span>Bands
     </button>
+    <button class="tabitem" data-tab="stats">
+      <span class="tab-icon"></span>Stats
+    </button>
     <button class="tabitem" data-tab="news">
       <span class="tab-icon-wrap"><span class="tab-icon"></span><span id="news-unread-dot" class="tab-unread-dot hidden"></span></span>Alerts
     </button>
@@ -79,6 +83,8 @@
 <script src="version.js"></script>
 <script src="icons.js"></script>
 <script src="dataLib.js"></script>
+<script src="listeningStats.js"></script>
+<script src="listeningFixtures.js"></script>
 <script src="remoteStore.js"></script>
 <script src="ownedTickets.js"></script>
 <script src="musicbrainzState.js"></script>

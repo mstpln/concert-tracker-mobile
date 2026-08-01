@@ -13,12 +13,13 @@ const css = fs.readFileSync(path.join(root, 'app.css'), 'utf8');
 test('band profile tabs are ordered, accessible, reset on open, and preserve local tab state on rerender', () => {
   const tabs = app.slice(app.indexOf('function profileTabsHtml'), app.indexOf('function profileAlertsHtml'));
   const open = app.slice(app.indexOf('function openProfile'), app.indexOf('function bandEditFormHtml'));
-  assert.match(tabs, /\['concerts', 'alerts', 'news', 'data'\]/);
+  assert.match(tabs, /\['concerts', 'alerts', 'news', 'listening', 'data'\]/);
   assert.match(tabs, /role="tablist"/);
   assert.match(tabs, /role="tab"/);
   assert.match(tabs, /aria-selected/);
   assert.match(tabs, /aria-controls="profile-tab-panel"/);
-  assert.match(open, /profileTab = 'concerts';/);
+  assert.match(open, /selectedTab = 'concerts'/);
+  assert.match(open, /profileTab = \['concerts', 'alerts', 'news', 'listening', 'data'\]\.includes\(selectedTab\)/);
   assert.match(app, /data-profile-tab/);
   assert.match(app, /renderProfileScreen\(bandId\)/);
 });
@@ -28,10 +29,12 @@ test('profile tab keyboard helper follows visible order with wrapping, Home, End
   const profileTabForKey = Function(`${source}; return profileTabForKey;`)();
   assert.equal(profileTabForKey('concerts', 'ArrowRight'), 'alerts');
   assert.equal(profileTabForKey('alerts', 'ArrowRight'), 'news');
-  assert.equal(profileTabForKey('news', 'ArrowRight'), 'data');
+  assert.equal(profileTabForKey('news', 'ArrowRight'), 'listening');
+  assert.equal(profileTabForKey('listening', 'ArrowRight'), 'data');
   assert.equal(profileTabForKey('data', 'ArrowRight'), 'concerts');
   assert.equal(profileTabForKey('concerts', 'ArrowLeft'), 'data');
-  assert.equal(profileTabForKey('data', 'ArrowLeft'), 'news');
+  assert.equal(profileTabForKey('data', 'ArrowLeft'), 'listening');
+  assert.equal(profileTabForKey('listening', 'ArrowLeft'), 'news');
   assert.equal(profileTabForKey('news', 'ArrowLeft'), 'alerts');
   assert.equal(profileTabForKey('alerts', 'ArrowLeft'), 'concerts');
   assert.equal(profileTabForKey('news', 'Home'), 'concerts');
@@ -112,7 +115,7 @@ test('Research activity prioritizes an eligible provider over another providerâ€
   assert.equal(profileRetryActivityRow({ nextRetryAt: null, eligibleNow: false }, (value) => `formatted ${value}`), null);
 });
 
-test('profile Data CSS keeps key-value rows, IDs, candidates, and four tabs mobile-safe', () => {
+test('profile Data CSS keeps key-value rows, IDs, candidates, and five tabs mobile-safe', () => {
   assert.match(css, /\.profile-data-row/);
   assert.match(css, /overflow-wrap: anywhere/);
   assert.match(css, /\.profile-data-id/);
