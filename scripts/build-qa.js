@@ -13,6 +13,7 @@ const shell = [
   'v72Corrections.css',
   'app.js',
   'v72Corrections.js',
+  'v72FinalAdjustments.js',
   'dataLib.js',
   'listeningStats.js',
   'listeningFixtures.js',
