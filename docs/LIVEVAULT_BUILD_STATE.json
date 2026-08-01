@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v71",
-  "serviceWorkerCacheVersion": "v71",
+  "appVersion": "v72",
+  "serviceWorkerCacheVersion": "v72",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 20,
@@ -19,7 +19,9 @@
   "shellFiles": [
     "index.html",
     "app.css",
+    "v72Corrections.css",
     "app.js",
+    "v72Corrections.js",
     "dataLib.js",
     "listeningStats.js",
     "listeningFixtures.js",
