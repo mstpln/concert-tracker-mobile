@@ -23,8 +23,9 @@
 // so this file can sanity-assert the two stay in sync (see the console
 // warning) — it is NOT what drives cache invalidation.
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v71';
-// Previous merged release marker retained for legacy regression coverage: CACHE_NAME_LITERAL = 'v70'.
+const CACHE_NAME_LITERAL = 'v72';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v71'.
+// Legacy owned-ticket release marker retained for historical regression coverage: CACHE_NAME_LITERAL = 'v70'.
 if (CACHE_NAME_LITERAL !== APP_VERSION) {
   console.warn(
     `service-worker.js CACHE_NAME_LITERAL ("${CACHE_NAME_LITERAL}") is out of sync with version.js APP_VERSION ("${APP_VERSION}") — bump CACHE_NAME_LITERAL in service-worker.js to match, otherwise old installs won't update.`
@@ -35,7 +36,10 @@ const SHELL_FILES = [
   './',
   './index.html',
   './app.css',
+  './v72Corrections.css',
   './app.js',
+  './v72Corrections.js',
+  './v72FinalAdjustments.js',
   './dataLib.js',
   './listeningStats.js',
   './listeningFixtures.js',

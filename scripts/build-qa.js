@@ -10,7 +10,10 @@ const sourceId = process.env.QA_BUILD_ID || process.env.GITHUB_SHA || process.en
 const id = String(sourceId).replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 80) || 'local-qa';
 const shell = [
   'app.css',
+  'v72Corrections.css',
   'app.js',
+  'v72Corrections.js',
+  'v72FinalAdjustments.js',
   'dataLib.js',
   'listeningStats.js',
   'listeningFixtures.js',

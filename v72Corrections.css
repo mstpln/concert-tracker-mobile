@@ -1,0 +1,124 @@
+/* LiveVault v72 focused corrections. These rules are intentionally scoped. */
+
+/* Only the two summary cards on My Concerts use the blue outline. */
+.start-top-bands-card,
+.stats-teaser-card {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.start-top-bands-card .listening-card-footer,
+.stats-teaser-card .stats-teaser-footer {
+  background: transparent;
+  color: var(--accent);
+  border-top-color: var(--border);
+}
+.start-top-bands-card .top-band-row.is-compact {
+  grid-template-columns: 34px 46px minmax(0, 1fr) 30px;
+}
+
+/* Rows six through ten keep identical styling while preserving legacy QA selectors. */
+.top-band-row-extra {
+  width: 100%;
+  min-width: 0;
+  min-height: 74px;
+  display: grid;
+  grid-template-columns: 38px 52px minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+}
+.top-band-row-extra:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* Approved subtle blue-tinted concert-card surface across concert contexts. */
+.concert-card-tinted {
+  background: color-mix(in srgb, var(--surface) 91%, var(--accent) 9%);
+  border-color: var(--border-strong);
+}
+@supports not (background: color-mix(in srgb, white, blue)) {
+  .concert-card-tinted { background: #eef3ff; }
+  @media (prefers-color-scheme: dark) {
+    .concert-card-tinted { background: #182238; }
+  }
+}
+
+/* Year grouping is text-only: year at left, count at right. */
+.year-divider { justify-content: space-between; }
+.year-divider-line { display: none; }
+
+/* Listening context row used on upcoming and past concert cards. */
+.concert-listening-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 11px 0;
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.concert-listening-row > svg {
+  width: 19px;
+  height: 19px;
+  color: var(--text-secondary);
+}
+.concert-listening-row span {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.concert-listening-row strong {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.concert-listening-row small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Past-concert rating stars are exactly twice the previous icon dimensions. */
+.past-rating-details .stars-display,
+.past-rating-details .star-picker {
+  gap: 4px;
+}
+.past-rating-details .star-btn {
+  padding: 2px;
+}
+.past-rating-details .star-btn svg,
+.past-rating-details .stars-display svg {
+  width: 32px;
+  height: 32px;
+}
+
+/* Spotify artwork is square and remains subordinate to the title. */
+.track-artwork,
+.track-artwork img {
+  aspect-ratio: 1 / 1;
+}
+.track-artwork img { object-fit: cover; }
+
+@media (max-width: 390px) {
+  .start-top-bands-card .top-band-row.is-compact {
+    grid-template-columns: 32px 44px minmax(0, 1fr) 28px;
+  }
+  .top-band-row-extra {
+    grid-template-columns: 34px 46px minmax(0, 1fr) 34px;
+    gap: 6px;
+  }
+  .past-rating-details .star-btn svg,
+  .past-rating-details .stars-display svg {
+    width: 30px;
+    height: 30px;
+  }
+}
