@@ -19,14 +19,37 @@
     if (attribution) attribution.textContent = 'Listening data from ListenBrainz';
   }
 
+  function wireExtraRows() {
+    root.document?.querySelectorAll('.top-band-row-extra[data-band-id]').forEach((row) => {
+      if (row.dataset.v72Wired === 'true') return;
+      row.dataset.v72Wired = 'true';
+      row.addEventListener('click', () => {
+        if (typeof openProfile === 'function') openProfile(row.dataset.bandId, { selectedTab: 'listening' });
+      });
+    });
+  }
+
+  function applyDomFixes() {
+    fixEmptyAttribution();
+    wireExtraRows();
+  }
+
   function apply() {
     if (typeof topBandsPreviewHtml === 'function') topBandsPreviewHtml = renderTopBandsPreview;
-    fixEmptyAttribution();
+    applyDomFixes();
   }
 
   function observe() {
     if (!root.document || !root.MutationObserver) return;
-    const observer = new root.MutationObserver(fixEmptyAttribution);
+    let queued = false;
+    const observer = new root.MutationObserver(() => {
+      if (queued) return;
+      queued = true;
+      root.requestAnimationFrame(() => {
+        queued = false;
+        applyDomFixes();
+      });
+    });
     observer.observe(root.document.documentElement, { childList: true, subtree: true });
   }
 
