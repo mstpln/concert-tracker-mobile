@@ -23,7 +23,7 @@
 // so this file can sanity-assert the two stay in sync (see the console
 // warning) — it is NOT what drives cache invalidation.
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v70';
+const CACHE_NAME_LITERAL = 'v71';
 if (CACHE_NAME_LITERAL !== APP_VERSION) {
   console.warn(
     `service-worker.js CACHE_NAME_LITERAL ("${CACHE_NAME_LITERAL}") is out of sync with version.js APP_VERSION ("${APP_VERSION}") — bump CACHE_NAME_LITERAL in service-worker.js to match, otherwise old installs won't update.`
@@ -38,6 +38,8 @@ const SHELL_FILES = [
   './dataLib.js',
   './listeningStats.js',
   './listeningFixtures.js',
+  './spotifyHistoryImport.js',
+  './spotifyHistoryBootstrap.js',
   './icons.js',
   './remoteStore.js',
   './ownedTickets.js',
@@ -67,8 +69,8 @@ self.addEventListener('install', (event) => {
       // install-time fetch reused a stale disk-cached response instead of
       // actually hitting the network. { cache: 'reload' } forces every
       // shell file to be freshly fetched from the network on install,
-      // which is the whole point of bumping CACHE_NAME_LITERAL in the
-      // first place.
+      // which is the whole point of bumping CACHE_NAME_LITERAL in the first
+      // place.
       Promise.all(
         SHELL_FILES.map((url) => fetch(url, { cache: 'reload' }).then((res) => cache.put(url, res)))
       )
