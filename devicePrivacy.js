@@ -7,6 +7,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   const SETTINGS_KEY = 'concertTrackerSettings';
   const SHELL_CACHE_PREFIX = 'concert-tracker-shell-';
+  const TICKET_DB_NAME = 'live-vault-owned-tickets';
 
   async function removeShellCaches(cacheStorage = root?.caches) {
     if (!cacheStorage?.keys) return [];
@@ -14,6 +15,16 @@
     const targets = keys.filter((key) => String(key).startsWith(SHELL_CACHE_PREFIX));
     await Promise.all(targets.map((key) => cacheStorage.delete(key)));
     return targets;
+  }
+
+  function deleteDatabase(name, indexedDb = root?.indexedDB) {
+    if (!indexedDb?.deleteDatabase) return Promise.resolve(false);
+    return new Promise((resolve, reject) => {
+      const request = indexedDb.deleteDatabase(name);
+      request.onsuccess = () => resolve(true);
+      request.onblocked = () => reject(new Error(`Could not erase ${name} because it is in use.`));
+      request.onerror = () => reject(request.error || new Error(`Could not erase ${name}.`));
+    });
   }
 
   function disconnectDevice({ clearConnection = root?.rsClearConnection, reload = () => root?.location?.reload?.() } = {}) {
@@ -24,7 +35,7 @@
   async function eraseDevice({
     clearSpotify = () => root?.SpotifyUser?.clearAuth?.(),
     clearHistory = () => root?.LiveVaultSpotifyHistory?.clear?.(),
-    clearTickets = () => root?.OwnedTickets?.clearCache?.(),
+    clearTickets = () => deleteDatabase(TICKET_DB_NAME),
     clearConnection = root?.rsClearConnection,
     storage = root?.localStorage,
     cacheStorage = root?.caches,
@@ -92,5 +103,5 @@
     else observeSettings();
   }
 
-  return { SETTINGS_KEY, SHELL_CACHE_PREFIX, removeShellCaches, disconnectDevice, eraseDevice, enhanceConnectionCard, observeSettings };
+  return { SETTINGS_KEY, SHELL_CACHE_PREFIX, TICKET_DB_NAME, removeShellCaches, deleteDatabase, disconnectDevice, eraseDevice, enhanceConnectionCard, observeSettings };
 });
