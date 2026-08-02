@@ -4,7 +4,7 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by an authenticated Cloudflare Worker and private R2. The established production JSON files remain `bands.json`, `concerts.json`, `news.json`, and `apiUsage.json`; ticket PDF bytes are separate authenticated R2 objects.
 
-The current unreleased security build is synchronized at **v74** on `security/v74-direct-risk-reduction`. It keeps the v73 listening and concert experience unchanged while adding focused browser, Worker and service-worker hardening. Production remains on the merged v73 build until explicit merge and deployment approval.
+Security Build 1 is merged and manually deployed at **v74**. The current unreleased branch is **v75** on `security/v75-stale-write-protection`. It adds conditional JSON writes and conflict recovery without changing stored schemas, provider ownership or user-facing design.
 
 ## Product purpose and navigation
 
@@ -32,16 +32,29 @@ The Concert Dates header uses the calendar icon family. Past-concert rating star
 
 ## v74 focused security hardening
 
-The unreleased v74 branch adds only proportionate, high-value protections for the single-user app:
+The live v74 release adds proportionate direct-risk protections:
 
 - browser navigation permits same-origin links and HTTPS external links only, adds `noopener noreferrer`, and blocks unsafe schemes;
-- the Excel export control is removed so the app no longer needs to execute SheetJS from a third-party CDN; CSV export remains available;
+- the Excel export control is removed so the app no longer executes SheetJS from a third-party CDN; CSV export remains available;
 - the document declares a no-referrer policy and a compatible self-script content security policy;
 - Worker JSON writes require `application/json`, are limited to 10 MB, and must match the expected top-level array/object shape while preserving unknown fields;
 - authenticated Worker responses use `private, no-store`, `nosniff`, and no-referrer headers;
 - production service-worker activation deletes only obsolete `concert-tracker-shell-*` caches, while synthetic QA keeps its separate `concert-tracker-qa-*` namespace.
 
-No stored-data schema, provider behavior, production data, secret, credential role, ETag behavior or deployment configuration changes are included in this first security build. The Worker change requires a later manual Cloudflare deployment after merge approval.
+## v75 stale-write protection
+
+The unreleased v75 branch adds one shared concurrency contract across the browser, Cloudflare Worker and GitHub Actions writers:
+
+- Worker JSON reads expose the current R2 `ETag`;
+- writes to an existing JSON document require `If-Match` and are performed atomically through R2 conditional `put`;
+- creation uses `If-None-Match: *` and remains compatible with first-time setup;
+- a stale write receives HTTP `412` instead of silently replacing newer data;
+- browser and automation clients reread once, perform a deterministic three-way merge, and retry once with the newest ETag;
+- stable-ID record arrays preserve remote additions, locally added records, unknown fields and unrelated concurrent field changes;
+- a stale deletion is applied only when the remote record is unchanged from the original read; a remotely changed record is preserved;
+- successful conflict recovery reconciles the caller's in-memory array/object so a later save cannot accidentally remove the merged remote data.
+
+Ticket PDF routes are unchanged. No production data, provider calls, credential roles or stored-data migrations are part of v75. The new Worker code requires manual deployment after merge.
 
 ## Data model and ownership
 
@@ -53,7 +66,7 @@ The app is mobile-first. Focused changes preserve the existing blue/black/grey/w
 
 ## Active backlog
 
-1. Complete security Build 2: ETag and stale-write protection
+1. Complete and deploy security Build 2: v75 ETag and stale-write protection
 2. Complete security Build 3: local erasure, credential separation and provider/workflow hardening
 3. Real ListenBrainz account connection and incremental synchronization
 4. MusicBrainz recording/release matching and optional artwork enrichment
