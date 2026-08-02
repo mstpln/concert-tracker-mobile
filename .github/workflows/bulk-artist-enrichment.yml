@@ -2,6 +2,13 @@ name: Bulk artist enrichment
 
 on:
   workflow_dispatch: {}
+  push:
+    branches:
+      - feature/bulk-artist-enrichment
+    paths:
+      - '.github/workflows/bulk-artist-enrichment.yml'
+      - 'scripts/bulk-enrich-artists.py'
+      - 'scripts/approved-artists.json'
 
 permissions:
   contents: read
@@ -27,7 +34,7 @@ jobs:
       - name: Install runtime dependency
         run: python -m pip install --disable-pip-version-check requests==2.32.3
 
-      - name: Download current production bands baseline (read only)
+      - name: Download current production bands baseline (GET only)
         env:
           CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
           CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
@@ -97,7 +104,8 @@ jobs:
               f"- Unresolved artists: {report['unresolvedCount']}",
               f"- Validation errors: {len(report['validationErrors'])}",
               '',
-              'The workflow only reads bands.json and creates review artifacts. It never writes to Cloudflare or production.',
+              'This workflow performs no PUT, POST, DELETE, deployment, merge, or production write.',
+              'The generated files are review-only workflow artifacts.',
           ]
           with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a', encoding='utf-8') as fh:
               fh.write('\n'.join(lines) + '\n')
