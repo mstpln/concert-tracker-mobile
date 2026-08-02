@@ -23,9 +23,9 @@
 // so this file can sanity-assert the two stay in sync (see the console
 // warning) — it is NOT what drives cache invalidation.
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v74';
-// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v73'.
-// Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v72'.
+const CACHE_NAME_LITERAL = 'v75';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v74'.
+// Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v73'.
 // Legacy owned-ticket release marker retained for historical regression coverage: CACHE_NAME_LITERAL = 'v70'.
 if (CACHE_NAME_LITERAL !== APP_VERSION) {
   console.warn(
@@ -48,6 +48,7 @@ const SHELL_FILES = [
   './spotifyHistoryImport.js',
   './spotifyHistoryBootstrap.js',
   './icons.js',
+  './conflictMerge.js',
   './remoteStore.js',
   './ownedTickets.js',
   './musicbrainzState.js',

@@ -135,3 +135,11 @@
 **Reason:** The imported events do not contain trustworthy genre or artwork fields, and provider enrichment must remain optional, minimal and private.
 
 **Consequence:** No complete history is sent to Spotify, no client secret is added to the app, placeholders remain valid offline, and provider metadata never overwrites user-owned band or concert fields.
+
+## 2026-08-02 — Existing JSON writes use optimistic concurrency
+
+**Decision:** Every write to an existing production JSON document is conditional on the `ETag` returned by the corresponding read. A stale write is rejected with HTTP 412 and may be retried once only after rereading and applying the shared deterministic three-way merge.
+
+**Reason:** The browser and automated workflows can edit the same full JSON documents. A last-writer-wins overwrite can silently remove newer user or provider data even when each individual writer uses safe field-level logic.
+
+**Consequence:** R2 performs the conditional `put` atomically. First-time creation uses `If-None-Match: *`. Stable-ID arrays preserve concurrent additions and unrelated field updates; remotely changed records are protected from stale deletion. Browser and automation callers reconcile their in-memory data after a successful conflict merge so a later save cannot undo the recovery. Ticket PDF routes remain outside this document-level merge contract.

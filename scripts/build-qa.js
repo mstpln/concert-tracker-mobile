@@ -21,6 +21,7 @@ const shell = [
   'spotifyHistoryImport.js',
   'spotifyHistoryBootstrap.js',
   'icons.js',
+  'conflictMerge.js',
   'remoteStore.js',
   'ownedTickets.js',
   'musicbrainzState.js',

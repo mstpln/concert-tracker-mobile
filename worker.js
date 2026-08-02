@@ -17,7 +17,8 @@ function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, If-Match, If-None-Match',
+    'Access-Control-Expose-Headers': 'ETag',
   };
 }
 
@@ -73,6 +74,26 @@ async function readBoundedText(request, maxBytes) {
   if (Number.isFinite(declaredLength) && declaredLength > maxBytes) return { tooLarge: true };
   const text = await request.text();
   return utf8ByteLength(text) > maxBytes ? { tooLarge: true } : { text };
+}
+
+function objectEtag(object) {
+  if (!object) return null;
+  if (object.httpEtag) return object.httpEtag;
+  return object.etag ? `"${String(object.etag).replace(/^"|"$/g, '')}"` : null;
+}
+
+function emptyHeaders() {
+  return new Request('https://livevault.invalid').headers;
+}
+
+function writeCondition(request) {
+  const ifMatch = request.headers.get('If-Match');
+  const ifNoneMatch = request.headers.get('If-None-Match');
+  if (!ifMatch && !ifNoneMatch) return null;
+  const headers = emptyHeaders();
+  if (ifMatch) headers.set('If-Match', ifMatch);
+  if (ifNoneMatch) headers.set('If-None-Match', ifNoneMatch);
+  return headers;
 }
 
 async function qaSmoke(env) {
@@ -139,9 +160,25 @@ async function handleJsonFile(request, env, filename) {
   if (request.method === 'GET') {
     const object = await env.BUCKET.get(filename);
     if (!object) return response('Not found', { status: 404 });
-    return response(object.body, { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
+    const etag = objectEtag(object);
+    return response(object.body, {
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        ...(etag ? { ETag: etag } : {}),
+      },
+    });
   }
   if (request.method !== 'PUT') return response('Method not allowed', { status: 405 });
+
+  let condition = writeCondition(request);
+  if (!condition) {
+    const existing = typeof env.BUCKET.head === 'function'
+      ? await env.BUCKET.head(filename)
+      : await env.BUCKET.get(filename);
+    if (existing) return response('Precondition required', { status: 428 });
+    condition = emptyHeaders();
+    condition.set('If-None-Match', '*');
+  }
 
   const contentType = (request.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
   if (contentType !== 'application/json') return response('JSON content required', { status: 415 });
@@ -157,10 +194,13 @@ async function handleJsonFile(request, env, filename) {
   }
   if (!jsonRootIsValid(filename, parsed)) return response('Invalid JSON document type', { status: 400 });
 
-  await env.BUCKET.put(filename, body.text, {
+  const stored = await env.BUCKET.put(filename, body.text, {
+    onlyIf: condition,
     httpMetadata: { contentType: 'application/json; charset=utf-8', cacheControl: 'private, no-store' },
   });
-  return response('OK');
+  if (stored === null) return response('Document changed; reread and retry', { status: 412 });
+  const etag = objectEtag(stored);
+  return response('OK', { headers: etag ? { ETag: etag } : {} });
 }
 
 export default {
