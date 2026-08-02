@@ -2,10 +2,11 @@
 
 const worker = require('./lib/workerClient');
 const { UsageTracker } = require('./lib/usageTracker');
-const structured = require('./lib/structuredResearch');
 const policy = require('./lib/tavilyConcertPolicy');
 const { slugify, todayIso } = require('./lib/util');
 const { fetchTourDatesViaTavily, reconcileConcertCandidate } = require('./research');
+
+let sharedUsage = null;
 
 function uniqueConcert(candidate, existing) {
   const base = candidate.id || `${candidate.bandId}-${candidate.date}-${slugify(candidate.city || candidate.venue)}`;
@@ -38,11 +39,12 @@ async function main() {
     worker.readJson('concerts.json', []),
     UsageTracker.load(),
   ]);
+  sharedUsage = usage;
   const due = policy.dueBands(bands, storedConcerts, Date.now());
   const additions = [];
   const routingUpdates = [];
   let attempted = 0;
-  let found = 0;
+  let observed = 0;
   let duplicates = 0;
 
   for (const item of due) {
@@ -63,17 +65,15 @@ async function main() {
       usage.note(`Focused Tavily concert search failed for "${band.name}": ${error.message}`);
     }
 
-    let acceptedForBand = 0;
-    for (const candidate of candidates) {
-      if (!candidate.date || candidate.date < todayIso()) continue;
+    const upcomingCandidates = candidates.filter((candidate) => candidate.date && candidate.date >= todayIso());
+    observed += upcomingCandidates.length;
+    for (const candidate of upcomingCandidates) {
       const reconciliation = reconcileConcertCandidate(storedConcerts, additions, candidate);
       if (reconciliation.action !== 'add') {
         duplicates += 1;
         continue;
       }
       additions.push(uniqueConcert(candidate, [...storedConcerts, ...additions]));
-      acceptedForBand += 1;
-      found += 1;
     }
 
     const checkedAt = new Date().toISOString();
@@ -83,7 +83,7 @@ async function main() {
         lastTavilyTourAt: checkedAt,
         lastTavilyTourReason: item.eligibility.reason,
         groqFingerprints: [...rememberedNext].slice(-100),
-        tavilyConcert: policy.nextState(band, [...storedConcerts, ...additions], acceptedForBand, checkedAt),
+        tavilyConcert: policy.nextState(band, [...storedConcerts, ...additions], upcomingCandidates.length, checkedAt),
       },
     });
   }
@@ -107,18 +107,19 @@ async function main() {
     mode: 'tavily-concert-only',
     bandsDue: due.length,
     bandsAttempted: attempted,
+    concertCandidatesObserved: observed,
     concertsAdded: additions.length,
     candidateDuplicatesSkipped: duplicates,
     status: 'ok',
   });
   await usage.save();
-  console.log(`Focused Tavily run complete. Due: ${due.length}, attempted: ${attempted}, concerts found: ${found}, additions prepared: ${additions.length}, duplicates skipped: ${duplicates}.`);
+  console.log(`Focused Tavily run complete. Due: ${due.length}, attempted: ${attempted}, candidates observed: ${observed}, additions prepared: ${additions.length}, duplicates skipped: ${duplicates}.`);
 }
 
 if (require.main === module) main().catch(async (error) => {
   console.error('Focused Tavily concert run failed:', error.message);
   try {
-    const usage = await UsageTracker.load();
+    const usage = sharedUsage || await UsageTracker.load();
     usage.finishRun({ mode: 'tavily-concert-only', status: 'error', error: error.message });
     await usage.save();
   } catch (saveError) {
