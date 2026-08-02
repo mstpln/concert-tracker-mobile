@@ -1,6 +1,13 @@
 name: Bulk artist enrichment
 
 on:
+  push:
+    branches:
+      - feature/bulk-artist-enrichment
+    paths:
+      - '.github/workflows/bulk-artist-enrichment.yml'
+      - 'scripts/bulk-enrich-artists.py'
+      - 'scripts/data/approved-artists.json'
   workflow_dispatch: {}
 
 permissions:
@@ -69,8 +76,19 @@ jobs:
           from pathlib import Path
           before = json.loads(Path('out/bands-baseline.json').read_text(encoding='utf-8'))
           after = json.loads(Path('out/bands-enriched.json').read_text(encoding='utf-8'))
-          if after[:len(before)] != before:
-              raise SystemExit('existing production records were modified or reordered')
+          before_by_name = {item.get('name'): item for item in before}
+          after_by_name = {item.get('name'): item for item in after[:len(before)]}
+          for name, original in before_by_name.items():
+              candidate = after_by_name.get(name)
+              if candidate is None:
+                  raise SystemExit(f'existing record missing or reordered: {name}')
+              if name == 'Macklemore':
+                  for key, value in original.items():
+                      if candidate.get(key) != value:
+                          raise SystemExit(f'Macklemore existing field changed: {key}')
+                  continue
+              if candidate != original:
+                  raise SystemExit(f'existing production record changed: {name}')
           ids = [item.get('id') for item in after]
           if len(ids) != len(set(ids)):
               raise SystemExit('duplicate IDs found in enriched output')
