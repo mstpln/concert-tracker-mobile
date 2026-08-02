@@ -35,14 +35,25 @@ function response(body, init = {}) {
   });
 }
 
-function isAuthorized(request, env) {
-  const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
-  return !!env.API_TOKEN && token === env.API_TOKEN;
+function bearerToken(request) {
+  return (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+}
+
+function authorizationRole(request, env) {
+  const token = bearerToken(request);
+  if (!token) return null;
+  if (env.BROWSER_TOKEN && token === env.BROWSER_TOKEN) return 'browser';
+  if (env.AUTOMATION_TOKEN && token === env.AUTOMATION_TOKEN) return 'automation';
+  if (env.API_TOKEN && token === env.API_TOKEN) return 'legacy';
+  return null;
 }
 
 function isReadOnlyAuthorized(request, env) {
-  const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
-  return !!token && ((!!env.API_TOKEN && token === env.API_TOKEN) || (!!env.READ_ONLY_TOKEN && token === env.READ_ONLY_TOKEN));
+  const token = bearerToken(request);
+  return !!token && (
+    !!authorizationRole(request, env) ||
+    (!!env.READ_ONLY_TOKEN && token === env.READ_ONLY_TOKEN)
+  );
 }
 
 function jsonRootIsValid(filename, value) {
@@ -217,7 +228,10 @@ export default {
     const route = ticketRoute(url.pathname);
     const filename = url.pathname.replace(/^\//, '');
     if (!route && !ALLOWED_FILES.has(filename)) return response('Not found', { status: 404 });
-    if (!isAuthorized(request, env)) return response('Unauthorized', { status: 401 });
+
+    const role = authorizationRole(request, env);
+    if (!role) return response('Unauthorized', { status: 401 });
+    if (route && role === 'automation') return response('Forbidden', { status: 403 });
     if (route) return handleTicketFile(request, env, route);
     return handleJsonFile(request, env, filename);
   },
