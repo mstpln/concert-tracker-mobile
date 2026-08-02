@@ -29,9 +29,11 @@ function spotifyReleaseAlertId(bandId, release) {
 
 releasePlan.planLifecycleAlerts = function planSpotifyReleaseAlerts({ band, releases = [], alerts = [], today }) {
   const creates = [];
+  const enrich = [];
   const lifecycleUpdates = [];
   const skipped = [];
-  const known = new Set((alerts || []).map((alert) => alert.id));
+  const knownById = new Map((alerts || []).map((alert) => [alert.id, alert]));
+  const knownBySpotifyRelease = new Map((alerts || []).filter((alert) => alert.spotifyReleaseId).map((alert) => [alert.spotifyReleaseId, alert]));
   for (const release of releases) {
     if (!release?.lifecycleEligible || release.historical || release.baselineIncomplete) {
       skipped.push({ release, reason: 'baseline' });
@@ -41,11 +43,16 @@ releasePlan.planLifecycleAlerts = function planSpotifyReleaseAlerts({ band, rele
       skipped.push({ release, reason: 'not_available_on_spotify' });
       continue;
     }
-    const id = spotifyReleaseAlertId(band.id, release);
-    lifecycleUpdates.push({ bandId: band.id, canonicalReleaseId: release.canonicalReleaseId || releaseLifecycle.canonicalReleaseId(release), stage: 'spotify_release', alertId: id });
-    if (known.has(id)) continue;
+    const generatedId = spotifyReleaseAlertId(band.id, release);
+    const existing = knownById.get(generatedId) || knownBySpotifyRelease.get(release.spotifyReleaseId) || null;
+    const alertId = existing?.id || generatedId;
+    lifecycleUpdates.push({ bandId: band.id, canonicalReleaseId: release.canonicalReleaseId || releaseLifecycle.canonicalReleaseId(release), stage: 'spotify_release', alertId });
+    if (existing) {
+      enrich.push({ id: existing.id, lifecycleStage: 'spotify_release' });
+      continue;
+    }
     creates.push({
-      id,
+      id: generatedId,
       bandId: band.id,
       bandName: band.name,
       category: 'album',
@@ -65,5 +72,5 @@ releasePlan.planLifecycleAlerts = function planSpotifyReleaseAlerts({ band, rele
       sourceUrl: release.spotifyUrl,
     });
   }
-  return { alertsToCreate: creates, alertsToEnrich: [], lifecycleUpdates, skipped };
+  return { alertsToCreate: creates, alertsToEnrich: enrich, lifecycleUpdates, skipped };
 };
