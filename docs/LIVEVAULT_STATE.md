@@ -39,11 +39,11 @@ The credential rollout is documented in `docs/SECURITY_BUILD_3_ROLLOUT.md`. Remo
 
 ## v77 focused research workflows
 
-The v77 branch narrows research to the information the user actually wants and separates providers by their appropriate cadence.
+The v77 branch narrows research to the information the user actually wants and separates providers by their appropriate cadence. Both scheduled jobs are guarded by the repository variable `LIVEVAULT_RESEARCH_SCHEDULES_ENABLED`; they remain skipped after merge unless that variable is separately and explicitly set to `true`. Manual dispatch remains available only for an explicitly authorized production run.
 
 ### Structured provider workflow
 
-- Runs Monday, Wednesday and Friday at 01:00 UTC after release.
+- Defines a Monday, Wednesday and Friday cadence at 01:00 UTC.
 - Uses Ticketmaster for structured concert discovery across all bands.
 - Uses Spotify for actual catalogue releases that are available to listen to.
 - Retains existing MusicBrainz identity/deduplication support and existing setlist/prediction maintenance.
@@ -52,7 +52,7 @@ The v77 branch narrows research to the information the user actually wants and s
 
 ### Focused Tavily concert workflow
 
-- Runs on the 1st and 15th of each month after release.
+- Defines a twice-monthly cadence on the 1st and 15th.
 - Uses Tavily plus Groq only for upcoming concert and festival dates missed by structured sources.
 - Does not search for releases, hiatuses, breakups, reunions, lineup changes, interviews or general news.
 - Prioritizes each newly added band’s first web concert check.
@@ -66,7 +66,7 @@ Both workflows use the shared `live-vault-data-writes` concurrency group, existi
 
 The visible Releases feed accepts only actual Spotify catalogue releases with a trusted Spotify release ID and album URL. It displays available artwork, release title/type/date and an Open in Spotify action. Missing artwork falls back locally without suppressing an otherwise valid release.
 
-The v77 production rollout includes an idempotent cleanup of `news.json` that removes legacy general articles, status news, Tavily release announcements and concert/ticket articles. Concert alerts continue to derive from `concerts.json`. The cleanup logs aggregate before/after counts only and must not be run against production until the production workflow is separately authorized.
+The v77 production rollout includes an idempotent cleanup of `news.json` that removes legacy general articles, status news, Tavily release announcements and concert/ticket articles. Concert alerts continue to derive from `concerts.json`. The cleanup logs aggregate before/after counts only, creates a rollback artifact and must not be run against production until separately authorized.
 
 ## Data model and ownership
 
@@ -78,15 +78,17 @@ The app is mobile-first. Focused changes preserve the existing blue/black/grey/w
 
 ## Active backlog
 
-1. Complete v77 focused workflow implementation, synthetic QA and PR review
-2. After v77 rollout, run one authorized production structured research cycle and verify `AUTOMATION_TOKEN`
-3. Remove legacy `API_TOKEN` after successful automation verification
-4. Listening UI project, including reliable Top Tracks artwork
-5. Real ListenBrainz account connection and incremental synchronization
-6. Concert Map View
-7. Expanded Backup, Restore and Export
-8. Native Push Notifications
+1. Review and merge v77 only after explicit `Merge it`
+2. After merge, separately authorize one manual production structured research run and verify `AUTOMATION_TOKEN`
+3. Separately authorize the backed-up `news.json` cleanup
+4. Remove legacy `API_TOKEN` after successful automation verification
+5. Separately enable the recurring research schedules
+6. Listening UI project, including reliable Top Tracks artwork
+7. Real ListenBrainz account connection and incremental synchronization
+8. Concert Map View
+9. Expanded Backup, Restore and Export
+10. Native Push Notifications
 
 ## Development workflow
 
-Approve scope, use a branch, implement and test, maintain state/decisions/build state, push and review a PR, then merge only after explicit `Merge it`. A version/cache bump is not deployment permission. Production workflows, production data writes, cleanup and provider calls require separate explicit authorization.
+Approve scope, use a branch, implement and test, maintain state/decisions/build state, push and review a PR, then merge only after explicit `Merge it`. A version/cache bump is not deployment permission. Production workflows, production data writes, cleanup, provider calls and schedule activation require separate explicit authorization.
