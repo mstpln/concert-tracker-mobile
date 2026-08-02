@@ -166,8 +166,14 @@ async function handleJsonFile(request, env, filename) {
   }
   if (request.method !== 'PUT') return response('Method not allowed', { status: 405 });
 
-  const condition = writeCondition(request);
-  if (!condition) return response('Precondition required', { status: 428 });
+  let condition = writeCondition(request);
+  if (!condition) {
+    const existing = typeof env.BUCKET.head === 'function'
+      ? await env.BUCKET.head(filename)
+      : await env.BUCKET.get(filename);
+    if (existing) return response('Precondition required', { status: 428 });
+    condition = new Headers({ 'If-None-Match': '*' });
+  }
 
   const contentType = (request.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
   if (contentType !== 'application/json') return response('JSON content required', { status: 415 });
