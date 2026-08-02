@@ -14,15 +14,16 @@ function bandWithState(state = {}) {
   return { id: 'band-1', name: 'Example Band', structuredResearch: { routing: { tavilyConcert: state } } };
 }
 
-test('release cleanup keeps only actual Spotify catalogue releases', () => {
+test('release cleanup keeps only actual Spotify catalogue releases and preserves their fields', () => {
+  const kept = { id: 'keep', category: 'album', spotifyReleaseId: 'abc123', spotifyUrl: 'https://open.spotify.com/album/abc123', releaseType: 'Album', artworkUrl: 'https://i.scdn.co/image/example', unknownFutureField: { preserved: true } };
   const source = [
-    { id: 'keep', category: 'album', spotifyReleaseId: 'abc123', spotifyUrl: 'https://open.spotify.com/album/abc123', releaseType: 'Album' },
+    kept,
     { id: 'article', category: 'album', headline: 'Album announced', sourceUrl: 'https://example.com/article' },
     { id: 'status', category: 'hiatus', headline: 'Band pauses touring' },
     { id: 'concert', category: 'concert', headline: 'New date' },
   ];
   const result = cleanupReleaseFeed(source);
-  assert.deepEqual(result.kept.map((item) => item.id), ['keep']);
+  assert.deepEqual(result.kept, [kept]);
   assert.equal(result.summary.before, 4);
   assert.equal(result.summary.after, 1);
   assert.equal(result.summary.removed, 3);
@@ -69,17 +70,48 @@ test('recent Ticketmaster activity resets an old empty-result backoff', () => {
   assert.equal(result.state.consecutiveEmpty, 0);
 });
 
+test('structured preload creates only actual Spotify release items', () => {
+  require('../scripts/preloadStructuredRun');
+  const { planLifecycleAlerts } = require('../scripts/lib/releaseAlertPlan');
+  const band = { id: 'band-1', name: 'Example Band' };
+  const actual = { lifecycleEligible: true, canonicalReleaseId: 'spotify:abc', title: 'Available Album', type: 'Album', releaseDate: '2026-08-02', spotifyReleaseId: 'abc', spotifyUrl: 'https://open.spotify.com/album/abc', artworkUrl: 'https://i.scdn.co/image/abc' };
+  const future = { ...actual, canonicalReleaseId: 'spotify:future', title: 'Future Album', releaseDate: '2026-08-20', spotifyReleaseId: 'future', spotifyUrl: 'https://open.spotify.com/album/future' };
+  const nonSpotify = { lifecycleEligible: true, canonicalReleaseId: 'mbid:one', title: 'Web Announcement', type: 'Album', releaseDate: '2026-08-02' };
+  const plan = planLifecycleAlerts({ band, releases: [actual, future, nonSpotify], alerts: [], today: '2026-08-02T12:00:00.000Z' });
+  assert.equal(plan.alertsToCreate.length, 1);
+  assert.equal(plan.alertsToCreate[0].spotifyReleaseId, 'abc');
+  assert.equal(plan.alertsToCreate[0].artworkUrl, actual.artworkUrl);
+  assert.equal(plan.alertsToCreate[0].lifecycleStage, 'spotify_release');
+});
+
+test('structured preload reuses an existing Spotify release item instead of duplicating it', () => {
+  require('../scripts/preloadStructuredRun');
+  const { planLifecycleAlerts } = require('../scripts/lib/releaseAlertPlan');
+  const release = { lifecycleEligible: true, canonicalReleaseId: 'spotify:abc', title: 'Available Album', type: 'Album', releaseDate: '2026-08-02', spotifyReleaseId: 'abc', spotifyUrl: 'https://open.spotify.com/album/abc' };
+  const plan = planLifecycleAlerts({ band: { id: 'band-1', name: 'Example Band' }, releases: [release], alerts: [{ id: 'legacy-id', category: 'album', spotifyReleaseId: 'abc', spotifyUrl: release.spotifyUrl }], today: '2026-08-02T12:00:00.000Z' });
+  assert.equal(plan.alertsToCreate.length, 0);
+  assert.deepEqual(plan.alertsToEnrich, [{ id: 'legacy-id', lifecycleStage: 'spotify_release' }]);
+  assert.equal(plan.lifecycleUpdates[0].alertId, 'legacy-id');
+});
+
 test('focused workflows separate structured providers from Tavily web research', () => {
   const structured = fs.readFileSync(path.join('.github', 'workflows', 'research.yml'), 'utf8');
   const tavily = fs.readFileSync(path.join('.github', 'workflows', 'tavily-concert-research.yml'), 'utf8');
+  const cleanup = fs.readFileSync(path.join('.github', 'workflows', 'release-feed-cleanup.yml'), 'utf8');
   assert.match(structured, /0 1 \* \* 1,3,5/);
   assert.match(structured, /preloadStructuredRun\.js/);
+  assert.doesNotMatch(structured, /cleanupReleaseFeed\.js/);
   assert.doesNotMatch(structured, /TAVILY_API_KEY/);
   assert.doesNotMatch(structured, /GROQ_API_KEY/);
   assert.match(tavily, /tavilyConcertRun\.js/);
   assert.doesNotMatch(tavily, /SPOTIFY_CLIENT_ID/);
+  assert.match(cleanup, /workflow_dispatch:/);
+  assert.doesNotMatch(cleanup, /schedule:/);
+  assert.match(cleanup, /news-before-v77-cleanup\.json/);
+  assert.match(cleanup, /actions\/upload-artifact@[0-9a-f]{40}/);
   assert.match(structured, /group: live-vault-data-writes/);
   assert.match(tavily, /group: live-vault-data-writes/);
+  assert.match(cleanup, /group: live-vault-data-writes/);
 });
 
 test('visible alert labels are Concerts and Releases everywhere', () => {
