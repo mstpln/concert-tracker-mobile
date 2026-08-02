@@ -13,6 +13,19 @@ function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
+function reconcileCallerData(target, value) {
+  if (Array.isArray(target) && Array.isArray(value)) {
+    target.splice(0, target.length, ...clone(value));
+    return target;
+  }
+  if (target && value && typeof target === 'object' && typeof value === 'object' && !Array.isArray(target) && !Array.isArray(value)) {
+    for (const key of Object.keys(target)) delete target[key];
+    Object.assign(target, clone(value));
+    return target;
+  }
+  return value;
+}
+
 function getEnvOrThrow(name) {
   const v = process.env[name];
   if (!v) throw new Error(`Missing required environment variable: ${name}`);
@@ -72,7 +85,7 @@ async function writeJson(filename, data) {
 
   if (!res.ok) throw new Error(`PUT ${filename} failed: ${res.status} ${await res.text()}`);
   documentState.set(filename, { etag: res.headers.get('ETag'), missing: false, value: clone(intended) });
-  return intended;
+  return reconcileCallerData(data, intended);
 }
 
 function resetDocumentState() {
