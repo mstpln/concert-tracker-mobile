@@ -30,10 +30,12 @@ function conditionalBucket(initial = {}) {
     async head(key) { return object(items.get(key)); },
     async put(key, value, options = {}) {
       const current = items.get(key);
-      const ifMatch = options.onlyIf?.get?.('If-Match');
-      const ifNoneMatch = options.onlyIf?.get?.('If-None-Match');
-      if (ifMatch && (!current || `"${current.etag}"` !== ifMatch)) return null;
-      if (ifNoneMatch === '*' && current) return null;
+      const condition = options.onlyIf;
+      if (condition instanceof Headers || typeof condition?.get === 'function') {
+        throw new TypeError('R2 onlyIf must use the conditional object shape');
+      }
+      if (condition?.etagMatches && (!current || current.etag !== condition.etagMatches)) return null;
+      if (condition?.etagDoesNotMatch === '*' && current) return null;
       const entry = { value, etag: `etag-${++version}` };
       items.set(key, entry);
       return object(entry);
@@ -63,7 +65,7 @@ test('stable-id arrays preserve remote additions and protect remotely changed re
   ]);
 });
 
-test('Worker exposes ETags and rejects stale conditional writes atomically', async () => {
+test('Worker exposes ETags and uses the production R2 conditional object shape', async () => {
   const worker = workerUnderTest();
   const store = conditionalBucket({ 'bands.json': '[{"id":"band-1"}]' });
   const env = { API_TOKEN: 'secret', BUCKET: store };
@@ -117,5 +119,5 @@ test('browser and automation clients retain read versions and retry one conflict
   assert.match(automation, /conflictMerge\.merge\(base, intended, latest\)/);
   assert.ok(index.indexOf('<script src="conflictMerge.js"></script>') < index.indexOf('<script src="remoteStore.js"></script>'));
   assert.match(sw, /'\.\/conflictMerge\.js'/);
-  assert.match(sw, /CACHE_NAME_LITERAL = 'v75'/);
+  assert.match(sw, /CACHE_NAME_LITERAL = 'v76'/);
 });
