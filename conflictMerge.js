@@ -78,6 +78,10 @@
   function mergeValue(base, intended, latest) {
     if (equal(intended, base)) return clone(latest);
     if (equal(latest, base)) return clone(intended);
+
+    if (base === undefined && Array.isArray(intended) && Array.isArray(latest)) base = [];
+    if (base === undefined && isPlainObject(intended) && isPlainObject(latest)) base = {};
+
     if (isPlainObject(base) && isPlainObject(intended) && isPlainObject(latest)) return mergeObject(base, intended, latest);
     if (Array.isArray(base) && Array.isArray(intended) && Array.isArray(latest) && isStableIdArray(base, intended, latest)) {
       return mergeStableIdArray(base, intended, latest);
