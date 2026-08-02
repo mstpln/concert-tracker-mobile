@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/bulk-artist-enrichment.yml'
       - 'scripts/bulk-enrich-artists.py'
+      - 'scripts/fill-missing-artist-metadata.py'
       - 'scripts/data/approved-artists.json'
   workflow_dispatch: {}
 
@@ -69,6 +70,16 @@ jobs:
             --output out/bands-enriched.json \
             --report out/bulk-artist-enrichment-report.json
 
+      - name: Fill missing Spotify-backed metadata
+        env:
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          python scripts/fill-missing-artist-metadata.py \
+            --bands out/bands-enriched.json \
+            --report out/bulk-artist-enrichment-report.json
+
       - name: Verify existing records are preserved
         run: |
           python - <<'PY'
@@ -106,6 +117,7 @@ jobs:
           if not path.exists():
               raise SystemExit(0)
           report = json.loads(path.read_text(encoding='utf-8'))
+          remaining = report.get('remainingMissing') or {}
           lines = [
               '# Live Vault bulk artist enrichment',
               '',
@@ -114,6 +126,9 @@ jobs:
               f"- Candidate output records: {report['outputCount']}",
               f"- Unresolved artists: {report['unresolvedCount']}",
               f"- Validation errors: {len(report['validationErrors'])}",
+              f"- Remaining missing Spotify: {remaining.get('missingSpotify', 'n/a')}",
+              f"- Remaining missing images: {remaining.get('missingPhotoUrl', 'n/a')}",
+              f"- Remaining missing genres: {remaining.get('missingGenre', 'n/a')}",
               '',
               'This workflow performs no PUT, POST, DELETE, deployment, merge, or production write.',
               'The generated files are review-only workflow artifacts.',
