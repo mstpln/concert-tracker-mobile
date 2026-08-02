@@ -99,7 +99,7 @@ async function rsWriteAttempt(remote, filename, data, state) {
 
 async function dlWriteJsonFile(remote, filename, data) {
   let state = RS_DOCUMENT_STATE.get(filename);
-  if (!state || (!state.etag && !state.missing)) {
+  if (!state) {
     await rsReadDocument(remote, filename, undefined);
     state = RS_DOCUMENT_STATE.get(filename);
   }
