@@ -26,12 +26,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Remove legacy non-Spotify release items
-        env:
-          CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
-          CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
-        run: node scripts/cleanupReleaseFeed.js
-
       - name: Run structured provider pipeline
         env:
           TICKETMASTER_API_KEY: ${{ secrets.TICKETMASTER_API_KEY }}
