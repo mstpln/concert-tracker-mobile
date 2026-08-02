@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const policy = require('../scripts/lib/tavilyConcertPolicy');
 const { cleanupReleaseFeed } = require('../scripts/lib/releaseFeedPolicy');
+const config = require('../scripts/lib/config');
 
 function at(iso) { return Date.parse(iso); }
 
@@ -94,18 +95,18 @@ test('structured preload reuses an existing Spotify release item instead of dupl
   assert.equal(plan.lifecycleUpdates[0].alertId, 'legacy-id');
 });
 
-test('focused workflows separate structured providers from Tavily web research', () => {
+test('focused workflows separate structured providers from Tavily web research and are scheduled', () => {
   const structured = fs.readFileSync(path.join('.github', 'workflows', 'research.yml'), 'utf8');
   const tavily = fs.readFileSync(path.join('.github', 'workflows', 'tavily-concert-research.yml'), 'utf8');
   const cleanup = fs.readFileSync(path.join('.github', 'workflows', 'release-feed-cleanup.yml'), 'utf8');
-  const scheduleGuard = /github\.event_name == 'workflow_dispatch' \|\| vars\.LIVEVAULT_RESEARCH_SCHEDULES_ENABLED == 'true'/;
   assert.match(structured, /0 1 \* \* 1,3,5/);
-  assert.match(structured, scheduleGuard);
+  assert.doesNotMatch(structured, /LIVEVAULT_RESEARCH_SCHEDULES_ENABLED/);
   assert.match(structured, /preloadStructuredRun\.js/);
   assert.doesNotMatch(structured, /cleanupReleaseFeed\.js/);
   assert.doesNotMatch(structured, /TAVILY_API_KEY/);
   assert.doesNotMatch(structured, /GROQ_API_KEY/);
-  assert.match(tavily, scheduleGuard);
+  assert.match(tavily, /0 2 1,15 \* \*/);
+  assert.doesNotMatch(tavily, /LIVEVAULT_RESEARCH_SCHEDULES_ENABLED/);
   assert.match(tavily, /tavilyConcertRun\.js/);
   assert.doesNotMatch(tavily, /SPOTIFY_CLIENT_ID/);
   assert.match(cleanup, /workflow_dispatch:/);
@@ -115,6 +116,11 @@ test('focused workflows separate structured providers from Tavily web research',
   assert.match(structured, /group: live-vault-data-writes/);
   assert.match(tavily, /group: live-vault-data-writes/);
   assert.match(cleanup, /group: live-vault-data-writes/);
+});
+
+test('Ticketmaster cap covers the current library with retry and growth headroom', () => {
+  assert.equal(config.TICKETMASTER.perRunCap, 650);
+  assert.ok(config.TICKETMASTER.perRunCap < config.TICKETMASTER.freeTierDailyLimit);
 });
 
 test('visible alert labels are Concerts and Releases everywhere', () => {

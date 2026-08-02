@@ -1,5 +1,5 @@
 'use strict';
-// Central config for the weekly research pipeline. Every "cap" here is
+// Central config for the research pipelines. Every "cap" here is
 // deliberately set BELOW the actual free-tier limit of that service, per
 // the hard requirement: this pipeline must never be able to cost money.
 //
@@ -47,9 +47,9 @@ module.exports = {
     apiKeyEnv: 'TICKETMASTER_API_KEY',
     baseUrl: 'https://app.ticketmaster.com/discovery/v2',
     freeTierDailyLimit: 5000,
-    // Hard cap, ~16x under the free tier — one call per band plus a little
-    // headroom for retries, never anywhere close to the real limit.
-    perRunCap: 300,
+    // Sized for the complete current band library plus identity resolution,
+    // retries and growth headroom, while remaining far below the daily tier.
+    perRunCap: 650,
     minDelayMs: 300, // stays well under 5 req/sec
   },
 
