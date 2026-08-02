@@ -4,7 +4,7 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by an authenticated Cloudflare Worker and private R2. The established production JSON files remain `bands.json`, `concerts.json`, `news.json`, and `apiUsage.json`; ticket PDF bytes are separate authenticated R2 objects.
 
-Security Build 1 is merged and manually deployed at **v74**. Security Build 2 is merged at **v75** and adds ETag-based conditional writes and deterministic conflict recovery. The current unreleased branch is **v76** on `security/v76-device-privacy-roles-timeouts`.
+Security Build 1 is merged and manually deployed at **v74**. Security Build 2 is merged at **v75** and adds ETag-based conditional writes and deterministic conflict recovery. Security Build 3 is merged at **v76** and has been manually deployed for staged credential migration. The production v76 Worker accepted reads but returned HTTP 500 on JSON writes because the R2 `onlyIf` option used a generic `Headers` object instead of Cloudflare R2's conditional object shape. The focused correction branch is `fix/v76-r2-conditional-writes`; it keeps v76 unchanged and requires a manual Worker redeploy after merge.
 
 ## Product purpose and navigation
 
@@ -43,11 +43,11 @@ The merged v75 release adds one concurrency contract across the browser, Worker 
 - remotely changed records are protected from stale deletion;
 - successful conflict recovery updates the caller's in-memory data.
 
-Ticket PDF routes remain outside the document-level merge contract. The v75 Worker code requires manual Cloudflare deployment after merge.
+Ticket PDF routes remain outside the document-level merge contract.
 
 ## v76 device privacy, credential roles and bounded network work
 
-The unreleased v76 branch adds focused operational hardening without changing stored-data schemas:
+The merged v76 release adds focused operational hardening without changing stored-data schemas:
 
 - **Disconnect** removes only the Worker URL and token from the current browser while preserving local settings, imported listening history, Spotify authorization and cached tickets;
 - **Erase this device** removes the connection, browser settings, Spotify authorization, imported listening history, cached ticket PDFs and Live Vault shell caches, but never deletes remote R2 JSON or permanent ticket PDFs;
@@ -57,7 +57,7 @@ The unreleased v76 branch adds focused operational hardening without changing st
 - the timeout layer performs no hidden retry, so UsageTracker accounting and existing provider-specific retries remain authoritative;
 - the production research workflow declares read-only repository permissions and pins checkout/setup actions to reviewed commit SHAs.
 
-The credential rollout is documented in `docs/SECURITY_BUILD_3_ROLLOUT.md`. No credentials, bindings, routes, R2 data, provider calls or production workflows are changed by the branch itself.
+The credential rollout is documented in `docs/SECURITY_BUILD_3_ROLLOUT.md`. During rollout, do not remove `API_TOKEN` until browser writes and a scheduled automation run are both verified. The focused v76 correction changes only the Worker-side R2 conditional option shape and its regression coverage.
 
 ## Data model and ownership
 
@@ -69,12 +69,13 @@ The app is mobile-first. Focused changes preserve the existing blue/black/grey/w
 
 ## Active backlog
 
-1. Complete and deploy security Build 3: v76 device erasure, credential roles and bounded network requests
-2. Real ListenBrainz account connection and incremental synchronization
-3. MusicBrainz recording/release matching and optional artwork enrichment
-4. Concert Map View
-5. Expanded Backup, Restore and Export
-6. Native Push Notifications
+1. Complete and redeploy the focused v76 R2 conditional-write correction
+2. Finish staged browser/automation credential migration and remove legacy `API_TOKEN` only after verification
+3. Real ListenBrainz account connection and incremental synchronization
+4. MusicBrainz recording/release matching and optional artwork enrichment
+5. Concert Map View
+6. Expanded Backup, Restore and Export
+7. Native Push Notifications
 
 ## Development workflow
 
