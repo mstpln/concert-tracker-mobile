@@ -4,7 +4,7 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by an authenticated Cloudflare Worker and private R2. The established production JSON files remain `bands.json`, `concerts.json`, `news.json`, and `apiUsage.json`; ticket PDF bytes are separate authenticated R2 objects.
 
-The current build is synchronized at **v73**. It contains the private local Spotify-history importer, the v72 listening and concert-card corrections, and a focused service-worker cache refresh so already-installed PWAs fetch the corrected shell instead of remaining on the earlier v72 cache.
+The current unreleased security build is synchronized at **v74** on `security/v74-direct-risk-reduction`. It keeps the v73 listening and concert experience unchanged while adding focused browser, Worker and service-worker hardening. Production remains on the merged v73 build until explicit merge and deployment approval.
 
 ## Product purpose and navigation
 
@@ -30,6 +30,19 @@ Upcoming and past concert cards use the approved subtle blue-tinted surface wher
 
 The Concert Dates header uses the calendar icon family. Past-concert rating stars are doubled in width and height. Spotify Top Track artwork is resolved only from the minimal visible track IDs through the existing browser-side Spotify authorization and cached locally; failures retain placeholders and never affect the listening history.
 
+## v74 focused security hardening
+
+The unreleased v74 branch adds only proportionate, high-value protections for the single-user app:
+
+- browser navigation permits same-origin links and HTTPS external links only, adds `noopener noreferrer`, and blocks unsafe schemes;
+- the Excel export control is removed so the app no longer needs to execute SheetJS from a third-party CDN; CSV export remains available;
+- the document declares a no-referrer policy and a compatible self-script content security policy;
+- Worker JSON writes require `application/json`, are limited to 10 MB, and must match the expected top-level array/object shape while preserving unknown fields;
+- authenticated Worker responses use `private, no-store`, `nosniff`, and no-referrer headers;
+- production service-worker activation deletes only obsolete `concert-tracker-shell-*` caches, while synthetic QA keeps its separate `concert-tracker-qa-*` namespace.
+
+No stored-data schema, provider behavior, production data, secret, credential role, ETag behavior or deployment configuration changes are included in this first security build. The Worker change requires a later manual Cloudflare deployment after merge approval.
+
 ## Data model and ownership
 
 Bands contain stable IDs, artist identity and follow state. Concerts contain stable IDs, date/venue/source observations and additive preparation/research data. Alerts/news use stable band IDs. User-owned fields include attendance, manual concerts, ticket price/quantity, ticket PDFs/links, playlists, checklist, ratings, notes, photos, favourites, mute state and review decisions. Provider-owned fields remain confined to their owned allowlists. Browser-local state includes settings, caches, OAuth state and imported listening history.
@@ -40,11 +53,13 @@ The app is mobile-first. Focused changes preserve the existing blue/black/grey/w
 
 ## Active backlog
 
-1. Real ListenBrainz account connection and incremental synchronization
-2. MusicBrainz recording/release matching and optional artwork enrichment
-3. Concert Map View
-4. Expanded Backup, Restore and Export
-5. Native Push Notifications
+1. Complete security Build 2: ETag and stale-write protection
+2. Complete security Build 3: local erasure, credential separation and provider/workflow hardening
+3. Real ListenBrainz account connection and incremental synchronization
+4. MusicBrainz recording/release matching and optional artwork enrichment
+5. Concert Map View
+6. Expanded Backup, Restore and Export
+7. Native Push Notifications
 
 ## Development workflow
 
