@@ -14,6 +14,7 @@ const shell = [
   'app.js',
   'v72Corrections.js',
   'v72FinalAdjustments.js',
+  'securityHardening.js',
   'dataLib.js',
   'listeningStats.js',
   'listeningFixtures.js',
@@ -83,8 +84,8 @@ sw = sw
     "  './version.js',\n  './qa-fixtures.js',\n  './qa-build-config.js',\n  './qa-bootstrap.js',\n  './qa.css',"
   )
   .replace(
-    "keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))",
-    "keys.filter((k) => k.startsWith('concert-tracker-qa-') && k !== CACHE_NAME).map((k) => caches.delete(k))"
+    "k.startsWith('concert-tracker-shell-') && k !== CACHE_NAME",
+    "k.startsWith('concert-tracker-qa-') && k !== CACHE_NAME"
   );
 
 if (!sw.includes("k.startsWith('concert-tracker-qa-') && k !== CACHE_NAME")) {
