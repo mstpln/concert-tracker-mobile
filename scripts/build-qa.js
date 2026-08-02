@@ -12,6 +12,8 @@ const shell = [
   'app.css',
   'v72Corrections.css',
   'app.js',
+  'devicePrivacy.js',
+  'browserFetchPolicy.js',
   'v72Corrections.js',
   'v72FinalAdjustments.js',
   'securityHardening.js',
