@@ -1,0 +1,49 @@
+{
+  "Lana Del Rey": {
+    "spotifyId": "00FQb4jTyendYWaN8pK0wa",
+    "genre": "Alternative pop, dream pop",
+    "sources": ["https://open.spotify.com/artist/00FQb4jTyendYWaN8pK0wa"]
+  },
+  "Kylie Minogue": {
+    "spotifyId": "4RVnAU35WRWra6OZ3CbbMA",
+    "genre": "Pop, dance-pop",
+    "sources": ["https://open.spotify.com/artist/4RVnAU35WRWra6OZ3CbbMA"]
+  },
+  "Venus": {
+    "spotifyTrackId": "2UUICXCzvO1MPiOtenIP07",
+    "officialUrl": "https://venusmusic.be/",
+    "genre": "Alternative rock, art rock",
+    "formedYear": "1997",
+    "bio": "Belgian rock band formed in Brussels in 1997, known internationally for the 2003 song Beautiful Days.",
+    "sources": [
+      "https://musicbrainz.org/artist/34dbc4c3-fbf9-4dce-993e-55171a85a9fa",
+      "https://open.spotify.com/track/2UUICXCzvO1MPiOtenIP07",
+      "https://venusmusic.be/"
+    ]
+  },
+  "Norlie & KKV": {"genre": "Swedish hip-hop, pop rap"},
+  "Sigh & Explode": {"genre": "Post-hardcore, screamo", "bio": "Norwegian post-hardcore band from Oslo."},
+  "Coconut Records": {"genre": "Indie pop, indie rock", "formedYear": "2006"},
+  "Den svenska björnstammen": {"genre": "Electropop, indie pop", "formedYear": "2007"},
+  "Sleeping At Last": {"genre": "Indie pop, alternative rock"},
+  "Nause": {"genre": "Electronic, house"},
+  "John De Sohn": {"genre": "Electronic, house"},
+  "Daniel Adams-Ray": {"genre": "Pop, hip-hop"},
+  "Tom Rosenthal": {"genre": "Indie pop, singer-songwriter"},
+  "Niello": {"genre": "Hip-hop, pop rap"},
+  "Ken Ring": {"genre": "Swedish hip-hop"},
+  "Alina Devecerski": {"genre": "Electropop"},
+  "Sounds Like Violence": {"genre": "Indie rock, post-hardcore"},
+  "L'itch": {"genre": "Alternative rock", "bio": "Belgian alternative rock band from Mechelen."},
+  "Solen": {"genre": "Indie rock, alternative rock", "formedYear": "2009", "bio": "Swedish indie rock band formed in Gävle."},
+  "Florence Valentin": {"genre": "Indie rock, pop rock"},
+  "Petra Marklund": {"officialUrl": "https://petramarklund.se/", "genre": "Pop, electropop"},
+  "Laakso": {"genre": "Indie pop, indie rock"},
+  "Jubël": {"genre": "Dance-pop, electronic", "formedYear": "2017", "bio": "Swedish dance-pop duo formed in Halmstad in 2017."},
+  "Ben Hartley": {"genre": "Singer-songwriter, indie pop", "bio": "Australian singer-songwriter from Melbourne."},
+  "Ison & Fille": {"genre": "Swedish hip-hop", "formedYear": "1994"},
+  "HOFFMAESTRO": {"genre": "Ska, reggae, alternative rock", "formedYear": "2005", "bio": "Swedish band known for combining ska, reggae, funk and rock."},
+  "Johnny Flynn": {"genre": "Folk, indie folk"},
+  "Moonica Mac": {"genre": "Pop, singer-songwriter", "bio": "Swedish singer-songwriter from Dalarna."},
+  "Hello Saferide": {"genre": "Indie pop, singer-songwriter"}
+}
