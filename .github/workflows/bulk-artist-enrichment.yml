@@ -1,0 +1,105 @@
+name: Bulk artist enrichment
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Optional artist limit for a controlled test run (0 = all)'
+        required: false
+        default: '0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-vault-bulk-artist-enrichment
+  cancel-in-progress: false
+
+jobs:
+  enrich:
+    name: Build review-only bands.json candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install runtime dependency
+        run: python -m pip install --disable-pip-version-check requests==2.32.3
+
+      - name: Download current production bands baseline (read only)
+        env:
+          CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
+          CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$CF_WORKER_ENDPOINT"
+          test -n "$CF_WORKER_TOKEN"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $CF_WORKER_TOKEN" \
+            "${CF_WORKER_ENDPOINT%/}/bands.json" \
+            --output /tmp/bands-input.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          value = json.loads(Path('/tmp/bands-input.json').read_text(encoding='utf-8'))
+          if not isinstance(value, list):
+              raise SystemExit('bands.json must contain an array')
+          print(f'Loaded {len(value)} existing band records')
+          PY
+
+      - name: Run bulk enrichment
+        env:
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+          TICKETMASTER_API_KEY: ${{ secrets.TICKETMASTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/livevault-enrichment
+          python scripts/bulk-enrich-artists.py \
+            --input /tmp/bands-input.json \
+            --artists scripts/data/approved-artists.json \
+            --output /tmp/livevault-enrichment/bands-enriched.json \
+            --report /tmp/livevault-enrichment/enrichment-report.json \
+            --limit "${{ inputs.limit }}"
+
+      - name: Create human-readable summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          report_path = Path('/tmp/livevault-enrichment/enrichment-report.json')
+          if not report_path.exists():
+              raise SystemExit(0)
+          report = json.loads(report_path.read_text(encoding='utf-8'))
+          lines = [
+              '# Live Vault bulk artist enrichment',
+              '',
+              f"- Existing records: {report['inputCount']}",
+              f"- Added records: {report['addedCount']}",
+              f"- Candidate output records: {report['outputCount']}",
+              f"- Unresolved artists: {report['unresolvedCount']}",
+              f"- Validation errors: {len(report['validationErrors'])}",
+              '',
+              'This workflow never uploads or replaces production data. The generated files are review-only artifacts.',
+          ]
+          Path('/tmp/livevault-enrichment/README.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a', encoding='utf-8') as fh:
+              fh.write('\n'.join(lines) + '\n')
+          PY
+
+      - name: Upload candidate and audit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-vault-bulk-artist-enrichment
+          path: /tmp/livevault-enrichment/
+          if-no-files-found: error
+          retention-days: 14
