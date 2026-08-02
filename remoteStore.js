@@ -15,6 +15,11 @@
 
 const RS_CONN_KEY = 'concertTrackerRemoteConnection';
 const RS_SETTINGS_KEY = 'concertTrackerSettings';
+const RS_DOCUMENT_STATE = new Map();
+
+function rsClone(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
 
 function rsGetConnection() {
   try {
@@ -31,33 +36,81 @@ function rsSaveConnection(conn) {
 
 function rsClearConnection() {
   localStorage.removeItem(RS_CONN_KEY);
+  RS_DOCUMENT_STATE.clear();
+}
+
+function rsDocumentUrl(remote, filename) {
+  return `${remote.endpoint.replace(/\/$/, '')}/${filename}`;
+}
+
+async function rsReadDocument(remote, filename, fallback) {
+  const res = await fetch(rsDocumentUrl(remote, filename), {
+    headers: { Authorization: `Bearer ${remote.token}` },
+  });
+  if (res.status === 404) {
+    RS_DOCUMENT_STATE.set(filename, { etag: null, missing: true, value: rsClone(fallback) });
+    return fallback;
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const text = await res.text();
+  const value = text.trim() ? JSON.parse(text) : fallback;
+  RS_DOCUMENT_STATE.set(filename, { etag: res.headers.get('ETag'), missing: false, value: rsClone(value) });
+  return value;
 }
 
 // Overrides dataLib.js's filesystem-based versions. `remote` is
 // { endpoint, token } instead of a FileSystemDirectoryHandle.
 async function dlReadJsonFile(remote, filename, fallback) {
   try {
-    const res = await fetch(`${remote.endpoint.replace(/\/$/, '')}/${filename}`, {
-      headers: { Authorization: `Bearer ${remote.token}` },
-    });
-    if (res.status === 404) return fallback;
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = await res.text();
-    if (!text.trim()) return fallback;
-    return JSON.parse(text);
+    return await rsReadDocument(remote, filename, fallback);
   } catch (e) {
     console.error(`dlReadJsonFile(${filename}) failed`, e);
     throw e;
   }
 }
 
-async function dlWriteJsonFile(remote, filename, data) {
-  const res = await fetch(`${remote.endpoint.replace(/\/$/, '')}/${filename}`, {
+async function rsWriteAttempt(remote, filename, data, state) {
+  const headers = {
+    Authorization: `Bearer ${remote.token}`,
+    'Content-Type': 'application/json',
+  };
+  if (state?.missing) headers['If-None-Match'] = '*';
+  else if (state?.etag) headers['If-Match'] = state.etag;
+
+  return fetch(rsDocumentUrl(remote, filename), {
     method: 'PUT',
-    headers: { Authorization: `Bearer ${remote.token}`, 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(data, null, 2),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status} saving ${filename}`);
+}
+
+async function dlWriteJsonFile(remote, filename, data) {
+  let state = RS_DOCUMENT_STATE.get(filename);
+  if (!state || (!state.etag && !state.missing)) {
+    await rsReadDocument(remote, filename, undefined);
+    state = RS_DOCUMENT_STATE.get(filename);
+  }
+
+  let intended = rsClone(data);
+  let res = await rsWriteAttempt(remote, filename, intended, state);
+  if (res.status === 412) {
+    const base = rsClone(state?.value);
+    const latest = await rsReadDocument(remote, filename, undefined);
+    const latestState = RS_DOCUMENT_STATE.get(filename);
+    intended = LiveVaultConflictMerge.merge(base, intended, latest);
+    res = await rsWriteAttempt(remote, filename, intended, latestState);
+  }
+
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`HTTP ${res.status} saving ${filename}${detail ? `: ${detail}` : ''}`);
+  }
+  RS_DOCUMENT_STATE.set(filename, {
+    etag: res.headers.get('ETag'),
+    missing: false,
+    value: rsClone(intended),
+  });
+  return intended;
 }
 
 // Minimal chrome.storage.local-shaped shim backed by localStorage, so the
