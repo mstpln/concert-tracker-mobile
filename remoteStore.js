@@ -21,6 +21,19 @@ function rsClone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
+function rsReconcileCallerData(target, value) {
+  if (Array.isArray(target) && Array.isArray(value)) {
+    target.splice(0, target.length, ...rsClone(value));
+    return target;
+  }
+  if (target && value && typeof target === 'object' && typeof value === 'object' && !Array.isArray(target) && !Array.isArray(value)) {
+    for (const key of Object.keys(target)) delete target[key];
+    Object.assign(target, rsClone(value));
+    return target;
+  }
+  return value;
+}
+
 function rsGetConnection() {
   try {
     const raw = localStorage.getItem(RS_CONN_KEY);
@@ -110,7 +123,7 @@ async function dlWriteJsonFile(remote, filename, data) {
     missing: false,
     value: rsClone(intended),
   });
-  return intended;
+  return rsReconcileCallerData(data, intended);
 }
 
 // Minimal chrome.storage.local-shaped shim backed by localStorage, so the
