@@ -175,3 +175,43 @@
 **Reason:** Production data-writing workflows should use least privilege and immutable action references.
 
 **Consequence:** Action upgrades require an explicit reviewed SHA update.
+
+## 2026-08-02 — Spotify is the sole visible release-feed source
+
+**Decision:** The Releases feed contains only actual Spotify catalogue releases with a trusted Spotify release ID and album URL. Tavily, general articles and advance web announcements do not create release items.
+
+**Reason:** The user wants music that is available where they listen, not general music news or speculative announcements.
+
+**Consequence:** Album and single availability, Spotify URL and artwork come from Spotify. MusicBrainz may support identity and deduplication internally but does not independently create visible releases. Missing artwork uses a local fallback.
+
+## 2026-08-02 — Alerts separate concerts from releases
+
+**Decision:** The Alerts destination uses visible subtabs **Concerts** and **Releases**. Band profiles use **Concerts**, **Alerts**, **Releases**, **Listening**, and **Data**. Internal `news` identifiers and `news.json` remain for compatibility.
+
+**Reason:** Repeating Alerts as both page title and subtab was redundant, while News no longer describes a Spotify-only release feed.
+
+**Consequence:** Concert alerts derive only from `concerts.json`; Spotify releases appear only under Releases and never duplicate into Concerts.
+
+## 2026-08-02 — Provider workflows use separate cadences
+
+**Decision:** Structured Ticketmaster/Spotify research runs three times per week without Tavily or Groq. Focused Tavily/Groq concert discovery runs twice monthly under the same write-concurrency group.
+
+**Reason:** Structured providers are inexpensive and benefit from frequent checks; web search is quota-limited and should be slower and narrowly framed.
+
+**Consequence:** Both workflows keep existing UsageTracker enforcement, conditional Worker writes and pinned dependencies. Tavily never searches releases or general/status news.
+
+## 2026-08-02 — Tavily concert searches use adaptive backoff
+
+**Decision:** New bands receive an initial concert web search. Consecutive empty results defer the next search by 30 days, then 60 days, then recurring 90-day intervals. A later concert observation resets the cadence.
+
+**Reason:** Retired or inactive bands should not consume the same recurring search budget as actively touring artists, but they must still be checked occasionally for comeback activity.
+
+**Consequence:** No band is permanently disabled. Existing full-date, upcoming-only, impersonator and duplicate protections remain mandatory.
+
+## 2026-08-02 — Legacy news cleanup is intentional and controlled
+
+**Decision:** The v77 rollout removes non-Spotify records from `news.json`, including status/general articles, Tavily release announcements and concert/ticket articles. The compatibility filename remains unchanged.
+
+**Reason:** The user explicitly requested that obsolete content be removed rather than merely hidden.
+
+**Consequence:** Cleanup is idempotent, logs aggregate counts only and requires separate production-workflow authorization. Concert records and alerts remain in `concerts.json`.
