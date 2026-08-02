@@ -1,4 +1,4 @@
-' strict';
+'use strict';
 
 // Loaded with Node's -r flag before scripts/research.js. It keeps the
 // existing mature structured pipeline intact while disabling every Tavily
@@ -17,7 +17,7 @@ function fullDate(value) {
 }
 
 function spotifyReleaseReady(release, today) {
-  if (!release?.spotifyReleaseId || !release.spotifyUrl || !release.artworkUrl) return false;
+  if (!release?.spotifyReleaseId || !release.spotifyUrl) return false;
   if (!['Album', 'Single'].includes(release.type)) return false;
   if (!fullDate(release.releaseDate) || release.releaseDate > today.slice(0, 10)) return false;
   return true;
@@ -60,7 +60,7 @@ releasePlan.planLifecycleAlerts = function planSpotifyReleaseAlerts({ band, rele
       releaseDate: release.releaseDate,
       spotifyReleaseId: release.spotifyReleaseId,
       spotifyUrl: release.spotifyUrl,
-      artworkUrl: release.artworkUrl,
+      artworkUrl: release.artworkUrl || null,
       sourceName: 'Spotify',
       sourceUrl: release.spotifyUrl,
     });
