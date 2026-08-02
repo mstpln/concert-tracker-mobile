@@ -2,13 +2,6 @@ name: Bulk artist enrichment
 
 on:
   workflow_dispatch: {}
-  push:
-    branches:
-      - feature/bulk-artist-enrichment
-    paths:
-      - '.github/workflows/bulk-artist-enrichment.yml'
-      - 'scripts/bulk-enrich-artists.py'
-      - 'scripts/approved-artists.json'
 
 permissions:
   contents: read
@@ -65,7 +58,7 @@ jobs:
           set -euo pipefail
           python scripts/bulk-enrich-artists.py \
             --input out/bands-baseline.json \
-            --artists scripts/approved-artists.json \
+            --artists scripts/data/approved-artists.json \
             --output out/bands-enriched.json \
             --report out/bulk-artist-enrichment-report.json
 
