@@ -82,9 +82,9 @@ test('manual and weekly run summaries remain separate and old state stays compat
   const oldState = {}; ensureMusicbrainzState(oldState); assert.equal(oldState.lastMusicbrainzRun, null);
 });
 
-test('manual workflow is hardened, queues data writes, and receives no unrelated API secrets', () => {
+test('manual workflow is hardened, shares the data-write concurrency group, and receives no unrelated API secrets', () => {
   const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'musicbrainz.yml'), 'utf8');
-  const weekly = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'research.yml'), 'utf8');
+  const structured = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'research.yml'), 'utf8');
   assert.match(workflow, /^\s*workflow_dispatch:/m);
   assert.doesNotMatch(workflow, /^\s*(schedule|push|pull_request):/m);
   assert.match(workflow, /confirm:/); assert.match(workflow, /required: true/); assert.match(workflow, /type: boolean/); assert.match(workflow, /default: false/);
@@ -92,11 +92,9 @@ test('manual workflow is hardened, queues data writes, and receives no unrelated
   assert.match(workflow, /group: live-vault-data-writes/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /queue: max/);
-  assert.match(weekly, /group: live-vault-data-writes/);
-  assert.match(weekly, /cancel-in-progress: false/);
-  assert.match(weekly, /queue: max/);
-  const concurrency = (text) => text.match(/concurrency:\n(?:.*\n){0,3}?\s*queue: max/)[0];
-  assert.equal(concurrency(workflow), concurrency(weekly));
+  assert.match(structured, /group: live-vault-data-writes/);
+  assert.match(structured, /cancel-in-progress: false/);
+  assert.doesNotMatch(structured, /queue: max/);
   assert.match(workflow, /CF_WORKER_ENDPOINT/);
   assert.match(workflow, /CF_WORKER_TOKEN/);
   assert.doesNotMatch(workflow, /(TICKETMASTER|TAVILY|GROQ|SETLISTFM|SPOTIFY)/);

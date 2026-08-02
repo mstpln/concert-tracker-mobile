@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v76",
-  "serviceWorkerCacheVersion": "v76",
+  "appVersion": "v77",
+  "serviceWorkerCacheVersion": "v77",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 20,

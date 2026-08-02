@@ -1,0 +1,39 @@
+name: Clean legacy release feed
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-vault-data-writes
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Back up and clean release feed
+        env:
+          CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
+          CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
+          RELEASE_FEED_BACKUP_PATH: news-before-v77-cleanup.json
+        run: node scripts/cleanupReleaseFeed.js
+
+      - name: Upload rollback backup
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: news-before-v77-cleanup
+          path: news-before-v77-cleanup.json
+          retention-days: 30
+          if-no-files-found: error

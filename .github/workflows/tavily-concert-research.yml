@@ -1,10 +1,10 @@
-name: Structured concert and release research
+name: Focused Tavily concert research
 
 on:
   schedule:
-    # 01:00 UTC Monday, Wednesday and Friday. Scheduled execution remains
-    # disabled until the staged rollout is explicitly completed.
-    - cron: '0 1 * * 1,3,5'
+    # Twice monthly. Adaptive per-band backoff determines which artists are due.
+    # Scheduled execution remains disabled until the staged rollout is explicitly completed.
+    - cron: '0 2 1,15 * *'
   workflow_dispatch: {}
 
 permissions:
@@ -28,12 +28,10 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Run structured provider pipeline
+      - name: Run focused concert web research
         env:
-          TICKETMASTER_API_KEY: ${{ secrets.TICKETMASTER_API_KEY }}
-          SETLISTFM_API_KEY: ${{ secrets.SETLISTFM_API_KEY }}
-          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
-          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
           CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
-        run: node -r ./scripts/preloadStructuredRun.js scripts/research.js
+        run: node scripts/tavilyConcertRun.js

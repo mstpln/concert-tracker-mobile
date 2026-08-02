@@ -53,7 +53,7 @@ for (const file of fs.readdirSync(path.join(root, 'icons'))) {
 for (const file of fs.readdirSync(path.join(root, 'assets', 'listening'))) {
   fs.copyFileSync(path.join(root, 'assets', 'listening', file), path.join(out, 'assets', 'listening', file));
 }
-for (const file of ['qa/qa-bootstrap.js', 'qa/qa.css', 'qa/fixtures/qa-fixtures.js']) {
+for (const file of ['qa/qa-bootstrap.js', 'qa/qa.css', 'qa/fixtures/qa-fixtures.js', 'qa/qa-v77-fixtures.js']) {
   const target = path.join(out, path.basename(file));
   fs.copyFileSync(path.join(root, file), target);
 }
@@ -62,7 +62,7 @@ let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 html = html.replace('</head>', '<link rel="stylesheet" href="qa.css" /></head>');
 html = html.replace(
   '<script src="ownedTickets.js"></script>',
-  '<script src="qa-fixtures.js"></script><script src="qa-build-config.js"></script><script src="qa-bootstrap.js"></script><script src="ownedTickets.js"></script>'
+  '<script src="qa-fixtures.js"></script><script src="qa-v77-fixtures.js"></script><script src="qa-build-config.js"></script><script src="qa-bootstrap.js"></script><script src="ownedTickets.js"></script>'
 );
 // The public synthetic QA preview must never load browser-local personal
 // listening history or expose the real-history file picker. QA continues to
@@ -84,7 +84,7 @@ sw = sw
   )
   .replace(
     "  './version.js',",
-    "  './version.js',\n  './qa-fixtures.js',\n  './qa-build-config.js',\n  './qa-bootstrap.js',\n  './qa.css',"
+    "  './version.js',\n  './qa-fixtures.js',\n  './qa-v77-fixtures.js',\n  './qa-build-config.js',\n  './qa-bootstrap.js',\n  './qa.css',"
   )
   .replace(
     "k.startsWith('concert-tracker-shell-') && k !== CACHE_NAME",
