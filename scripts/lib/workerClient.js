@@ -68,7 +68,7 @@ async function putJson(filename, data, state) {
 
 async function writeJson(filename, data) {
   let state = documentState.get(filename);
-  if (!state || (!state.etag && !state.missing)) {
+  if (!state) {
     await readJson(filename, undefined);
     state = documentState.get(filename);
   }
