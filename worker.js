@@ -82,11 +82,15 @@ function objectEtag(object) {
   return object.etag ? `"${String(object.etag).replace(/^"|"$/g, '')}"` : null;
 }
 
+function emptyHeaders() {
+  return new Request('https://livevault.invalid').headers;
+}
+
 function writeCondition(request) {
   const ifMatch = request.headers.get('If-Match');
   const ifNoneMatch = request.headers.get('If-None-Match');
   if (!ifMatch && !ifNoneMatch) return null;
-  const headers = new Headers();
+  const headers = emptyHeaders();
   if (ifMatch) headers.set('If-Match', ifMatch);
   if (ifNoneMatch) headers.set('If-None-Match', ifNoneMatch);
   return headers;
@@ -172,7 +176,8 @@ async function handleJsonFile(request, env, filename) {
       ? await env.BUCKET.head(filename)
       : await env.BUCKET.get(filename);
     if (existing) return response('Precondition required', { status: 428 });
-    condition = new Headers({ 'If-None-Match': '*' });
+    condition = emptyHeaders();
+    condition.set('If-None-Match', '*');
   }
 
   const contentType = (request.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
