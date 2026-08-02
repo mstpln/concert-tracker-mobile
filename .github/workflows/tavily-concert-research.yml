@@ -1,0 +1,36 @@
+name: Focused Tavily concert research
+
+on:
+  schedule:
+    # Twice monthly. Adaptive per-band backoff determines which artists are due.
+    - cron: '0 2 1,15 * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-vault-data-writes
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Run focused concert web research
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
+          CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
+        run: node scripts/tavilyConcertRun.js
