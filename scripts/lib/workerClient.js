@@ -6,6 +6,9 @@
 
 const config = require('./config');
 const conflictMerge = require('../../conflictMerge');
+const networkPolicy = require('./networkPolicy');
+
+networkPolicy.install(globalThis);
 
 const documentState = new Map();
 

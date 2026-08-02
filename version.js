@@ -12,7 +12,7 @@
 // CACHE_NAME_LITERAL in service-worker.js to the same value; that second
 // edit is what actually forces old installs to update. service-worker.js
 // has a console.warn() safety check if the two ever drift apart.
-const APP_VERSION = 'v75';
-// Previous merged release marker retained for regression coverage: APP_VERSION = 'v74'.
-// Earlier merged release marker retained for regression coverage: APP_VERSION = 'v73'.
+const APP_VERSION = 'v76';
+// Previous merged release marker retained for regression coverage: APP_VERSION = 'v75'.
+// Earlier merged release marker retained for regression coverage: APP_VERSION = 'v74'.
 // Legacy owned-ticket release marker retained for historical regression coverage: APP_VERSION = 'v70'.

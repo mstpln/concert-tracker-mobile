@@ -4,7 +4,7 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by an authenticated Cloudflare Worker and private R2. The established production JSON files remain `bands.json`, `concerts.json`, `news.json`, and `apiUsage.json`; ticket PDF bytes are separate authenticated R2 objects.
 
-Security Build 1 is merged and manually deployed at **v74**. The current unreleased branch is **v75** on `security/v75-stale-write-protection`. It adds conditional JSON writes and conflict recovery without changing stored schemas, provider ownership or user-facing design.
+Security Build 1 is merged and manually deployed at **v74**. Security Build 2 is merged at **v75** and adds ETag-based conditional writes and deterministic conflict recovery. The current unreleased branch is **v76** on `security/v76-device-privacy-roles-timeouts`.
 
 ## Product purpose and navigation
 
@@ -12,7 +12,7 @@ This is a single-user concert tracker for followed bands, upcoming shows, attend
 
 ## Major screens
 
-My Concerts shows a three-band listening preview, the compact concert summary, upcoming/attended shows and preparation. Concert Dates provides concert and venue browsing. My Bands lists followed artists. Alerts has alerts/news subtabs. Settings contains usage, identity coverage, app options and private listening-history import controls. Stats is a primary destination with Listening and Concerts subtabs; Listening is default and the existing concert-statistics content remains under Concerts. A dedicated Top Bands ranking supports 3 months, 1 year and All time. Band profiles use Concerts, Alerts, News, Listening and Data tabs, with Concerts default.
+My Concerts shows a three-band listening preview, the compact concert summary, upcoming/attended shows and preparation. Concert Dates provides concert and venue browsing. My Bands lists followed artists. Alerts has alerts/news subtabs. Settings contains usage, identity coverage, app options and private listening-history import controls. Stats is a primary destination with Listening and Concerts subtabs; Listening is default and the existing concert-statistics content remains under Concerts. Band profiles use Concerts, Alerts, News, Listening and Data tabs.
 
 ## Listening statistics and private history
 
@@ -20,41 +20,44 @@ Historical Spotify listening data is imported only from a sanitized LiveVault fi
 
 The sanitized import contains 250,403 eligible unique track listens from 2009-01-16 through 2026-07-29. Imported artist names are matched conservatively to existing LiveVault bands. Listening statistics intentionally include only events mapped to bands already present in LiveVault.
 
-v72 corrects the listening experience to use the term **listens**, supports the complete all-time history without spread-argument failure, shows Top 3 on Start, Top 10 in Stats and up to Top 100 in the full ranking, and derives genre groups from stored LiveVault band genres. Screens retain independent timeframe state.
-
-## v72 visual and concert-card corrections
-
-Only the two summary cards on the My Concerts Start page use a thin blue outline: Your Top Bands and the compact concert summary. Their footer areas stay dark rather than filled blue. The full Concert Stats tab remains unchanged.
-
-Upcoming and past concert cards use the approved subtle blue-tinted surface wherever the shared concert-card design appears. Year groupings show only the year and show count. Upcoming concert cards show the band's rolling previous-three-month listening total; past cards show the three months immediately before the concert. Calculated listening values are never written into concert records.
-
-The Concert Dates header uses the calendar icon family. Past-concert rating stars are doubled in width and height. Spotify Top Track artwork is resolved only from the minimal visible track IDs through the existing browser-side Spotify authorization and cached locally; failures retain placeholders and never affect the listening history.
-
 ## v74 focused security hardening
 
 The live v74 release adds proportionate direct-risk protections:
 
 - browser navigation permits same-origin links and HTTPS external links only, adds `noopener noreferrer`, and blocks unsafe schemes;
-- the Excel export control is removed so the app no longer executes SheetJS from a third-party CDN; CSV export remains available;
-- the document declares a no-referrer policy and a compatible self-script content security policy;
-- Worker JSON writes require `application/json`, are limited to 10 MB, and must match the expected top-level array/object shape while preserving unknown fields;
-- authenticated Worker responses use `private, no-store`, `nosniff`, and no-referrer headers;
-- production service-worker activation deletes only obsolete `concert-tracker-shell-*` caches, while synthetic QA keeps its separate `concert-tracker-qa-*` namespace.
+- Excel export and its third-party SheetJS runtime are removed; CSV export remains;
+- the document declares no-referrer and compatible content-security policies;
+- Worker JSON writes require JSON, are limited to 10 MB, and validate expected root types;
+- authenticated Worker responses use private no-store, no-referrer and nosniff headers;
+- service-worker cache cleanup is scoped to Live Vault caches.
 
 ## v75 stale-write protection
 
-The unreleased v75 branch adds one shared concurrency contract across the browser, Cloudflare Worker and GitHub Actions writers:
+The merged v75 release adds one concurrency contract across the browser, Worker and GitHub Actions writers:
 
-- Worker JSON reads expose the current R2 `ETag`;
-- writes to an existing JSON document require `If-Match` and are performed atomically through R2 conditional `put`;
-- creation uses `If-None-Match: *` and remains compatible with first-time setup;
-- a stale write receives HTTP `412` instead of silently replacing newer data;
-- browser and automation clients reread once, perform a deterministic three-way merge, and retry once with the newest ETag;
-- stable-ID record arrays preserve remote additions, locally added records, unknown fields and unrelated concurrent field changes;
-- a stale deletion is applied only when the remote record is unchanged from the original read; a remotely changed record is preserved;
-- successful conflict recovery reconciles the caller's in-memory array/object so a later save cannot accidentally remove the merged remote data.
+- JSON reads expose R2 ETags;
+- existing-document writes require `If-Match`, creation uses `If-None-Match: *`, and R2 performs the condition atomically;
+- stale writes receive HTTP 412;
+- browser and automation clients reread once, perform the shared deterministic three-way merge and retry once;
+- stable IDs, remote additions, unknown fields, user-owned fields and unrelated provider updates are preserved;
+- remotely changed records are protected from stale deletion;
+- successful conflict recovery updates the caller's in-memory data.
 
-Ticket PDF routes are unchanged. No production data, provider calls, credential roles or stored-data migrations are part of v75. The new Worker code requires manual deployment after merge.
+Ticket PDF routes remain outside the document-level merge contract. The v75 Worker code requires manual Cloudflare deployment after merge.
+
+## v76 device privacy, credential roles and bounded network work
+
+The unreleased v76 branch adds focused operational hardening without changing stored-data schemas:
+
+- **Disconnect** removes only the Worker URL and token from the current browser while preserving local settings, imported listening history, Spotify authorization and cached tickets;
+- **Erase this device** removes the connection, browser settings, Spotify authorization, imported listening history, cached ticket PDFs and Live Vault shell caches, but never deletes remote R2 JSON or permanent ticket PDFs;
+- the Worker accepts a browser role for JSON and ticket routes, an automation role for JSON only, and the existing read-only smoke role;
+- the legacy `API_TOKEN` remains temporarily supported for a safe staged migration and may be removed after the browser and GitHub Actions use their separate tokens;
+- browser and research-pipeline network requests receive a default 30-second timeout unless a caller already supplies its own abort signal;
+- the timeout layer performs no hidden retry, so UsageTracker accounting and existing provider-specific retries remain authoritative;
+- the production research workflow declares read-only repository permissions and pins checkout/setup actions to reviewed commit SHAs.
+
+The credential rollout is documented in `docs/SECURITY_BUILD_3_ROLLOUT.md`. No credentials, bindings, routes, R2 data, provider calls or production workflows are changed by the branch itself.
 
 ## Data model and ownership
 
@@ -66,13 +69,12 @@ The app is mobile-first. Focused changes preserve the existing blue/black/grey/w
 
 ## Active backlog
 
-1. Complete and deploy security Build 2: v75 ETag and stale-write protection
-2. Complete security Build 3: local erasure, credential separation and provider/workflow hardening
-3. Real ListenBrainz account connection and incremental synchronization
-4. MusicBrainz recording/release matching and optional artwork enrichment
-5. Concert Map View
-6. Expanded Backup, Restore and Export
-7. Native Push Notifications
+1. Complete and deploy security Build 3: v76 device erasure, credential roles and bounded network requests
+2. Real ListenBrainz account connection and incremental synchronization
+3. MusicBrainz recording/release matching and optional artwork enrichment
+4. Concert Map View
+5. Expanded Backup, Restore and Export
+6. Native Push Notifications
 
 ## Development workflow
 
