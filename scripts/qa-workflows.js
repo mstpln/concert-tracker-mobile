@@ -52,8 +52,33 @@ assert(smoke.source.includes('CF_WORKER_READ_TOKEN'), 'Production smoke must use
 assert(!smoke.source.includes('pull_request:'), 'Production smoke must not run for pull requests');
 assert(!smoke.source.includes('schedule:'), 'Production smoke must not run on a schedule');
 
+const structured = getWorkflow('research.yml');
+assert(structured.source.includes("cron: '0 1 * * 1,3,5'"), 'structured research must run Monday, Wednesday and Friday');
+assert(structured.source.includes('preloadStructuredRun.js'), 'structured research must load the focused provider policy');
+assert(!structured.source.includes('TAVILY_API_KEY'), 'structured research must not receive Tavily credentials');
+assert(!structured.source.includes('GROQ_API_KEY'), 'structured research must not receive Groq credentials');
+assert(!structured.source.includes('cleanupReleaseFeed.js'), 'destructive release cleanup must not run on a schedule');
+
+const tavily = getWorkflow('tavily-concert-research.yml');
+assert(tavily.source.includes("cron: '0 2 1,15 * *'"), 'focused Tavily research must run twice monthly');
+assert(tavily.source.includes('tavilyConcertRun.js'), 'focused Tavily workflow must use the concert-only runner');
+assert(!tavily.source.includes('SPOTIFY_CLIENT_ID'), 'focused Tavily workflow must not receive Spotify credentials');
+assert(!tavily.source.includes('TICKETMASTER_API_KEY'), 'focused Tavily workflow must not receive Ticketmaster credentials');
+
+const cleanup = getWorkflow('release-feed-cleanup.yml');
+assert(cleanup.source.includes('workflow_dispatch:'), 'release cleanup must remain manual');
+assert(!cleanup.source.includes('schedule:'), 'release cleanup must never be scheduled');
+assert(cleanup.source.includes('news-before-v77-cleanup.json'), 'release cleanup must create a rollback backup');
+assert(cleanup.source.includes('actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'), 'release cleanup backup action must be pinned');
+
+for (const workflow of [structured, tavily, cleanup]) {
+  assert(workflow.source.includes('group: live-vault-data-writes'), 'production writers must share the data-write concurrency group');
+  assert(workflow.source.includes('cancel-in-progress: false'), 'production writers must not cancel an active write');
+}
+
 for (const [name, workflow] of workflows) {
   assert(!workflow.source.includes('permissions: write-all'), `${name} must not grant write-all permissions`);
+  assert(!workflow.source.includes('queue: max'), `${name} must not use unsupported concurrency fields`);
 }
 
 console.log('Workflow structure and safety checks passed');
