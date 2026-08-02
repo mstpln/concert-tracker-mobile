@@ -93,18 +93,16 @@ function objectEtag(object) {
   return object.etag ? `"${String(object.etag).replace(/^"|"$/g, '')}"` : null;
 }
 
-function emptyHeaders() {
-  return new Request('https://livevault.invalid').headers;
+function bareEtag(value) {
+  return String(value || '').trim().replace(/^W\//, '').replace(/^"|"$/g, '');
 }
 
 function writeCondition(request) {
   const ifMatch = request.headers.get('If-Match');
   const ifNoneMatch = request.headers.get('If-None-Match');
-  if (!ifMatch && !ifNoneMatch) return null;
-  const headers = emptyHeaders();
-  if (ifMatch) headers.set('If-Match', ifMatch);
-  if (ifNoneMatch) headers.set('If-None-Match', ifNoneMatch);
-  return headers;
+  if (ifMatch) return { etagMatches: bareEtag(ifMatch) };
+  if (ifNoneMatch === '*') return { etagDoesNotMatch: '*' };
+  return null;
 }
 
 async function qaSmoke(env) {
@@ -187,8 +185,7 @@ async function handleJsonFile(request, env, filename) {
       ? await env.BUCKET.head(filename)
       : await env.BUCKET.get(filename);
     if (existing) return response('Precondition required', { status: 428 });
-    condition = emptyHeaders();
-    condition.set('If-None-Match', '*');
+    condition = { etagDoesNotMatch: '*' };
   }
 
   const contentType = (request.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
