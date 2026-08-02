@@ -52,10 +52,10 @@ assert(smoke.source.includes('CF_WORKER_READ_TOKEN'), 'Production smoke must use
 assert(!smoke.source.includes('pull_request:'), 'Production smoke must not run for pull requests');
 assert(!smoke.source.includes('schedule:'), 'Production smoke must not run on a schedule');
 
-const scheduleGuard = "if: github.event_name == 'workflow_dispatch' || vars.LIVEVAULT_RESEARCH_SCHEDULES_ENABLED == 'true'";
+const scheduleGuard = "vars.LIVEVAULT_RESEARCH_SCHEDULES_ENABLED";
 const structured = getWorkflow('research.yml');
 assert(structured.source.includes("cron: '0 1 * * 1,3,5'"), 'structured research must define the Monday, Wednesday and Friday cadence');
-assert(structured.source.includes(scheduleGuard), 'structured scheduled execution must remain guarded until rollout authorization');
+assert(!structured.source.includes(scheduleGuard), 'structured scheduled execution must be enabled after rollout verification');
 assert(structured.source.includes('preloadStructuredRun.js'), 'structured research must load the focused provider policy');
 assert(!structured.source.includes('TAVILY_API_KEY'), 'structured research must not receive Tavily credentials');
 assert(!structured.source.includes('GROQ_API_KEY'), 'structured research must not receive Groq credentials');
@@ -64,7 +64,7 @@ assert(!structured.source.includes('queue: max'), 'structured research must use 
 
 const tavily = getWorkflow('tavily-concert-research.yml');
 assert(tavily.source.includes("cron: '0 2 1,15 * *'"), 'focused Tavily research must define the twice-monthly cadence');
-assert(tavily.source.includes(scheduleGuard), 'focused Tavily scheduled execution must remain guarded until rollout authorization');
+assert(!tavily.source.includes(scheduleGuard), 'focused Tavily scheduled execution must be enabled after rollout verification');
 assert(tavily.source.includes('tavilyConcertRun.js'), 'focused Tavily workflow must use the concert-only runner');
 assert(!tavily.source.includes('SPOTIFY_CLIENT_ID'), 'focused Tavily workflow must not receive Spotify credentials');
 assert(!tavily.source.includes('TICKETMASTER_API_KEY'), 'focused Tavily workflow must not receive Ticketmaster credentials');
