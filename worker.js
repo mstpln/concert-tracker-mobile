@@ -50,12 +50,29 @@ function jsonRootIsValid(filename, value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function utf8ByteLength(text) {
+  let bytes = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (
+      code >= 0xd800 && code <= 0xdbff &&
+      index + 1 < text.length &&
+      text.charCodeAt(index + 1) >= 0xdc00 && text.charCodeAt(index + 1) <= 0xdfff
+    ) {
+      bytes += 4;
+      index += 1;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
 async function readBoundedText(request, maxBytes) {
   const declaredLength = Number(request.headers.get('Content-Length'));
   if (Number.isFinite(declaredLength) && declaredLength > maxBytes) return { tooLarge: true };
   const text = await request.text();
-  const size = new TextEncoder().encode(text).byteLength;
-  return size > maxBytes ? { tooLarge: true } : { text };
+  return utf8ByteLength(text) > maxBytes ? { tooLarge: true } : { text };
 }
 
 async function qaSmoke(env) {
