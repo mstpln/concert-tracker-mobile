@@ -98,11 +98,14 @@ test('focused workflows separate structured providers from Tavily web research',
   const structured = fs.readFileSync(path.join('.github', 'workflows', 'research.yml'), 'utf8');
   const tavily = fs.readFileSync(path.join('.github', 'workflows', 'tavily-concert-research.yml'), 'utf8');
   const cleanup = fs.readFileSync(path.join('.github', 'workflows', 'release-feed-cleanup.yml'), 'utf8');
+  const scheduleGuard = /github\.event_name == 'workflow_dispatch' \|\| vars\.LIVEVAULT_RESEARCH_SCHEDULES_ENABLED == 'true'/;
   assert.match(structured, /0 1 \* \* 1,3,5/);
+  assert.match(structured, scheduleGuard);
   assert.match(structured, /preloadStructuredRun\.js/);
   assert.doesNotMatch(structured, /cleanupReleaseFeed\.js/);
   assert.doesNotMatch(structured, /TAVILY_API_KEY/);
   assert.doesNotMatch(structured, /GROQ_API_KEY/);
+  assert.match(tavily, scheduleGuard);
   assert.match(tavily, /tavilyConcertRun\.js/);
   assert.doesNotMatch(tavily, /SPOTIFY_CLIENT_ID/);
   assert.match(cleanup, /workflow_dispatch:/);
