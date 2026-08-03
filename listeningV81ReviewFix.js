@@ -1,10 +1,13 @@
 'use strict';
 
 // Focused post-review interaction correction for the independently selectable
-// stacked genre chart. The primary v81 renderer redraws the chart on click;
-// capture the selected year before that redraw, then restore its detail.
+// stacked genre chart. Legacy render wrappers can replace the chart after the
+// primary click handler, so retain the selected year and restore its detail
+// whenever the final chart DOM settles.
 (() => {
   const KNOWN_NOTE = 'Listening time is based on listens with known duration.';
+  let selectedGenreYear = null;
+  let restoreQueued = false;
 
   function countText(value) {
     const count = Number(value || 0);
@@ -17,7 +20,7 @@
 
   function renderGenreYearDetail(year) {
     const card = document.querySelector('#screen-stats .genre-card');
-    if (!card) return;
+    if (!card || year == null) return;
     const item = ListeningStats.genreDistributionByYear(listeningEvents).find((candidate) => candidate.year === Number(year));
     if (!item) return;
 
@@ -27,7 +30,7 @@
       button.setAttribute('aria-pressed', String(selected));
     });
 
-    card.querySelector('.genre-year-detail')?.remove();
+    if (card.querySelector('.genre-year-detail')) return;
     const detail = document.createElement('div');
     detail.className = 'genre-year-detail';
     detail.setAttribute('aria-live', 'polite');
@@ -37,10 +40,33 @@
     else card.append(detail);
   }
 
+  function queueRestore() {
+    if (restoreQueued || selectedGenreYear == null) return;
+    restoreQueued = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        restoreQueued = false;
+        renderGenreYearDetail(selectedGenreYear);
+      });
+    });
+  }
+
   document.addEventListener('click', (event) => {
     const button = event.target instanceof Element ? event.target.closest('[data-v81-genre-year]') : null;
     if (!button) return;
-    const year = Number(button.dataset.v81GenreYear);
-    setTimeout(() => renderGenreYearDetail(year), 0);
+    selectedGenreYear = Number(button.dataset.v81GenreYear);
+    queueRestore();
   }, true);
+
+  document.addEventListener('click', (event) => {
+    if (event.target instanceof Element && event.target.closest('[data-v81-genre-range]')) selectedGenreYear = null;
+  }, true);
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const screen = document.getElementById('screen-stats');
+    if (!screen) return;
+    new MutationObserver(() => {
+      if (selectedGenreYear != null && !screen.querySelector('.genre-year-detail')) queueRestore();
+    }).observe(screen, { childList: true, subtree: true });
+  });
 })();
