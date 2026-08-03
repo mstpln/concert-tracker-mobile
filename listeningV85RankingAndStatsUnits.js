@@ -62,6 +62,16 @@
   api.topTracks = (listens, limit = 10) => aggregateByListens(listens, 'track', limit);
   api.topAlbums = (listens, limit = 10) => aggregateByListens(listens, 'album', limit);
 
+  const previousSelectedStats = api.selectedStats;
+  api.selectedStats = function selectedStatsV85(listens, bands, timeframe = 'threeMonths', now = new Date()) {
+    const result = previousSelectedStats.call(this, listens, bands, timeframe, now);
+    return {
+      ...result,
+      topTracks: aggregateByListens(result.listens, 'track', 10),
+      topAlbums: aggregateByListens(result.listens, 'album', 10),
+    };
+  };
+
   function updateConcertStatUnits(root = document) {
     const items = root.querySelectorAll?.('.stats-teaser-item') || [];
     items.forEach((item) => {
@@ -70,11 +80,13 @@
       if (!value || !label) return;
       const labelText = label.textContent.trim().toLowerCase();
       if (labelText === 'traveled' || labelText === 'traveled (km)') {
-        value.textContent = value.textContent.replace(/\s*km\s*$/i, '').trim();
-        label.textContent = 'traveled (km)';
+        const nextValue = value.textContent.replace(/\s*km\s*$/i, '').trim();
+        if (value.textContent !== nextValue) value.textContent = nextValue;
+        if (label.textContent !== 'traveled (km)') label.textContent = 'traveled (km)';
       } else if (labelText === 'spent' || labelText === 'spent (kr)') {
-        value.textContent = value.textContent.replace(/\s*kr\s*$/i, '').trim();
-        label.textContent = 'spent (kr)';
+        const nextValue = value.textContent.replace(/\s*kr\s*$/i, '').trim();
+        if (value.textContent !== nextValue) value.textContent = nextValue;
+        if (label.textContent !== 'spent (kr)') label.textContent = 'spent (kr)';
       }
     });
   }
