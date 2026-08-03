@@ -193,79 +193,14 @@
     return { local, remote: remoteStatus };
   }
 
-  function dateLabel(value) {
-    if (!value) return '—';
-    return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(value));
-  }
-
-  async function injectUi() {
-    const wrapper = root.document?.querySelector('[data-spotify-history-import]');
-    if (!wrapper || wrapper.querySelector('[data-listening-vault]')) return;
-    const panel = root.document.createElement('div');
-    panel.dataset.listeningVault = 'true';
-    panel.innerHTML = `
-      <div class="settings-divider"></div>
-      <p class="settings-hint"><strong>Private Cloudflare backup</strong></p>
-      <p class="settings-hint" data-vault-status aria-live="polite">Checking backup status…</p>
-      <div class="show-buttons" style="margin-top:8px">
-        <button type="button" class="btn-primary" data-vault-backup>Back up to Cloudflare</button>
-        <button type="button" class="btn-secondary" data-vault-restore>Restore from Cloudflare</button>
-        <button type="button" class="btn-secondary" data-vault-export>Download backup</button>
-      </div>`;
-    wrapper.querySelector('.settings-card')?.append(panel);
-    const statusNode = panel.querySelector('[data-vault-status]');
-    const buttons = [...panel.querySelectorAll('button')];
-    const setBusy = (busy) => buttons.forEach((button) => { button.disabled = busy; });
-    const refresh = async () => {
-      const info = await status();
-      if (info.remote?.archive) {
-        statusNode.textContent = `${Number(info.remote.archive.eventCount).toLocaleString()} listens backed up · ${dateLabel(info.remote.archive.firstListenedAt)}–${dateLabel(info.remote.archive.lastListenedAt)}`;
-      } else statusNode.textContent = 'No Cloudflare listening backup yet.';
-    };
-    panel.querySelector('[data-vault-backup]').addEventListener('click', async () => {
-      setBusy(true); statusNode.textContent = 'Creating and verifying private Cloudflare backup…';
-      try {
-        const manifest = await backupToCloudflare();
-        statusNode.textContent = `${Number(manifest.archive.eventCount).toLocaleString()} listens backed up safely.`;
-      } catch (error) { statusNode.textContent = error?.message || 'Backup failed.'; }
-      finally { setBusy(false); }
-    });
-    panel.querySelector('[data-vault-restore]').addEventListener('click', async () => {
-      if (!root.confirm('Replace this device’s local listening copy with the private Cloudflare backup?')) return;
-      setBusy(true); statusNode.textContent = 'Restoring and verifying private Cloudflare backup…';
-      try {
-        const result = await restoreFromCloudflare();
-        statusNode.textContent = `${Number(result.restored).toLocaleString()} listens restored to this device.`;
-      } catch (error) { statusNode.textContent = error?.message || 'Restore failed.'; }
-      finally { setBusy(false); }
-    });
-    panel.querySelector('[data-vault-export]').addEventListener('click', async () => {
-      setBusy(true); statusNode.textContent = 'Preparing local backup…';
-      try {
-        const result = await exportLocalBackup();
-        statusNode.textContent = `${Number(result.eventCount).toLocaleString()} listens downloaded as a private backup.`;
-      } catch (error) { statusNode.textContent = error?.message || 'Backup download failed.'; }
-      finally { setBusy(false); }
-    });
-    refresh().catch(() => { statusNode.textContent = 'Cloudflare backup status is unavailable.'; });
-  }
-
-  function observeUi() {
-    if (!root?.document || !root.MutationObserver) return;
-    const observer = new root.MutationObserver(() => injectUi());
-    observer.observe(root.document.documentElement, { childList: true, subtree: true });
-    injectUi();
-  }
-
   async function restoreIfLocalEmpty() {
     if (root.__LIVEVAULT_QA_SYNTHETIC_LISTENING__ === true) return;
     const local = await root.LiveVaultSpotifyHistory?.getMeta?.().catch(() => null);
     if (local?.eventCount) return;
-    try { await restoreFromCloudflare(); } catch (_) { /* explicit restore remains available in Settings */ }
+    try { await restoreFromCloudflare(); } catch (_) { /* recovery remains available programmatically */ }
   }
 
   function bootstrap() {
-    observeUi();
     root.setTimeout(restoreIfLocalEmpty, 1500);
   }
 

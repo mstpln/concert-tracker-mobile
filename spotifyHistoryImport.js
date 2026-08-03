@@ -14,6 +14,7 @@
     'stableListenId', 'listenedAt', 'listenedDurationMs', 'artistCreditName',
     'recordingTitle', 'releaseTitle', 'spotifyTrackId', 'source',
   ]);
+  let settingsUiPromise = null;
 
   function normalizeText(value) {
     return String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('en');
@@ -170,12 +171,27 @@
     return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(value));
   }
 
-  async function injectSettingsUi() {
-    const screen = root.document?.getElementById('screen-settings');
-    if (!screen || screen.querySelector('[data-spotify-history-import]')) return;
-    const dataExportLabel = [...screen.querySelectorAll('.section-label')].find((node) => node.textContent.trim() === 'Data export');
-    if (!dataExportLabel) return;
+  function dedupeSettingsWrappers(screen) {
+    const wrappers = [...(screen?.querySelectorAll?.('[data-spotify-history-import]') || [])];
+    const primary = wrappers.shift() || null;
+    for (const duplicate of wrappers) duplicate.remove();
+    return primary;
+  }
+
+  async function ensureSettingsUi() {
+    let screen = root.document?.getElementById('screen-settings');
+    if (!screen) return null;
+    const existing = dedupeSettingsWrappers(screen);
+    if (existing) return existing;
+
     const meta = await getMeta().catch(() => null);
+    screen = root.document?.getElementById('screen-settings');
+    if (!screen) return null;
+    const existingAfterRead = dedupeSettingsWrappers(screen);
+    if (existingAfterRead) return existingAfterRead;
+
+    const dataExportLabel = [...screen.querySelectorAll('.section-label')].find((node) => node.textContent.trim() === 'Data export');
+    if (!dataExportLabel) return null;
     const wrapper = root.document.createElement('div');
     wrapper.dataset.spotifyHistoryImport = 'true';
     wrapper.innerHTML = `
@@ -217,6 +233,13 @@
       wrapper.querySelector('[data-history-clear]')?.remove();
     }
     wrapper.querySelector('[data-history-clear]')?.addEventListener('click', clearFromUi);
+    return wrapper;
+  }
+
+  function injectSettingsUi() {
+    if (settingsUiPromise) return settingsUiPromise;
+    settingsUiPromise = ensureSettingsUi().finally(() => { settingsUiPromise = null; });
+    return settingsUiPromise;
   }
 
   function observeSettings() {
@@ -231,7 +254,19 @@
     await applyToApp();
   }
 
-  return { ALLOWED_EVENT_KEYS, MIN_DURATION_MS, sanitizeEvent, validatePayload, importFile, loadEvents, getMeta, clear, applyToApp, bootstrap };
+  return {
+    ALLOWED_EVENT_KEYS,
+    MIN_DURATION_MS,
+    sanitizeEvent,
+    validatePayload,
+    importFile,
+    loadEvents,
+    getMeta,
+    clear,
+    applyToApp,
+    dedupeSettingsWrappers,
+    bootstrap,
+  };
 });
 
 if (typeof window !== 'undefined') {
