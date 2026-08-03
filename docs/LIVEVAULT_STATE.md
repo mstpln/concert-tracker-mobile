@@ -6,7 +6,9 @@ LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Pr
 
 Security Builds 1-3 are deployed. Browser and automation roles are verified, the legacy `API_TOKEN` has been removed, and browser writes were verified afterward. v77 focused research schedules are active and the one-time release-feed cleanup completed successfully.
 
-Listening Build 3.1 and its focused Settings correction are merged and deployed as v78. The production Worker has the listening routes, the private archive and manifest are stored in R2, and a clean incognito browser successfully restored the complete history. The active implementation branch is `feature/v79-cloudflare-git-builds`, which prepares the existing Worker for controlled GitHub-connected Cloudflare Builds.
+Listening Build 3.1 and its focused Settings correction are merged and deployed as v78. The production Worker has the listening routes, the private archive and manifest are stored in R2, and a clean incognito browser successfully restored the complete history.
+
+v79 is merged and deployed. The existing `concert-tracker-api` Worker is connected to GitHub through Cloudflare Workers Builds. The first repository-driven deployment completed successfully from merge commit `8deb2f03e6b7e224ce84e9609508eb0b37016d04` using Cloudflare build `6ac9e5e3` after setting the build variable `NODE_VERSION=22`. The user confirmed that the app loaded normally, Settings showed v79, bands and concerts loaded, and listening statistics remained available.
 
 ## Product purpose and navigation
 
@@ -34,10 +36,10 @@ v79 adds repository-owned deployment configuration for the existing Worker witho
 - R2 binding remains `BUCKET` connected to `concert-tracker-data`.
 - Runtime secrets remain stored only in Cloudflare.
 - `scripts/qa-cloudflare-builds.js` guards the Worker name, entry point, R2 binding, bucket name and absence of committed secrets.
-- `docs/CLOUDFLARE_GIT_BUILDS.md` contains the one-time connection and rollback steps.
+- `docs/CLOUDFLARE_GIT_BUILDS.md` contains the active build configuration and rollback steps.
 - `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v79.
 
-After merge, the user will connect the existing Worker to GitHub manually. Production builds will use `main`, root `/`, no build command and deploy command `npx wrangler@4.114.0 deploy`. Build watch paths will be limited to Worker deployment files so app-only changes do not redeploy the Worker. Non-production branch builds remain disabled for the initial setup.
+Production builds use `main`, root `/`, no build command, deploy command `npx wrangler@4.114.0 deploy`, and build variable `NODE_VERSION=22`. Build watch include paths are limited to `worker.js`, `wrangler.jsonc`, `package.json`, and `package-lock.json`. Non-production branch builds remain disabled.
 
 Automatic Worker deployment does not authorize R2 data changes, migrations, secret changes, binding changes, production workflows or provider calls. Those remain separately controlled.
 
@@ -55,4 +57,4 @@ QA uses fictional listening fixtures and the fake backend only. Automated tests 
 
 ## Development workflow
 
-Approve scope, create a branch, implement and test with synthetic data, maintain state/decisions/build facts, push and open a PR, then merge only after explicit `Merge it`. Once Cloudflare Git Builds is connected, a merged change to watched Worker deployment files may deploy the reviewed Worker automatically. R2 writes, migrations, secrets and production workflows remain separately authorized.
+Approve scope, create a branch, implement and test with synthetic data, maintain state/decisions/build facts, push and open a PR, then merge only after explicit `Merge it`. A merged change to watched Worker deployment files may deploy the reviewed Worker automatically. App-only and documentation-only changes do not trigger the Worker. R2 writes, migrations, secrets and production workflows remain separately authorized.
