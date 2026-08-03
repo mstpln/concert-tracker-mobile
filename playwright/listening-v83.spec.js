@@ -15,7 +15,7 @@ test('v83 uses daily two-week chart buckets and one fixed labelled yearly axis',
   await profile.getByRole('button', { name: '2 weeks' }).click();
 
   const bucketContract = await page.evaluate(() => {
-    const values = globalListeningStats('twoWeeks').buckets;
+    const values = ListeningStats.selectedStats(listeningEvents, bands, 'twoWeeks', listeningNow()).buckets;
     return {
       count: values.length,
       labels: values.map((item) => item.label),
