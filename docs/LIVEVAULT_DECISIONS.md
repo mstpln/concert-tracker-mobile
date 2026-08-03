@@ -104,7 +104,7 @@
 
 **Consequence:** `listeningStats.js` remains the pure calculation layer.
 
-## 2026-08-01 — Historical Spotify export is a private local import
+## 2026-08-01 — Historical Spotify export is a private local import (superseded 2026-08-03)
 
 **Decision:** Historical Spotify data is imported only from a sanitized LiveVault file into browser-local IndexedDB. Raw and sanitized personal history never enter GitHub, R2, providers or public QA.
 
@@ -215,3 +215,35 @@
 **Reason:** The user explicitly requested that obsolete content be removed rather than merely hidden.
 
 **Consequence:** Cleanup is idempotent, logs aggregate counts only and requires separate production-workflow authorization. Concert records and alerts remain in `concerts.json`.
+
+## 2026-08-03 — Private R2 is the durable listening-history source of truth
+
+**Decision:** Store the complete sanitized Spotify archive, including events for artists not currently in LiveVault, in private Cloudflare R2. Keep IndexedDB as each device’s fast offline working copy.
+
+**Reason:** A browser-only archive is too fragile for long-term backup, recovery and multi-device continuity. The sanitized archive excludes account, password, IP, device and location fields, while retaining the source facts required for listening statistics.
+
+**Consequence:** Production migration requires separate authorization. Real history never enters GitHub, public QA, logs or provider bulk requests. Visible statistics continue to include only events mapped to stored LiveVault bands, while unmatched events remain available for future remapping.
+
+## 2026-08-03 — Spotify history uses one immutable content-addressed archive
+
+**Decision:** Store the current Spotify history as one compressed immutable object at `listening/spotify-history/<sha256>.json.gz`, referenced by `listening/manifest.json`.
+
+**Reason:** One logical history file is simple, while content addressing avoids rewriting or corrupting the previous complete archive. The manifest can change only after the new archive is durable.
+
+**Consequence:** Prior archive objects remain recoverable and are not automatically deleted. Future incremental ListenBrainz events use separate bounded monthly objects rather than rewriting the historical Spotify archive.
+
+## 2026-08-03 — Listening backup and restore are part of Build 3.1
+
+**Decision:** Build 3.1 includes Cloudflare backup, local compressed export, integrity-checked restore and safe device bootstrap—not merely remote storage.
+
+**Reason:** A storage migration is incomplete without a tested recovery path.
+
+**Consequence:** Restore verifies SHA-256, schema and event count before replacing IndexedDB. Failed uploads or restores preserve the prior manifest and local archive. Worker deployment and real archive migration remain separately authorized production actions.
+
+## 2026-08-03 — Listening artwork metadata remains separate from source events
+
+**Decision:** Future Spotify album artwork URLs and album metadata are stored once in a separate shared metadata layer, while actual images are cached locally on devices.
+
+**Reason:** Source listen records should remain compact and stable, and repeated listens must not duplicate the same artwork URL hundreds of times.
+
+**Consequence:** Artwork failure never invalidates a listen or changes statistics. Artwork implementation remains deferred until after the v78 vault foundation.

@@ -2,92 +2,79 @@
 
 ## Repository and current build
 
-LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by an authenticated Cloudflare Worker and private R2. The established production JSON files remain `bands.json`, `concerts.json`, `news.json`, and `apiUsage.json`; ticket PDF bytes are separate authenticated R2 objects.
+LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by an authenticated Cloudflare Worker and private R2.
 
-Security Builds 1-3 are merged. The v76 Worker security changes are deployed, browser writes are verified on computer and mobile, and a successful production structured research run verified the separate `AUTOMATION_TOKEN`. The temporary legacy `API_TOKEN` has been removed from Cloudflare and browser alert-status writes were verified afterward.
+Security Builds 1-3 are deployed. Browser and automation roles are verified, the legacy `API_TOKEN` has been removed, and browser writes were verified afterward. v77 is merged on `main` at `fd96b41cabf4c3972df3065ca7aab3856c7e953a`. The focused research schedules are active and the one-time release-feed cleanup completed successfully, reducing `news.json` from 42 legacy records to 0 while creating a private rollback artifact.
 
-v77 is merged on `main` at `50ee9cb9cafb1af7d89cc2ea3f1020bef1c889fd`. The current correction branch is `fix/v77-ticketmaster-cap-enable-schedules`. It keeps the unreleased app version/cache at v77, raises the Ticketmaster run cap for complete band coverage and enables the approved recurring research schedules after merge.
+The current development branch is `feature/listening-vault-foundation`. It prepares **v78 / Listening Build 3.1** and has not been merged, deployed or run against production data.
 
 ## Product purpose and navigation
 
-This is a single-user concert tracker for followed bands, upcoming shows, attended history, concert alerts, Spotify releases, venues, statistics and user-owned concert preparation. Bottom navigation is **Concerts**, **Dates**, **Bands**, **Stats**, and **Alerts**. Settings, band profiles, Full Top Bands and venue details are secondary screens.
+This is a single-user concert tracker for followed bands, upcoming shows, attended history, concert alerts, Spotify releases, listening history, venues, statistics and user-owned concert preparation. Bottom navigation is **Concerts**, **Dates**, **Bands**, **Stats**, and **Alerts**. Settings, band profiles, Full Top Bands and venue details are secondary screens.
 
-## Major screens
+## Listening history baseline
 
-My Concerts shows a three-band listening preview, the compact concert summary, upcoming/attended shows and preparation. Concert Dates provides concert and venue browsing. My Bands lists followed artists. Alerts is headed **ALERTS** and uses **Concerts** and **Releases** subtabs. Band profiles use **Concerts**, **Alerts**, **Releases**, **Listening**, and **Data** tabs. Internal `news` identifiers and `news.json` remain for backward compatibility.
+The sanitized Spotify archive contains 250,403 eligible unique track listens from 2009-01-16 through 2026-07-29. It excludes Spotify Kids, podcasts, video, audiobooks, plays shorter than 30 seconds and discarded account/device/location fields. Retained source fields are timestamp, artist, track, album, played duration, Spotify track ID, deterministic stable ID and source marker.
 
-## Listening statistics and private history
+All sanitized eligible events are retained, including artists not currently stored in LiveVault. Visible statistics include only events currently mapped to stored LiveVault bands. `localBandId` remains derived so previously unmatched history can contribute automatically when a band is added or identity improves.
 
-Historical Spotify listening data is imported only from a sanitized LiveVault file into browser-local IndexedDB. The raw Spotify ZIP and sanitized personal history are never committed, added to QA, written to R2 or sent to providers in bulk. The import excludes Spotify Kids, podcasts, video, audiobooks and plays shorter than 30 seconds. Retained event fields are timestamp, artist, track, album, played duration, Spotify track ID, deterministic stable ID and source marker.
+Before v78 production rollout, the archive remains browser-local in IndexedDB. No real listening history is committed, included in QA, written to public artifacts or sent to providers in bulk.
 
-The sanitized import contains 250,403 eligible unique track listens from 2009-01-16 through 2026-07-29. Imported artist names are matched conservatively to existing LiveVault bands. Listening statistics intentionally include only events mapped to bands already present in LiveVault. The broken Top Tracks artwork path is deferred to the next Listening UI project and is not part of v77.
+## v78 private Listening Vault foundation
 
-## Security foundation and credential rollout
+The approved architecture changes the durable listening source of truth from one browser to private Cloudflare R2 while retaining IndexedDB as the fast offline working copy.
 
-The deployed security builds provide:
+### Remote structure
 
-- safe external navigation, no-referrer/CSP protections, scoped service-worker caches and removal of the third-party Excel runtime;
-- authenticated Worker validation, bounded JSON writes and private no-store responses;
-- ETag-based conditional writes with one deterministic reread/merge/retry on stale data;
-- preservation of stable IDs, unknown fields, user-owned fields and unrelated provider updates;
-- distinct Disconnect and Erase this device controls;
-- separate browser, automation and read-only credential roles;
-- default 30-second browser and automation request timeouts without hidden generic retries;
-- read-only workflow repository permissions and pinned GitHub Action SHAs.
+- `listening/manifest.json` is a small conditional-write manifest.
+- The current sanitized Spotify archive is one compressed immutable object at `listening/spotify-history/<sha256>.json.gz`.
+- A new content-addressed object is created before the manifest changes, so an interrupted upload cannot replace the last complete archive.
+- The prior archive reference remains in the manifest and prior immutable objects are not deleted automatically.
+- Future ListenBrainz events will use separate bounded monthly objects in a later build; ListenBrainz sync is not part of v78.
 
-The credential migration is complete: `BROWSER_TOKEN` and `AUTOMATION_TOKEN` are verified, `READ_ONLY_TOKEN` remains scoped to smoke checks, and the legacy `API_TOKEN` has been removed.
+### Device behavior
 
-## v77 focused research workflows
+- Existing IndexedDB history remains the local working copy and statistics continue to work offline.
+- Settings gains **Back up to Cloudflare**, **Restore from Cloudflare**, and **Download backup** controls inside the single Listening history component.
+- A device with no local history may restore automatically from the private remote archive after connection.
+- Restore verifies SHA-256 and event count before replacing the local copy.
+- A failed remote read or write preserves the existing local archive and prior manifest.
 
-v77 narrows research to the information the user wants and separates providers by their appropriate cadence.
+### Worker boundary
 
-### Structured provider workflow
+- The Worker exposes only explicit authenticated listening manifest and content-addressed Spotify-history routes.
+- Listening routes are available to the browser role only; automation and read-only smoke credentials cannot access the archive.
+- Manifest writes are validated, bounded to 1 MB and conditional through R2 ETags.
+- Gzip archives are bounded to 100 MB, signature-checked and create-only by content hash.
+- No unrestricted R2 file API, destructive listening endpoint or production migration workflow is added.
 
-- Runs Monday, Wednesday and Friday at 01:00 UTC after the correction branch is merged.
-- Uses Ticketmaster for structured concert discovery across all bands.
-- Uses Spotify for actual catalogue releases that are available to listen to.
-- Retains MusicBrainz identity/deduplication support and existing setlist/prediction maintenance.
-- Makes no Tavily or Groq calls.
-- Spotify and MusicBrainz release refresh eligibility is three days.
-- The Ticketmaster per-run cap is 650, providing coverage for the current 296-band library plus identity resolution, retries and growth headroom while remaining well below the 5,000-call daily allowance.
+### Backup and recovery
 
-### Focused Tavily concert workflow
+- The original local IndexedDB archive remains untouched until a separately authorized production backup/restore verification.
+- The app can download a private compressed local backup.
+- Remote archives are immutable and content-addressed; manifest replacement occurs only after archive persistence.
+- Restore verifies hash, schema and event count before durable local replacement.
+- Production upload, Worker deployment and real-device restore testing require separate explicit authorization after merge.
 
-- Runs on the 1st and 15th of each month after the correction branch is merged.
-- Uses Tavily plus Groq only for upcoming concert and festival dates missed by structured sources.
-- Does not search for releases, hiatuses, breakups, reunions, lineup changes, interviews or general news.
-- Prioritizes each newly added band’s first web concert check.
-- Repeated empty results back off for 30 days, then 60 days, then recurring 90-day intervals.
-- A later concert observation resets the backoff to the active 28-day supplemental cadence.
-- Existing mandatory full-date, upcoming-only, tribute-act, source and duplicate protections remain.
+## Listening features deferred after v78
 
-Both workflows use the shared `live-vault-data-writes` concurrency group, existing UsageTracker controls and conditional Worker writes.
+1. Reliable Top Tracks Spotify album artwork and shared artwork metadata.
+2. ListenBrainz connection and bounded incremental synchronization using raw listens, independent of ListenBrainz statistics aggregation.
+3. Cross-source deduplication and MusicBrainz recording/release identity.
+4. Separately approved richer listening UI such as Top Albums or album drill-down.
 
-## Spotify Releases feed
+## Focused research workflows
 
-The visible Releases feed accepts only actual Spotify catalogue releases with a trusted Spotify release ID and album URL. It displays available artwork, release title/type/date and an Open in Spotify action. Missing artwork falls back locally without suppressing an otherwise valid release.
+Structured Ticketmaster/Spotify research runs Monday, Wednesday and Friday at 01:00 UTC. Focused Tavily/Groq concert discovery runs on the 1st and 15th at 02:00 UTC. Both use the shared production-write concurrency group, UsageTracker controls and conditional writes. Tavily searches only for upcoming concerts and festivals.
 
-The v77 production rollout includes an idempotent cleanup of `news.json` that removes legacy general articles, status news, Tavily release announcements and concert/ticket articles. Concert alerts continue to derive from `concerts.json`. The cleanup logs aggregate before/after counts only, creates a rollback artifact and has not yet been run against production.
+The visible Releases feed accepts only actual Spotify catalogue releases with a trusted Spotify release ID and album URL. Concert alerts derive only from `concerts.json`; `news.json` remains the compatibility container for future Spotify release items.
 
-## Data model and ownership
+## Data ownership and safety
 
-Bands contain stable IDs, artist identity, follow state and additive research-routing state. Concerts contain stable IDs, date/venue/source observations and additive preparation/research data. `news.json` remains the compatibility container for Spotify release items only after cleanup. User-owned fields include attendance, manual concerts, ticket price/quantity, ticket PDFs/links, playlists, checklist, ratings, notes, photos, favourites, mute state and review decisions. Provider-owned fields remain confined to their owned allowlists. Browser-local state includes settings, caches, OAuth state and imported listening history.
+Bands and concerts preserve stable IDs, user-owned fields, provider ownership boundaries and unknown future fields. Listening source events remain distinct from derived LiveVault-band mapping, later identity relationships and optional album metadata.
 
-## Design and QA rules
-
-The app is mobile-first. Focused changes preserve the existing blue/black/grey/white design, text-only top banner, navigation, ticket CTA hierarchy and profile structure. QA uses fictional data and the fake backend only. Automated tests must not contain the user's listening history or call live providers. Physical installation, installed-PWA cache refresh and final real-device touch/visual review remain device-specific manual checks.
-
-## Active backlog
-
-1. Review and merge the focused v77 Ticketmaster-cap and schedule-activation correction only after explicit `Merge it`
-2. Separately authorize and run the backed-up `news.json` cleanup
-3. Verify v77 on mobile and computer after GitHub Pages refresh
-4. Listening UI project, including reliable Top Tracks artwork
-5. Real ListenBrainz account connection and incremental synchronization
-6. Concert Map View
-7. Expanded Backup, Restore and Export
-8. Native Push Notifications
+QA uses fictional listening fixtures and the fake backend only. The public QA build strips the real listening import and private Listening Vault modules. Automated tests may never contain the real archive, call the production Worker or send history to providers.
 
 ## Development workflow
 
-Approve scope, use a branch, implement and test, maintain state/decisions/build state, push and review a PR, then merge only after explicit `Merge it`. A version/cache bump is not deployment permission. Production workflows, production data writes, cleanup, provider calls and schedule activation require separate explicit authorization.
+Approve scope, create a branch, implement and test with synthetic data, maintain state/decisions/build facts, push and open a PR, then merge only after explicit `Merge it`. A version/cache bump is not deployment permission. Worker deployment, R2 writes, archive migration, real provider calls and real-account tests require separate production authorization.
