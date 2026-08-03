@@ -91,7 +91,7 @@ test('worker exposes only explicit bounded ListenBrainz object paths', () => {
   assert.match(worker, /LISTENBRAINZ_ARCHIVE_PATTERN/);
   assert.match(worker, /listening\\\/listenbrainz/);
   assert.match(worker, /incrementals\.length>10000/);
-  assert.match(worker, /role!==\'browser\'&&role!==\'legacy\'/);
+  assert.match(worker, /role !== 'browser' && role !== 'legacy'/);
   assert.doesNotMatch(worker, /listenbrainz\/\.\*/);
 });
 
