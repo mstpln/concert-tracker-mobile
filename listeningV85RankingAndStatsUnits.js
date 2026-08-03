@@ -59,18 +59,23 @@
       .map((item, index) => ({ ...item, rank: index + 1 }));
   }
 
-  api.topTracks = (listens, limit = 10) => aggregateByListens(listens, 'track', limit);
-  api.topAlbums = (listens, limit = 10) => aggregateByListens(listens, 'album', limit);
+  function installRanking() {
+    api.topTracks = (listens, limit = 10) => aggregateByListens(listens, 'track', limit);
+    api.topAlbums = (listens, limit = 10) => aggregateByListens(listens, 'album', limit);
 
-  const previousSelectedStats = api.selectedStats;
-  api.selectedStats = function selectedStatsV85(listens, bands, timeframe = 'threeMonths', now = new Date()) {
-    const result = previousSelectedStats.call(this, listens, bands, timeframe, now);
-    return {
-      ...result,
-      topTracks: aggregateByListens(result.listens, 'track', 10),
-      topAlbums: aggregateByListens(result.listens, 'album', 10),
-    };
-  };
+    if (api.selectedStats?.__liveVaultV85) return;
+    const previousSelectedStats = api.selectedStats;
+    function selectedStatsV85(listens, bands, timeframe = 'threeMonths', now = new Date()) {
+      const result = previousSelectedStats.call(this, listens, bands, timeframe, now);
+      return {
+        ...result,
+        topTracks: aggregateByListens(result?.listens || [], 'track', 10),
+        topAlbums: aggregateByListens(result?.listens || [], 'album', 10),
+      };
+    }
+    selectedStatsV85.__liveVaultV85 = true;
+    api.selectedStats = selectedStatsV85;
+  }
 
   function updateConcertStatUnits(root = document) {
     const items = root.querySelectorAll?.('.stats-teaser-item') || [];
@@ -91,15 +96,21 @@
     });
   }
 
-  if (typeof document !== 'undefined') {
-    const apply = () => updateConcertStatUnits(document);
-    apply();
-    document.addEventListener('DOMContentLoaded', apply);
-    const observer = new MutationObserver(apply);
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+  function install() {
+    installRanking();
+    if (typeof document !== 'undefined') updateConcertStatUnits(document);
   }
 
-  globalThis.ListeningV85RankingAndStatsUnits = { aggregateByListens, updateConcertStatUnits };
+  install();
+  if (typeof document !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', install);
+    const observer = new MutationObserver(() => updateConcertStatUnits(document));
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    globalThis.setTimeout?.(install, 0);
+    globalThis.addEventListener?.('load', install, { once: true });
+  }
+
+  globalThis.ListeningV85RankingAndStatsUnits = { aggregateByListens, updateConcertStatUnits, install };
 })();
 
 if (typeof module === 'object' && module.exports) {
