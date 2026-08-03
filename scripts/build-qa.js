@@ -56,9 +56,17 @@ fs.writeFileSync(path.join(out, 'qa-build-config.js'), `window.__LIVEVAULT_QA_BU
 let sw = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
 sw = sw
   .replace(/const CACHE_NAME = 'concert-tracker-shell-' \+ CACHE_NAME_LITERAL;/, `const CACHE_NAME = 'concert-tracker-qa-' + CACHE_NAME_LITERAL + '-${id}';`)
-  .replace("  './version.js',", "  './version.js',\n  './qa-fixtures.js',\n  './qa-v77-fixtures.js',\n  './qa-build-config.js',\n  './qa-bootstrap.js',\n  './qa.css',")
-  .replace("key.startsWith('concert-tracker-shell-') && key !== CACHE_NAME", "key.startsWith('concert-tracker-qa-') && key !== CACHE_NAME");
-if (!sw.includes("key.startsWith('concert-tracker-qa-') && key !== CACHE_NAME")) throw new Error('QA build could not scope service-worker cache cleanup to the QA namespace');
+  .replace(
+    "  './version.js',",
+    "  './version.js',\n  './qa-fixtures.js',\n  './qa-v77-fixtures.js',\n  './qa-build-config.js',\n  './qa-bootstrap.js',\n  './qa.css',"
+  )
+  .replace(
+    "k.startsWith('concert-tracker-shell-') && k !== CACHE_NAME",
+    "k.startsWith('concert-tracker-qa-') && k !== CACHE_NAME"
+  );
+if (!sw.includes("k.startsWith('concert-tracker-qa-') && k !== CACHE_NAME")) {
+  throw new Error('QA build could not scope service-worker cache cleanup to the QA namespace');
+}
 fs.writeFileSync(path.join(out, 'service-worker.js'), sw);
 
 fs.writeFileSync(path.join(out, 'robots.txt'), 'User-agent: *\nDisallow: /\n');
