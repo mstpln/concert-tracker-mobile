@@ -110,7 +110,7 @@ test('top bands and tracks use duration, count, then normalized name tie-breaker
 test('unmatched and deleted artists remain in listens but not linked rankings', () => {
   const bands = [{ id: 'a', name: 'Alpha' }];
   const values = [
-    listen('linked', '2027-07-01T00:00:00.000Z', 60000),
+    listen('linked', '2027-07-01T00:00:00.000Z', 60000, { localBandId: 'a' }),
     listen('unmatched', '2027-07-02T00:00:00.000Z', 60000, { localBandId: null }),
     listen('deleted', '2027-07-03T00:00:00.000Z', 60000, { localBandId: 'deleted' }),
   ];
