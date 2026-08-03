@@ -9,7 +9,7 @@ const LISTENING_MANIFEST_PATH = 'listening/manifest.json';
 const SPOTIFY_ARCHIVE_PATTERN = /^listening\/spotify-history\/([a-f0-9]{64})\.json\.gz$/;
 const LISTENBRAINZ_ARCHIVE_PATTERN = /^listening\/listenbrainz\/(\d{4}-(?:0[1-9]|1[0-2]))\/([a-f0-9]{64})\.json\.gz$/;
 function corsHeaders(){return {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'GET, PUT, DELETE, OPTIONS','Access-Control-Allow-Headers':'Authorization, Content-Type, If-Match, If-None-Match','Access-Control-Expose-Headers':'ETag'};}
-function response(body,init={}){return new Response(body,{...init,headers:{...corsHeaders(),'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff',...(init.headers||{})}});}
+function response(body,init={}){return new Response(body,{...init,headers:{...corsHeaders(),'Cache-Control': 'private, no-store','Referrer-Policy': 'no-referrer','X-Content-Type-Options': 'nosniff',...(init.headers||{})}});}
 function bearerToken(request){return (request.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');}
 function authorizationRole(request,env){const token=bearerToken(request);if(!token)return null;if(env.BROWSER_TOKEN&&token===env.BROWSER_TOKEN)return'browser';if(env.AUTOMATION_TOKEN&&token===env.AUTOMATION_TOKEN)return'automation';if(env.API_TOKEN&&token===env.API_TOKEN)return'legacy';return null;}
 function isReadOnlyAuthorized(request,env){const token=bearerToken(request);return !!token&&(!!authorizationRole(request,env)||(!!env.READ_ONLY_TOKEN&&token===env.READ_ONLY_TOKEN));}
