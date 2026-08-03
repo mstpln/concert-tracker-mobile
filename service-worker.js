@@ -30,6 +30,7 @@ const SHELL_FILES = [
   './listeningV81BootFix.js',
   './listeningV81ReviewFix.js',
   './listeningV82Corrections.js',
+  './listeningV82GenreFix.js',
   './dataLib.js',
   './listeningStats.js',
   './listeningStatsV81.js',
