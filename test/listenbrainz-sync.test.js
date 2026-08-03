@@ -86,6 +86,29 @@ test('builds deterministic month-scoped incremental payloads', () => {
   assert.equal(payload.summary.eventCount, 1);
 });
 
+test('excludes Spotify overlap before creating a durable incremental chunk', () => {
+  globalThis.LiveVaultSpotifyHistory = { sanitizeEvent: historyV2.sanitizeEvent };
+  const existing = [{
+    stableListenId: 'spotify:1', listenedAt: '2026-08-03T08:00:00Z',
+    listenedDurationMs: 180000, artistCreditName: 'Synthetic Artist', recordingTitle: 'Synthetic Track',
+    spotifyTrackId: 'spotify-track', source: 'spotify_import',
+  }];
+  const incoming = [
+    {
+      stableListenId: 'listenbrainz:overlap', listenedAt: '2026-08-03T08:00:00Z',
+      listenedDurationMs: 180000, artistCreditName: 'Synthetic Artist', recordingTitle: 'Synthetic Track',
+      source: 'listenbrainz',
+    },
+    {
+      stableListenId: 'listenbrainz:new', listenedAt: '2026-08-03T08:04:00Z',
+      listenedDurationMs: 180000, artistCreditName: 'Synthetic Artist', recordingTitle: 'Another Track',
+      source: 'listenbrainz',
+    },
+  ];
+  const accepted = incremental.filterNewEvents(incoming, existing);
+  assert.deepEqual(accepted.map((event) => event.stableListenId), ['listenbrainz:new']);
+});
+
 test('worker exposes only explicit bounded ListenBrainz object paths', () => {
   const worker = fs.readFileSync('worker.js', 'utf8');
   assert.match(worker, /LISTENBRAINZ_ARCHIVE_PATTERN/);
@@ -100,4 +123,10 @@ test('public QA strips every private v80 listening module', () => {
   for (const file of ['listeningHistoryV2.js', 'listeningIncrementalVault.js', 'listenbrainzSync.js']) {
     assert.match(build, new RegExp(`replace\\('<script src="${file.replace('.', '\\.')}"><\\/script>', ''\\)`));
   }
+});
+
+test('incremental restore waits until the base Spotify archive bootstrap has run', () => {
+  const source = fs.readFileSync('listeningIncrementalVault.js', 'utf8');
+  assert.match(source, /setTimeout\?\.\(async \(\) =>/);
+  assert.match(source, /2500/);
 });
