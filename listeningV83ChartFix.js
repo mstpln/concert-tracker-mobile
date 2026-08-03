@@ -81,6 +81,18 @@
     return output;
   }
 
+  function withAuthoritativeBuckets(result) {
+    if (!result?.window) return result;
+    const buckets = timeBuckets(result.listens || [], result.window, result.window.bucket);
+    return {
+      ...result,
+      buckets,
+      mostActive: buckets.length
+        ? [...buckets].sort((a, b) => b.durationMs - a.durationMs || b.listenCount - a.listenCount || String(a.startAt).localeCompare(String(b.startAt)))[0]
+        : null,
+    };
+  }
+
   function niceAxis(maxValue, targetIntervals = 4) {
     const maximum = Math.max(0, Number(maxValue) || 0);
     if (maximum === 0) return { max: 1, step: 0.25, ticks: [0, 0.25, 0.5, 0.75, 1] };
@@ -223,8 +235,14 @@
     });
   }
 
+  const previousSelectedStats = api.selectedStats;
   api.timeBuckets = timeBuckets;
-  globalThis.ListeningV83ChartFix = { timeBuckets, niceAxis, applyFixedYearAxis };
+  if (typeof previousSelectedStats === 'function') {
+    api.selectedStats = function selectedStatsV83(...args) {
+      return withAuthoritativeBuckets(previousSelectedStats.apply(this, args));
+    };
+  }
+  globalThis.ListeningV83ChartFix = { timeBuckets, withAuthoritativeBuckets, niceAxis, applyFixedYearAxis };
 
   if (typeof document !== 'undefined' && typeof renderStatsScreen === 'function') {
     const previousRenderStatsScreen = renderStatsScreen;
