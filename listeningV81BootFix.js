@@ -37,6 +37,12 @@
   function applyRankedTabs() {
     const card = document.querySelector('#screen-profile .band-listening-panel .top-tracks-card');
     if (!card) return;
+    const { selected, items } = rankedItems();
+    const albums = detailList === 'albums';
+    const signature = `${activeProfileBandId}|${profileListeningTimeframe}|${detailList}|${items.map((item) => `${item.rank}:${item.recordingKey || item.releaseKey || item.releaseTitle || item.recordingTitle}:${item.listenCount}:${item.durationMs}:${item.artworkPath || ''}`).join('|')}|${ListeningStats.hasUnknownDuration(selected)}`;
+    if (card.dataset.v81RankSignature === signature && card.querySelector('.ranked-list-tabs')) return;
+    card.dataset.v81RankSignature = signature;
+
     let tabs = card.querySelector('.ranked-list-tabs');
     if (!tabs) {
       tabs = document.createElement('div');
@@ -45,9 +51,7 @@
       tabs.setAttribute('aria-label', 'Band listening rankings');
       card.prepend(tabs);
     }
-    const albums = detailList === 'albums';
     tabs.innerHTML = `<button type="button" role="tab" data-v81-ranked="tracks" aria-selected="${!albums}" class="ranked-list-tab${!albums ? ' active' : ''}">Top Tracks</button><button type="button" role="tab" data-v81-ranked="albums" aria-selected="${albums}" class="ranked-list-tab${albums ? ' active' : ''}">Top Albums</button>`;
-    const { selected, items } = rankedItems();
     const rows = items.length
       ? items.map((item) => `<div class="top-track-row"><span class="top-track-rank">#${item.rank}</span>${artwork(item, albums)}<span class="top-track-copy"><strong>${escapeHtml(albums ? item.releaseTitle : item.recordingTitle)}</strong><small>${countText(item.listenCount)} · ${durationText(item)}</small></span></div>`).join('')
       : `<p class="listening-empty">${albums ? 'No album data available for this period.' : 'No tracks in this period.'}</p>`;
@@ -93,7 +97,10 @@
       applyTwoWeekStartCard();
     }
     if (profileScreen) {
-      new MutationObserver(applyRankedTabs).observe(profileScreen, { childList: true, subtree: true });
+      new MutationObserver(() => {
+        const card = profileScreen.querySelector('.band-listening-panel .top-tracks-card');
+        if (card && !card.querySelector('.ranked-list-tabs')) applyRankedTabs();
+      }).observe(profileScreen, { childList: true, subtree: true });
       applyRankedTabs();
     }
   });
