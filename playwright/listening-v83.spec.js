@@ -15,13 +15,15 @@ test('v83 uses daily two-week chart buckets and one fixed labelled yearly axis',
   await profile.getByRole('button', { name: '2 weeks' }).click();
 
   const bucketContract = await page.evaluate(() => {
-    const values = ListeningStats.selectedStats(listeningEvents, bands, 'twoWeeks', listeningNow()).buckets;
+    const values = globalListeningStats('twoWeeks').buckets;
     return {
+      adapterInstalled: Boolean(globalListeningStats.__liveVaultV83Final),
       count: values.length,
       labels: values.map((item) => item.label),
       listenCount: values.reduce((sum, item) => sum + (item.listenCount || 0), 0),
     };
   });
+  expect(bucketContract.adapterInstalled).toBe(true);
   expect(bucketContract.count).toBeGreaterThanOrEqual(14);
   expect(bucketContract.count).toBeLessThanOrEqual(15);
   expect(bucketContract.labels.every((label) => DAY_LABEL.test(label))).toBe(true);
