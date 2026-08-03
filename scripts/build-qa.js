@@ -21,6 +21,8 @@ const shell = [
   'listeningStats.js',
   'listeningFixtures.js',
   'spotifyHistoryImport.js',
+  'listeningVaultBridge.js',
+  'listeningVault.js',
   'spotifyHistoryBootstrap.js',
   'icons.js',
   'conflictMerge.js',
@@ -65,10 +67,13 @@ html = html.replace(
   '<script src="qa-fixtures.js"></script><script src="qa-v77-fixtures.js"></script><script src="qa-build-config.js"></script><script src="qa-bootstrap.js"></script><script src="ownedTickets.js"></script>'
 );
 // The public synthetic QA preview must never load browser-local personal
-// listening history or expose the real-history file picker. QA continues to
-// use only listeningFixtures.js behind its explicit synthetic-data flag.
+// listening history, remote listening-vault controls, or the real-history
+// file picker. QA continues to use only listeningFixtures.js behind its
+// explicit synthetic-data flag.
 html = html
   .replace('<script src="spotifyHistoryImport.js"></script>', '')
+  .replace('<script src="listeningVaultBridge.js"></script>', '')
+  .replace('<script src="listeningVault.js"></script>', '')
   .replace('<script src="spotifyHistoryBootstrap.js"></script>', '');
 fs.writeFileSync(path.join(out, 'index.html'), html);
 fs.writeFileSync(
