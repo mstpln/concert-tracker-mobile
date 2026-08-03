@@ -12,11 +12,15 @@ v79 is merged and deployed. The existing `concert-tracker-api` Worker is connect
 
 v80 is merged and deployed. PR #53 merged as commit `2d47a5b0b066f41da2c95bc3835283311d2e4dda`, and Cloudflare Workers Build `33f08233` completed successfully from `main`. The user confirmed that the production app showed v80 and that bands, concerts and the existing listening statistics still loaded correctly.
 
+v81 is merged and live from PR #55, merge commit `da7f9f9b0fa6ae0c152259721e73d9af20c35ed0`. Physical-device verification found production-only regressions that synthetic QA had not represented: the legacy v72 compatibility layer converted the new `twoWeeks` key to all time, its reduced genre aggregate no longer satisfied the v81 Stats renderer, the five-metric Band Detail summary compressed at installed-PWA desktop width, and the refresh SVG was malformed and vertically clipped.
+
+v82 is the active corrective build on `fix/v81-production-regressions` and is not merged or deployed. It restores the authoritative rolling 14-day and preceding-14-day windows after all legacy compatibility layers, supplies the complete genre/year contract required by Stats, normalizes ISO/millisecond/Unix-second timestamps, avoids archive-scale spread operations, makes Stats fail safely, provides a two-row desktop summary while retaining the accepted mobile layout, and replaces the refresh icon with aligned unclipped local SVG geometry. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v82.
+
 ListenBrainz is now connected on the user's primary mobile device and disconnected on the computer. The mobile device is the primary synchronization device; other connected LiveVault devices continue restoring shared listening updates from the private R2 manifest without needing the ListenBrainz token. The private token is stored only in the mobile browser and is not present in GitHub, Cloudflare configuration, logs or project documentation.
 
-## v81 review state
+## v81 listening-insights product state
 
-The v81 listening-insights and app-refresh build is implemented on `feature/v81-listening-insights-refresh` for review and is not merged or deployed.
+The intended listening-insights contract remains:
 
 - Start Top Bands uses the rolling latest two weeks and compares movement with the preceding two weeks.
 - Top 100 offers 2 weeks, 3 months, 1 year and All time, resetting to 3 months on entry.
