@@ -27,6 +27,7 @@ const SHELL_FILES = [
   './securityHardening.js',
   './listeningInsightsV81.js',
   './listeningV81BootFix.js',
+  './listeningV81ReviewFix.js',
   './dataLib.js',
   './listeningStats.js',
   './listeningStatsV81.js',
