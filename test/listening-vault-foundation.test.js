@@ -59,6 +59,19 @@ test('worker exposes only bounded explicit listening-vault routes', () => {
   assert.doesNotMatch(worker, /listening\/\.\*/);
 });
 
+test('listening settings keep one import component and no permanent backup button panel', () => {
+  const history = fs.readFileSync('spotifyHistoryImport.js', 'utf8');
+  const vaultSource = fs.readFileSync('listeningVault.js', 'utf8');
+  assert.match(history, /let settingsUiPromise = null/);
+  assert.match(history, /dedupeSettingsWrappers/);
+  assert.match(history, /settingsUiPromise = ensureSettingsUi\(\)/);
+  assert.doesNotMatch(vaultSource, /data-vault-backup/);
+  assert.doesNotMatch(vaultSource, /Back up to Cloudflare/);
+  assert.doesNotMatch(vaultSource, /Restore from Cloudflare/);
+  assert.doesNotMatch(vaultSource, /Download backup/);
+  assert.match(vaultSource, /restoreIfLocalEmpty/);
+});
+
 test('QA build strips all private listening-vault modules', () => {
   const build = fs.readFileSync('scripts/build-qa.js', 'utf8');
   assert.match(build, /replace\('<script src="listeningVaultBridge\.js"><\/script>', ''\)/);
