@@ -111,8 +111,10 @@
     const incoming = (events || []).map(sanitizeEvent).filter(Boolean);
     const db = await openDb();
     const readTx = db.transaction([STORE_NAME, META_STORE], 'readonly');
-    const existing = await requestResult(readTx.objectStore(STORE_NAME).getAll());
-    const previous = await requestResult(readTx.objectStore(META_STORE).get(META_KEY));
+    const eventsRequest = readTx.objectStore(STORE_NAME).getAll();
+    const metaRequest = readTx.objectStore(META_STORE).get(META_KEY);
+    const existing = await requestResult(eventsRequest);
+    const previous = await requestResult(metaRequest);
     const byId = new Map(existing.map((event) => [event.stableListenId, event]));
     const fingerprints = new Set(existing.map(fingerprint).filter(Boolean));
     let added = 0;
