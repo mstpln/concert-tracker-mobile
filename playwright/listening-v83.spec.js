@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 
 const DAY_LABEL = /^(?:\d{1,2} [A-Z][a-z]{2}|[A-Z][a-z]{2} \d{1,2})$/;
 
-test('v84 renders the selected two-week chart as visible daily points and keeps the yearly axis fixed', async ({ page }) => {
+test('v84 renders the selected two-week chart as visible daily points and keeps the yearly axis fixed', async ({ page }, testInfo) => {
   const browserErrors = [];
   page.on('pageerror', (error) => browserErrors.push(error.message));
   await page.goto('/');
@@ -29,6 +29,7 @@ test('v84 renders the selected two-week chart as visible daily points and keeps 
   expect(labels.every((label) => DAY_LABEL.test(label))).toBe(true);
   expect(labels.some((label) => /^20\d{2}$/.test(label))).toBe(false);
   await expect(chart).toHaveAttribute('aria-label', /2 weeks listening chart with (14|15) day periods/i);
+  await profile.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-v84-two-week-chart.png`), fullPage: true });
 
   const twoWeekPoints = await chart.locator('.chart-line').getAttribute('points');
   await profile.getByRole('button', { name: 'All time' }).click();
