@@ -2,7 +2,7 @@
 
 // Focused post-review interaction correction for the independently selectable
 // stacked genre chart. The primary v81 renderer redraws the chart on click;
-// this layer restores the selected-year detail after that redraw.
+// capture the selected year before that redraw, then restore its detail.
 (() => {
   const KNOWN_NOTE = 'Listening time is based on listens with known duration.';
 
@@ -42,5 +42,5 @@
     if (!button) return;
     const year = Number(button.dataset.v81GenreYear);
     setTimeout(() => renderGenreYearDetail(year), 0);
-  });
+  }, true);
 })();
