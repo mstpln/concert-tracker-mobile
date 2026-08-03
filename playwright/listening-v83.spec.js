@@ -1,5 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
+const DAY_LABEL = /^(?:\d{1,2} [A-Z][a-z]{2}|[A-Z][a-z]{2} \d{1,2})$/;
+
 test('v83 uses daily two-week chart buckets and one fixed labelled yearly axis', async ({ page }) => {
   const browserErrors = [];
   page.on('pageerror', (error) => browserErrors.push(error.message));
@@ -22,7 +24,7 @@ test('v83 uses daily two-week chart buckets and one fixed labelled yearly axis',
   });
   expect(bucketContract.count).toBeGreaterThanOrEqual(14);
   expect(bucketContract.count).toBeLessThanOrEqual(15);
-  expect(bucketContract.labels.every((label) => /^\d{1,2} [A-Z][a-z]{2}$/.test(label))).toBe(true);
+  expect(bucketContract.labels.every((label) => DAY_LABEL.test(label))).toBe(true);
   expect(bucketContract.labels.some((label) => /^20\d{2}$/.test(label))).toBe(false);
   expect(bucketContract.listenCount).toBeGreaterThan(0);
 
