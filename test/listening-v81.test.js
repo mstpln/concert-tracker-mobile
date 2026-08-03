@@ -8,9 +8,9 @@ require('../listeningStatsV81');
 
 global.document = { addEventListener() {} };
 global.bands = [
-  { id: 'a', name: 'Alpha', genres: ['folk', 'alternative rock'] },
-  { id: 'b', name: 'Beta', genre: 'pop' },
-  { id: 'c', name: 'Gamma', genre: 'electronic' },
+  { id: 'a', name: 'Alpha', genres: ['pop', 'alternative rock'] },
+  { id: 'b', name: 'Beta', genre: 'electronic' },
+  { id: 'c', name: 'Gamma', genre: 'folk' },
 ];
 global.listeningEvents = [];
 require('../listeningV82Corrections');
@@ -69,17 +69,19 @@ test('v82 timestamp normalization accepts ISO, milliseconds, numeric strings and
 });
 
 test('v82 movement produces new, up, down and unchanged outcomes from adjacent windows', () => {
+  const currentAt = (hour, minute) => `2026-08-02T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00Z`;
+  const previousAt = (day, hour) => `2026-07-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:00:00Z`;
   const current = [
-    ...Array.from({ length: 5 }, (_, index) => listen(`a-current-${index}`, `2026-08-0${index + 1}T00:00:00Z`, 60000)),
-    ...Array.from({ length: 4 }, (_, index) => listen(`b-current-${index}`, `2026-08-0${index + 1}T01:00:00Z`, 60000, { localBandId: 'b', artistCreditName: 'Beta' })),
-    ...Array.from({ length: 3 }, (_, index) => listen(`c-current-${index}`, `2026-08-0${index + 1}T02:00:00Z`, 60000, { localBandId: 'c', artistCreditName: 'Gamma' })),
+    ...Array.from({ length: 5 }, (_, index) => listen(`a-current-${index}`, currentAt(10, index), 60000)),
+    ...Array.from({ length: 4 }, (_, index) => listen(`b-current-${index}`, currentAt(9, index), 60000, { localBandId: 'b', artistCreditName: 'Beta' })),
+    ...Array.from({ length: 3 }, (_, index) => listen(`c-current-${index}`, currentAt(8, index), 60000, { localBandId: 'c', artistCreditName: 'Gamma' })),
   ];
   const previous = [
-    ...Array.from({ length: 6 }, (_, index) => listen(`b-previous-${index}`, `2026-07-${15 + index}T00:00:00Z`, 60000, { localBandId: 'b', artistCreditName: 'Beta' })),
-    ...Array.from({ length: 5 }, (_, index) => listen(`a-previous-${index}`, `2026-07-${15 + index}T01:00:00Z`, 60000)),
-    ...Array.from({ length: 3 }, (_, index) => listen(`c-previous-${index}`, `2026-07-${15 + index}T02:00:00Z`, 60000, { localBandId: 'c', artistCreditName: 'Gamma' })),
+    ...Array.from({ length: 6 }, (_, index) => listen(`b-previous-${index}`, previousAt(14 + index, 10), 60000, { localBandId: 'b', artistCreditName: 'Beta' })),
+    ...Array.from({ length: 5 }, (_, index) => listen(`a-previous-${index}`, previousAt(14 + index, 9), 60000)),
+    ...Array.from({ length: 3 }, (_, index) => listen(`c-previous-${index}`, previousAt(14 + index, 8), 60000, { localBandId: 'c', artistCreditName: 'Gamma' })),
   ];
-  const values = [...current, ...previous, listen('new-current', '2026-08-03T03:00:00Z', 30000, { localBandId: 'new', artistCreditName: 'New Artist' })];
+  const values = [...current, ...previous, listen('new-current', currentAt(7, 0), 30000, { localBandId: 'new', artistCreditName: 'New Artist' })];
   const extendedBands = [...bands, { id: 'new', name: 'New Artist' }];
   const ranked = stats.selectedStats(values, extendedBands, 'twoWeeks', NOW).topBands;
   const byId = new Map(ranked.map((item) => [item.bandId, item.movement]));
@@ -106,11 +108,11 @@ test('v82 final genre override preserves ordered stored-band genre ownership and
   assert.equal(distribution[0].totalListenCount, 3);
   assert.equal(distribution[0].unknownDurationCount, 1);
   assert.equal(distribution[0].durations.Rock, 0);
-  assert.equal(distribution[0].durations.Other, 3600000);
-  assert.equal(distribution[0].listenCounts.Other, 2);
-  assert.equal(distribution[0].durations.Pop, 1800000);
-  const folkOnly = stats.yearlyListening(values, new Date('2025-12-31T00:00:00Z'), 'Other');
-  assert.equal(folkOnly[0].listenCount, 2);
+  assert.equal(distribution[0].durations.Pop, 3600000);
+  assert.equal(distribution[0].listenCounts.Pop, 2);
+  assert.equal(distribution[0].durations.Electronic, 1800000);
+  const popOnly = stats.yearlyListening(values, new Date('2025-12-31T00:00:00Z'), 'Pop');
+  assert.equal(popOnly[0].listenCount, 2);
 });
 
 test('v82 all-time and yearly calculations remain bounded for archive-scale input', () => {
