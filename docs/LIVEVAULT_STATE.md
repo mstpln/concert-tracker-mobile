@@ -10,7 +10,9 @@ Listening Build 3.1 and its focused Settings correction are merged and deployed 
 
 v79 is merged and deployed. The existing `concert-tracker-api` Worker is connected to GitHub through Cloudflare Workers Builds. The first repository-driven deployment completed successfully from merge commit `8deb2f03e6b7e224ce84e9609508eb0b37016d04` using Cloudflare build `6ac9e5e3` after setting the build variable `NODE_VERSION=22`. The user confirmed that the app loaded normally, Settings showed v79, bands and concerts loaded, and listening statistics remained available.
 
-v80 is being implemented on `feature/v80-listenbrainz-sync`. It adds optional browser-side ListenBrainz synchronization, provider-neutral local listening events, immutable month-scoped R2 chunks and manifest-based recovery. No real ListenBrainz token, live sync or production R2 write has been used during development.
+v80 is merged and deployed. PR #53 merged as commit `2d47a5b0b066f41da2c95bc3835283311d2e4dda`, and Cloudflare Workers Build `33f08233` completed successfully from `main`. The user confirmed that the production app showed v80 and that bands, concerts and the existing listening statistics still loaded correctly.
+
+ListenBrainz is now connected on the user's primary mobile device and disconnected on the computer. The mobile device is the primary synchronization device; other connected LiveVault devices continue restoring shared listening updates from the private R2 manifest without needing the ListenBrainz token. The private token is stored only in the mobile browser and is not present in GitHub, Cloudflare configuration, logs or project documentation.
 
 ## Product purpose and navigation
 
@@ -29,9 +31,9 @@ Private R2 is now the durable source of truth while IndexedDB remains each devic
 - Existing local history was preserved during rollout.
 - Real listening history is never committed, included in QA, written to public artifacts or sent to providers in bulk.
 
-## v80 ListenBrainz implementation state
+## v80 ListenBrainz production state
 
-The v80 branch currently implements:
+The deployed v80 implementation provides:
 
 - direct browser validation of a private ListenBrainz user token;
 - bounded incremental fetching after the latest stored timestamp;
@@ -40,12 +42,12 @@ The v80 branch currently implements:
 - provider-neutral IndexedDB events without weakening the historical Spotify import rules;
 - immutable compressed objects at `listening/listenbrainz/YYYY-MM/<sha256>.json.gz`;
 - conditional `listening/manifest.json` updates after each object is durable;
-- integrity-checked incremental restore;
+- integrity-checked incremental restore on other devices;
 - six-hour in-use automatic sync plus a manual **Sync now** action;
 - device erasure of the locally stored ListenBrainz token;
 - synthetic tests and public-QA exclusion of all private sync modules.
 
-Missing ListenBrainz duration remains unknown and is never fabricated. A real connection and production synchronization remain post-merge manual activation steps because the private token must be entered only on the user's device.
+Missing ListenBrainz duration remains unknown and is never fabricated. One primary synchronization device is recommended to reduce avoidable concurrent manifest updates. Other devices do not need the ListenBrainz token to restore incremental listening objects from R2.
 
 ## v79 Cloudflare Git Builds setup
 
@@ -57,7 +59,7 @@ Missing ListenBrainz duration remains unknown and is never fabricated. A real co
 - Build watch include paths are limited to `worker.js`, `wrangler.jsonc`, `package.json`, and `package-lock.json`.
 - Non-production branch builds remain disabled.
 
-The v80 branch changes `worker.js`; after explicit merge approval, the connected Cloudflare build will deploy that reviewed Worker automatically. Automatic Worker deployment does not authorize R2 data changes, migrations, secret changes, production workflows or provider calls.
+Automatic Worker deployment does not authorize R2 data changes, migrations, secret changes, production workflows or provider calls.
 
 ## Focused research workflows
 
