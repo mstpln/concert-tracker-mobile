@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v79",
-  "serviceWorkerCacheVersion": "v79",
+  "appVersion": "v80",
+  "serviceWorkerCacheVersion": "v80",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 20,
@@ -29,6 +29,9 @@
     "spotifyHistoryImport.js",
     "listeningVaultBridge.js",
     "listeningVault.js",
+    "listeningHistoryV2.js",
+    "listeningIncrementalVault.js",
+    "listenbrainzSync.js",
     "spotifyHistoryBootstrap.js",
     "conflictMerge.js",
     "remoteStore.js",
@@ -37,6 +40,7 @@
   ],
   "flags": {
     "structuredResearchEnabled": true,
-    "musicbrainzEnabled": false
+    "musicbrainzEnabled": false,
+    "listenbrainzSyncEnabled": true
   }
 }

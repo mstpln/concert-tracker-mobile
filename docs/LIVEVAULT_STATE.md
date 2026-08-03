@@ -10,6 +10,8 @@ Listening Build 3.1 and its focused Settings correction are merged and deployed 
 
 v79 is merged and deployed. The existing `concert-tracker-api` Worker is connected to GitHub through Cloudflare Workers Builds. The first repository-driven deployment completed successfully from merge commit `8deb2f03e6b7e224ce84e9609508eb0b37016d04` using Cloudflare build `6ac9e5e3` after setting the build variable `NODE_VERSION=22`. The user confirmed that the app loaded normally, Settings showed v79, bands and concerts loaded, and listening statistics remained available.
 
+v80 is being implemented on `feature/v80-listenbrainz-sync`. It adds optional browser-side ListenBrainz synchronization, provider-neutral local listening events, immutable month-scoped R2 chunks and manifest-based recovery. No real ListenBrainz token, live sync or production R2 write has been used during development.
+
 ## Product purpose and navigation
 
 This is a single-user concert tracker for followed bands, upcoming shows, attended history, concert alerts, Spotify releases, listening history, venues, statistics and user-owned concert preparation. Bottom navigation is **Concerts**, **Dates**, **Bands**, **Stats**, and **Alerts**.
@@ -27,21 +29,35 @@ Private R2 is now the durable source of truth while IndexedDB remains each devic
 - Existing local history was preserved during rollout.
 - Real listening history is never committed, included in QA, written to public artifacts or sent to providers in bulk.
 
-## v79 Cloudflare Git Builds setup
+## v80 ListenBrainz implementation state
 
-v79 adds repository-owned deployment configuration for the existing Worker without changing application functionality or production data.
+The v80 branch currently implements:
+
+- direct browser validation of a private ListenBrainz user token;
+- bounded incremental fetching after the latest stored timestamp;
+- deterministic overlap deduplication by stable ID and timestamp/artist/track fingerprint;
+- preservation of available MusicBrainz recording, release and artist identifiers;
+- provider-neutral IndexedDB events without weakening the historical Spotify import rules;
+- immutable compressed objects at `listening/listenbrainz/YYYY-MM/<sha256>.json.gz`;
+- conditional `listening/manifest.json` updates after each object is durable;
+- integrity-checked incremental restore;
+- six-hour in-use automatic sync plus a manual **Sync now** action;
+- device erasure of the locally stored ListenBrainz token;
+- synthetic tests and public-QA exclusion of all private sync modules.
+
+Missing ListenBrainz duration remains unknown and is never fabricated. A real connection and production synchronization remain post-merge manual activation steps because the private token must be entered only on the user's device.
+
+## v79 Cloudflare Git Builds setup
 
 - `wrangler.jsonc` names the existing Worker `concert-tracker-api`.
 - Entry point remains `worker.js`.
 - R2 binding remains `BUCKET` connected to `concert-tracker-data`.
 - Runtime secrets remain stored only in Cloudflare.
-- `scripts/qa-cloudflare-builds.js` guards the Worker name, entry point, R2 binding, bucket name and absence of committed secrets.
-- `docs/CLOUDFLARE_GIT_BUILDS.md` contains the active build configuration and rollback steps.
-- `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v79.
+- Production builds use `main`, root `/`, no build command, deploy command `npx wrangler@4.114.0 deploy`, and build variable `NODE_VERSION=22`.
+- Build watch include paths are limited to `worker.js`, `wrangler.jsonc`, `package.json`, and `package-lock.json`.
+- Non-production branch builds remain disabled.
 
-Production builds use `main`, root `/`, no build command, deploy command `npx wrangler@4.114.0 deploy`, and build variable `NODE_VERSION=22`. Build watch include paths are limited to `worker.js`, `wrangler.jsonc`, `package.json`, and `package-lock.json`. Non-production branch builds remain disabled.
-
-Automatic Worker deployment does not authorize R2 data changes, migrations, secret changes, binding changes, production workflows or provider calls. Those remain separately controlled.
+The v80 branch changes `worker.js`; after explicit merge approval, the connected Cloudflare build will deploy that reviewed Worker automatically. Automatic Worker deployment does not authorize R2 data changes, migrations, secret changes, production workflows or provider calls.
 
 ## Focused research workflows
 

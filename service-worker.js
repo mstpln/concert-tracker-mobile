@@ -1,29 +1,7 @@
 'use strict';
-// Minimal service worker — only here to satisfy PWA installability
-// (Chrome requires one) and let the app shell load instantly/offline.
-// It deliberately does NOT cache anything from the Cloudflare Worker (your
-// actual data) — those requests always go straight to the network so you
-// never see stale bands/concerts.
-//
-// CACHE_NAME_LITERAL below is intentionally a hardcoded literal, NOT
-// derived from version.js via importScripts (an earlier version did that,
-// and it was a real bug found during a QA pass): browsers only re-check a
-// service worker for updates by re-fetching service-worker.js itself and
-// byte-comparing it to the currently-installed copy. If this file's own
-// bytes are unchanged, the browser never notices anything changed and
-// never reinstalls — even if an imported file's *content* changed — so an
-// already-installed user stays on the old cached shell indefinitely,
-// regardless of what version.js says. The fetch handler below is
-// cache-first for every same-origin request, which is exactly what made
-// this silent-staleness bug possible in the first place.
-//
-// So: every time you bump APP_VERSION in version.js, you MUST also bump
-// CACHE_NAME_LITERAL here to the same value — that's what actually forces
-// old installs to update. version.js's importScripts is kept below purely
-// so this file can sanity-assert the two stay in sync (see the console
-// warning) — it is NOT what drives cache invalidation.
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v79';
+const CACHE_NAME_LITERAL = 'v80';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v79'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v78'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v77'.
 // Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v76'.
@@ -31,9 +9,7 @@ const CACHE_NAME_LITERAL = 'v79';
 // Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v74'.
 // Legacy owned-ticket release marker retained for historical regression coverage: CACHE_NAME_LITERAL = 'v70'.
 if (CACHE_NAME_LITERAL !== APP_VERSION) {
-  console.warn(
-    `service-worker.js CACHE_NAME_LITERAL ("${CACHE_NAME_LITERAL}") is out of sync with version.js APP_VERSION ("${APP_VERSION}") — bump CACHE_NAME_LITERAL in service-worker.js to match, otherwise old installs won't update.`
-  );
+  console.warn(`service-worker.js CACHE_NAME_LITERAL ("${CACHE_NAME_LITERAL}") is out of sync with version.js APP_VERSION ("${APP_VERSION}") — bump CACHE_NAME_LITERAL in service-worker.js to match, otherwise old installs won't update.`);
 }
 const CACHE_NAME = 'concert-tracker-shell-' + CACHE_NAME_LITERAL;
 const SHELL_FILES = [
@@ -53,6 +29,9 @@ const SHELL_FILES = [
   './spotifyHistoryImport.js',
   './listeningVaultBridge.js',
   './listeningVault.js',
+  './listeningHistoryV2.js',
+  './listeningIncrementalVault.js',
+  './listenbrainzSync.js',
   './spotifyHistoryBootstrap.js',
   './icons.js',
   './conflictMerge.js',
@@ -73,35 +52,22 @@ const SHELL_FILES = [
   './assets/listening/album-cyan.svg',
   './assets/listening/album-gold.svg',
 ];
-
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
-      Promise.all(
-        SHELL_FILES.map((url) => fetch(url, { cache: 'reload' }).then((res) => cache.put(url, res)))
-      )
+      Promise.all(SHELL_FILES.map((url) => fetch(url, { cache: 'reload' }).then((res) => cache.put(url, res))))
     )
   );
   self.skipWaiting();
 });
-
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.filter((k) => k.startsWith('concert-tracker-shell-') && k !== CACHE_NAME).map((k) => caches.delete(k))
-      )
-    )
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('concert-tracker-shell-') && k !== CACHE_NAME).map((k) => caches.delete(k))))
   );
   self.clients.claim();
 });
-
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  const isSameOrigin = url.origin === self.location.origin;
-  if (!isSameOrigin) return;
-
-  event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
-  );
+  if (url.origin !== self.location.origin) return;
+  event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request)));
 });
