@@ -23,14 +23,25 @@ test('v85 ranks tracks and albums by listens and moves concert units into labels
       { listenedAtMs: now - 3000, listenedDurationMs: 60000, recordingTitle: 'Popular Track', releaseTitle: 'Popular Album', artistCreditName: 'Synthetic Artist', localBandId: 'band-a' },
       { listenedAtMs: now - 4000, listenedDurationMs: 60000, recordingTitle: 'Popular Track', releaseTitle: 'Popular Album', artistCreditName: 'Synthetic Artist', localBandId: 'band-a' },
     ];
-    const result = ListeningStats.selectedStats(listens, [{ id: 'band-a', name: 'Synthetic Artist' }], 'allTime', new Date(now));
+    const tracks = ListeningStats.topTracks(listens, 10);
+    const albums = ListeningStats.topAlbums(listens, 10);
     return {
-      track: result.topTracks[0]?.recordingTitle,
-      trackCount: result.topTracks[0]?.listenCount,
-      album: result.topAlbums[0]?.releaseTitle,
-      albumCount: result.topAlbums[0]?.listenCount,
+      track: tracks[0]?.recordingTitle,
+      trackCount: tracks[0]?.listenCount,
+      album: albums[0]?.releaseTitle,
+      albumCount: albums[0]?.listenCount,
     };
   });
   expect(ranking).toEqual({ track: 'Popular Track', trackCount: 3, album: 'Popular Album', albumCount: 3 });
+
+  await page.getByRole('button', { name: 'View all' }).first().click();
+  await page.locator('.full-top-bands-card .top-band-row').first().click();
+  const profile = page.locator('#screen-profile');
+  await expect(profile.getByRole('tab', { name: 'Top Tracks' })).toHaveAttribute('aria-selected', 'true');
+  await expect(profile.locator('.top-track-row').first()).toContainText(/listen/i);
+  await profile.getByRole('tab', { name: 'Top Albums' }).click();
+  await expect(profile.getByRole('tab', { name: 'Top Albums' })).toHaveAttribute('aria-selected', 'true');
+  await expect(profile.locator('.top-track-row').first()).toContainText(/listen/i);
+
   expect(browserErrors).toEqual([]);
 });
