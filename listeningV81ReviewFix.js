@@ -1,9 +1,9 @@
 'use strict';
 
 // Focused post-review interaction correction for the independently selectable
-// stacked genre chart. Legacy render wrappers can replace the chart after the
-// primary click handler, so retain the selected year and restore its detail
-// whenever the final chart DOM settles.
+// stacked genre chart. The legacy genre aggregate does not expose per-group
+// listen counts, so derive the selected-year detail from valid source events
+// and keep that selection independent across subsequent Stats redraws.
 (() => {
   const KNOWN_NOTE = 'Listening time is based on listens with known duration.';
   let selectedGenreYear = null;
@@ -18,11 +18,34 @@
     return Number(year) === listeningNow().getUTCFullYear() ? `${year} · Year to date` : String(year);
   }
 
+  function selectedYearData(year) {
+    const durations = Object.fromEntries(ListeningStats.GENRE_GROUPS.map((group) => [group, 0]));
+    const listenCounts = Object.fromEntries(ListeningStats.GENRE_GROUPS.map((group) => [group, 0]));
+    let unknownDurationCount = 0;
+    for (const listen of listeningEvents) {
+      if (!ListeningStats.isValidListen(listen)) continue;
+      const listenedYear = new Date(ListeningStats.listenTimeMs(listen)).getUTCFullYear();
+      if (listenedYear !== Number(year)) continue;
+      const group = ListeningStats.genreGroup(listen.genre);
+      const duration = ListeningStats.validDurationMs(listen);
+      durations[group] += duration;
+      listenCounts[group] += 1;
+      if (duration === 0) unknownDurationCount += 1;
+    }
+    return {
+      year: Number(year),
+      durations,
+      listenCounts,
+      totalDurationMs: Object.values(durations).reduce((sum, value) => sum + value, 0),
+      totalListenCount: Object.values(listenCounts).reduce((sum, value) => sum + value, 0),
+      unknownDurationCount,
+    };
+  }
+
   function renderGenreYearDetail(year) {
     const card = document.querySelector('#screen-stats .genre-card');
     if (!card || year == null) return;
-    const item = ListeningStats.genreDistributionByYear(listeningEvents).find((candidate) => candidate.year === Number(year));
-    if (!item) return;
+    const item = selectedYearData(year);
 
     card.querySelectorAll('[data-v81-genre-year]').forEach((button) => {
       const selected = Number(button.dataset.v81GenreYear) === Number(year);
@@ -30,7 +53,7 @@
       button.setAttribute('aria-pressed', String(selected));
     });
 
-    if (card.querySelector('.genre-year-detail')) return;
+    card.querySelector('.genre-year-detail')?.remove();
     const detail = document.createElement('div');
     detail.className = 'genre-year-detail';
     detail.setAttribute('aria-live', 'polite');
@@ -44,18 +67,18 @@
     if (restoreQueued || selectedGenreYear == null) return;
     restoreQueued = true;
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        restoreQueued = false;
-        renderGenreYearDetail(selectedGenreYear);
-      });
+      restoreQueued = false;
+      renderGenreYearDetail(selectedGenreYear);
     });
   }
 
   document.addEventListener('click', (event) => {
     const button = event.target instanceof Element ? event.target.closest('[data-v81-genre-year]') : null;
     if (!button) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
     selectedGenreYear = Number(button.dataset.v81GenreYear);
-    queueRestore();
+    renderGenreYearDetail(selectedGenreYear);
   }, true);
 
   document.addEventListener('click', (event) => {
