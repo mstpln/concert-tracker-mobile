@@ -255,3 +255,11 @@
 **Reason:** Repository-owned deployment configuration removes error-prone manual copying while keeping GitHub `main` authoritative and preserving review and QA before production changes.
 
 **Consequence:** `wrangler.jsonc` preserves the existing Worker name, `worker.js` entry point, `BUCKET` binding and `concert-tracker-data` bucket. Build watch paths are limited to Worker deployment files. Automatic Worker deployment does not authorize R2 data operations, migrations, secrets, production workflows or provider calls.
+
+## 2026-08-03 — Cloudflare Worker builds use Node.js 22
+
+**Decision:** Set the Cloudflare Workers Builds variable `NODE_VERSION=22` while keeping the repository's application and QA runtime on Node.js 20.
+
+**Reason:** The pinned deployment command uses Wrangler 4.114.0, which requires Node.js 22 or newer. The application test toolchain remains validated on Node.js 20 and does not need to change.
+
+**Consequence:** Cloudflare production Worker deployments run with Node.js 22. Repository PR QA continues to use the existing Node.js 20 contract until a separate reviewed runtime upgrade is approved.
