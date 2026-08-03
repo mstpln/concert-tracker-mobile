@@ -4,6 +4,17 @@
 // Keep the v81 rolling two-week card authoritative after any Start rerender,
 // then restore the two existing navigation actions on the replaced markup.
 (() => {
+  const openProfileBeforeBootFix = openProfile;
+  openProfile = function openProfileWithOneYearListeningDefault(bandId, options = {}) {
+    const listeningEntry = options.selectedTab === 'listening';
+    const result = openProfileBeforeBootFix(bandId, options);
+    if (listeningEntry) {
+      profileListeningTimeframe = 'oneYear';
+      renderProfileScreen(bandId);
+    }
+    return result;
+  };
+
   function applyTwoWeekStartCard() {
     const card = document.querySelector('.start-top-bands-card');
     if (!card || card.textContent.includes('YOUR TOP BANDS · 2 WEEKS')) return;
