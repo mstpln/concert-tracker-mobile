@@ -15,7 +15,7 @@ const state = {
   workflows: ['pr-qa.yml','full-pwa-qa.yml','production-smoke.yml'],
   shellFiles: [
     'index.html','app.css','listeningV81.css','app.js','devicePrivacy.js','browserFetchPolicy.js','securityHardening.js',
-    'listeningInsightsV81.js','listeningV81BootFix.js','listeningV81ReviewFix.js','listeningV82Corrections.js','listeningV82GenreFix.js','listeningV82FailSafe.js','listeningV83ChartFix.js','listeningV83WindowFix.js','listeningV84ChartRenderFix.js','dataLib.js','listeningStats.js','listeningStatsV81.js','listeningFixtures.js','spotifyHistoryImport.js','listeningVaultBridge.js',
+    'listeningInsightsV81.js','listeningV81BootFix.js','listeningV81ReviewFix.js','listeningV82Corrections.js','listeningV82GenreFix.js','listeningV82FailSafe.js','listeningV83ChartFix.js','listeningV83WindowFix.js','listeningV84ChartRenderFix.js','listeningV85RankingAndStatsUnits.js','dataLib.js','listeningStats.js','listeningStatsV81.js','listeningFixtures.js','spotifyHistoryImport.js','listeningVaultBridge.js',
     'listeningVault.js','listeningHistoryV2.js','listeningIncrementalVault.js','listenbrainzSync.js',
     'spotifyHistoryBootstrap.js','conflictMerge.js','remoteStore.js','ownedTickets.js','service-worker.js'
   ],

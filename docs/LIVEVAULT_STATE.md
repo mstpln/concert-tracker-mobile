@@ -18,7 +18,9 @@ v82 is merged and live from PR #56, merge commit `3529f5abc6f8ddd7e076567880ee92
 
 v83 is merged and live from PR #57, merge commit `a68d26c6465e6d1dfc1c2f9515ac602bdeeb0a4e`. It adds daily two-week bucket helpers and gives the yearly listening-hours chart a labelled **Listening hours** y-axis with a fixed rounded maximum across year windows. Physical verification found that the visible two-week charts still failed because the v83 QA asserted the internal bucket array rather than proving that the rendered Band Detail SVG used those buckets.
 
-v84 is the active corrective build on `fix/v84-two-week-chart-rendering`, with draft PR #58 open and not merged or deployed. It owns the final visible two-week chart-rendering path, renders the rolling period as 14–15 daily points including empty days, uses day/month labels and **Most active day** copy, and verifies the actual rendered SVG on desktop and mobile rather than only internal calculation helpers. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v84.
+v84 is merged and live from PR #58, merge commit `987edb769da117610d64b47626fcf5353c43dfbc`. It owns the final visible two-week chart-rendering path, renders the rolling period as 14–15 daily points including empty days, uses day/month labels and **Most active day** copy, and verifies the actual rendered SVG on desktop and mobile rather than only internal calculation helpers.
+
+v85 is the active focused correction on `fix/v85-listen-ranking-and-stats-units`, with draft PR #59 open and not merged or deployed. Top Tracks and Top Albums rank by listen count first, while known duration, recency and normalized title are deterministic tie-breakers. The Start concert-stat teaser keeps numeric KPI values unit-free and moves the units into the labels as **traveled (km)** and **spent (kr)**. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v85.
 
 ListenBrainz is now connected on the user's primary mobile device and disconnected on the computer. The mobile device is the primary synchronization device; other connected LiveVault devices continue restoring shared listening updates from the private R2 manifest without needing the ListenBrainz token. The private token is stored only in the mobile browser and is not present in GitHub, Cloudflare configuration, logs or project documentation.
 
@@ -30,6 +32,7 @@ The intended listening-insights contract remains:
 - Top 100 offers 2 weeks, 3 months, 1 year and All time, resetting to 3 months on entry.
 - Band Detail Listening resets to 1 year and Top Tracks on page entry, while preserving timeframe and Tracks/Albums selection while that Band Detail page remains open.
 - Valid events with unknown duration count as listens while contributing no invented time; relevant UI explains known-duration time totals.
+- Top Bands remains ranked by known listening time; Top Tracks and Top Albums are ranked by listen count.
 - Listening Stats retains a three-month three-metric summary, adds a continuous yearly-hours chart, and gives both yearly charts independent mobile tap details and browsing state.
 - The Start header displays `APP_VERSION` and provides a controlled service-worker update check with a bounded single reload without clearing credentials, settings, IndexedDB or remote data.
 - Album artwork requires an existing stable identity; unresolved albums use a neutral placeholder and no text-only guessing.

@@ -1,0 +1,118 @@
+'use strict';
+
+(() => {
+  const api = typeof ListeningStats === 'undefined' ? null : ListeningStats;
+  if (!api) return;
+
+  const normalize = (value) => String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('en');
+
+  function listenRankSort(titleKey) {
+    return (a, b) => b.listenCount - a.listenCount
+      || b.durationMs - a.durationMs
+      || b.lastListenedMs - a.lastListenedMs
+      || normalize(a[titleKey]).localeCompare(normalize(b[titleKey]));
+  }
+
+  function aggregateByListens(listens, kind, limit = 10) {
+    const grouped = new Map();
+    for (const listen of listens || []) {
+      if (!api.isValidListen(listen)) continue;
+      const title = kind === 'album'
+        ? String(listen?.releaseTitle || '').trim().replace(/\s+/g, ' ')
+        : String(listen?.recordingTitle || '').trim();
+      if (!title) continue;
+      const stable = kind === 'track' && (listen.musicbrainzRecordingId || listen.stableRecordingId);
+      const key = stable
+        ? `stable:${stable}`
+        : `${normalize(listen.artistCreditName)}|${normalize(title)}${kind === 'track' ? `|${normalize(listen.releaseTitle)}` : ''}`;
+      const titleKey = kind === 'album' ? 'releaseTitle' : 'recordingTitle';
+      const item = grouped.get(key) || {
+        [titleKey]: title,
+        artistCreditName: listen.artistCreditName || 'Unknown artist',
+        localBandId: listen.localBandId || null,
+        durationMs: 0,
+        listenCount: 0,
+        lastListenedMs: 0,
+        artworkPath: null,
+      };
+      const durationMs = api.validDurationMs(listen);
+      const listenedAtMs = api.listenTimeMs(listen);
+      item.durationMs += Number.isFinite(durationMs) ? durationMs : 0;
+      item.listenCount += 1;
+      if (Number.isFinite(listenedAtMs)) item.lastListenedMs = Math.max(item.lastListenedMs, listenedAtMs);
+      if (kind === 'track' && !item.artworkPath && listen.artworkPath) item.artworkPath = listen.artworkPath;
+      if (kind === 'album' && !item.artworkPath && listen.artworkPath && (
+        listen.spotifyAlbumId || listen.spotifyTrackId || listen.musicbrainzReleaseId
+        || listen.musicbrainzReleaseGroupId || listen.stableReleaseId
+      )) item.artworkPath = listen.artworkPath;
+      grouped.set(key, item);
+    }
+    const titleKey = kind === 'album' ? 'releaseTitle' : 'recordingTitle';
+    return [...grouped.values()]
+      .sort(listenRankSort(titleKey))
+      .slice(0, Math.max(0, Number(limit) || 0))
+      .map((item, index) => ({ ...item, rank: index + 1 }));
+  }
+
+  function installRanking() {
+    api.topTracks = (listens, limit = 10) => aggregateByListens(listens, 'track', limit);
+    api.topAlbums = (listens, limit = 10) => aggregateByListens(listens, 'album', limit);
+
+    if (api.selectedStats?.__liveVaultV85) return;
+    const previousSelectedStats = api.selectedStats;
+    function selectedStatsV85(listens, bands, timeframe = 'threeMonths', now = new Date()) {
+      const result = previousSelectedStats.call(this, listens, bands, timeframe, now);
+      return {
+        ...result,
+        topTracks: aggregateByListens(result?.listens || [], 'track', 10),
+        topAlbums: aggregateByListens(result?.listens || [], 'album', 10),
+      };
+    }
+    selectedStatsV85.__liveVaultV85 = true;
+    api.selectedStats = selectedStatsV85;
+  }
+
+  function updateConcertStatUnits(root = document) {
+    const items = root.querySelectorAll?.('.stats-teaser-item') || [];
+    items.forEach((item) => {
+      const value = item.querySelector('.stats-teaser-value');
+      const label = item.querySelector('.stats-teaser-label');
+      if (!value || !label) return;
+      const labelText = label.textContent.trim().toLowerCase();
+      if (labelText === 'traveled' || labelText === 'traveled (km)') {
+        const nextValue = value.textContent.replace(/\s*km\s*$/i, '').trim();
+        if (value.textContent !== nextValue) value.textContent = nextValue;
+        if (label.textContent !== 'traveled (km)') label.textContent = 'traveled (km)';
+      } else if (labelText === 'spent' || labelText === 'spent (kr)') {
+        const nextValue = value.textContent.replace(/\s*kr\s*$/i, '').trim();
+        if (value.textContent !== nextValue) value.textContent = nextValue;
+        if (label.textContent !== 'spent (kr)') label.textContent = 'spent (kr)';
+      }
+    });
+  }
+
+  function install() {
+    installRanking();
+    if (typeof document !== 'undefined') updateConcertStatUnits(document);
+  }
+
+  install();
+  if (typeof document !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', install);
+    const observer = new MutationObserver(() => updateConcertStatUnits(document));
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    globalThis.setTimeout?.(install, 0);
+    globalThis.addEventListener?.('load', install, { once: true });
+  }
+
+  globalThis.ListeningV85RankingAndStatsUnits = { aggregateByListens, updateConcertStatUnits, install };
+})();
+
+if (typeof module === 'object' && module.exports) {
+  module.exports = globalThis.ListeningV85RankingAndStatsUnits;
+}
