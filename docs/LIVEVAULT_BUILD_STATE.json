@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v83",
-  "serviceWorkerCacheVersion": "v83",
+  "appVersion": "v84",
+  "serviceWorkerCacheVersion": "v84",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 20,
@@ -32,6 +32,7 @@
     "listeningV82FailSafe.js",
     "listeningV83ChartFix.js",
     "listeningV83WindowFix.js",
+    "listeningV84ChartRenderFix.js",
     "dataLib.js",
     "listeningStats.js",
     "listeningStatsV81.js",
