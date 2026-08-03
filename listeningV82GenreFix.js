@@ -12,17 +12,24 @@
     return new Map((typeof bands === 'undefined' ? [] : bands).filter((band) => band?.id).map((band) => [String(band.id), band]));
   }
 
-  function genreValue(band) {
-    if (Array.isArray(band?.genres)) return band.genres.join(', ');
-    if (Array.isArray(band?.genre)) return band.genre.join(', ');
-    return band?.genres || band?.genre || '';
+  function storedGenres(band) {
+    if (Array.isArray(band?.genres)) return band.genres.filter(Boolean);
+    if (Array.isArray(band?.genre)) return band.genre.filter(Boolean);
+    return String(band?.genres || band?.genre || '')
+      .split(/[,;/|]/)
+      .map((value) => value.trim())
+      .filter(Boolean);
   }
 
-  function linked() {
-    const byId = lookup();
-    const source = (typeof listeningEvents === 'undefined' ? [] : listeningEvents)
-      .filter((listen) => listen?.localBandId != null && byId.has(String(listen.localBandId)) && api.isValidListen(listen));
-    return { byId, source };
+  // Preserve the established v72 ownership rule exactly: evaluate the stored
+  // genre values in their existing order and use the first recognized group.
+  // Joining all values would let regex priority silently change a band's group.
+  function bandGenreGroup(band) {
+    for (const value of storedGenres(band)) {
+      const group = api.genreGroup(value);
+      if (group !== 'Other') return group;
+    }
+    return 'Other';
   }
 
   api.genreDistributionByYear = function genreDistributionByYearV82(listens) {
@@ -33,7 +40,7 @@
       if (!band || !api.isValidListen(listen)) continue;
       const year = new Date(api.listenTimeMs(listen)).getUTCFullYear();
       const item = years.get(year) || { durations: empty(), listenCounts: empty(), unknownDurationCounts: empty() };
-      const group = api.genreGroup(genreValue(band));
+      const group = bandGenreGroup(band);
       const duration = api.validDurationMs(listen);
       item.durations[group] += duration;
       item.listenCounts[group] += 1;
@@ -60,7 +67,7 @@
       const year = new Date(api.listenTimeMs(listen)).getUTCFullYear();
       firstYear = Math.min(firstYear, year);
       const band = byId.get(String(listen.localBandId));
-      if (selectedGenre !== 'All' && api.genreGroup(genreValue(band)) !== selectedGenre) continue;
+      if (selectedGenre !== 'All' && bandGenreGroup(band) !== selectedGenre) continue;
       const item = values.get(year) || { durationMs: 0, listenCount: 0, unknownDurationCount: 0 };
       const duration = api.validDurationMs(listen);
       item.durationMs += duration;
