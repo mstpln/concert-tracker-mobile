@@ -24,6 +24,7 @@
 // warning) — it is NOT what drives cache invalidation.
 importScripts('./version.js');
 const CACHE_NAME_LITERAL = 'v78';
+// v78 focused shell refresh: recache the corrected Listening settings without creating v79.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v77'.
 // Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v76'.
 // Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v75'.
