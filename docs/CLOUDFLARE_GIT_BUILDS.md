@@ -11,29 +11,37 @@ This repository is the source of truth for the existing Cloudflare Worker `conce
 - R2 bucket: `concert-tracker-data`
 - Runtime secrets remain configured only in Cloudflare and are never committed.
 
-## One-time Cloudflare connection
+## Cloudflare build configuration
 
-Connect the existing Worker only after this configuration is merged to `main`.
+The production Worker is connected to `mstpln/concert-tracker-mobile` with:
 
-1. Open Cloudflare Workers & Pages.
-2. Open `concert-tracker-api`.
-3. Open Settings, then Builds.
-4. Under Git Repository, select Connect.
-5. Select GitHub and authorize access to `mstpln/concert-tracker-mobile`.
-6. Use production branch `main`.
-7. Use root directory `/`.
-8. Leave the build command empty.
-9. Use deploy command `npx wrangler@4.114.0 deploy`.
-10. Disable builds for non-production branches.
-11. Save the connection.
-12. Configure build watch include paths to:
-    - `worker.js`
-    - `wrangler.jsonc`
-    - `package.json`
-    - `package-lock.json`
-13. Leave exclude paths empty.
+- Production branch: `main`
+- Root directory: `/`
+- Build command: empty
+- Deploy command: `npx wrangler@4.114.0 deploy`
+- Build variable: `NODE_VERSION=22`
+- Non-production branch builds: disabled
+- Build watch include paths:
+  - `worker.js`
+  - `wrangler.jsonc`
+  - `package.json`
+  - `package-lock.json`
+- Build watch exclude paths: empty
 
-The first connected build should be triggered only after the reviewed configuration is on `main`. Verify that the active Worker still has the existing `BUCKET` binding and runtime secrets after deployment.
+Wrangler 4.114.0 requires Node.js 22 or newer. The first build attempted with Cloudflare's Node.js 20 default and failed before deployment. After `NODE_VERSION=22` was added, the retry completed successfully.
+
+## One-time connection record
+
+The existing Worker was connected after the reviewed v79 configuration was merged to `main`. The first successful deployment used merge commit `8deb2f03e6b7e224ce84e9609508eb0b37016d04` and Cloudflare build `6ac9e5e3`.
+
+After deployment, the user confirmed that:
+
+- the app loaded normally;
+- Settings showed v79;
+- bands and concerts loaded;
+- listening statistics remained available.
+
+This confirms that the existing `BUCKET` binding and runtime tokens remained functional after the repository-driven deployment.
 
 ## Normal future flow
 
@@ -42,9 +50,9 @@ The first connected build should be triggered only after the reviewed configurat
 3. The user explicitly says `Merge it`.
 4. Merge to `main` triggers Cloudflare only when a watched Worker deployment file changed.
 5. Cloudflare deploys the reviewed `main` version to the existing Worker.
-6. Confirm the app loads and the Worker build is successful.
+6. Confirm the Cloudflare build succeeded and perform a quick app smoke check.
 
-App-only changes do not trigger the Worker when none of the watched files changed.
+App-only and documentation-only changes do not trigger the Worker when none of the watched files changed.
 
 ## Production boundaries
 
