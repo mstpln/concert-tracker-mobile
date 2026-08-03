@@ -178,10 +178,12 @@
     return true;
   }
 
-  async function bootstrap() {
+  function bootstrap() {
     install();
     if (root.__LIVEVAULT_QA_SYNTHETIC_LISTENING__ === true) return;
-    try { await restoreIncrementals(); } catch (_) { /* Normal app use and manual sync remain available. */ }
+    root.setTimeout?.(async () => {
+      try { await restoreIncrementals(); } catch (_) { /* Normal app use and manual sync remain available. */ }
+    }, 2500);
   }
 
   return { MANIFEST_PATH, PREFIX, PAYLOAD_KIND, SCHEMA_VERSION, monthKey, buildPayload, storeIncrementalEvents, restoreIncrementals, install, bootstrap };
