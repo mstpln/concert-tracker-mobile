@@ -10,6 +10,32 @@
   const PAYLOAD_KIND = 'livevault-listening-incremental';
   const SCHEMA_VERSION = 1;
 
+  function normalizeText(value) {
+    return String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('en');
+  }
+
+  function eventFingerprint(event) {
+    const timestamp = Date.parse(event?.listenedAt || '');
+    if (!Number.isFinite(timestamp)) return null;
+    return `${Math.floor(timestamp / 1000)}|${normalizeText(event?.artistCreditName)}|${normalizeText(event?.recordingTitle)}`;
+  }
+
+  function filterNewEvents(events, existingEvents = []) {
+    const ids = new Set((existingEvents || []).map((event) => String(event?.stableListenId || '')).filter(Boolean));
+    const fingerprints = new Set((existingEvents || []).map(eventFingerprint).filter(Boolean));
+    const accepted = [];
+    for (const raw of events || []) {
+      const event = root.LiveVaultSpotifyHistory?.sanitizeEvent?.(raw);
+      if (!event || event.source !== 'listenbrainz') continue;
+      const mark = eventFingerprint(event);
+      if (ids.has(event.stableListenId) || (mark && fingerprints.has(mark))) continue;
+      ids.add(event.stableListenId);
+      if (mark) fingerprints.add(mark);
+      accepted.push(event);
+    }
+    return accepted;
+  }
+
   function connection() {
     return typeof root?.rsGetConnection === 'function' ? root.rsGetConnection() : null;
   }
@@ -94,15 +120,15 @@
     if (!root?.crypto?.subtle || !root?.CompressionStream) {
       throw new Error('This browser cannot create verified listening updates.');
     }
+    const existingLocal = await root.LiveVaultSpotifyHistory?.loadStoredEvents?.() || [];
+    const accepted = filterNewEvents(events, existingLocal);
     const groups = new Map();
-    for (const raw of events || []) {
-      const event = root.LiveVaultSpotifyHistory?.sanitizeEvent?.(raw);
-      if (!event || event.source !== 'listenbrainz') continue;
+    for (const event of accepted) {
       const month = monthKey(event.listenedAt);
       if (!groups.has(month)) groups.set(month, []);
       groups.get(month).push(event);
     }
-    if (!groups.size) return { stored: 0, objects: [] };
+    if (!groups.size) return { stored: 0, objects: [], accepted: [] };
 
     const current = await readManifest();
     const existing = Array.isArray(current.manifest.incrementals) ? current.manifest.incrementals : [];
@@ -126,7 +152,7 @@
         });
       }
     }
-    if (!additions.length) return { stored: 0, objects: [] };
+    if (!additions.length) return { stored: 0, objects: [], accepted: [] };
 
     const manifest = {
       ...current.manifest,
@@ -140,7 +166,7 @@
       if (write.status === 412) throw new Error('The remote listening vault changed. Refresh and sync again.');
       throw new Error(`Cloudflare could not update the listening manifest (HTTP ${write.status}).`);
     }
-    return { stored: additions.reduce((sum, item) => sum + item.eventCount, 0), objects: additions };
+    return { stored: additions.reduce((sum, item) => sum + item.eventCount, 0), objects: additions, accepted };
   }
 
   async function restoreIncrementals() {
@@ -186,7 +212,7 @@
     }, 2500);
   }
 
-  return { MANIFEST_PATH, PREFIX, PAYLOAD_KIND, SCHEMA_VERSION, monthKey, buildPayload, storeIncrementalEvents, restoreIncrementals, install, bootstrap };
+  return { MANIFEST_PATH, PREFIX, PAYLOAD_KIND, SCHEMA_VERSION, eventFingerprint, filterNewEvents, monthKey, buildPayload, storeIncrementalEvents, restoreIncrementals, install, bootstrap };
 });
 
 if (typeof window !== 'undefined') {
