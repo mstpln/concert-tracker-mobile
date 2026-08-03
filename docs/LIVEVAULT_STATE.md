@@ -4,9 +4,9 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by an authenticated Cloudflare Worker and private R2.
 
-Security Builds 1-3 are deployed. Browser and automation roles are verified, the legacy `API_TOKEN` has been removed, and browser writes were verified afterward. v77 is merged on `main` at `fd96b41cabf4c3972df3065ca7aab3856c7e953a`. The focused research schedules are active and the one-time release-feed cleanup completed successfully, reducing `news.json` from 42 legacy records to 0 while creating a private rollback artifact.
+Security Builds 1-3 are deployed. Browser and automation roles are verified, the legacy `API_TOKEN` has been removed, and browser writes were verified afterward. v77 focused research schedules are active and the one-time release-feed cleanup completed successfully.
 
-The current development branch is `feature/listening-vault-foundation`. It prepares **v78 / Listening Build 3.1** and has not been merged, deployed or run against production data.
+Listening Build 3.1 / v78 merged to `main` at `7a90815639892fdadd908275b1f7ab69ce5c031e`. The current correction branch is `fix/v78-listening-settings-cleanup`. It keeps v78 and corrects the Settings UI before the Worker or listening archive is deployed to production.
 
 ## Product purpose and navigation
 
@@ -18,7 +18,7 @@ The sanitized Spotify archive contains 250,403 eligible unique track listens fro
 
 All sanitized eligible events are retained, including artists not currently stored in LiveVault. Visible statistics include only events currently mapped to stored LiveVault bands. `localBandId` remains derived so previously unmatched history can contribute automatically when a band is added or identity improves.
 
-Before v78 production rollout, the archive remains browser-local in IndexedDB. No real listening history is committed, included in QA, written to public artifacts or sent to providers in bulk.
+The real archive remains browser-local in IndexedDB until a separately authorized production migration. No real listening history is committed, included in QA, written to public artifacts or sent to providers in bulk.
 
 ## v78 private Listening Vault foundation
 
@@ -35,10 +35,12 @@ The approved architecture changes the durable listening source of truth from one
 ### Device behavior
 
 - Existing IndexedDB history remains the local working copy and statistics continue to work offline.
-- Settings gains **Back up to Cloudflare**, **Restore from Cloudflare**, and **Download backup** controls inside the single Listening history component.
+- Settings contains one Listening history component only. The duplicate-injection race is guarded and any duplicate wrappers are removed.
+- The large permanent Cloudflare backup button panel is removed from normal Settings.
 - A device with no local history may restore automatically from the private remote archive after connection.
 - Restore verifies SHA-256 and event count before replacing the local copy.
 - A failed remote read or write preserves the existing local archive and prior manifest.
+- Backup, export and restore functions remain available to controlled migration/recovery tooling without adding permanent visual noise.
 
 ### Worker boundary
 
@@ -51,10 +53,9 @@ The approved architecture changes the durable listening source of truth from one
 ### Backup and recovery
 
 - The original local IndexedDB archive remains untouched until a separately authorized production backup/restore verification.
-- The app can download a private compressed local backup.
 - Remote archives are immutable and content-addressed; manifest replacement occurs only after archive persistence.
 - Restore verifies hash, schema and event count before durable local replacement.
-- Production upload, Worker deployment and real-device restore testing require separate explicit authorization after merge.
+- Production upload, Worker deployment and real-device restore testing require separate explicit authorization.
 
 ## Listening features deferred after v78
 
