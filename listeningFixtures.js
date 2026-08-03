@@ -105,10 +105,90 @@
     }
   }
 
+  function appendProductionShapeRegressionRecords(output, now, band) {
+    if (!band) return;
+    const recentIso = listenDate(now, 2, 3);
+    const recentSeconds = listenDate(now, 5, 7);
+    const previousSeconds = listenDate(now, 19, 11);
+    const historical = new Date(Date.UTC(2010, 0, 16, 12, 0, 0));
+    const base = {
+      artistCreditName: band.name,
+      localBandId: band.id,
+      releaseTitle: 'Production Shape Regression Album',
+      genre: 'alternative rock',
+      artworkPath: null,
+    };
+    output.push(
+      {
+        ...base,
+        id: 'synthetic-production-shape-iso-only',
+        stableListenId: 'spotify-import:synthetic-production-shape-iso-only',
+        listenedAt: recentIso.toISOString(),
+        listenedDurationMs: 241000,
+        recordingTitle: 'ISO Timestamp Track',
+        spotifyTrackId: 'synthetic-production-shape-iso-only',
+        source: 'spotify_import',
+      },
+      {
+        ...base,
+        id: 'synthetic-production-shape-unix-seconds',
+        stableListenId: 'listenbrainz:synthetic-production-shape-unix-seconds',
+        listenedAt: null,
+        timestamp: Math.floor(recentSeconds.getTime() / 1000),
+        listenedDurationMs: null,
+        recordingTitle: 'Unix Seconds Unknown Duration Track',
+        source: 'listenbrainz',
+      },
+      {
+        ...base,
+        id: 'synthetic-production-shape-previous-window',
+        stableListenId: 'listenbrainz:synthetic-production-shape-previous-window',
+        listenedAtSeconds: Math.floor(previousSeconds.getTime() / 1000),
+        listenedDurationMs: 199000,
+        recordingTitle: 'Previous Window Track',
+        source: 'listenbrainz',
+      },
+      {
+        ...base,
+        id: 'synthetic-production-shape-historical-ms-string',
+        stableListenId: 'spotify-import:synthetic-production-shape-historical-ms-string',
+        listenedAt: String(historical.getTime()),
+        listenedDurationMs: 205000,
+        recordingTitle: 'Historical Millisecond String Track',
+        spotifyTrackId: 'synthetic-production-shape-historical-ms-string',
+        source: 'spotify_import',
+      },
+      {
+        ...base,
+        id: 'synthetic-production-shape-malformed-optional',
+        stableListenId: 'listenbrainz:synthetic-production-shape-malformed-optional',
+        listenedAt: 'not-a-real-date',
+        listenedDurationMs: null,
+        recordingTitle: 'Malformed Optional Record',
+        releaseTitle: null,
+        source: 'listenbrainz',
+        futureOptionalMetadata: { malformedButNonFatal: true },
+      },
+    );
+  }
+
+  function fixtureTime(listen) {
+    const candidates = [listen?.listenedAtMs, listen?.listenedAtUnix, listen?.listenedAtSeconds, listen?.timestamp, listen?.listenedAt];
+    for (const candidate of candidates) {
+      if (candidate == null || candidate === '') continue;
+      const numeric = Number(candidate);
+      if (Number.isFinite(numeric)) return Math.abs(numeric) < 100000000000 ? numeric * 1000 : numeric;
+      const parsed = Date.parse(String(candidate));
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return Infinity;
+  }
+
   function createSyntheticListens(bands = [], nowValue = new Date()) {
     const now = safeNow(nowValue);
     const output = [];
-    (bands || []).filter((band) => band?.id && band?.name && !band.syntheticListeningEmpty).slice(0, 100).forEach((band, bandIndex) => {
+    const eligibleBands = (bands || []).filter((band) => band?.id && band?.name && !band.syntheticListeningEmpty).slice(0, 100);
+    eligibleBands.forEach((band, bandIndex) => {
       const currentCount = CURRENT_COUNTS[bandIndex] ?? Math.max(1, 12 - Math.floor((bandIndex - 8) / 10));
       const previousCount = PREVIOUS_COUNTS[bandIndex] ?? Math.max(1, 10 - Math.floor((bandIndex - 8) / 12));
       appendPeriod(output, { now, band, bandIndex, count: currentCount, startDay: 1, spanDays: 74, periodKey: 'current-quarter' });
@@ -117,6 +197,8 @@
       appendPeriod(output, { now, band, bandIndex, count: Math.max(2, 10 - bandIndex), startDay: 400, spanDays: 260, periodKey: 'previous-year' });
       appendHistoricalYears(output, now, band, bandIndex);
     });
+
+    appendProductionShapeRegressionRecords(output, now, eligibleBands[0]);
 
     // Retained for global totals/genre history, but deliberately excluded
     // from linked band rankings because it has no safe localBandId match.
@@ -141,7 +223,7 @@
       });
     });
 
-    return output.sort((a, b) => a.listenedAtMs - b.listenedAtMs || a.id.localeCompare(b.id));
+    return output.sort((a, b) => fixtureTime(a) - fixtureTime(b) || String(a.id || '').localeCompare(String(b.id || '')));
   }
 
   function emptySyntheticListens() {
