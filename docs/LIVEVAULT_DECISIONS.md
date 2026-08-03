@@ -247,3 +247,11 @@
 **Reason:** Source listen records should remain compact and stable, and repeated listens must not duplicate the same artwork URL hundreds of times.
 
 **Consequence:** Artwork failure never invalidates a listen or changes statistics. Artwork implementation remains deferred until after the v78 vault foundation.
+
+## 2026-08-03 — Worker deployment follows reviewed GitHub main
+
+**Decision:** Connect the existing `concert-tracker-api` Worker to Cloudflare Workers Builds after the v79 deployment configuration is merged. A merge to `main` that changes a watched Worker deployment file may deploy the reviewed Worker automatically.
+
+**Reason:** Repository-owned deployment configuration removes error-prone manual copying while keeping GitHub `main` authoritative and preserving review and QA before production changes.
+
+**Consequence:** `wrangler.jsonc` preserves the existing Worker name, `worker.js` entry point, `BUCKET` binding and `concert-tracker-data` bucket. Build watch paths are limited to Worker deployment files. Automatic Worker deployment does not authorize R2 data operations, migrations, secrets, production workflows or provider calls.
