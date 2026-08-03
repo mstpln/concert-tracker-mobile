@@ -14,6 +14,7 @@ delete global.document;
 const chartFix = require('../listeningV83ChartFix');
 
 const NOW = new Date('2026-08-03T12:00:00.000Z');
+const DAY_LABEL = /^(?:\d{1,2} [A-Z][a-z]{2}|[A-Z][a-z]{2} \d{1,2})$/;
 const listen = (id, at, duration = 60000) => ({
   id,
   listenedAt: at,
@@ -34,7 +35,7 @@ test('v83 two-week charts use daily buckets and never fall through to yearly gro
   const selected = stats.selectedStats(values, global.bands, 'twoWeeks', NOW);
   assert.equal(selected.window.bucket, 'day');
   assert.ok(selected.buckets.length >= 14 && selected.buckets.length <= 15);
-  assert.ok(selected.buckets.every((bucket) => /^\d{1,2} [A-Z][a-z]{2}$/.test(bucket.label)));
+  assert.ok(selected.buckets.every((bucket) => DAY_LABEL.test(bucket.label)));
   assert.equal(selected.buckets.reduce((sum, bucket) => sum + bucket.listenCount, 0), 3);
   assert.equal(selected.buckets.reduce((sum, bucket) => sum + bucket.durationMs, 0), 5400000);
   assert.ok(selected.buckets.some((bucket) => bucket.durationMs === 0));
