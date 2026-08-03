@@ -109,6 +109,25 @@ test('v82 listening corrections remain usable, bounded, independent, and respons
   await expect(page.locator('.full-top-bands-card, .top-bands-card').first()).toBeVisible();
   await expect(page.locator('.year-genre-pill')).toHaveCount(6);
 
+  // Force the same class of chart-contract exception that blanked production.
+  // The final render boundary must keep a substantive summary visible, then
+  // normal rendering must recover cleanly after the helper is restored.
+  await page.evaluate(() => {
+    window.__v82OriginalGenreDistribution = ListeningStats.genreDistributionByYear;
+    ListeningStats.genreDistributionByYear = () => { throw new Error('Synthetic forced chart failure'); };
+    renderStatsScreen();
+  });
+  await expect(page.locator('.listening-summary-global .listening-summary-metric')).toHaveCount(3);
+  await expect(page.locator('.top-bands-card')).toContainText('TOP BANDS · 3 MONTHS');
+  await expect(page.locator('.top-bands-card')).toContainText('Some listening charts could not be displayed');
+  await page.evaluate(() => {
+    ListeningStats.genreDistributionByYear = window.__v82OriginalGenreDistribution;
+    delete window.__v82OriginalGenreDistribution;
+    renderStatsScreen();
+  });
+  await expect(page.locator('.yearly-listening-card')).toContainText('LISTENING HOURS BY YEAR');
+  await expect(page.locator('.genre-card')).toContainText('LISTENING BY GENRE (ALL TIME)');
+
   const allPill = page.locator('[data-v81-year-genre="All"]');
   const allPillContrast = await allPill.evaluate((element) => {
     const style = getComputedStyle(element);
