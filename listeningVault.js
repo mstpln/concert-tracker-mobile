@@ -36,7 +36,6 @@
     return {
       kind: PAYLOAD_KIND,
       schemaVersion: SCHEMA_VERSION,
-      exportedAt: new Date().toISOString(),
       summary: {
         eventCount: clean.length,
         firstListenedAt: clean[0]?.listenedAt || null,
@@ -78,8 +77,7 @@
     };
     if (state.createOnly) headers['If-None-Match'] = '*';
     else if (state.etag) headers['If-Match'] = state.etag;
-    const response = await fetch(documentUrl(remote, path), { method: 'PUT', headers, body });
-    return response;
+    return fetch(documentUrl(remote, path), { method: 'PUT', headers, body });
   }
 
   async function readManifest() {
@@ -126,13 +124,14 @@
   async function backupToCloudflare() {
     const archive = await localArchive();
     const archivePath = `${ARCHIVE_PREFIX}${archive.sha256}.json.gz`;
+    const current = await readManifest();
+    if (current.manifest?.archive?.sha256 === archive.sha256) return current.manifest;
 
     const archiveWrite = await remotePut(archivePath, archive.compressed, 'application/gzip', { createOnly: true });
     if (!archiveWrite.ok && archiveWrite.status !== 412) {
       throw new Error(`Cloudflare could not store the listening archive (HTTP ${archiveWrite.status}).`);
     }
 
-    const current = await readManifest();
     const manifest = {
       kind: MANIFEST_KIND,
       schemaVersion: SCHEMA_VERSION,
@@ -165,6 +164,7 @@
     const current = await readManifest();
     if (!current.manifest?.archive?.path) throw new Error('No Cloudflare listening backup exists.');
     const archiveResult = await remoteGet(current.manifest.archive.path);
+    if (archiveResult.missing) throw new Error('The Cloudflare listening archive is missing.');
     const compressed = await archiveResult.response.blob();
     const text = await gunzipText(compressed);
     const sha256 = await digestHex(text);
