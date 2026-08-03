@@ -34,6 +34,7 @@ const SHELL_FILES = [
   './listeningV82GenreFix.js',
   './listeningV82FailSafe.js',
   './listeningV83ChartFix.js',
+  './listeningV83WindowFix.js',
   './dataLib.js',
   './listeningStats.js',
   './listeningStatsV81.js',
