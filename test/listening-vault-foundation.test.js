@@ -61,7 +61,6 @@ test('worker exposes only bounded explicit listening-vault routes', () => {
 
 test('QA build strips all private listening-vault modules', () => {
   const build = fs.readFileSync('scripts/build-qa.js', 'utf8');
-  assert.match(build, /listeningVaultBridge\.js/);
-  assert.match(build, /listeningVault\.js/);
-  assert.match(build, /replace\('<script src="listeningVault\.js"><\\\/script>'/);
+  assert.match(build, /replace\('<script src="listeningVaultBridge\.js"><\/script>', ''\)/);
+  assert.match(build, /replace\('<script src="listeningVault\.js"><\/script>', ''\)/);
 });
