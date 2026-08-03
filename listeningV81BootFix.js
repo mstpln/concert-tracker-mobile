@@ -30,14 +30,42 @@
     if (!item.artworkPath) return `<span class="track-artwork is-placeholder">${placeholder()}</span>`;
     return `<span class="track-artwork"><span>${album ? placeholder() : icon('music')}</span><img src="${escapeAttr(item.artworkPath)}" alt="" data-listening-image /></span>`;
   }
-  topTracksHtml = function topTracksWithAlbumsV81(stats) {
+  function rankedItems() {
+    const selected = globalListeningStats(profileListeningTimeframe).listens.filter((listen) => listen.localBandId === activeProfileBandId);
+    return { selected, items: detailList === 'albums' ? ListeningStats.topAlbums(selected, 10) : ListeningStats.topTracks(selected, 10) };
+  }
+  function applyRankedTabs() {
+    const card = document.querySelector('#screen-profile .band-listening-panel .top-tracks-card');
+    if (!card) return;
+    let tabs = card.querySelector('.ranked-list-tabs');
+    if (!tabs) {
+      tabs = document.createElement('div');
+      tabs.className = 'ranked-list-tabs';
+      tabs.setAttribute('role', 'tablist');
+      tabs.setAttribute('aria-label', 'Band listening rankings');
+      card.prepend(tabs);
+    }
     const albums = detailList === 'albums';
-    const items = albums ? (stats.topAlbums || ListeningStats.topAlbums(stats.listens, 10)) : stats.topTracks;
+    tabs.innerHTML = `<button type="button" role="tab" data-v81-ranked="tracks" aria-selected="${!albums}" class="ranked-list-tab${!albums ? ' active' : ''}">Top Tracks</button><button type="button" role="tab" data-v81-ranked="albums" aria-selected="${albums}" class="ranked-list-tab${albums ? ' active' : ''}">Top Albums</button>`;
+    const { selected, items } = rankedItems();
     const rows = items.length
-      ? items.slice(0, 10).map((item) => `<div class="top-track-row"><span class="top-track-rank">#${item.rank}</span>${artwork(item, albums)}<span class="top-track-copy"><strong>${escapeHtml(albums ? item.releaseTitle : item.recordingTitle)}</strong><small>${countText(item.listenCount)} · ${durationText(item)}</small></span></div>`).join('')
+      ? items.map((item) => `<div class="top-track-row"><span class="top-track-rank">#${item.rank}</span>${artwork(item, albums)}<span class="top-track-copy"><strong>${escapeHtml(albums ? item.releaseTitle : item.recordingTitle)}</strong><small>${countText(item.listenCount)} · ${durationText(item)}</small></span></div>`).join('')
       : `<p class="listening-empty">${albums ? 'No album data available for this period.' : 'No tracks in this period.'}</p>`;
-    return `<section class="listening-card top-tracks-card"><div class="ranked-list-tabs" role="tablist" aria-label="Band listening rankings"><button type="button" role="tab" data-v81-ranked="tracks" aria-selected="${!albums}" class="ranked-list-tab${!albums ? ' active' : ''}">Top Tracks</button><button type="button" role="tab" data-v81-ranked="albums" aria-selected="${albums}" class="ranked-list-tab${albums ? ' active' : ''}">Top Albums</button></div><p class="listening-section-title">${albums ? 'TOP ALBUMS' : 'TOP TRACKS'} · ${escapeHtml(stats.label.toUpperCase())}</p><div class="top-tracks-list">${rows}</div>${ListeningStats.hasUnknownDuration(stats.listens) ? '<p class="listening-known-time-note">Listening time is based on listens with known duration.</p>' : ''}</section>`;
-  };
+    const title = card.querySelector('.listening-section-title');
+    if (title) title.textContent = `${albums ? 'TOP ALBUMS' : 'TOP TRACKS'} · ${globalListeningStats(profileListeningTimeframe).label.toUpperCase()}`;
+    const list = card.querySelector('.top-tracks-list');
+    if (list) list.innerHTML = rows;
+    let knownNote = card.querySelector('.listening-known-time-note');
+    if (ListeningStats.hasUnknownDuration(selected) && !knownNote) {
+      knownNote = document.createElement('p');
+      knownNote.className = 'listening-known-time-note';
+      knownNote.textContent = 'Listening time is based on listens with known duration.';
+      card.append(knownNote);
+    } else if (!ListeningStats.hasUnknownDuration(selected) && knownNote) {
+      knownNote.remove();
+    }
+    wireListeningImages(card);
+  }
 
   function applyTwoWeekStartCard() {
     const card = document.querySelector('.start-top-bands-card');
@@ -55,12 +83,18 @@
     const ranked = event.target.closest('[data-v81-ranked]');
     if (!ranked) return;
     detailList = ranked.dataset.v81Ranked === 'albums' ? 'albums' : 'tracks';
-    if (activeProfileBandId) renderProfileScreen(activeProfileBandId);
+    applyRankedTabs();
   });
   document.addEventListener('DOMContentLoaded', () => {
-    const screen = document.getElementById('screen-myconcerts');
-    if (!screen) return;
-    new MutationObserver(applyTwoWeekStartCard).observe(screen, { childList: true, subtree: true });
-    applyTwoWeekStartCard();
+    const startScreen = document.getElementById('screen-myconcerts');
+    const profileScreen = document.getElementById('screen-profile');
+    if (startScreen) {
+      new MutationObserver(applyTwoWeekStartCard).observe(startScreen, { childList: true, subtree: true });
+      applyTwoWeekStartCard();
+    }
+    if (profileScreen) {
+      new MutationObserver(applyRankedTabs).observe(profileScreen, { childList: true, subtree: true });
+      applyRankedTabs();
+    }
   });
 })();
