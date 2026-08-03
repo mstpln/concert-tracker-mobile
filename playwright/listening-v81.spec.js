@@ -4,6 +4,16 @@ async function textContents(locator) {
   return (await locator.allTextContents()).map((value) => value.trim());
 }
 
+async function summaryGeometry(card) {
+  return card.evaluate((element) => {
+    const metrics = [...element.querySelectorAll('.listening-summary-metric')].map((node) => node.getBoundingClientRect());
+    const overlap = metrics.some((a, index) => metrics.some((b, other) => other > index && a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1));
+    const textOverflow = [...element.querySelectorAll('.listening-summary-metric strong, .listening-summary-metric > span:last-child')]
+      .some((node) => node.scrollWidth > node.clientWidth + 1);
+    return { overlap, overflow: element.scrollWidth > element.clientWidth + 1, textOverflow };
+  });
+}
+
 test('v82 listening corrections remain usable, bounded, independent, and responsive', async ({ page }, testInfo) => {
   const browserErrors = [];
   page.on('pageerror', (error) => browserErrors.push(error.message));
@@ -27,12 +37,14 @@ test('v82 listening corrections remain usable, bounded, independent, and respons
       contained: s.left >= b.left - 1 && s.right <= b.right + 1 && s.top >= b.top - 1 && s.bottom <= b.bottom + 1,
       centerDelta: Math.abs((b.top + b.height / 2) - (g.top + g.height / 2)),
       pathCount: svg.querySelectorAll('path').length,
+      viewBox: svg.getAttribute('viewBox'),
     };
   });
   expect(refreshGeometry).not.toBeNull();
   expect(refreshGeometry.contained).toBe(true);
   expect(refreshGeometry.centerDelta).toBeLessThanOrEqual(1);
   expect(refreshGeometry.pathCount).toBe(2);
+  expect(refreshGeometry.viewBox).toBe('0 0 24 24');
 
   const startFortnightText = await page.locator('.start-top-bands-card .top-band-row').first().innerText();
   await page.getByRole('button', { name: 'View all' }).first().click();
@@ -44,6 +56,9 @@ test('v82 listening corrections remain usable, bounded, independent, and respons
   const allTimeText = await page.locator('.full-top-bands-card .top-band-row').first().innerText();
   expect(allTimeText).not.toBe(topFortnightText);
 
+  // Return to the shared two-week calculation before opening Band Detail so
+  // the same band and values can be compared across all three surfaces.
+  await page.getByRole('button', { name: '2 weeks' }).click();
   await page.locator('.full-top-bands-card .top-band-row').first().click();
   const profile = page.locator('#screen-profile');
   await expect(profile.getByRole('tab', { name: 'Listening', exact: true })).toHaveAttribute('aria-selected', 'true');
@@ -52,17 +67,32 @@ test('v82 listening corrections remain usable, bounded, independent, and respons
 
   await profile.getByRole('button', { name: '2 weeks' }).click();
   const profileFortnight = await profile.locator('.listening-summary-band').innerText();
+  const topValues = topFortnightText.split('\n').map((value) => value.trim()).filter(Boolean);
+  const topValueLine = topValues.find((value) => /\blistens?\b/.test(value) && /\b(?:h|min)\b/.test(value));
+  expect(topValueLine).toBeTruthy();
+  const [topDuration, topCount] = topValueLine.split('·').map((value) => value.trim());
+  expect(profileFortnight).toContain(topDuration);
+  expect(profileFortnight).toContain(topCount.replace(/ listens?$/, ''));
+
   await profile.getByRole('button', { name: 'All time' }).click();
   const profileAllTime = await profile.locator('.listening-summary-band').innerText();
   expect(profileAllTime).not.toBe(profileFortnight);
 
-  const summaryGeometry = await profile.locator('.listening-summary-band').evaluate((card) => {
-    const metrics = [...card.querySelectorAll('.listening-summary-metric')].map((node) => node.getBoundingClientRect());
-    const overlap = metrics.some((a, index) => metrics.some((b, other) => other > index && a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1));
-    return { overlap, overflow: card.scrollWidth > card.clientWidth + 1 };
+  const profileCard = profile.locator('.listening-summary-band');
+  expect(await summaryGeometry(profileCard)).toEqual({ overlap: false, overflow: false, textOverflow: false });
+
+  // Stress the five fixed metrics with the production-risk shapes requested
+  // for desktop review: long month names, four/five-digit values and a
+  // double-digit movement delta. This is layout-only and does not alter data.
+  await profileCard.evaluate((card) => {
+    const values = ['1,234 h 56 min', '12,345', '#87 ↑12', 'September 30, 2009', 'September 30, 2027'];
+    card.querySelectorAll('.listening-summary-metric strong').forEach((node, index) => { node.textContent = values[index]; });
   });
-  expect(summaryGeometry.overlap).toBe(false);
-  expect(summaryGeometry.overflow).toBe(false);
+  const widths = desktop ? [480, 768, 1024] : [375];
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await summaryGeometry(profileCard)).toEqual({ overlap: false, overflow: false, textOverflow: false });
+  }
 
   await profile.getByRole('button', { name: '3 months' }).click();
   await profile.getByRole('tab', { name: 'Top Albums' }).click();
