@@ -133,7 +133,7 @@ test('listening stats navigation, rankings, timeframes, and band drill-down use 
   const navLabels = await page.getByTestId('bottom-navigation').locator('.tabitem').allTextContents();
   expect(navLabels.map((label) => label.trim())).toEqual(['Concerts', 'Dates', 'Bands', 'Stats', 'Alerts']);
   await expect(page.locator('.start-top-bands-card .top-band-row')).toHaveCount(3);
-  await expect(page.locator('.start-top-bands-card')).toContainText('YOUR TOP BANDS · 3 MONTHS');
+  await expect(page.locator('.start-top-bands-card')).toContainText('YOUR TOP BANDS · 2 WEEKS');
   await settleVisual(page);
   await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-start-listening.png`) });
 
