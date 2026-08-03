@@ -60,6 +60,7 @@
       }
       globalListeningStatsV83.__liveVaultV83Final = true;
       globalThis.globalListeningStats = globalListeningStatsV83;
+      try { globalListeningStats = globalListeningStatsV83; } catch (_) {}
     }
   }
 
