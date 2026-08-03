@@ -9,9 +9,9 @@ const out = path.join(root, 'dist');
 const sourceId = process.env.QA_BUILD_ID || process.env.GITHUB_SHA || process.env.CF_PAGES_COMMIT_SHA || 'local-qa';
 const id = String(sourceId).replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 80) || 'local-qa';
 const shell = [
-  'app.css', 'v72Corrections.css', 'app.js', 'devicePrivacy.js',
+  'app.css', 'v72Corrections.css', 'listeningV81.css', 'app.js', 'devicePrivacy.js',
   'browserFetchPolicy.js', 'v72Corrections.js', 'v72FinalAdjustments.js',
-  'securityHardening.js', 'dataLib.js', 'listeningStats.js',
+  'securityHardening.js', 'listeningInsightsV81.js', 'dataLib.js', 'listeningStats.js', 'listeningStatsV81.js',
   'listeningFixtures.js', 'spotifyHistoryImport.js', 'listeningVaultBridge.js',
   'listeningVault.js', 'listeningHistoryV2.js', 'listeningIncrementalVault.js',
   'listenbrainzSync.js', 'spotifyHistoryBootstrap.js', 'icons.js',
@@ -40,8 +40,6 @@ html = html.replace(
   '<script src="ownedTickets.js"></script>',
   '<script src="qa-fixtures.js"></script><script src="qa-v77-fixtures.js"></script><script src="qa-build-config.js"></script><script src="qa-bootstrap.js"></script><script src="ownedTickets.js"></script>'
 );
-// Public QA must never load local personal history, private vault modules,
-// ListenBrainz credentials, or direct ListenBrainz networking.
 html = html
   .replace('<script src="spotifyHistoryImport.js"></script>', '')
   .replace('<script src="listeningVaultBridge.js"></script>', '')

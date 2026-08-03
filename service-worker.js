@@ -1,6 +1,7 @@
 'use strict';
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v80';
+const CACHE_NAME_LITERAL = 'v81';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v80'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v79'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v78'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v77'.
@@ -17,14 +18,17 @@ const SHELL_FILES = [
   './index.html',
   './app.css',
   './v72Corrections.css',
+  './listeningV81.css',
   './app.js',
   './devicePrivacy.js',
   './browserFetchPolicy.js',
   './v72Corrections.js',
   './v72FinalAdjustments.js',
   './securityHardening.js',
+  './listeningInsightsV81.js',
   './dataLib.js',
   './listeningStats.js',
+  './listeningStatsV81.js',
   './listeningFixtures.js',
   './spotifyHistoryImport.js',
   './listeningVaultBridge.js',
@@ -59,6 +63,9 @@ self.addEventListener('install', (event) => {
     )
   );
   self.skipWaiting();
+});
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 self.addEventListener('activate', (event) => {
   event.waitUntil(
