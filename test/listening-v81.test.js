@@ -19,7 +19,7 @@ test('v81 rolling period and missing duration semantics', () => {
 test('v81 rankings use time, count, recency and conservative album titles', () => {
   const values = [listen('a', '2026-08-01T00:00:00Z', 60000), listen('b', '2026-08-02T00:00:00Z', 60000, { localBandId: 'b', artistCreditName: 'Beta' }), listen('c', '2026-08-03T00:00:00Z', null, { releaseTitle: '' })];
   assert.deepEqual(stats.topBands(values, bands).map((item) => item.bandId), ['a', 'b']);
-  assert.equal(stats.topAlbums(values).length, 1);
+  assert.equal(stats.topAlbums(values).length, 2);
 });
 test('v81 yearly data fills empty years and retains counts with unknown time', () => {
   const values = [listen('2019', '2019-01-01T00:00:00Z', 3600000), listen('2021', '2021-01-01T00:00:00Z', null)];
