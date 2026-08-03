@@ -22,7 +22,7 @@ test('v82 listening corrections remain usable, bounded, independent, and respons
   await page.goto('/');
 
   await expect(page.locator('.start-top-bands-card')).toContainText('YOUR TOP BANDS · 2 WEEKS');
-  await expect(page.locator('#start-version-refresh')).toContainText('v82');
+  await expect(page.locator('#start-version-refresh')).toContainText('v83');
   const refreshButton = page.getByRole('button', { name: 'Check for app update and reload' });
   await expect(refreshButton).toBeVisible();
   const refreshGeometry = await page.evaluate(() => {
@@ -56,8 +56,6 @@ test('v82 listening corrections remain usable, bounded, independent, and respons
   const allTimeText = await page.locator('.full-top-bands-card .top-band-row').first().innerText();
   expect(allTimeText).not.toBe(topFortnightText);
 
-  // Return to the shared two-week calculation before opening Band Detail so
-  // the same band and values can be compared across all three surfaces.
   await page.getByRole('button', { name: '2 weeks' }).click();
   await page.locator('.full-top-bands-card .top-band-row').first().click();
   const profile = page.locator('#screen-profile');
@@ -81,9 +79,6 @@ test('v82 listening corrections remain usable, bounded, independent, and respons
   const profileCard = profile.locator('.listening-summary-band');
   expect(await summaryGeometry(profileCard)).toEqual({ overlap: false, overflow: false, textOverflow: false });
 
-  // Stress the five fixed metrics with the production-risk shapes requested
-  // for desktop review: long month names, four/five-digit values and a
-  // double-digit movement delta. This is layout-only and does not alter data.
   await profileCard.evaluate((card) => {
     const values = ['1,234 h 56 min', '12,345', '#87 ↑12', 'September 30, 2009', 'September 30, 2027'];
     card.querySelectorAll('.listening-summary-metric strong').forEach((node, index) => { node.textContent = values[index]; });
@@ -109,9 +104,6 @@ test('v82 listening corrections remain usable, bounded, independent, and respons
   await expect(page.locator('.full-top-bands-card, .top-bands-card').first()).toBeVisible();
   await expect(page.locator('.year-genre-pill')).toHaveCount(6);
 
-  // Force the same class of chart-contract exception that blanked production.
-  // The final render boundary must keep a substantive summary visible, then
-  // normal rendering must recover cleanly after the helper is restored.
   await page.evaluate(() => {
     window.__v82OriginalGenreDistribution = ListeningStats.genreDistributionByYear;
     ListeningStats.genreDistributionByYear = () => { throw new Error('Synthetic forced chart failure'); };
