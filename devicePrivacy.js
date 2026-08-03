@@ -6,6 +6,7 @@
   if (root) root.LiveVaultDevicePrivacy = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   const SETTINGS_KEY = 'concertTrackerSettings';
+  const LISTENBRAINZ_SETTINGS_KEY = 'livevault-listenbrainz-v1';
   const SHELL_CACHE_PREFIX = 'concert-tracker-shell-';
   const TICKET_DB_NAME = 'live-vault-owned-tickets';
 
@@ -34,6 +35,7 @@
 
   async function eraseDevice({
     clearSpotify = () => root?.SpotifyUser?.clearAuth?.(),
+    clearListenBrainz = () => root?.LiveVaultListenBrainz?.clearConnection?.(),
     clearHistory = () => root?.LiveVaultSpotifyHistory?.clear?.(),
     clearTickets = () => deleteDatabase(TICKET_DB_NAME),
     clearConnection = root?.rsClearConnection,
@@ -41,9 +43,10 @@
     cacheStorage = root?.caches,
     reload = () => root?.location?.reload?.(),
   } = {}) {
-    await Promise.allSettled([clearSpotify?.(), clearHistory?.(), clearTickets?.()]);
+    await Promise.allSettled([clearSpotify?.(), clearListenBrainz?.(), clearHistory?.(), clearTickets?.()]);
     clearConnection?.();
     storage?.removeItem?.(SETTINGS_KEY);
+    storage?.removeItem?.(LISTENBRAINZ_SETTINGS_KEY);
     await removeShellCaches(cacheStorage);
     reload?.();
   }
@@ -53,7 +56,6 @@
     if (!button || button.dataset.devicePrivacyReady === 'true') return;
     button.dataset.devicePrivacyReady = 'true';
     button.textContent = 'Disconnect';
-
     const card = button.closest('.settings-card');
     if (!card) return;
 
@@ -73,7 +75,7 @@
     const eraseHint = root.document.createElement('p');
     eraseHint.className = 'settings-hint';
     eraseHint.dataset.deviceEraseHint = 'true';
-    eraseHint.textContent = 'Erases this browser’s connection, settings, Spotify authorization, listening history, cached ticket PDFs and Live Vault app cache. Remote R2 data and permanent ticket files are not deleted.';
+    eraseHint.textContent = 'Erases this browser’s connection, settings, Spotify authorization, ListenBrainz token, listening history, cached ticket PDFs and Live Vault app cache. Remote R2 data and permanent ticket files are not deleted.';
     eraseButton.after(eraseHint);
 
     button.addEventListener('click', (event) => {
@@ -103,5 +105,5 @@
     else observeSettings();
   }
 
-  return { SETTINGS_KEY, SHELL_CACHE_PREFIX, TICKET_DB_NAME, removeShellCaches, deleteDatabase, disconnectDevice, eraseDevice, enhanceConnectionCard, observeSettings };
+  return { SETTINGS_KEY, LISTENBRAINZ_SETTINGS_KEY, SHELL_CACHE_PREFIX, TICKET_DB_NAME, removeShellCaches, deleteDatabase, disconnectDevice, eraseDevice, enhanceConnectionCard, observeSettings };
 });
