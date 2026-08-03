@@ -11,7 +11,7 @@ const id = String(sourceId).replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 80) || 'loc
 const shell = [
   'app.css', 'v72Corrections.css', 'listeningV81.css', 'app.js', 'devicePrivacy.js',
   'browserFetchPolicy.js', 'v72Corrections.js', 'v72FinalAdjustments.js',
-  'securityHardening.js', 'listeningInsightsV81.js', 'listeningV81BootFix.js', 'listeningV81ReviewFix.js', 'listeningV82Corrections.js', 'listeningV82GenreFix.js', 'listeningV82FailSafe.js', 'listeningV83ChartFix.js', 'listeningV83WindowFix.js', 'listeningV84ChartRenderFix.js', 'dataLib.js', 'listeningStats.js', 'listeningStatsV81.js',
+  'securityHardening.js', 'listeningInsightsV81.js', 'listeningV81BootFix.js', 'listeningV81ReviewFix.js', 'listeningV82Corrections.js', 'listeningV82GenreFix.js', 'listeningV82FailSafe.js', 'listeningV83ChartFix.js', 'listeningV83WindowFix.js', 'listeningV84ChartRenderFix.js', 'listeningV85RankingAndStatsUnits.js', 'dataLib.js', 'listeningStats.js', 'listeningStatsV81.js',
   'listeningFixtures.js', 'spotifyHistoryImport.js', 'listeningVaultBridge.js',
   'listeningVault.js', 'listeningHistoryV2.js', 'listeningIncrementalVault.js',
   'listenbrainzSync.js', 'spotifyHistoryBootstrap.js', 'icons.js',
