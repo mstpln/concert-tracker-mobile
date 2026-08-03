@@ -264,7 +264,7 @@
 
 **Consequence:** Cloudflare production Worker deployments run with Node.js 22. Repository PR QA continues to use the existing Node.js 20 contract until a separate reviewed runtime upgrade is approved.
 
-## 2026-08-03 — v81 listening duration and ranking semantics
+## 2026-08-03 — v81 listening duration and ranking semantics (partially superseded by v85)
 
 **Decision:** A valid listen with missing duration counts as a listen. Listening-time totals and time-based charts use only positive known duration. Top Bands, Top Tracks and Top Albums rank by known time, then listen count, recency and normalized title.
 
@@ -303,3 +303,11 @@
 **Reason:** The installed PWA needs an explicit way to check for a newer shell without simulating device erasure.
 
 **Consequence:** Refresh never clears credentials, settings, IndexedDB listening history, cached user data or remote data, and remains safe when offline or when service-worker promises stall.
+
+## 2026-08-03 — Top Tracks and Top Albums rank by listens
+
+**Decision:** Top Tracks and Top Albums rank by listen count first. Known duration, recency and normalized title are deterministic tie-breakers. Top Bands remains ranked by known listening time.
+
+**Reason:** A track or album ranking should represent how often it was played rather than favoring longer recordings or releases.
+
+**Consequence:** Valid unknown-duration events contribute to track and album listen counts without inventing listening time, and every timeframe uses the same ordering.
