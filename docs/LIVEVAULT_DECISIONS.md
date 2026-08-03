@@ -263,3 +263,43 @@
 **Reason:** The pinned deployment command uses Wrangler 4.114.0, which requires Node.js 22 or newer. The application test toolchain remains validated on Node.js 20 and does not need to change.
 
 **Consequence:** Cloudflare production Worker deployments run with Node.js 22. Repository PR QA continues to use the existing Node.js 20 contract until a separate reviewed runtime upgrade is approved.
+
+## 2026-08-03 — v81 listening duration and ranking semantics
+
+**Decision:** A valid listen with missing duration counts as a listen. Listening-time totals and time-based charts use only positive known duration. Top Bands, Top Tracks and Top Albums rank by known time, then listen count, recency and normalized title.
+
+**Reason:** ListenBrainz may legitimately omit duration, and inventing or dropping those listens would make counts incorrect.
+
+**Consequence:** Unknown-duration entries remain visible with zero known time, and relevant UI explains that time totals use listens with known duration.
+
+## 2026-08-03 — v81 timeframe and page-state defaults
+
+**Decision:** Start Top Bands uses rolling 14-day windows. Top 100 resets to 3 months on entry. Band Detail Listening resets to 1 year and Top Tracks on page entry, while preserving timeframe and Tracks/Albums selection while that Band Detail page remains open.
+
+**Reason:** Start should reflect recent activity, while deeper pages need predictable defaults without discarding in-page exploration.
+
+**Consequence:** Two-week movement compares the current rolling 14 days with the immediately preceding 14 days.
+
+## 2026-08-03 — v81 albums are grouped and illustrated conservatively
+
+**Decision:** Top Albums groups only normalized release names already present on stored listening events. Differently named editions remain separate, and artwork is shown only when the event already carries a stable approved release or track identity.
+
+**Reason:** Text similarity is not reliable album identity.
+
+**Consequence:** Missing release names are excluded only from Top Albums. Unresolved artwork uses a neutral placeholder without changing ranking or row visibility.
+
+## 2026-08-03 — v81 yearly charts keep independent interaction state
+
+**Decision:** The yearly-hours line chart and stacked genre chart each own an independent latest-six-year window and selected-year state. The line chart defaults to All genres and its pills affect only that chart.
+
+**Reason:** The charts answer different questions and should not unexpectedly control each other.
+
+**Consequence:** Empty calendar years remain visible, the current year is marked year-to-date, and moving a chart window clears only that chart's selection.
+
+## 2026-08-03 — v81 refresh is a non-destructive shell update check
+
+**Decision:** The Start refresh control requests a service-worker update, activates a waiting worker where available and performs one guarded reload with a bounded fallback.
+
+**Reason:** The installed PWA needs an explicit way to check for a newer shell without simulating device erasure.
+
+**Consequence:** Refresh never clears credentials, settings, IndexedDB listening history, cached user data or remote data, and remains safe when offline or when service-worker promises stall.

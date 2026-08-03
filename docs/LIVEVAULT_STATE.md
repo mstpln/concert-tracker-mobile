@@ -14,6 +14,18 @@ v80 is merged and deployed. PR #53 merged as commit `2d47a5b0b066f41da2c95bc3835
 
 ListenBrainz is now connected on the user's primary mobile device and disconnected on the computer. The mobile device is the primary synchronization device; other connected LiveVault devices continue restoring shared listening updates from the private R2 manifest without needing the ListenBrainz token. The private token is stored only in the mobile browser and is not present in GitHub, Cloudflare configuration, logs or project documentation.
 
+## v81 review state
+
+The v81 listening-insights and app-refresh build is implemented on `feature/v81-listening-insights-refresh` for review and is not merged or deployed.
+
+- Start Top Bands uses the rolling latest two weeks and compares movement with the preceding two weeks.
+- Top 100 offers 2 weeks, 3 months, 1 year and All time, resetting to 3 months on entry.
+- Band Detail Listening resets to 1 year and Top Tracks on page entry, while preserving timeframe and Tracks/Albums selection while that Band Detail page remains open.
+- Valid events with unknown duration count as listens while contributing no invented time; relevant UI explains known-duration time totals.
+- Listening Stats retains a three-month three-metric summary, adds a continuous yearly-hours chart, and gives both yearly charts independent mobile tap details and browsing state.
+- The Start header displays `APP_VERSION` and provides a controlled service-worker update check with a bounded single reload without clearing credentials, settings, IndexedDB or remote data.
+- Album artwork requires an existing stable identity; unresolved albums use a neutral placeholder and no text-only guessing.
+
 ## Product purpose and navigation
 
 This is a single-user concert tracker for followed bands, upcoming shows, attended history, concert alerts, Spotify releases, listening history, venues, statistics and user-owned concert preparation. Bottom navigation is **Concerts**, **Dates**, **Bands**, **Stats**, and **Alerts**.
