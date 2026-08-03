@@ -4,14 +4,39 @@
 // adjustment scripts. Keep the v81 output authoritative after those renders.
 (() => {
   let detailList = 'tracks';
+  let listeningVisitedBandId = null;
+  let safeRefreshBusy = false;
+  let safeReloadStarted = false;
+
   const openProfileBeforeBootFix = openProfile;
   openProfile = function openProfileWithOneYearListeningDefault(bandId, options = {}) {
     const listeningEntry = options.selectedTab === 'listening';
-    if (listeningEntry) detailList = 'tracks';
+    detailList = 'tracks';
+    listeningVisitedBandId = listeningEntry ? bandId : null;
     const result = openProfileBeforeBootFix(bandId, options);
     if (listeningEntry) {
       profileListeningTimeframe = 'oneYear';
       renderProfileScreen(bandId);
+    }
+    return result;
+  };
+
+  const activateProfileTabBeforeBootFix = activateProfileTab;
+  activateProfileTab = function activateProfileTabWithPageState(bandId, tab, options = {}) {
+    const returningToListening = tab === 'listening' && listeningVisitedBandId === bandId;
+    const preservedTimeframe = profileListeningTimeframe;
+    const result = activateProfileTabBeforeBootFix(bandId, tab, options);
+    if (tab === 'listening') {
+      if (returningToListening) {
+        if (profileListeningTimeframe !== preservedTimeframe) {
+          profileListeningTimeframe = preservedTimeframe;
+          renderProfileScreen(bandId);
+        }
+        applyRankedTabs();
+        if (options.focus) document.querySelector('#screen-profile #profile-tab-listening')?.focus();
+      } else {
+        listeningVisitedBandId = bandId;
+      }
     }
     return result;
   };
@@ -83,6 +108,62 @@
     wireListeningImages(replacement);
   }
 
+  function applyYearLabelAnchors() {
+    const labels = [...document.querySelectorAll('.yearly-line-chart .year-point text')];
+    labels.forEach((label) => label.setAttribute('text-anchor', 'middle'));
+    labels[0]?.setAttribute('text-anchor', 'start');
+    labels.at(-1)?.setAttribute('text-anchor', 'end');
+  }
+
+  const renderStatsBeforeBootFix = renderStatsScreen;
+  renderStatsScreen = function renderStatsWithSafeEdgeLabels(...args) {
+    const result = renderStatsBeforeBootFix(...args);
+    applyYearLabelAnchors();
+    return result;
+  };
+
+  function safeReload() {
+    if (!safeReloadStarted) {
+      safeReloadStarted = true;
+      location.reload();
+    }
+  }
+
+  async function refreshSafely(button) {
+    if (safeRefreshBusy) return;
+    safeRefreshBusy = true;
+    button.disabled = true;
+    button.classList.add('is-loading');
+    const supportsServiceWorker = 'serviceWorker' in navigator;
+    const fallbackDelay = supportsServiceWorker ? 2200 : 120;
+    setTimeout(safeReload, fallbackDelay);
+    try {
+      if (supportsServiceWorker) {
+        navigator.serviceWorker.addEventListener('controllerchange', safeReload, { once: true });
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration) {
+          try { await registration.update(); } catch (_) {}
+          if (registration.waiting) registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+      }
+    } catch (_) {}
+    setTimeout(() => {
+      safeRefreshBusy = false;
+      if (button.isConnected) {
+        button.disabled = false;
+        button.classList.remove('is-loading');
+      }
+    }, 5000);
+  }
+
+  document.addEventListener('click', (event) => {
+    const button = event.target instanceof Element ? event.target.closest('.start-refresh-btn') : null;
+    if (!button) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    refreshSafely(button);
+  }, true);
+
   document.addEventListener('click', (event) => {
     const ranked = event.target.closest('[data-v81-ranked]');
     if (!ranked) return;
@@ -103,5 +184,6 @@
       }).observe(profileScreen, { childList: true, subtree: true });
       applyRankedTabs();
     }
+    applyYearLabelAnchors();
   });
 })();
