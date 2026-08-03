@@ -27,28 +27,40 @@
     return api.resolveWindow(timeframe, end, listens || []);
   }
 
-  function install() {
-    const previousSelectedStats = api.selectedStats;
-    if (typeof previousSelectedStats !== 'function' || previousSelectedStats.__liveVaultV83Final) return;
+  function finalize(result, listens, timeframe, now) {
+    const window = explicitWindow(timeframe, now, listens);
+    const buckets = chart.timeBuckets(result?.listens || [], window, window.bucket);
+    return {
+      ...result,
+      timeframe,
+      label: window.label,
+      window,
+      buckets,
+      mostActive: buckets.length
+        ? [...buckets].sort((a, b) => b.durationMs - a.durationMs || b.listenCount - a.listenCount || String(a.startAt).localeCompare(String(b.startAt)))[0]
+        : null,
+    };
+  }
 
-    function selectedStatsV83Final(listens, appBands, timeframe = 'threeMonths', now = new Date()) {
-      const result = previousSelectedStats.call(this, listens, appBands, timeframe, now);
-      const window = explicitWindow(timeframe, now, listens);
-      const buckets = chart.timeBuckets(result?.listens || [], window, window.bucket);
-      return {
-        ...result,
-        timeframe,
-        label: window.label,
-        window,
-        buckets,
-        mostActive: buckets.length
-          ? [...buckets].sort((a, b) => b.durationMs - a.durationMs || b.listenCount - a.listenCount || String(a.startAt).localeCompare(String(b.startAt)))[0]
-          : null,
-      };
+  function install() {
+    const currentSelectedStats = api.selectedStats;
+    if (typeof currentSelectedStats === 'function' && !currentSelectedStats.__liveVaultV83Final) {
+      function selectedStatsV83Final(listens, appBands, timeframe = 'threeMonths', now = new Date()) {
+        return finalize(currentSelectedStats.call(this, listens, appBands, timeframe, now), listens, timeframe, now);
+      }
+      selectedStatsV83Final.__liveVaultV83Final = true;
+      api.selectedStats = selectedStatsV83Final;
     }
 
-    selectedStatsV83Final.__liveVaultV83Final = true;
-    api.selectedStats = selectedStatsV83Final;
+    if (typeof globalThis.listeningEvents !== 'undefined' && typeof globalThis.bands !== 'undefined') {
+      function globalListeningStatsV83(timeframe = 'threeMonths') {
+        const now = typeof globalThis.listeningNow === 'function' ? globalThis.listeningNow() : new Date();
+        const result = api.selectedStats(globalThis.listeningEvents, globalThis.bands, timeframe, now);
+        return finalize(result, globalThis.listeningEvents, timeframe, now);
+      }
+      globalListeningStatsV83.__liveVaultV83Final = true;
+      globalThis.globalListeningStats = globalListeningStatsV83;
+    }
   }
 
   install();
@@ -57,7 +69,7 @@
     setTimeout(install, 0);
   }
 
-  globalThis.ListeningV83WindowFix = { explicitWindow, install };
+  globalThis.ListeningV83WindowFix = { explicitWindow, finalize, install };
 })();
 
 if (typeof module === 'object' && module.exports) module.exports = globalThis.ListeningV83WindowFix;
