@@ -52,11 +52,11 @@
       api.selectedStats = selectedStatsV83Final;
     }
 
-    if (typeof globalThis.listeningEvents !== 'undefined' && typeof globalThis.bands !== 'undefined') {
+    if (typeof listeningEvents !== 'undefined' && typeof bands !== 'undefined') {
       function globalListeningStatsV83(timeframe = 'threeMonths') {
-        const now = typeof globalThis.listeningNow === 'function' ? globalThis.listeningNow() : new Date();
-        const result = api.selectedStats(globalThis.listeningEvents, globalThis.bands, timeframe, now);
-        return finalize(result, globalThis.listeningEvents, timeframe, now);
+        const now = typeof listeningNow === 'function' ? listeningNow() : new Date();
+        const result = api.selectedStats(listeningEvents, bands, timeframe, now);
+        return finalize(result, listeningEvents, timeframe, now);
       }
       globalListeningStatsV83.__liveVaultV83Final = true;
       globalThis.globalListeningStats = globalListeningStatsV83;
