@@ -39,7 +39,7 @@ test('v81 listening insights are usable, independent, and persistent at mobile a
   await page.getByRole('button', { name: 'Show older genre years' }).click();
   expect(await textContents(page.locator('[data-v81-year-point] text'))).toEqual(shiftedListeningYears);
 
-  await page.locator('[data-v81-year-point]').first().click();
+  await page.locator('[data-v81-year-point] circle').first().click();
   await expect(page.locator('.year-detail')).toBeVisible();
   await expect(page.locator('.genre-year-detail')).toHaveCount(0);
   await page.locator('[data-v81-genre-year]').first().click();
