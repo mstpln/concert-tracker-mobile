@@ -311,3 +311,11 @@
 **Reason:** A track or album ranking should represent how often it was played rather than favoring longer recordings or releases.
 
 **Consequence:** Valid unknown-duration events contribute to track and album listen counts without inventing listening time, and every timeframe uses the same ordering.
+
+## 2026-08-04 — Public app branding is BANDMARKR
+
+**Decision:** The public app name is **BANDMARKR**. The top banner uses the approved centered condensed uppercase wordmark. The installed-app icon uses the approved `#024ddf` blue rounded-square background, a solid white bookmark, and condensed blue `BM` letters centered above the bookmark notch.
+
+**Reason:** The new name and visual identity better describe marking and keeping bands and concert experiences while preserving the established app color and structure.
+
+**Consequence:** User-facing titles, PWA metadata and active branding use BANDMARKR. Stable IDs, user-owned data, local-storage and IndexedDB identifiers, provider ownership boundaries, remote data, internal compatibility names and the `concert-tracker-shell-*` cache namespace remain unchanged unless a separate technical migration is explicitly approved.
