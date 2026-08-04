@@ -78,6 +78,14 @@ test('title-only, cover, live and same-name evidence never silently merges', () 
   }
 });
 
+test('unrelated time-adjacent listens remain unique without trusted or matching text evidence', () => {
+  const result = contracts.matchingEvidence(
+    event({ source: 'spotify_import', stableListenId: 'spotify:unrelated', artistCreditName: 'Artist One', recordingTitle: 'Track One' }),
+    event({ stableListenId: 'listenbrainz:unrelated', artistCreditName: 'Artist Two', recordingTitle: 'Track Two' }),
+  );
+  assert.deepEqual(result, { tier: null, outcome: 'unique', method: null, automatic: false });
+});
+
 test('reviewed decisions survive reruns and block automatic replacement', () => {
   const result = contracts.matchingEvidence(
     event({ reviewedDecision: { action: 'keep_separate' } }),
@@ -184,4 +192,14 @@ test('migration integrity fails closed on source-count drift and supports rollba
   assert.equal(drifted.ok, false);
   assert.equal(drifted.sourceCountsMatch, false);
   assert.equal(drifted.rollbackSafe, false);
+
+  const zeroed = contracts.verifyMigrationIntegrity({
+    totalEvents: 250403,
+    cursor: 250403,
+    sourceEventCountBefore: 250403,
+    sourceEventCountAfter: 0,
+  });
+  assert.equal(zeroed.ok, false);
+  assert.equal(zeroed.sourceCountsMatch, false);
+  assert.equal(zeroed.rollbackSafe, false);
 });
