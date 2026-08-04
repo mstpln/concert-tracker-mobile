@@ -8,6 +8,7 @@
   const CONTRACT_VERSION = 1;
   const TIMESTAMP_TOLERANCE_MS = 1000;
   const DURATION_TOLERANCE_MS = 2000;
+  const DEFAULT_CHUNK_SIZE = 1000;
 
   const IDENTITY_STATUSES = Object.freeze([
     'unresolved', 'resolved', 'ambiguous', 'unmatched', 'user_reviewed',
@@ -94,9 +95,9 @@
       return { tier: 3, outcome: 'exact_duplicate', method: 'spotify_id', automatic: true };
     }
 
-    const trustedRelease = clean(left.releaseMbid || left.musicbrainzReleaseId)
-      && clean(left.releaseMbid || left.musicbrainzReleaseId) === clean(right.releaseMbid || right.musicbrainzReleaseId);
-    if (trustedRelease && durationsCompatible(left, right)) {
+    const releaseA = clean(left.releaseMbid || left.musicbrainzReleaseId);
+    const releaseB = clean(right.releaseMbid || right.musicbrainzReleaseId);
+    if (releaseA && releaseA === releaseB && durationsCompatible(left, right)) {
       return { tier: 4, outcome: 'probable_duplicate', method: 'trusted_release_duration', automatic: false };
     }
 
@@ -112,7 +113,9 @@
       spotifyTrackIdCount: 0,
       recordingMbidCount: 0,
       releaseMbidCount: 0,
+      releaseGroupMbidCount: 0,
       artistMbidEventCount: 0,
+      reviewedDecisionCount: 0,
       firstDateCategory: null,
       lastDateCategory: null,
     };
@@ -126,7 +129,9 @@
       if (clean(event?.spotifyTrackId)) result.spotifyTrackIdCount += 1;
       if (clean(event?.recordingMbid || event?.musicbrainzRecordingId)) result.recordingMbidCount += 1;
       if (clean(event?.releaseMbid || event?.musicbrainzReleaseId)) result.releaseMbidCount += 1;
+      if (clean(event?.releaseGroupMbid || event?.musicbrainzReleaseGroupId)) result.releaseGroupMbidCount += 1;
       if (Array.isArray(event?.musicbrainzArtistIds) && event.musicbrainzArtistIds.length) result.artistMbidEventCount += 1;
+      if (event?.reviewedDecision) result.reviewedDecisionCount += 1;
       const timestamp = Date.parse(event?.listenedAt || '');
       if (Number.isFinite(timestamp)) { first = Math.min(first, timestamp); last = Math.max(last, timestamp); }
     }
@@ -136,10 +141,90 @@
     return result;
   }
 
+  function safeCandidateSummary(pairs = []) {
+    const result = {
+      schemaVersion: CONTRACT_VERSION,
+      pairCount: 0,
+      byTier: { level1: 0, level2: 0, level3: 0, level4: 0, level5: 0, level6: 0, none: 0 },
+      automaticCount: 0,
+      ambiguousCount: 0,
+      probableCount: 0,
+      reviewedCount: 0,
+      expectedCanonicalReduction: 0,
+    };
+    for (const pair of pairs) {
+      const evidence = matchingEvidence(pair?.left, pair?.right);
+      result.pairCount += 1;
+      const key = Number.isInteger(evidence.tier) && evidence.tier >= 1 && evidence.tier <= 6
+        ? `level${evidence.tier}` : 'none';
+      result.byTier[key] += 1;
+      if (evidence.automatic) {
+        result.automaticCount += 1;
+        result.expectedCanonicalReduction += 1;
+      }
+      if (evidence.outcome === 'ambiguous') result.ambiguousCount += 1;
+      if (evidence.outcome === 'probable_duplicate') result.probableCount += 1;
+      if (evidence.outcome === 'user_reviewed') result.reviewedCount += 1;
+    }
+    return result;
+  }
+
+  function createMigrationCheckpoint(options = {}) {
+    const totalEvents = Math.max(0, Math.floor(Number(options.totalEvents) || 0));
+    const chunkSize = Math.max(1, Math.floor(Number(options.chunkSize) || DEFAULT_CHUNK_SIZE));
+    const cursor = Math.min(totalEvents, Math.max(0, Math.floor(Number(options.cursor) || 0)));
+    return {
+      schemaVersion: CONTRACT_VERSION,
+      migrationVersion: CONTRACT_VERSION,
+      status: cursor >= totalEvents ? 'complete' : 'pending',
+      cursor,
+      totalEvents,
+      chunkSize,
+      processedEvents: cursor,
+      sourceEventCountBefore: Math.max(0, Math.floor(Number(options.sourceEventCountBefore) || totalEvents)),
+      sourceEventCountAfter: Math.max(0, Math.floor(Number(options.sourceEventCountAfter) || totalEvents)),
+      reviewedDecisionCount: Math.max(0, Math.floor(Number(options.reviewedDecisionCount) || 0)),
+      integrityStatus: clean(options.integrityStatus) || 'not_checked',
+    };
+  }
+
+  function nextMigrationChunk(checkpoint = {}) {
+    const normalized = createMigrationCheckpoint(checkpoint);
+    const start = normalized.cursor;
+    const end = Math.min(normalized.totalEvents, start + normalized.chunkSize);
+    return {
+      start,
+      end,
+      count: Math.max(0, end - start),
+      done: start >= normalized.totalEvents,
+      checkpoint: {
+        ...normalized,
+        cursor: end,
+        processedEvents: end,
+        status: end >= normalized.totalEvents ? 'complete' : 'pending',
+      },
+    };
+  }
+
+  function verifyMigrationIntegrity(checkpoint = {}) {
+    const normalized = createMigrationCheckpoint(checkpoint);
+    const sourceCountsMatch = normalized.sourceEventCountBefore === normalized.sourceEventCountAfter;
+    const cursorValid = normalized.cursor >= 0 && normalized.cursor <= normalized.totalEvents;
+    const complete = normalized.status === 'complete' && normalized.cursor === normalized.totalEvents;
+    return {
+      ok: sourceCountsMatch && cursorValid,
+      complete,
+      sourceCountsMatch,
+      cursorValid,
+      rollbackSafe: sourceCountsMatch,
+    };
+  }
+
   return {
     CONTRACT_VERSION,
     TIMESTAMP_TOLERANCE_MS,
     DURATION_TOLERANCE_MS,
+    DEFAULT_CHUNK_SIZE,
     IDENTITY_STATUSES,
     DEDUPE_STATUSES,
     identityEnvelope,
@@ -148,5 +233,9 @@
     durationsCompatible,
     matchingEvidence,
     safeAuditSummary,
+    safeCandidateSummary,
+    createMigrationCheckpoint,
+    nextMigrationChunk,
+    verifyMigrationIntegrity,
   };
 });
