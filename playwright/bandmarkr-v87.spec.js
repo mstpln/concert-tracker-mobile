@@ -1,12 +1,12 @@
 const { test, expect } = require('@playwright/test');
 
-test('v87 renders the approved BANDMARKR banner and PWA identity', async ({ page }, testInfo) => {
+test('v88 keeps the BANDMARKR banner and exposes the simplified installed identity', async ({ page }, testInfo) => {
   await page.setViewportSize(testInfo.project.name === 'mobile-chromium'
     ? { width: 375, height: 820 }
     : { width: 480, height: 900 });
   await page.goto('/');
 
-  await expect(page).toHaveTitle('BANDMARKR');
+  await expect(page).toHaveTitle('Bandmarkr');
   const banner = page.locator('#brand-banner');
   const wordmark = banner.locator('.brand-wordmark');
   await expect(wordmark).toHaveAttribute('src', 'icons/bandmarkr-wordmark.svg');
@@ -35,8 +35,8 @@ test('v87 renders the approved BANDMARKR banner and PWA identity', async ({ page
   expect(geometry.renderedHeight).toBeLessThanOrEqual(24);
 
   const manifest = await page.evaluate(async () => fetch('manifest.json').then((response) => response.json()));
-  expect(manifest.name).toBe('BANDMARKR');
-  expect(manifest.short_name).toBe('BANDMARKR');
+  expect(manifest.name).toBe('Bandmarkr');
+  expect(manifest.short_name).toBe('Bandmarkr');
 
   const decodedIcons = await page.evaluate(async () => {
     const icons = [
@@ -49,7 +49,12 @@ test('v87 renders the approved BANDMARKR banner and PWA identity', async ({ page
       const response = await fetch(src);
       if (!response.ok) throw new Error(`${src} returned ${response.status}`);
       const bitmap = await createImageBitmap(await response.blob());
-      const result = { src, expected, width: bitmap.width, height: bitmap.height };
+      const canvas = new OffscreenCanvas(expected, expected);
+      const context = canvas.getContext('2d');
+      context.drawImage(bitmap, 0, 0);
+      const center = [...context.getImageData(Math.floor(expected / 2), Math.floor(expected * 0.38), 1, 1).data];
+      const corner = [...context.getImageData(0, 0, 1, 1).data];
+      const result = { src, expected, width: bitmap.width, height: bitmap.height, center, corner };
       bitmap.close();
       return result;
     }));
@@ -57,8 +62,10 @@ test('v87 renders the approved BANDMARKR banner and PWA identity', async ({ page
   for (const icon of decodedIcons) {
     expect(icon.width, icon.src).toBe(icon.expected);
     expect(icon.height, icon.src).toBe(icon.expected);
+    expect(icon.center, `${icon.src} has a solid white bookmark interior`).toEqual([255, 255, 255, 255]);
+    expect(icon.corner, `${icon.src} keeps the blue safe area`).toEqual([2, 77, 223, 255]);
   }
 
-  await expect(page.locator('#start-version-refresh')).toContainText('v87');
-  await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-v87-bandmarkr.png`), fullPage: true });
+  await expect(page.locator('#start-version-refresh')).toContainText('v88');
+  await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-v88-bandmarkr.png`), fullPage: true });
 });
