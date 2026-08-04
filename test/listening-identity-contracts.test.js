@@ -92,3 +92,68 @@ test('safe audit summary contains counts and month categories but no listening t
   const serialized = JSON.stringify(summary);
   assert.doesNotMatch(serialized, /Synthetic Artist|Synthetic Track|10:00:00|spotify-track/);
 });
+
+test('candidate audit reports only aggregate evidence tiers and expected reduction', () => {
+  const pairs = [
+    { left: event(), right: event() },
+    {
+      left: event({ source: 'spotify_import', stableListenId: 'spotify:2', spotifyTrackId: 'track-2' }),
+      right: event({ stableListenId: 'listenbrainz:2', spotifyTrackId: 'track-2' }),
+    },
+    {
+      left: event({ source: 'spotify_import', stableListenId: 'spotify:3' }),
+      right: event({ stableListenId: 'listenbrainz:3' }),
+    },
+  ];
+  const summary = contracts.safeCandidateSummary(pairs);
+  assert.equal(summary.pairCount, 3);
+  assert.equal(summary.byTier.level1, 1);
+  assert.equal(summary.byTier.level3, 1);
+  assert.equal(summary.byTier.level5, 1);
+  assert.equal(summary.automaticCount, 2);
+  assert.equal(summary.expectedCanonicalReduction, 2);
+  assert.equal(summary.ambiguousCount, 1);
+  assert.doesNotMatch(JSON.stringify(summary), /Synthetic Artist|Synthetic Track|spotify:|listenbrainz:/);
+});
+
+test('migration checkpoints are chunked resumable idempotent and bounded', () => {
+  let checkpoint = contracts.createMigrationCheckpoint({ totalEvents: 250403, chunkSize: 1000 });
+  assert.equal(checkpoint.cursor, 0);
+  assert.equal(checkpoint.status, 'pending');
+
+  const first = contracts.nextMigrationChunk(checkpoint);
+  assert.deepEqual({ start: first.start, end: first.end, count: first.count, done: first.done }, {
+    start: 0, end: 1000, count: 1000, done: false,
+  });
+  checkpoint = first.checkpoint;
+
+  const resumed = contracts.nextMigrationChunk(checkpoint);
+  assert.equal(resumed.start, 1000);
+  assert.equal(resumed.end, 2000);
+  assert.equal(resumed.checkpoint.processedEvents, 2000);
+
+  const normalizedAgain = contracts.createMigrationCheckpoint(resumed.checkpoint);
+  assert.deepEqual(normalizedAgain, resumed.checkpoint);
+});
+
+test('migration integrity fails closed on source-count drift and supports rollback', () => {
+  const safe = contracts.verifyMigrationIntegrity({
+    totalEvents: 250403,
+    cursor: 250403,
+    sourceEventCountBefore: 250403,
+    sourceEventCountAfter: 250403,
+  });
+  assert.equal(safe.ok, true);
+  assert.equal(safe.complete, true);
+  assert.equal(safe.rollbackSafe, true);
+
+  const drifted = contracts.verifyMigrationIntegrity({
+    totalEvents: 250403,
+    cursor: 250403,
+    sourceEventCountBefore: 250403,
+    sourceEventCountAfter: 250402,
+  });
+  assert.equal(drifted.ok, false);
+  assert.equal(drifted.sourceCountsMatch, false);
+  assert.equal(drifted.rollbackSafe, false);
+});
