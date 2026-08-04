@@ -18,7 +18,7 @@ test('v86 applies charcoal blue only to concert listing cards', async ({ page },
   expect(await background(startCard)).toBe('rgb(35, 42, 50)');
 
   await page.getByRole('button', { name: 'Dates' }).click();
-  const datesCard = page.locator('#screen-concerts .row-card[data-band-id]').first();
+  const datesCard = page.locator('#screen-concerts .row-card').first();
   await expect(datesCard).toBeVisible();
   expect(await background(datesCard)).toBe('rgb(35, 42, 50)');
 
