@@ -27,6 +27,15 @@
     return [...new Set((Array.isArray(values) ? values : []).map(clean).filter(Boolean))];
   }
 
+  function normalizeText(value) {
+    return String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('en');
+  }
+
+  function nonNegativeInteger(value, fallback = 0) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : fallback;
+  }
+
   function identityEnvelope(event = {}) {
     const artistMbids = cleanList(event.artistMbids || event.musicbrainzArtistIds);
     const artistMbid = clean(event.artistMbid || event.musicbrainzArtistId) || artistMbids[0] || null;
@@ -77,6 +86,15 @@
     return Math.abs(a - b) <= DURATION_TOLERANCE_MS;
   }
 
+  function normalizedSignatureMatches(left, right) {
+    const leftArtist = normalizeText(left?.artistCreditName);
+    const rightArtist = normalizeText(right?.artistCreditName);
+    const leftTrack = normalizeText(left?.recordingTitle);
+    const rightTrack = normalizeText(right?.recordingTitle);
+    return Boolean(leftArtist && rightArtist && leftTrack && rightTrack
+      && leftArtist === rightArtist && leftTrack === rightTrack);
+  }
+
   function matchingEvidence(left = {}, right = {}) {
     if (left.reviewedDecision || right.reviewedDecision) {
       return { tier: null, outcome: 'user_reviewed', method: 'manual', automatic: false };
@@ -109,7 +127,10 @@
       return { tier: 4, outcome: 'probable_duplicate', method: 'trusted_release_duration', automatic: false };
     }
 
-    return { tier: 5, outcome: 'ambiguous', method: 'normalized_signature', automatic: false };
+    if (normalizedSignatureMatches(left, right)) {
+      return { tier: 5, outcome: 'ambiguous', method: 'normalized_signature', automatic: false };
+    }
+    return { tier: null, outcome: 'unique', method: null, automatic: false };
   }
 
   function safeAuditSource(value) {
@@ -185,9 +206,10 @@
   }
 
   function createMigrationCheckpoint(options = {}) {
-    const totalEvents = Math.max(0, Math.floor(Number(options.totalEvents) || 0));
-    const chunkSize = Math.max(1, Math.floor(Number(options.chunkSize) || DEFAULT_CHUNK_SIZE));
-    const cursor = Math.min(totalEvents, Math.max(0, Math.floor(Number(options.cursor) || 0)));
+    const totalEvents = nonNegativeInteger(options.totalEvents);
+    const requestedChunkSize = nonNegativeInteger(options.chunkSize, DEFAULT_CHUNK_SIZE);
+    const chunkSize = Math.max(1, requestedChunkSize || DEFAULT_CHUNK_SIZE);
+    const cursor = Math.min(totalEvents, nonNegativeInteger(options.cursor));
     return {
       schemaVersion: CONTRACT_VERSION,
       migrationVersion: CONTRACT_VERSION,
@@ -196,9 +218,9 @@
       totalEvents,
       chunkSize,
       processedEvents: cursor,
-      sourceEventCountBefore: Math.max(0, Math.floor(Number(options.sourceEventCountBefore) || totalEvents)),
-      sourceEventCountAfter: Math.max(0, Math.floor(Number(options.sourceEventCountAfter) || totalEvents)),
-      reviewedDecisionCount: Math.max(0, Math.floor(Number(options.reviewedDecisionCount) || 0)),
+      sourceEventCountBefore: nonNegativeInteger(options.sourceEventCountBefore, totalEvents),
+      sourceEventCountAfter: nonNegativeInteger(options.sourceEventCountAfter, totalEvents),
+      reviewedDecisionCount: nonNegativeInteger(options.reviewedDecisionCount),
       integrityStatus: clean(options.integrityStatus) || 'not_checked',
     };
   }
@@ -247,6 +269,7 @@
     canonicalEnvelope,
     timestampDistanceMs,
     durationsCompatible,
+    normalizedSignatureMatches,
     matchingEvidence,
     safeAuditSource,
     safeAuditSummary,
