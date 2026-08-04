@@ -155,11 +155,14 @@ test('v82 synthetic browser fixtures include production-style timestamps, malfor
 
 test('current build facts, contrast and shell entries remain deterministic', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', 'listeningV81.css'), 'utf8');
+  const concertCss = fs.readFileSync(path.join(__dirname, '..', 'concertCardsV86.css'), 'utf8');
   const state = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'docs', 'LIVEVAULT_BUILD_STATE.json'), 'utf8'));
   assert.match(css, /start-refresh-btn svg/);
   assert.match(css, /@media\(min-width:391px\)/);
-  assert.equal(state.appVersion, 'v85');
-  assert.equal(state.serviceWorkerCacheVersion, 'v85');
+  assert.match(concertCss, /--concert-card-background-v86:\s*#232a32/);
+  assert.equal(state.appVersion, 'v86');
+  assert.equal(state.serviceWorkerCacheVersion, 'v86');
+  assert.ok(state.shellFiles.includes('concertCardsV86.css'));
   assert.ok(state.shellFiles.includes('listeningV82Corrections.js'));
   assert.ok(state.shellFiles.includes('listeningV82GenreFix.js'));
   assert.ok(state.shellFiles.includes('listeningV83ChartFix.js'));
