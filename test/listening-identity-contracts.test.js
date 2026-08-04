@@ -19,6 +19,9 @@ function event(overrides = {}) {
 test('uses additive identity and canonical envelopes without deleting provenance', () => {
   const source = event({
     localBandId: 'band-synthetic',
+    spotifyArtistId: 'spotify-artist',
+    spotifyTrackId: 'spotify-track',
+    spotifyAlbumId: 'spotify-album',
     musicbrainzArtistIds: ['11111111-2222-4333-8444-555555555555', '66666666-7777-4888-8999-aaaaaaaaaaaa'],
     musicbrainzRecordingId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
     reviewedDecision: { action: 'keep_separate' },
@@ -26,7 +29,12 @@ test('uses additive identity and canonical envelopes without deleting provenance
   });
   const identity = contracts.identityEnvelope(source);
   const canonical = contracts.canonicalEnvelope(source);
+  assert.equal(identity.identityVersion, contracts.IDENTITY_VERSION);
+  assert.equal(canonical.dedupeVersion, contracts.DEDUPE_VERSION);
   assert.equal(identity.bandId, 'band-synthetic');
+  assert.equal(identity.spotifyArtistId, 'spotify-artist');
+  assert.equal(identity.spotifyTrackId, 'spotify-track');
+  assert.equal(identity.spotifyAlbumId, 'spotify-album');
   assert.equal(identity.artistMbid, '11111111-2222-4333-8444-555555555555');
   assert.deepEqual(identity.artistMbids, [
     '11111111-2222-4333-8444-555555555555',
@@ -36,6 +44,15 @@ test('uses additive identity and canonical envelopes without deleting provenance
   assert.deepEqual(identity.reviewedDecision, { action: 'keep_separate' });
   assert.equal(canonical.sourceEventId, 'synthetic:1');
   assert.equal(source.unknownFutureField, 'preserved-on-source');
+});
+
+test('identity and dedupe versions remain independently explicit', () => {
+  const identity = contracts.identityEnvelope(event());
+  const canonical = contracts.canonicalEnvelope(event());
+  assert.equal(identity.identityVersion, 1);
+  assert.equal(canonical.dedupeVersion, 1);
+  assert.equal(Object.hasOwn(identity, 'dedupeVersion'), false);
+  assert.equal(Object.hasOwn(canonical, 'identityVersion'), false);
 });
 
 test('explicit authoritative bandId wins over derived localBandId', () => {
@@ -67,20 +84,16 @@ test('exact Spotify track ID is level 3 and unknown duration does not block it',
   });
 });
 
-test('trusted release and known duration evidence remains non-automatic level 4', () => {
+test('trusted release duration and matching recording signature remains non-automatic level 4', () => {
   const left = event({ source: 'spotify_import', stableListenId: 'spotify:1', musicbrainzReleaseId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' });
   const right = event({ stableListenId: 'listenbrainz:1', musicbrainzReleaseId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', listenedDurationMs: 181500 });
   assert.deepEqual(contracts.matchingEvidence(left, right), {
-    tier: 4, outcome: 'probable_duplicate', method: 'trusted_release_duration', automatic: false,
+    tier: 4, outcome: 'probable_duplicate', method: 'trusted_release_duration_signature', automatic: false,
   });
 });
 
 test('level 4 requires both durations to be known', () => {
-  const base = {
-    musicbrainzReleaseId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
-    artistCreditName: 'Different Artist',
-    recordingTitle: 'Different Track',
-  };
+  const base = { musicbrainzReleaseId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' };
   const oneMissing = contracts.matchingEvidence(
     event({ ...base, source: 'spotify_import', stableListenId: 'spotify:missing', listenedDurationMs: 180000 }),
     event({ ...base, stableListenId: 'listenbrainz:missing', listenedDurationMs: null }),
@@ -89,8 +102,31 @@ test('level 4 requires both durations to be known', () => {
     event({ ...base, source: 'spotify_import', stableListenId: 'spotify:both-missing', listenedDurationMs: null }),
     event({ ...base, stableListenId: 'listenbrainz:both-missing', listenedDurationMs: null }),
   );
-  assert.deepEqual(oneMissing, { tier: null, outcome: 'unique', method: null, automatic: false });
-  assert.deepEqual(bothMissing, { tier: null, outcome: 'unique', method: null, automatic: false });
+  assert.equal(oneMissing.tier, 5);
+  assert.equal(oneMissing.outcome, 'ambiguous');
+  assert.equal(bothMissing.tier, 5);
+  assert.equal(bothMissing.outcome, 'ambiguous');
+});
+
+test('different tracks on the same release remain unique despite close durations and timestamps', () => {
+  const result = contracts.matchingEvidence(
+    event({
+      source: 'spotify_import',
+      stableListenId: 'spotify:album-track-one',
+      musicbrainzReleaseId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+      artistCreditName: 'Synthetic Artist',
+      recordingTitle: 'Track One',
+      listenedDurationMs: 180000,
+    }),
+    event({
+      stableListenId: 'listenbrainz:album-track-two',
+      musicbrainzReleaseId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+      artistCreditName: 'Synthetic Artist',
+      recordingTitle: 'Track Two',
+      listenedDurationMs: 181000,
+    }),
+  );
+  assert.deepEqual(result, { tier: null, outcome: 'unique', method: null, automatic: false });
 });
 
 test('title-only, cover, live and same-name evidence never silently merges', () => {
@@ -122,16 +158,17 @@ test('reviewed decisions survive reruns and block automatic replacement', () => 
 
 test('safe audit summary contains counts and month categories but no listening text or raw timestamps', () => {
   const summary = contracts.safeAuditSummary([
-    event({ source: 'spotify_import', stableListenId: 'spotify:1', spotifyTrackId: 'spotify-track' }),
+    event({ source: 'spotify_import', stableListenId: 'spotify:1', spotifyArtistId: 'spotify-artist', spotifyTrackId: 'spotify-track' }),
     event({ stableListenId: 'listenbrainz:1', listenedAt: '2026-08-05T10:00:00Z', musicbrainzRecordingId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' }),
     event({ source: 'private-user@example.com', stableListenId: 'private:1' }),
   ]);
   assert.equal(summary.eventCount, 3);
+  assert.equal(summary.spotifyArtistIdCount, 1);
   assert.deepEqual(summary.sourceCounts, { spotify_import: 1, listenbrainz: 1, other: 1 });
   assert.equal(summary.firstDateCategory, '2026-08');
   assert.equal(summary.lastDateCategory, '2026-08');
   const serialized = JSON.stringify(summary);
-  assert.doesNotMatch(serialized, /Synthetic Artist|Synthetic Track|10:00:00|spotify-track|private-user@example.com/);
+  assert.doesNotMatch(serialized, /Synthetic Artist|Synthetic Track|10:00:00|spotify-track|spotify-artist|private-user@example.com/);
 });
 
 test('candidate audit reports aggregate evidence tiers without claiming canonical reduction', () => {
@@ -161,18 +198,15 @@ test('migration checkpoints are chunked resumable idempotent and bounded', () =>
   let checkpoint = contracts.createMigrationCheckpoint({ totalEvents: 250403, chunkSize: 1000 });
   assert.equal(checkpoint.cursor, 0);
   assert.equal(checkpoint.status, 'pending');
-
   const first = contracts.nextMigrationChunk(checkpoint);
   assert.deepEqual({ start: first.start, end: first.end, count: first.count, done: first.done }, {
     start: 0, end: 1000, count: 1000, done: false,
   });
   checkpoint = first.checkpoint;
-
   const resumed = contracts.nextMigrationChunk(checkpoint);
   assert.equal(resumed.start, 1000);
   assert.equal(resumed.end, 2000);
   assert.equal(resumed.checkpoint.processedEvents, 2000);
-
   const normalizedAgain = contracts.createMigrationCheckpoint(resumed.checkpoint);
   assert.deepEqual(normalizedAgain, resumed.checkpoint);
 });
@@ -182,7 +216,6 @@ test('archive-scale migration planning stays bounded to deterministic chunks', (
   let chunks = 0;
   let largestChunk = 0;
   let finalChunk = 0;
-
   while (checkpoint.status !== 'complete') {
     const next = contracts.nextMigrationChunk(checkpoint);
     chunks += 1;
@@ -190,7 +223,6 @@ test('archive-scale migration planning stays bounded to deterministic chunks', (
     finalChunk = next.count;
     checkpoint = next.checkpoint;
   }
-
   assert.equal(chunks, 251);
   assert.equal(largestChunk, 1000);
   assert.equal(finalChunk, 403);
