@@ -36,12 +36,18 @@
     return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : fallback;
   }
 
+  function optionalNonNegativeInteger(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? Math.floor(number) : null;
+  }
+
   function identityEnvelope(event = {}) {
     const artistMbids = cleanList(event.artistMbids || event.musicbrainzArtistIds);
     const artistMbid = clean(event.artistMbid || event.musicbrainzArtistId) || artistMbids[0] || null;
     return {
       version: CONTRACT_VERSION,
-      bandId: clean(event.localBandId || event.bandId),
+      bandId: clean(event.bandId || event.localBandId),
       artistMbid,
       artistMbids,
       recordingMbid: clean(event.recordingMbid || event.musicbrainzRecordingId),
@@ -86,6 +92,12 @@
     return Math.abs(a - b) <= DURATION_TOLERANCE_MS;
   }
 
+  function knownDurationsCompatible(left, right) {
+    const a = Number(left?.listenedDurationMs);
+    const b = Number(right?.listenedDurationMs);
+    return a > 0 && b > 0 && Math.abs(a - b) <= DURATION_TOLERANCE_MS;
+  }
+
   function normalizedSignatureMatches(left, right) {
     const leftArtist = normalizeText(left?.artistCreditName);
     const rightArtist = normalizeText(right?.artistCreditName);
@@ -123,7 +135,7 @@
 
     const releaseA = clean(left.releaseMbid || left.musicbrainzReleaseId);
     const releaseB = clean(right.releaseMbid || right.musicbrainzReleaseId);
-    if (releaseA && releaseA === releaseB && durationsCompatible(left, right)) {
+    if (releaseA && releaseA === releaseB && knownDurationsCompatible(left, right)) {
       return { tier: 4, outcome: 'probable_duplicate', method: 'trusted_release_duration', automatic: false };
     }
 
@@ -186,7 +198,6 @@
       ambiguousCount: 0,
       probableCount: 0,
       reviewedCount: 0,
-      expectedCanonicalReduction: 0,
     };
     for (const pair of pairs) {
       const evidence = matchingEvidence(pair?.left, pair?.right);
@@ -194,10 +205,7 @@
       const key = Number.isInteger(evidence.tier) && evidence.tier >= 1 && evidence.tier <= 6
         ? `level${evidence.tier}` : 'none';
       result.byTier[key] += 1;
-      if (evidence.automatic) {
-        result.automaticCount += 1;
-        result.expectedCanonicalReduction += 1;
-      }
+      if (evidence.automatic) result.automaticCount += 1;
       if (evidence.outcome === 'ambiguous') result.ambiguousCount += 1;
       if (evidence.outcome === 'probable_duplicate') result.probableCount += 1;
       if (evidence.outcome === 'user_reviewed') result.reviewedCount += 1;
@@ -218,8 +226,8 @@
       totalEvents,
       chunkSize,
       processedEvents: cursor,
-      sourceEventCountBefore: nonNegativeInteger(options.sourceEventCountBefore, totalEvents),
-      sourceEventCountAfter: nonNegativeInteger(options.sourceEventCountAfter, totalEvents),
+      sourceEventCountBefore: optionalNonNegativeInteger(options.sourceEventCountBefore),
+      sourceEventCountAfter: optionalNonNegativeInteger(options.sourceEventCountAfter),
       reviewedDecisionCount: nonNegativeInteger(options.reviewedDecisionCount),
       integrityStatus: clean(options.integrityStatus) || 'not_checked',
     };
@@ -245,15 +253,19 @@
 
   function verifyMigrationIntegrity(checkpoint = {}) {
     const normalized = createMigrationCheckpoint(checkpoint);
-    const sourceCountsMatch = normalized.sourceEventCountBefore === normalized.sourceEventCountAfter;
+    const sourceCountsPresent = normalized.sourceEventCountBefore !== null
+      && normalized.sourceEventCountAfter !== null;
+    const sourceCountsMatch = sourceCountsPresent
+      && normalized.sourceEventCountBefore === normalized.sourceEventCountAfter;
     const cursorValid = normalized.cursor >= 0 && normalized.cursor <= normalized.totalEvents;
     const complete = normalized.status === 'complete' && normalized.cursor === normalized.totalEvents;
     return {
-      ok: sourceCountsMatch && cursorValid,
+      ok: sourceCountsPresent && sourceCountsMatch && cursorValid,
       complete,
+      sourceCountsPresent,
       sourceCountsMatch,
       cursorValid,
-      rollbackSafe: sourceCountsMatch,
+      rollbackSafe: sourceCountsPresent && sourceCountsMatch,
     };
   }
 
@@ -269,6 +281,7 @@
     canonicalEnvelope,
     timestampDistanceMs,
     durationsCompatible,
+    knownDurationsCompatible,
     normalizedSignatureMatches,
     matchingEvidence,
     safeAuditSource,
