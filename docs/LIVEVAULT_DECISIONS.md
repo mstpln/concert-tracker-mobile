@@ -319,3 +319,11 @@
 **Reason:** The new name and visual identity better describe marking and keeping bands and concert experiences while preserving the established app color and structure.
 
 **Consequence:** User-facing titles, PWA metadata and active branding use BANDMARKR. Stable IDs, user-owned data, local-storage and IndexedDB identifiers, provider ownership boundaries, remote data, internal compatibility names and the `concert-tracker-shell-*` cache namespace remain unchanged unless a separate technical migration is explicitly approved.
+
+## 2026-08-04 — Installed identity uses Bandmarkr and a simplified bookmark icon
+
+**Decision:** Keep the in-app top banner and outlined wordmark as uppercase **BANDMARKR**, while using title-case **Bandmarkr** for the installed-app name and home-screen label. The installed icon is the existing `#024ddf` blue background with a plain white bookmark, no `BM` lettering, and an approximately 10% smaller bookmark footprint.
+
+**Reason:** The title-case label has a better chance of fitting in mobile launcher layouts, and the simpler icon remains clearer at small sizes.
+
+**Consequence:** Manifest, document application metadata, favicon, Apple touch icon and PWA/maskable icon assets use the refined installed identity. The in-app banner, application UI, stable IDs, user data, local-storage and IndexedDB identifiers, provider boundaries, remote data and `concert-tracker-shell-*` namespace remain unchanged.
