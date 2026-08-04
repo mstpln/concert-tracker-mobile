@@ -1,6 +1,6 @@
 {
-  "name": "BANDMARKR",
-  "short_name": "BANDMARKR",
+  "name": "Bandmarkr",
+  "short_name": "Bandmarkr",
   "description": "Personal concert tracker — bands, tour dates, and shows you're attending.",
   "start_url": "./index.html",
   "scope": "./",
