@@ -37,6 +37,28 @@ test('v87 renders the approved BANDMARKR banner and PWA identity', async ({ page
   const manifest = await page.evaluate(async () => fetch('manifest.json').then((response) => response.json()));
   expect(manifest.name).toBe('BANDMARKR');
   expect(manifest.short_name).toBe('BANDMARKR');
+
+  const decodedIcons = await page.evaluate(async () => {
+    const icons = [
+      ['icons/icon-192.png', 192],
+      ['icons/icon-192-maskable.png', 192],
+      ['icons/icon-512.png', 512],
+      ['icons/icon-512-maskable.png', 512],
+    ];
+    return Promise.all(icons.map(async ([src, expected]) => {
+      const response = await fetch(src);
+      if (!response.ok) throw new Error(`${src} returned ${response.status}`);
+      const bitmap = await createImageBitmap(await response.blob());
+      const result = { src, expected, width: bitmap.width, height: bitmap.height };
+      bitmap.close();
+      return result;
+    }));
+  });
+  for (const icon of decodedIcons) {
+    expect(icon.width, icon.src).toBe(icon.expected);
+    expect(icon.height, icon.src).toBe(icon.expected);
+  }
+
   await expect(page.locator('#start-version-refresh')).toContainText('v87');
   await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-v87-bandmarkr.png`), fullPage: true });
 });
