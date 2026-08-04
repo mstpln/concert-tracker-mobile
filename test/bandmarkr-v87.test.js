@@ -18,6 +18,7 @@ function decodePng(file) {
   let bitDepth;
   let colorType;
   let interlace;
+  let palette;
   const idat = [];
   let sawIend = false;
 
@@ -36,6 +37,9 @@ function decodePng(file) {
       bitDepth = payload[8];
       colorType = payload[9];
       interlace = payload[12];
+    } else if (chunkType === 'PLTE') {
+      assert.equal(payload.length % 3, 0, `${file} has complete RGB palette entries`);
+      palette = payload;
     } else if (chunkType === 'IDAT') {
       idat.push(payload);
     } else if (chunkType === 'IEND') {
@@ -46,11 +50,12 @@ function decodePng(file) {
   }
 
   assert.equal(sawIend, true, `${file} contains IEND`);
-  assert.equal(bitDepth, 8, `${file} uses 8-bit channels`);
-  assert.ok(colorType === 2 || colorType === 6, `${file} uses RGB or RGBA pixels`);
+  assert.equal(bitDepth, 8, `${file} uses 8-bit channels or palette indexes`);
+  assert.ok(colorType === 2 || colorType === 3 || colorType === 6, `${file} uses RGB, indexed RGB, or RGBA pixels`);
+  if (colorType === 3) assert.ok(palette && palette.length >= 6, `${file} contains its indexed RGB palette`);
   assert.equal(interlace, 0, `${file} is non-interlaced`);
 
-  const bytesPerPixel = colorType === 6 ? 4 : 3;
+  const bytesPerPixel = colorType === 6 ? 4 : colorType === 2 ? 3 : 1;
   const stride = width * bytesPerPixel;
   const inflated = zlib.inflateSync(Buffer.concat(idat));
   assert.equal(inflated.length, height * (stride + 1), `${file} fully inflates to the expected pixel data length`);
@@ -81,11 +86,22 @@ function decodePng(file) {
     sourceOffset += stride;
   }
 
-  return { width, height, bytesPerPixel, pixels };
+  return { width, height, colorType, bytesPerPixel, palette, pixels };
 }
 
 function pixel(image, x, y) {
   const index = (y * image.width + x) * image.bytesPerPixel;
+  if (image.colorType === 3) {
+    const paletteIndex = image.pixels[index];
+    const paletteOffset = paletteIndex * 3;
+    assert.ok(paletteOffset + 2 < image.palette.length, 'indexed PNG pixel points to a valid palette entry');
+    return [
+      image.palette[paletteOffset],
+      image.palette[paletteOffset + 1],
+      image.palette[paletteOffset + 2],
+      255,
+    ];
+  }
   const channels = [...image.pixels.subarray(index, index + image.bytesPerPixel)];
   return image.bytesPerPixel === 3 ? [...channels, 255] : channels;
 }
