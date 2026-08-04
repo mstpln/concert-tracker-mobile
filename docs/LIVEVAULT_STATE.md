@@ -26,13 +26,17 @@ v86 is the merged charcoal-concert-card build from `style/v86-charcoal-concert-c
 
 v87 is the merged BANDMARKR rebrand from PR #61, merge commit `91f7d8ead58f49a016d3e7bd99463ff74396c6f8`. The in-app top banner uses the approved centered condensed uppercase **BANDMARKR** wordmark on the existing `#024ddf` blue background. Stable record IDs, user-owned fields, local-storage and IndexedDB data, provider identifiers, remote data, and the existing `concert-tracker-shell-*` cache namespace remained unchanged.
 
-v88 is the active installed-branding refinement on `style/v88-simplified-app-icon`. The in-app top banner remains visually unchanged and still reads **BANDMARKR**. Installed-app metadata uses **Bandmarkr** to improve the chance of the full launcher label fitting. PWA, maskable, favicon and Apple touch icon assets use the same `#024ddf` blue background with a plain white bookmark, no `BM` letters, and a bookmark footprint reduced by approximately 10% while retaining safe-area padding. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v88. No data, storage, provider, API or application-behavior changes are included.
+v88 is the merged installed-branding refinement from PR #62. The in-app top banner remains visually unchanged and still reads **BANDMARKR**. Installed-app metadata uses **Bandmarkr** to improve the chance of the full launcher label fitting. PWA, maskable, favicon and Apple touch icon assets use the same `#024ddf` blue background with a plain white bookmark, no `BM` letters, and a bookmark footprint reduced by approximately 10% while retaining safe-area padding. No data, storage, provider, API or application-behavior changes were included.
 
-Listening Build 3.2A is implemented on `feature/listening-3-2a-audit-contracts` in PR #63. Corrective PR QA #264 passed on the reviewed implementation; only continuity-document synchronization was changed afterward. It adds versioned additive identity and canonical-listen contracts, conservative evidence tiers, aggregate-only audit summaries, chunked resumable migration checkpoints, source-count integrity checks and synthetic regression coverage. It does not migrate IndexedDB or R2, call providers, change visible totals, alter the app shell, or bump v88. Build 3.3 now also includes trusted Spotify links for Top Track and Top Album titles using the existing past-setlist interaction pattern.
+Listening Build 3.2A is merged through PR #63 as commit `4b7614fd03f83aa3ea77f04c0b540338256044e4`. It establishes versioned additive identity and canonical-listen contracts, conservative evidence tiers, aggregate-only audit summaries, chunked resumable migration checkpoints, source-count integrity checks and synthetic regression coverage. It did not migrate IndexedDB or R2, call providers, change visible totals, alter the app shell, or bump v88.
+
+v89 / Listening Build 3.2B is implemented for review on `feature/listening-3-2b-derived-storage` in PR #64. It adds the private local database `bandmarkr-listening-derived-v1`, containing separate `listen-identities` and `listen-canonical` stores. The existing source-history database `livevault-listening-history-v1` and every Spotify or ListenBrainz source observation remain unchanged. Derived writes merge atomically inside one IndexedDB read/write transaction, preserve unknown future fields, and protect reviewed assignments and reviewed canonical decisions unless an explicit reviewed replacement is requested. Batch writes, paged reads and version rollback are bounded to at most 500 records per operation. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v89. No migration, canonical aggregate switch, R2 access, provider call, production workflow, or production-data change is included.
+
+Build 3.3 remains planned to add trusted Spotify links for Top Track and Top Album titles using stored Spotify identity and the existing past-setlist interaction pattern, alongside the later grouping, artwork and offline work. It does not begin until the remaining Build 3.2 implementation and rollout stages are separately approved.
 
 ListenBrainz is now connected on the user's primary mobile device and disconnected on the computer. The mobile device is the primary synchronization device; other connected LiveVault devices continue restoring shared listening updates from the private R2 manifest without needing the ListenBrainz token. The private token is stored only in the mobile browser and is not present in GitHub, Cloudflare configuration, logs or project documentation.
 
-## Build 3.2A contract state
+## Build 3.2 identity, canonical and storage state
 
 - Source Spotify and ListenBrainz observations remain immutable evidence.
 - Explicit BANDMARKR `bandId` is authoritative over derived `localBandId` when both exist.
@@ -41,6 +45,9 @@ ListenBrainz is now connected on the user's primary mobile device and disconnect
 - Automatic duplicate evidence is limited to exact provider IDs, exact recording MBIDs within 1,000 ms, or exact Spotify track IDs within 1,000 ms.
 - Trusted Level 4 release evidence is probable only when the release identity and normalized artist/title recording signature match and both durations are known, positive and within 2,000 ms; artist/title, live, remix, cover, tribute and same-name text evidence never auto-merges.
 - Unknown duration is never fabricated and does not block exact-ID evidence.
+- Derived identity and canonical records live in a separate disposable local database rather than the source-history database.
+- Derived storage operations are bounded to 500 records and support deterministic pagination and resumable version rollback.
+- Reviewed decisions and their relationship fields survive automated reruns; replacement requires an explicit reviewed-write option.
 - Later migration must be chunked, resumable, idempotent, additive and rollback-safe for the 250,000+ event archive.
 - Migration integrity fails closed unless explicit before/after source counts are present and equal.
 - Candidate audit reports pair evidence counts only and does not claim a canonical reduction before one-to-one assignment.
@@ -115,7 +122,7 @@ The visible Releases feed accepts only actual Spotify catalogue releases with a 
 
 ## Data ownership and safety
 
-Bands and concerts preserve stable IDs, user-owned fields, provider ownership boundaries and unknown future fields. Listening source events remain distinct from derived LiveVault-band mapping, later identity relationships and optional album metadata.
+Bands and concerts preserve stable IDs, user-owned fields, provider ownership boundaries and unknown future fields. Listening source events remain distinct from derived LiveVault-band mapping, identity relationships and optional album metadata.
 
 QA uses fictional listening fixtures and the fake backend only. Automated tests may never contain the real archive, call the production Worker or send history to providers.
 
