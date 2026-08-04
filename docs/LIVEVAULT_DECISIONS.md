@@ -338,11 +338,11 @@
 
 ## 2026-08-04 — Automatic listening matches require trusted identity evidence
 
-**Decision:** Automatic duplicate matching is limited to exact same-provider event IDs, exact MusicBrainz recording IDs within 1,000 ms, or exact Spotify track IDs within 1,000 ms. Trusted release-and-duration evidence remains probable only. Artist/title, same-name, live, remix, cover and tribute text evidence never auto-merges.
+**Decision:** Automatic duplicate matching is limited to exact same-provider event IDs, exact MusicBrainz recording IDs within 1,000 ms, or exact Spotify track IDs within 1,000 ms. Level 4 remains probable only and requires matching release identity, timestamp compatibility, two known positive durations within 2,000 ms, and a matching normalized artist/title recording signature. Artist/title, same-name, live, remix, cover and tribute text evidence never auto-merges by itself.
 
-**Reason:** The current ListenBrainz adapter has integer-second timestamps and the existing overlap logic compares same-second fingerprints. A narrow one-second boundary preserves that reality without turning text similarity into identity.
+**Reason:** The current ListenBrainz adapter has integer-second timestamps and the existing overlap logic compares same-second fingerprints. A narrow one-second boundary preserves that reality without turning text similarity into identity, while the extra recording signature prevents different tracks on the same release from becoming noisy probable candidates.
 
-**Consequence:** Unknown duration does not block exact-ID matches and is never fabricated. Candidate assignment in later builds must be one-to-one so two genuine nearby listens remain distinct.
+**Consequence:** Unknown duration does not block exact-ID matches and is never fabricated. Level 4 cannot be satisfied by release identity or duration alone. Candidate assignment in later builds must be one-to-one so two genuine nearby listens remain distinct.
 
 ## 2026-08-04 — Listening migration must be chunked and rollback-safe
 
