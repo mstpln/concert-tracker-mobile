@@ -1,0 +1,27 @@
+:root {
+  --concert-card-background-v86: #eef1f5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Approved charcoal-blue option from the v86 comparison. */
+    --concert-card-background-v86: #232a32;
+  }
+}
+
+/*
+ * Concert listing cards only.
+ *
+ * This deliberately excludes generic .row-card uses such as bands, venues,
+ * alerts, releases, listening summaries and statistics. The selectors cover:
+ * - Start / My Concerts upcoming and past cards
+ * - Concert Dates results
+ * - Venue-detail concert results
+ * - Band Detail upcoming and past concert sections
+ */
+.row-card-mc,
+#screen-concerts .row-card,
+#screen-venue-detail .row-card,
+#screen-profile .profile-divider .row-card {
+  background: var(--concert-card-background-v86);
+}

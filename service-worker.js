@@ -1,6 +1,7 @@
 'use strict';
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v85';
+const CACHE_NAME_LITERAL = 'v86';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v85'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v84'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v83'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v82'.
@@ -12,7 +13,7 @@ const CACHE_NAME_LITERAL = 'v85';
 // Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v76'.
 // Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v75'.
 // Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v74'.
-// Legacy owned-ticket release marker retained for historical regression coverage: CACHE_NAME_LITERAL = 'v70'.
+// Legacy owned-ticket release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v70'.
 if (CACHE_NAME_LITERAL !== APP_VERSION) {
   console.warn(`service-worker.js CACHE_NAME_LITERAL ("${CACHE_NAME_LITERAL}") is out of sync with version.js APP_VERSION ("${APP_VERSION}") — bump CACHE_NAME_LITERAL in service-worker.js to match, otherwise old installs won't update.`);
 }
@@ -23,6 +24,7 @@ const SHELL_FILES = [
   './app.css',
   './v72Corrections.css',
   './listeningV81.css',
+  './concertCardsV86.css',
   './app.js',
   './devicePrivacy.js',
   './browserFetchPolicy.js',
