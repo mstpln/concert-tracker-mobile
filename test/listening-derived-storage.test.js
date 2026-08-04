@@ -176,11 +176,12 @@ test('read and rollback limits remain bounded for archive-scale derived data', (
   const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'listeningDerivedStorage.js'), 'utf8');
   assert.match(source, /getAll\(range, limit\)/);
   assert.doesNotMatch(source, /getAll\(\)/);
-  assert.match(source, /deleted >= limit/);
+  assert.match(source, /processed >= limit/);
   assert.match(source, /hasMore/);
+  assert.match(source, /historyStore\.put\(clone\(existing\)\)/);
 });
 
-test('schema upgrade adds only the two derived stores', () => {
+test('schema upgrade adds current and version-history stores without source storage', () => {
   const created = [];
   const indexes = [];
   const db = {
@@ -194,14 +195,18 @@ test('schema upgrade adds only the two derived stores', () => {
   assert.deepEqual(created, [
     [storage.IDENTITY_STORE, { keyPath: 'sourceEventId' }],
     [storage.CANONICAL_STORE, { keyPath: 'sourceEventId' }],
+    [storage.IDENTITY_HISTORY_STORE, { keyPath: ['sourceEventId', 'identityVersion'] }],
+    [storage.CANONICAL_HISTORY_STORE, { keyPath: ['sourceEventId', 'dedupeVersion'] }],
   ]);
-  assert.equal(indexes.length, 4);
+  assert.equal(indexes.length, 8);
   assert.equal(created.some(([name]) => name === 'listens'), false);
+  assert.equal(storage.DB_VERSION, 2);
 });
 
 test('schema upgrade is idempotent for an already upgraded database', () => {
+  const existing = [storage.IDENTITY_STORE, storage.CANONICAL_STORE, storage.IDENTITY_HISTORY_STORE, storage.CANONICAL_HISTORY_STORE];
   const db = {
-    objectStoreNames: { contains: (name) => [storage.IDENTITY_STORE, storage.CANONICAL_STORE].includes(name) },
+    objectStoreNames: { contains: (name) => existing.includes(name) },
     createObjectStore() { throw new Error('must not create an existing store'); },
   };
   assert.doesNotThrow(() => storage.upgradeSchema(db));
