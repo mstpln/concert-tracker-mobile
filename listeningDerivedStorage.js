@@ -84,6 +84,16 @@
     return merged;
   }
 
+  function preserveCurrentReview(restored, current) {
+    const result = clone(restored);
+    if (!current?.reviewedDecision) return result;
+    for (const field of protectedReviewedFields(current)) result[field] = clone(current[field]);
+    result.reviewedDecision = clone(current.reviewedDecision);
+    result.reviewedAt = current.reviewedAt || null;
+    result.status = current.status === 'user_reviewed' ? 'user_reviewed' : result.status;
+    return result;
+  }
+
   function ensureCurrentStore(db, name, versionField) {
     if (db.objectStoreNames.contains(name)) return;
     const store = db.createObjectStore(name, { keyPath: 'sourceEventId' });
@@ -225,13 +235,17 @@
     }
   }
 
-  function restorePriorSnapshot(historyIndex, sourceEventId, version, currentStore, currentCursor, complete) {
-    const historyRequest = historyIndex.openCursor(root.IDBKeyRange.only(sourceEventId), 'prev');
+  function restorePriorSnapshot(historyIndex, currentRecord, version, currentStore, currentCursor, complete) {
+    const historyRequest = historyIndex.openCursor(root.IDBKeyRange.only(currentRecord.sourceEventId), 'prev');
     historyRequest.onsuccess = () => {
       const historyCursor = historyRequest.result;
       if (!historyCursor) {
+        if (currentRecord.reviewedDecision) {
+          complete('retained');
+          return;
+        }
         currentCursor.delete();
-        complete(false);
+        complete('removed');
         return;
       }
       const snapshot = historyCursor.value;
@@ -240,8 +254,8 @@
         historyCursor.continue();
         return;
       }
-      currentStore.put(snapshot);
-      complete(true);
+      currentStore.put(preserveCurrentReview(snapshot, currentRecord));
+      complete('restored');
     };
   }
 
@@ -254,6 +268,7 @@
     let processed = 0;
     let restored = 0;
     let removed = 0;
+    let retainedReviewed = 0;
     try {
       const tx = db.transaction([storeName, historyStore], 'readwrite');
       const currentStore = tx.objectStore(storeName);
@@ -266,8 +281,9 @@
         const cursor = request.result;
         if (!cursor || processed >= limit) return;
         processed += 1;
-        restorePriorSnapshot(historyIndex, cursor.value.sourceEventId, version, currentStore, cursor, (didRestore) => {
-          if (didRestore) restored += 1;
+        restorePriorSnapshot(historyIndex, cursor.value, version, currentStore, cursor, (outcome) => {
+          if (outcome === 'restored') restored += 1;
+          else if (outcome === 'retained') retainedReviewed += 1;
           else removed += 1;
           cursor.continue();
         });
@@ -277,6 +293,7 @@
         processed,
         restored,
         removed,
+        retainedReviewed,
         remaining: Math.max(0, matched - processed),
         hasMore: matched > processed,
       };
@@ -314,6 +331,7 @@
     normalizeBatch,
     protectedReviewedFields,
     mergeDerivedRecord,
+    preserveCurrentReview,
     upgradeSchema,
     openDb,
     putIdentity: (record, options) => putRecord(IDENTITY_STORE, record, options),
