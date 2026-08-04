@@ -6,6 +6,8 @@
   if (root) root.BandmarkrListeningIdentityContracts = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, () => {
   const CONTRACT_VERSION = 1;
+  const IDENTITY_VERSION = 1;
+  const DEDUPE_VERSION = 1;
   const TIMESTAMP_TOLERANCE_MS = 1000;
   const DURATION_TOLERANCE_MS = 2000;
   const DEFAULT_CHUNK_SIZE = 1000;
@@ -46,13 +48,15 @@
     const artistMbids = cleanList(event.artistMbids || event.musicbrainzArtistIds);
     const artistMbid = clean(event.artistMbid || event.musicbrainzArtistId) || artistMbids[0] || null;
     return {
-      version: CONTRACT_VERSION,
+      version: IDENTITY_VERSION,
+      identityVersion: IDENTITY_VERSION,
       bandId: clean(event.bandId || event.localBandId),
       artistMbid,
       artistMbids,
       recordingMbid: clean(event.recordingMbid || event.musicbrainzRecordingId),
       releaseMbid: clean(event.releaseMbid || event.musicbrainzReleaseId),
       releaseGroupMbid: clean(event.releaseGroupMbid || event.musicbrainzReleaseGroupId),
+      spotifyArtistId: clean(event.spotifyArtistId),
       spotifyTrackId: clean(event.spotifyTrackId),
       spotifyAlbumId: clean(event.spotifyAlbumId),
       source: clean(event.source),
@@ -66,7 +70,8 @@
 
   function canonicalEnvelope(event = {}) {
     return {
-      version: CONTRACT_VERSION,
+      version: DEDUPE_VERSION,
+      dedupeVersion: DEDUPE_VERSION,
       canonicalListenId: clean(event.canonicalListenId || event.stableListenId),
       duplicateOf: clean(event.duplicateOf),
       status: DEDUPE_STATUSES.includes(event.dedupeStatus) ? event.dedupeStatus : 'unique',
@@ -135,8 +140,10 @@
 
     const releaseA = clean(left.releaseMbid || left.musicbrainzReleaseId);
     const releaseB = clean(right.releaseMbid || right.musicbrainzReleaseId);
-    if (releaseA && releaseA === releaseB && knownDurationsCompatible(left, right)) {
-      return { tier: 4, outcome: 'probable_duplicate', method: 'trusted_release_duration', automatic: false };
+    if (releaseA && releaseA === releaseB
+      && knownDurationsCompatible(left, right)
+      && normalizedSignatureMatches(left, right)) {
+      return { tier: 4, outcome: 'probable_duplicate', method: 'trusted_release_duration_signature', automatic: false };
     }
 
     if (normalizedSignatureMatches(left, right)) {
@@ -156,6 +163,7 @@
       eventCount: 0,
       sourceCounts: {},
       stableIdCount: 0,
+      spotifyArtistIdCount: 0,
       spotifyTrackIdCount: 0,
       recordingMbidCount: 0,
       releaseMbidCount: 0,
@@ -172,6 +180,7 @@
       const source = safeAuditSource(event?.source);
       result.sourceCounts[source] = (result.sourceCounts[source] || 0) + 1;
       if (clean(event?.stableListenId)) result.stableIdCount += 1;
+      if (clean(event?.spotifyArtistId)) result.spotifyArtistIdCount += 1;
       if (clean(event?.spotifyTrackId)) result.spotifyTrackIdCount += 1;
       if (clean(event?.recordingMbid || event?.musicbrainzRecordingId)) result.recordingMbidCount += 1;
       if (clean(event?.releaseMbid || event?.musicbrainzReleaseId)) result.releaseMbidCount += 1;
@@ -271,6 +280,8 @@
 
   return {
     CONTRACT_VERSION,
+    IDENTITY_VERSION,
+    DEDUPE_VERSION,
     TIMESTAMP_TOLERANCE_MS,
     DURATION_TOLERANCE_MS,
     DEFAULT_CHUNK_SIZE,
