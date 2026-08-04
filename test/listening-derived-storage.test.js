@@ -35,7 +35,12 @@ test('canonical records default to their own source event without deleting evide
   assert.deepEqual(normalized.evidence, { tier: 1, method: 'provider_id' });
 });
 
-test('automation cannot overwrite a reviewed identity decision', () => {
+test('invalid versions fail safely to the current initial contract version', () => {
+  assert.equal(storage.normalizeIdentity({ sourceEventId: 'one', identityVersion: 0 }).identityVersion, 1);
+  assert.equal(storage.normalizeCanonical({ sourceEventId: 'two', dedupeVersion: -1 }).dedupeVersion, 1);
+});
+
+test('automation cannot overwrite a reviewed band assignment', () => {
   const existing = {
     sourceEventId: 'listenbrainz:reviewed',
     identityVersion: 1,
@@ -53,27 +58,54 @@ test('automation cannot overwrite a reviewed identity decision', () => {
     reviewedAt: null,
   };
   const merged = storage.mergeDerivedRecord(existing, incoming);
-  assert.equal(merged.bandId, 'band-automatic');
+  assert.equal(merged.bandId, 'band-approved');
+  assert.equal(merged.identityVersion, 2);
   assert.equal(merged.status, 'user_reviewed');
   assert.deepEqual(merged.reviewedDecision, existing.reviewedDecision);
   assert.equal(merged.reviewedAt, existing.reviewedAt);
+});
+
+test('automation cannot overwrite a reviewed keep-separate decision', () => {
+  const existing = {
+    sourceEventId: 'listenbrainz:separate',
+    status: 'user_reviewed',
+    canonicalListenId: 'listenbrainz:separate',
+    duplicateOf: null,
+    reviewedDecision: { action: 'keep_separate' },
+  };
+  const incoming = {
+    sourceEventId: 'listenbrainz:separate',
+    status: 'duplicate',
+    canonicalListenId: 'spotify:other',
+    duplicateOf: 'spotify:other',
+  };
+  const merged = storage.mergeDerivedRecord(existing, incoming);
+  assert.equal(merged.canonicalListenId, 'listenbrainz:separate');
+  assert.equal(merged.duplicateOf, null);
+  assert.equal(merged.status, 'user_reviewed');
 });
 
 test('explicit reviewed replacement is possible only when requested', () => {
   const existing = {
     sourceEventId: 'listenbrainz:reviewed',
     status: 'user_reviewed',
+    canonicalListenId: 'listenbrainz:reviewed',
+    duplicateOf: null,
     reviewedDecision: { action: 'keep_separate' },
     reviewedAt: '2026-08-04T10:00:00.000Z',
   };
   const incoming = {
     sourceEventId: 'listenbrainz:reviewed',
     status: 'user_reviewed',
+    canonicalListenId: 'spotify:approved',
+    duplicateOf: 'spotify:approved',
     reviewedDecision: { action: 'merge' },
     reviewedAt: '2026-08-04T11:00:00.000Z',
   };
   const merged = storage.mergeDerivedRecord(existing, incoming, { replaceReviewedDecision: true });
   assert.deepEqual(merged.reviewedDecision, { action: 'merge' });
+  assert.equal(merged.canonicalListenId, 'spotify:approved');
+  assert.equal(merged.duplicateOf, 'spotify:approved');
   assert.equal(merged.reviewedAt, '2026-08-04T11:00:00.000Z');
 });
 
@@ -102,4 +134,31 @@ test('identity and canonical versions remain independent', () => {
   assert.equal(Object.hasOwn(identity, 'dedupeVersion'), false);
   assert.equal(canonical.dedupeVersion, 4);
   assert.equal(Object.hasOwn(canonical, 'identityVersion'), false);
+});
+
+test('schema upgrade adds only the two derived stores', () => {
+  const created = [];
+  const indexes = [];
+  const db = {
+    objectStoreNames: { contains: () => false },
+    createObjectStore(name, options) {
+      created.push([name, options]);
+      return { createIndex: (indexName, keyPath, indexOptions) => indexes.push([name, indexName, keyPath, indexOptions]) };
+    },
+  };
+  storage.upgradeSchema(db);
+  assert.deepEqual(created, [
+    [storage.IDENTITY_STORE, { keyPath: 'sourceEventId' }],
+    [storage.CANONICAL_STORE, { keyPath: 'sourceEventId' }],
+  ]);
+  assert.equal(indexes.length, 4);
+  assert.equal(created.some(([name]) => name === storage.SOURCE_STORE), false);
+});
+
+test('schema upgrade is idempotent for an already upgraded database', () => {
+  const db = {
+    objectStoreNames: { contains: (name) => [storage.IDENTITY_STORE, storage.CANONICAL_STORE].includes(name) },
+    createObjectStore() { throw new Error('must not create an existing store'); },
+  };
+  assert.doesNotThrow(() => storage.upgradeSchema(db));
 });
