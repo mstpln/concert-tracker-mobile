@@ -9,6 +9,7 @@
   const LISTENBRAINZ_SETTINGS_KEY = 'livevault-listenbrainz-v1';
   const SHELL_CACHE_PREFIX = 'concert-tracker-shell-';
   const TICKET_DB_NAME = 'live-vault-owned-tickets';
+  const DERIVED_LISTENING_DB_NAME = 'bandmarkr-listening-derived-v1';
 
   async function removeShellCaches(cacheStorage = root?.caches) {
     if (!cacheStorage?.keys) return [];
@@ -38,12 +39,13 @@
     clearListenBrainz = () => root?.LiveVaultListenBrainz?.clearConnection?.(),
     clearHistory = () => root?.LiveVaultSpotifyHistory?.clear?.(),
     clearTickets = () => deleteDatabase(TICKET_DB_NAME),
+    clearDerivedListening = () => deleteDatabase(DERIVED_LISTENING_DB_NAME),
     clearConnection = root?.rsClearConnection,
     storage = root?.localStorage,
     cacheStorage = root?.caches,
     reload = () => root?.location?.reload?.(),
   } = {}) {
-    await Promise.allSettled([clearSpotify?.(), clearListenBrainz?.(), clearHistory?.(), clearTickets?.()]);
+    await Promise.allSettled([clearSpotify?.(), clearListenBrainz?.(), clearHistory?.(), clearTickets?.(), clearDerivedListening?.()]);
     clearConnection?.();
     storage?.removeItem?.(SETTINGS_KEY);
     storage?.removeItem?.(LISTENBRAINZ_SETTINGS_KEY);
@@ -75,7 +77,7 @@
     const eraseHint = root.document.createElement('p');
     eraseHint.className = 'settings-hint';
     eraseHint.dataset.deviceEraseHint = 'true';
-    eraseHint.textContent = 'Erases this browser’s connection, settings, Spotify authorization, ListenBrainz token, listening history, cached ticket PDFs and Live Vault app cache. Remote R2 data and permanent ticket files are not deleted.';
+    eraseHint.textContent = 'Erases this browser’s connection, settings, Spotify authorization, ListenBrainz token, listening history, derived listening data, cached ticket PDFs and Live Vault app cache. Remote R2 data and permanent ticket files are not deleted.';
     eraseButton.after(eraseHint);
 
     button.addEventListener('click', (event) => {
@@ -105,5 +107,5 @@
     else observeSettings();
   }
 
-  return { SETTINGS_KEY, LISTENBRAINZ_SETTINGS_KEY, SHELL_CACHE_PREFIX, TICKET_DB_NAME, removeShellCaches, deleteDatabase, disconnectDevice, eraseDevice, enhanceConnectionCard, observeSettings };
+  return { SETTINGS_KEY, LISTENBRAINZ_SETTINGS_KEY, SHELL_CACHE_PREFIX, TICKET_DB_NAME, DERIVED_LISTENING_DB_NAME, removeShellCaches, deleteDatabase, disconnectDevice, eraseDevice, enhanceConnectionCard, observeSettings };
 });

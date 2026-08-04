@@ -13,7 +13,7 @@ const shell = [
   'browserFetchPolicy.js', 'v72Corrections.js', 'v72FinalAdjustments.js',
   'securityHardening.js', 'listeningInsightsV81.js', 'listeningV81BootFix.js', 'listeningV81ReviewFix.js', 'listeningV82Corrections.js', 'listeningV82GenreFix.js', 'listeningV82FailSafe.js', 'listeningV83ChartFix.js', 'listeningV83WindowFix.js', 'listeningV84ChartRenderFix.js', 'listeningV85RankingAndStatsUnits.js', 'dataLib.js', 'listeningStats.js', 'listeningStatsV81.js',
   'listeningFixtures.js', 'spotifyHistoryImport.js', 'listeningVaultBridge.js',
-  'listeningVault.js', 'listeningHistoryV2.js', 'listeningIncrementalVault.js',
+  'listeningVault.js', 'listeningHistoryV2.js', 'listeningDerivedStorage.js', 'listeningIncrementalVault.js',
   'listenbrainzSync.js', 'spotifyHistoryBootstrap.js', 'icons.js',
   'conflictMerge.js', 'remoteStore.js', 'ownedTickets.js', 'musicbrainzState.js',
   'providerIdentityState.js', 'weather.js', 'spotifyUser.js', 'version.js',
