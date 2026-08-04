@@ -8,18 +8,15 @@ const zlib = require('node:zlib');
 const root = path.join(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
-const CRC_TABLE = Array.from({ length: 256 }, (_, index) => {
-  let value = index >>> 0;
-  for (let bit = 0; bit < 8; bit += 1) {
-    value = ((value & 1) ? (0xedb88320 ^ (value >>> 1)) : (value >>> 1)) >>> 0;
-  }
-  return value;
-});
-
 function crc32(buffer) {
-  let crc = 0xffffffff;
-  for (const byte of buffer) crc = (CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8)) >>> 0;
-  return (crc ^ 0xffffffff) >>> 0;
+  let crc = 0xffffffffn;
+  for (const byte of buffer) {
+    crc ^= BigInt(byte);
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc & 1n) ? ((crc >> 1n) ^ 0xedb88320n) : (crc >> 1n);
+    }
+  }
+  return Number((crc ^ 0xffffffffn) & 0xffffffffn);
 }
 
 function decodePng(file) {
