@@ -28,6 +28,7 @@ function decodePng(file) {
   let interlace;
   const idat = [];
   let sawIend = false;
+
   while (offset < data.length) {
     assert.ok(offset + 12 <= data.length, `${file} has a complete PNG chunk header`);
     const length = data.readUInt32BE(offset);
@@ -35,8 +36,11 @@ function decodePng(file) {
     const end = offset + 12 + length;
     assert.ok(end <= data.length, `${file} has a complete ${type.toString('ascii')} chunk`);
     const payload = data.subarray(offset + 8, offset + 8 + length);
-    const expectedCrc = data.readUInt32BE(offset + 8 + length);
-    assert.equal(crc32(Buffer.concat([type, payload])), expectedCrc, `${file} ${type.toString('ascii')} CRC is valid`);
+    assert.equal(
+      crc32(Buffer.concat([type, payload])),
+      data.readUInt32BE(offset + 8 + length),
+      `${file} ${type.toString('ascii')} CRC is valid`,
+    );
     const chunkType = type.toString('ascii');
     if (chunkType === 'IHDR') {
       width = payload.readUInt32BE(0);
@@ -51,19 +55,21 @@ function decodePng(file) {
     }
     offset = end;
   }
+
   assert.equal(sawIend, true, `${file} contains IEND`);
   assert.equal(bitDepth, 8, `${file} uses 8-bit channels`);
-  assert.equal(colorType, 6, `${file} uses RGBA pixels`);
+  assert.ok(colorType === 2 || colorType === 6, `${file} uses RGB or RGBA pixels`);
   assert.equal(interlace, 0, `${file} is non-interlaced`);
-  const inflated = zlib.inflateSync(Buffer.concat(idat));
-  const bytesPerPixel = 4;
+
+  const bytesPerPixel = colorType === 6 ? 4 : 3;
   const stride = width * bytesPerPixel;
+  const inflated = zlib.inflateSync(Buffer.concat(idat));
   assert.equal(inflated.length, height * (stride + 1), `${file} fully inflates to the expected pixel data length`);
   const pixels = Buffer.alloc(width * height * bytesPerPixel);
   let sourceOffset = 0;
+
   for (let y = 0; y < height; y += 1) {
-    const filter = inflated[sourceOffset];
-    sourceOffset += 1;
+    const filter = inflated[sourceOffset++];
     assert.ok(filter >= 0 && filter <= 4, `${file} uses a supported PNG filter`);
     for (let x = 0; x < stride; x += 1) {
       const raw = inflated[sourceOffset + x];
@@ -85,12 +91,13 @@ function decodePng(file) {
     }
     sourceOffset += stride;
   }
-  return { width, height, pixels };
+  return { width, height, bytesPerPixel, pixels };
 }
 
 function pixel(image, x, y) {
-  const index = (y * image.width + x) * 4;
-  return [...image.pixels.subarray(index, index + 4)];
+  const index = (y * image.width + x) * image.bytesPerPixel;
+  const channels = [...image.pixels.subarray(index, index + image.bytesPerPixel)];
+  return image.bytesPerPixel === 3 ? [...channels, 255] : channels;
 }
 
 function validateIcon(file, expectedSize) {
