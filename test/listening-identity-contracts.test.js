@@ -136,6 +136,27 @@ test('migration checkpoints are chunked resumable idempotent and bounded', () =>
   assert.deepEqual(normalizedAgain, resumed.checkpoint);
 });
 
+test('archive-scale migration planning stays bounded to deterministic chunks', () => {
+  let checkpoint = contracts.createMigrationCheckpoint({ totalEvents: 250403, chunkSize: 1000 });
+  let chunks = 0;
+  let largestChunk = 0;
+  let finalChunk = 0;
+
+  while (checkpoint.status !== 'complete') {
+    const next = contracts.nextMigrationChunk(checkpoint);
+    chunks += 1;
+    largestChunk = Math.max(largestChunk, next.count);
+    finalChunk = next.count;
+    checkpoint = next.checkpoint;
+  }
+
+  assert.equal(chunks, 251);
+  assert.equal(largestChunk, 1000);
+  assert.equal(finalChunk, 403);
+  assert.equal(checkpoint.cursor, 250403);
+  assert.equal(checkpoint.processedEvents, 250403);
+});
+
 test('migration integrity fails closed on source-count drift and supports rollback', () => {
   const safe = contracts.verifyMigrationIntegrity({
     totalEvents: 250403,
