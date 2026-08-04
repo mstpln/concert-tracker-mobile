@@ -19,6 +19,7 @@ function event(overrides = {}) {
 test('uses additive identity and canonical envelopes without deleting provenance', () => {
   const source = event({
     localBandId: 'band-synthetic',
+    musicbrainzArtistIds: ['11111111-2222-4333-8444-555555555555', '66666666-7777-4888-8999-aaaaaaaaaaaa'],
     musicbrainzRecordingId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
     reviewedDecision: { action: 'keep_separate' },
     unknownFutureField: 'preserved-on-source',
@@ -26,6 +27,11 @@ test('uses additive identity and canonical envelopes without deleting provenance
   const identity = contracts.identityEnvelope(source);
   const canonical = contracts.canonicalEnvelope(source);
   assert.equal(identity.bandId, 'band-synthetic');
+  assert.equal(identity.artistMbid, '11111111-2222-4333-8444-555555555555');
+  assert.deepEqual(identity.artistMbids, [
+    '11111111-2222-4333-8444-555555555555',
+    '66666666-7777-4888-8999-aaaaaaaaaaaa',
+  ]);
   assert.equal(identity.recordingMbid, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
   assert.deepEqual(identity.reviewedDecision, { action: 'keep_separate' });
   assert.equal(canonical.sourceEventId, 'synthetic:1');
@@ -84,13 +90,14 @@ test('safe audit summary contains counts and month categories but no listening t
   const summary = contracts.safeAuditSummary([
     event({ source: 'spotify_import', stableListenId: 'spotify:1', spotifyTrackId: 'spotify-track' }),
     event({ stableListenId: 'listenbrainz:1', listenedAt: '2026-08-05T10:00:00Z', musicbrainzRecordingId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' }),
+    event({ source: 'private-user@example.com', stableListenId: 'private:1' }),
   ]);
-  assert.equal(summary.eventCount, 2);
-  assert.deepEqual(summary.sourceCounts, { spotify_import: 1, listenbrainz: 1 });
+  assert.equal(summary.eventCount, 3);
+  assert.deepEqual(summary.sourceCounts, { spotify_import: 1, listenbrainz: 1, other: 1 });
   assert.equal(summary.firstDateCategory, '2026-08');
   assert.equal(summary.lastDateCategory, '2026-08');
   const serialized = JSON.stringify(summary);
-  assert.doesNotMatch(serialized, /Synthetic Artist|Synthetic Track|10:00:00|spotify-track/);
+  assert.doesNotMatch(serialized, /Synthetic Artist|Synthetic Track|10:00:00|spotify-track|private-user@example.com/);
 });
 
 test('candidate audit reports only aggregate evidence tiers and expected reduction', () => {
