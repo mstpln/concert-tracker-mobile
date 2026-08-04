@@ -64,6 +64,7 @@ const SHELL_FILES = [
   './spotifyUser.js',
   './version.js',
   './manifest.json',
+  './icons/bandmarkr-wordmark.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-192-maskable.png',
