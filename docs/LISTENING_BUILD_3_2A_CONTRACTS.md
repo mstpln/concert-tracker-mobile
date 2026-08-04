@@ -11,7 +11,7 @@ Build 3.2A is an implementation-foundation branch only. It does not migrate prod
 - Spotify-import events require a Spotify track ID, a duration of at least 30 seconds and a stable listen ID.
 - ListenBrainz events use integer-second provider timestamps, preserve available recording/release/artist MBIDs and may have unknown duration.
 - Current merge protection rejects an existing stable ID or an exact same-second normalized artist/title fingerprint. That protection currently discards the incoming overlap rather than preserving both observations as an explicit canonical relationship.
-- `localBandId` is derived at read time from normalized artist name. The BANDMARKR band ID remains the application navigation and user-owned-state authority.
+- `localBandId` is derived at read time from normalized artist name. An explicit BANDMARKR `bandId` is authoritative when both fields exist.
 - Top Bands ranks by known listening time. Top Tracks and Top Albums rank by listen count with deterministic tie-breakers.
 - The durable R2 archive/manifest and local IndexedDB remain separate; this build does not alter either.
 
@@ -50,10 +50,10 @@ Current Spotify and ListenBrainz adapters normalize timestamps to ISO values whi
 - Level 1: same provider and exact source event ID — automatic exact duplicate.
 - Level 2: exact recording MBID and timestamp distance no greater than 1,000 ms — automatic exact duplicate candidate.
 - Level 3: exact Spotify track ID and timestamp distance no greater than 1,000 ms — automatic exact duplicate candidate.
-- Level 4: trusted release/recording evidence, compatible timestamp and known durations within 2,000 ms — probable only; no automatic merge in 3.2A.
+- Level 4: trusted release evidence, compatible timestamp and two known positive durations within 2,000 ms — probable only; no automatic merge in 3.2A.
 - Levels 5–6: normalized strings, same-name, cover, tribute or artist/title-only evidence — ambiguous or unmatched; never automatic.
 
-Unknown duration is never fabricated. It does not block Levels 1–3. Two close genuine listens remain protected because later candidate assignment must be one-to-one and cannot use title-only evidence.
+Unknown duration is never fabricated. It does not block Levels 1–3, but it cannot satisfy Level 4. Two close genuine listens remain protected because later candidate assignment must be one-to-one and cannot use title-only evidence.
 
 ## Migration design
 
@@ -68,7 +68,7 @@ The later migration must:
 7. rebuild aggregates from canonical representatives only after integrity checks pass;
 8. roll back by disabling/removing the derived version while leaving source events and prior readable schemas intact.
 
-A synthetic archive larger than 250,000 events must validate linear or indexed-window behavior, bounded memory, no spread-argument use and no all-at-once transaction.
+Integrity verification fails closed unless explicit finite non-negative before/after source counts are present and equal. A synthetic archive larger than 250,000 events must validate linear or indexed-window behavior, bounded memory, no spread-argument use and no all-at-once transaction.
 
 ## Aggregate contract
 
@@ -85,7 +85,7 @@ Existing results change only for explicitly validated duplicate corrections.
 
 ## Safe audit output
 
-Public CI output may include only schema version, source counts, stable-ID coverage, identity coverage, duplicate-candidate counts by evidence tier, ambiguous counts, expected canonical-count delta and month-level date boundaries. It may not include artist names, track names, album names, raw timestamps, tokens, URLs or event payloads.
+Public CI output may include only schema version, source counts, stable-ID coverage, identity coverage, duplicate-candidate counts by evidence tier, ambiguous counts and month-level date boundaries. Candidate-pair counts are not presented as an expected canonical reduction before deterministic one-to-one assignment. Audit output may not include artist names, track names, album names, raw timestamps, tokens, URLs or event payloads.
 
 ## Build 3.3 addition: Spotify links
 
