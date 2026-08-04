@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v88",
-  "serviceWorkerCacheVersion": "v88",
+  "appVersion": "v89",
+  "serviceWorkerCacheVersion": "v89",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 20,
@@ -41,6 +41,7 @@
     "listeningStats.js",
     "listeningStatsV81.js",
     "listeningFixtures.js",
+    "listeningDerivedStorage.js",
     "spotifyHistoryImport.js",
     "listeningVaultBridge.js",
     "listeningVault.js",
