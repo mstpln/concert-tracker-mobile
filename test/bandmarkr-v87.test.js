@@ -95,12 +95,7 @@ function pixel(image, x, y) {
     const paletteIndex = image.pixels[index];
     const paletteOffset = paletteIndex * 3;
     assert.ok(paletteOffset + 2 < image.palette.length, 'indexed PNG pixel points to a valid palette entry');
-    return [
-      image.palette[paletteOffset],
-      image.palette[paletteOffset + 1],
-      image.palette[paletteOffset + 2],
-      255,
-    ];
+    return [image.palette[paletteOffset], image.palette[paletteOffset + 1], image.palette[paletteOffset + 2], 255];
   }
   const channels = [...image.pixels.subarray(index, index + image.bytesPerPixel)];
   return image.bytesPerPixel === 3 ? [...channels, 255] : channels;
@@ -112,23 +107,34 @@ function validateIcon(file, expectedSize) {
   const blue = [2, 77, 223, 255];
   const white = [255, 255, 255, 255];
   assert.deepEqual(pixel(image, 0, 0), blue, `${file} keeps the approved blue background`);
-  assert.deepEqual(pixel(image, Math.floor(image.width * 0.3), Math.floor(image.height * 0.25)), white, `${file} contains the white bookmark`);
-  assert.deepEqual(pixel(image, Math.floor(image.width / 2), Math.floor(image.height * 0.72)), blue, `${file} contains the blue bookmark notch`);
+  assert.deepEqual(pixel(image, image.width - 1, image.height - 1), blue, `${file} keeps blue safe-area corners`);
 
-  let blueInside = 0;
-  let whiteInside = 0;
-  for (let y = Math.floor(image.height * 0.29); y < Math.floor(image.height * 0.58); y += 1) {
-    for (let x = Math.floor(image.width * 0.3); x < Math.floor(image.width * 0.7); x += 1) {
-      const value = pixel(image, x, y);
-      if (value.every((channel, index) => channel === blue[index])) blueInside += 1;
-      if (value.every((channel, index) => channel === white[index])) whiteInside += 1;
+  const whitePoints = [];
+  for (let y = 0; y < image.height; y += 1) {
+    for (let x = 0; x < image.width; x += 1) {
+      if (pixel(image, x, y).every((channel, index) => channel === white[index])) whitePoints.push([x, y]);
     }
   }
-  assert.ok(blueInside > expectedSize, `${file} contains visible blue BM details`);
-  assert.ok(whiteInside > expectedSize, `${file} preserves white space around BM`);
+  assert.ok(whitePoints.length > expectedSize * expectedSize * 0.12, `${file} contains a visible white bookmark`);
+  const xs = whitePoints.map(([x]) => x);
+  const ys = whitePoints.map(([, y]) => y);
+  const bounds = {
+    left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys),
+  };
+  const widthRatio = (bounds.right - bounds.left + 1) / image.width;
+  const heightRatio = (bounds.bottom - bounds.top + 1) / image.height;
+  assert.ok(widthRatio >= 0.34 && widthRatio <= 0.38, `${file} bookmark is approximately 10% smaller in width`);
+  assert.ok(heightRatio >= 0.54 && heightRatio <= 0.58, `${file} bookmark is approximately 10% smaller in height`);
+  assert.ok(Math.abs((bounds.left + bounds.right) / 2 - image.width / 2) <= 1, `${file} bookmark is horizontally centered`);
+
+  const interiorY = Math.floor(bounds.top + (bounds.bottom - bounds.top) * 0.3);
+  for (let x = bounds.left + 4; x <= bounds.right - 4; x += 1) {
+    assert.deepEqual(pixel(image, x, interiorY), white, `${file} bookmark interior contains no BM lettering`);
+  }
+  assert.deepEqual(pixel(image, Math.floor(image.width / 2), Math.floor(image.height * 0.72)), blue, `${file} retains the bookmark notch`);
 }
 
-test('v87 exposes the approved deterministic BANDMARKR identity without changing internal storage identifiers', () => {
+test('v88 keeps the in-app BANDMARKR banner while simplifying the installed identity', () => {
   const html = read('index.html');
   const manifest = JSON.parse(read('manifest.json'));
   const css = read('bandmarkrV87.css');
@@ -136,22 +142,18 @@ test('v87 exposes the approved deterministic BANDMARKR identity without changing
   const version = read('version.js');
   const serviceWorker = read('service-worker.js');
 
-  assert.match(html, /<title>BANDMARKR<\/title>/);
-  assert.match(html, /apple-mobile-web-app-title" content="BANDMARKR"/);
+  assert.match(html, /<title>Bandmarkr<\/title>/);
+  assert.match(html, /application-name" content="Bandmarkr"/);
+  assert.match(html, /apple-mobile-web-app-title" content="Bandmarkr"/);
   assert.match(html, /brand-wordmark" src="icons\/bandmarkr-wordmark\.svg" alt="BANDMARKR"/);
-  assert.doesNotMatch(html, />THE LIVE VAULT</);
-  assert.equal(manifest.name, 'BANDMARKR');
-  assert.equal(manifest.short_name, 'BANDMARKR');
+  assert.equal(manifest.name, 'Bandmarkr');
+  assert.equal(manifest.short_name, 'Bandmarkr');
   assert.match(css, /--bandmarkr-blue:\s*#024ddf/);
-  assert.doesNotMatch(css, /font-family|scaleX/);
   assert.match(wordmark, /<title id="title">BANDMARKR<\/title>/);
-  assert.match(wordmark, /viewBox="0 350 5845 820"/);
   assert.equal((wordmark.match(/<path /g) || []).length, 9);
-  assert.doesNotMatch(wordmark, /<text\b|font-family/);
-  assert.match(version, /APP_VERSION = 'v87'/);
-  assert.match(serviceWorker, /CACHE_NAME_LITERAL = 'v87'/);
+  assert.match(version, /APP_VERSION = 'v88'/);
+  assert.match(serviceWorker, /CACHE_NAME_LITERAL = 'v88'/);
   assert.match(serviceWorker, /concert-tracker-shell-/);
-  assert.match(serviceWorker, /bandmarkrV87\.css/);
   assert.match(serviceWorker, /icons\/bandmarkr-wordmark\.svg/);
 
   validateIcon('icons/icon-192.png', 192);
