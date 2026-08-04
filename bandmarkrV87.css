@@ -1,0 +1,15 @@
+:root {
+  --bandmarkr-blue: #024ddf;
+}
+
+/* v87 public-brand refinement only. All unrelated shell geometry remains owned by app.css. */
+.brand-banner {
+  background: var(--bandmarkr-blue);
+}
+
+.brand-banner .brand-wordmark {
+  display: block;
+  width: 150px;
+  height: auto;
+  max-width: calc(100% - 32px);
+}

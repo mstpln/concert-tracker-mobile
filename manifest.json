@@ -1,6 +1,6 @@
 {
-  "name": "The Live Vault",
-  "short_name": "LiveVault",
+  "name": "BANDMARKR",
+  "short_name": "BANDMARKR",
   "description": "Personal concert tracker — bands, tour dates, and shows you're attending.",
   "start_url": "./index.html",
   "scope": "./",
