@@ -38,6 +38,14 @@ test('uses additive identity and canonical envelopes without deleting provenance
   assert.equal(source.unknownFutureField, 'preserved-on-source');
 });
 
+test('explicit authoritative bandId wins over derived localBandId', () => {
+  const identity = contracts.identityEnvelope(event({
+    bandId: 'band-authoritative',
+    localBandId: 'band-derived-conflict',
+  }));
+  assert.equal(identity.bandId, 'band-authoritative');
+});
+
 test('same-source exact IDs are level 1 duplicates', () => {
   const result = contracts.matchingEvidence(event(), event());
   assert.deepEqual(result, { tier: 1, outcome: 'exact_duplicate', method: 'provider_id', automatic: true });
@@ -59,12 +67,30 @@ test('exact Spotify track ID is level 3 and unknown duration does not block it',
   });
 });
 
-test('trusted release and duration evidence remains non-automatic level 4', () => {
+test('trusted release and known duration evidence remains non-automatic level 4', () => {
   const left = event({ source: 'spotify_import', stableListenId: 'spotify:1', musicbrainzReleaseId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' });
   const right = event({ stableListenId: 'listenbrainz:1', musicbrainzReleaseId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', listenedDurationMs: 181500 });
   assert.deepEqual(contracts.matchingEvidence(left, right), {
     tier: 4, outcome: 'probable_duplicate', method: 'trusted_release_duration', automatic: false,
   });
+});
+
+test('level 4 requires both durations to be known', () => {
+  const base = {
+    musicbrainzReleaseId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    artistCreditName: 'Different Artist',
+    recordingTitle: 'Different Track',
+  };
+  const oneMissing = contracts.matchingEvidence(
+    event({ ...base, source: 'spotify_import', stableListenId: 'spotify:missing', listenedDurationMs: 180000 }),
+    event({ ...base, stableListenId: 'listenbrainz:missing', listenedDurationMs: null }),
+  );
+  const bothMissing = contracts.matchingEvidence(
+    event({ ...base, source: 'spotify_import', stableListenId: 'spotify:both-missing', listenedDurationMs: null }),
+    event({ ...base, stableListenId: 'listenbrainz:both-missing', listenedDurationMs: null }),
+  );
+  assert.deepEqual(oneMissing, { tier: null, outcome: 'unique', method: null, automatic: false });
+  assert.deepEqual(bothMissing, { tier: null, outcome: 'unique', method: null, automatic: false });
 });
 
 test('title-only, cover, live and same-name evidence never silently merges', () => {
@@ -108,7 +134,7 @@ test('safe audit summary contains counts and month categories but no listening t
   assert.doesNotMatch(serialized, /Synthetic Artist|Synthetic Track|10:00:00|spotify-track|private-user@example.com/);
 });
 
-test('candidate audit reports only aggregate evidence tiers and expected reduction', () => {
+test('candidate audit reports aggregate evidence tiers without claiming canonical reduction', () => {
   const pairs = [
     { left: event(), right: event() },
     {
@@ -126,7 +152,7 @@ test('candidate audit reports only aggregate evidence tiers and expected reducti
   assert.equal(summary.byTier.level3, 1);
   assert.equal(summary.byTier.level5, 1);
   assert.equal(summary.automaticCount, 2);
-  assert.equal(summary.expectedCanonicalReduction, 2);
+  assert.equal(Object.hasOwn(summary, 'expectedCanonicalReduction'), false);
   assert.equal(summary.ambiguousCount, 1);
   assert.doesNotMatch(JSON.stringify(summary), /Synthetic Artist|Synthetic Track|spotify:|listenbrainz:/);
 });
@@ -172,7 +198,7 @@ test('archive-scale migration planning stays bounded to deterministic chunks', (
   assert.equal(checkpoint.processedEvents, 250403);
 });
 
-test('migration integrity fails closed on source-count drift and supports rollback', () => {
+test('migration integrity fails closed on missing or drifting source counts', () => {
   const safe = contracts.verifyMigrationIntegrity({
     totalEvents: 250403,
     cursor: 250403,
@@ -181,6 +207,7 @@ test('migration integrity fails closed on source-count drift and supports rollba
   });
   assert.equal(safe.ok, true);
   assert.equal(safe.complete, true);
+  assert.equal(safe.sourceCountsPresent, true);
   assert.equal(safe.rollbackSafe, true);
 
   const drifted = contracts.verifyMigrationIntegrity({
@@ -200,6 +227,16 @@ test('migration integrity fails closed on source-count drift and supports rollba
     sourceEventCountAfter: 0,
   });
   assert.equal(zeroed.ok, false);
+  assert.equal(zeroed.sourceCountsPresent, true);
   assert.equal(zeroed.sourceCountsMatch, false);
   assert.equal(zeroed.rollbackSafe, false);
+
+  const missing = contracts.verifyMigrationIntegrity({
+    totalEvents: 250403,
+    cursor: 250403,
+  });
+  assert.equal(missing.ok, false);
+  assert.equal(missing.sourceCountsPresent, false);
+  assert.equal(missing.sourceCountsMatch, false);
+  assert.equal(missing.rollbackSafe, false);
 });
