@@ -9,6 +9,7 @@
   const TIMESTAMP_TOLERANCE_MS = 1000;
   const DURATION_TOLERANCE_MS = 2000;
   const DEFAULT_CHUNK_SIZE = 1000;
+  const AUDIT_SOURCE_BUCKETS = Object.freeze(['spotify_import', 'listenbrainz']);
 
   const IDENTITY_STATUSES = Object.freeze([
     'unresolved', 'resolved', 'ambiguous', 'unmatched', 'user_reviewed',
@@ -22,11 +23,18 @@
     return text || null;
   }
 
+  function cleanList(values) {
+    return [...new Set((Array.isArray(values) ? values : []).map(clean).filter(Boolean))];
+  }
+
   function identityEnvelope(event = {}) {
+    const artistMbids = cleanList(event.artistMbids || event.musicbrainzArtistIds);
+    const artistMbid = clean(event.artistMbid || event.musicbrainzArtistId) || artistMbids[0] || null;
     return {
       version: CONTRACT_VERSION,
       bandId: clean(event.localBandId || event.bandId),
-      artistMbid: clean(event.artistMbid || event.musicbrainzArtistId),
+      artistMbid,
+      artistMbids,
       recordingMbid: clean(event.recordingMbid || event.musicbrainzRecordingId),
       releaseMbid: clean(event.releaseMbid || event.musicbrainzReleaseId),
       releaseGroupMbid: clean(event.releaseGroupMbid || event.musicbrainzReleaseGroupId),
@@ -104,6 +112,11 @@
     return { tier: 5, outcome: 'ambiguous', method: 'normalized_signature', automatic: false };
   }
 
+  function safeAuditSource(value) {
+    const source = clean(value);
+    return AUDIT_SOURCE_BUCKETS.includes(source) ? source : 'other';
+  }
+
   function safeAuditSummary(events = []) {
     const result = {
       schemaVersion: CONTRACT_VERSION,
@@ -123,14 +136,16 @@
     let last = -Infinity;
     for (const event of events) {
       result.eventCount += 1;
-      const source = clean(event?.source) || 'unknown';
+      const source = safeAuditSource(event?.source);
       result.sourceCounts[source] = (result.sourceCounts[source] || 0) + 1;
       if (clean(event?.stableListenId)) result.stableIdCount += 1;
       if (clean(event?.spotifyTrackId)) result.spotifyTrackIdCount += 1;
       if (clean(event?.recordingMbid || event?.musicbrainzRecordingId)) result.recordingMbidCount += 1;
       if (clean(event?.releaseMbid || event?.musicbrainzReleaseId)) result.releaseMbidCount += 1;
       if (clean(event?.releaseGroupMbid || event?.musicbrainzReleaseGroupId)) result.releaseGroupMbidCount += 1;
-      if (Array.isArray(event?.musicbrainzArtistIds) && event.musicbrainzArtistIds.length) result.artistMbidEventCount += 1;
+      if (cleanList(event?.artistMbids || event?.musicbrainzArtistIds).length || clean(event?.artistMbid || event?.musicbrainzArtistId)) {
+        result.artistMbidEventCount += 1;
+      }
       if (event?.reviewedDecision) result.reviewedDecisionCount += 1;
       const timestamp = Date.parse(event?.listenedAt || '');
       if (Number.isFinite(timestamp)) { first = Math.min(first, timestamp); last = Math.max(last, timestamp); }
@@ -225,6 +240,7 @@
     TIMESTAMP_TOLERANCE_MS,
     DURATION_TOLERANCE_MS,
     DEFAULT_CHUNK_SIZE,
+    AUDIT_SOURCE_BUCKETS,
     IDENTITY_STATUSES,
     DEDUPE_STATUSES,
     identityEnvelope,
@@ -232,6 +248,7 @@
     timestampDistanceMs,
     durationsCompatible,
     matchingEvidence,
+    safeAuditSource,
     safeAuditSummary,
     safeCandidateSummary,
     createMigrationCheckpoint,
