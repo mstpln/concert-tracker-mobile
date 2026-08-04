@@ -8,17 +8,8 @@
 }
 
 .brand-banner .brand-wordmark {
-  display: inline-block;
-  color: #ffffff;
-  font-family: "Arial Narrow", "Aptos Narrow", "Roboto Condensed", "Liberation Sans Narrow", sans-serif;
-  font-size: 20px;
-  font-stretch: condensed;
-  font-weight: 700;
-  letter-spacing: 3.2px;
-  line-height: 1;
-  transform: scaleX(0.78);
-  transform-origin: center;
-  -webkit-text-stroke: 0.2px #ffffff;
-  text-stroke: 0.2px #ffffff;
-  white-space: nowrap;
+  display: block;
+  width: 150px;
+  height: auto;
+  max-width: calc(100% - 32px);
 }
