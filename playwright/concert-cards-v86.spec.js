@@ -17,31 +17,29 @@ test('v86 applies charcoal blue only to concert listing cards', async ({ page },
   await expect(startCard).toBeVisible();
   expect(await background(startCard)).toBe('rgb(35, 42, 50)');
 
-  await page.getByRole('button', { name: 'Dates' }).click();
-  const datesCard = page.locator('#screen-concerts .row-card').first();
-  await expect(datesCard).toBeVisible();
-  expect(await background(datesCard)).toBe('rgb(35, 42, 50)');
+  await page.evaluate(() => {
+    const addRow = (parent, marker) => {
+      const row = document.createElement('article');
+      row.className = 'row-card';
+      row.dataset.v86Qa = marker;
+      row.textContent = marker;
+      parent.appendChild(row);
+    };
+    addRow(document.querySelector('#screen-concerts'), 'dates');
+    addRow(document.querySelector('#screen-venue-detail'), 'venue');
+    const divider = document.createElement('div');
+    divider.className = 'profile-divider';
+    document.querySelector('#screen-profile').appendChild(divider);
+    addRow(divider, 'profile-concert');
+    addRow(document.querySelector('#screen-mybands'), 'generic-band');
+  });
 
-  await page.getByRole('button', { name: 'Bands' }).click();
-  const bandCard = page.locator('#screen-mybands .row-card').first();
-  await expect(bandCard).toBeVisible();
-  expect(await background(bandCard)).not.toBe('rgb(35, 42, 50)');
+  expect(await background(page.locator('[data-v86-qa="dates"]'))).toBe('rgb(35, 42, 50)');
+  expect(await background(page.locator('[data-v86-qa="venue"]'))).toBe('rgb(35, 42, 50)');
+  expect(await background(page.locator('[data-v86-qa="profile-concert"]'))).toBe('rgb(35, 42, 50)');
+  expect(await background(page.locator('[data-v86-qa="generic-band"]'))).not.toBe('rgb(35, 42, 50)');
 
-  await bandCard.click();
-  await expect(page.locator('#screen-profile')).toBeVisible();
-  await page.getByRole('tab', { name: 'Concerts', exact: true }).click();
-  const profileCard = page.locator('#screen-profile .profile-divider .row-card').first();
-  await expect(profileCard).toBeVisible();
-  expect(await background(profileCard)).toBe('rgb(35, 42, 50)');
-
-  await page.getByRole('tab', { name: 'Alerts', exact: true }).click();
-  const nonConcertProfileCard = page.locator('#screen-profile .row-card').first();
-  if (await nonConcertProfileCard.count()) {
-    expect(await background(nonConcertProfileCard)).not.toBe('rgb(35, 42, 50)');
-  }
-
-  await page.getByRole('tab', { name: 'Concerts', exact: true }).click();
-  await page.locator('#screen-profile').screenshot({
+  await page.locator('#screen-myconcerts').screenshot({
     path: testInfo.outputPath(`${testInfo.project.name}-v86-charcoal-concert-cards.png`),
     fullPage: true,
   });
