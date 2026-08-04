@@ -28,7 +28,24 @@ v87 is the merged BANDMARKR rebrand from PR #61, merge commit `91f7d8ead58f49a01
 
 v88 is the active installed-branding refinement on `style/v88-simplified-app-icon`. The in-app top banner remains visually unchanged and still reads **BANDMARKR**. Installed-app metadata uses **Bandmarkr** to improve the chance of the full launcher label fitting. PWA, maskable, favicon and Apple touch icon assets use the same `#024ddf` blue background with a plain white bookmark, no `BM` letters, and a bookmark footprint reduced by approximately 10% while retaining safe-area padding. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v88. No data, storage, provider, API or application-behavior changes are included.
 
+Listening Build 3.2A is implemented on `feature/listening-3-2a-audit-contracts` in PR #63. Corrective PR QA #264 passed on the reviewed implementation; only continuity-document synchronization was changed afterward. It adds versioned additive identity and canonical-listen contracts, conservative evidence tiers, aggregate-only audit summaries, chunked resumable migration checkpoints, source-count integrity checks and synthetic regression coverage. It does not migrate IndexedDB or R2, call providers, change visible totals, alter the app shell, or bump v88. Build 3.3 now also includes trusted Spotify links for Top Track and Top Album titles using the existing past-setlist interaction pattern.
+
 ListenBrainz is now connected on the user's primary mobile device and disconnected on the computer. The mobile device is the primary synchronization device; other connected LiveVault devices continue restoring shared listening updates from the private R2 manifest without needing the ListenBrainz token. The private token is stored only in the mobile browser and is not present in GitHub, Cloudflare configuration, logs or project documentation.
+
+## Build 3.2A contract state
+
+- Source Spotify and ListenBrainz observations remain immutable evidence.
+- Explicit BANDMARKR `bandId` is authoritative over derived `localBandId` when both exist.
+- Derived identity records preserve BANDMARKR band IDs, MusicBrainz IDs, Spotify IDs, provider provenance and protected reviewed decisions.
+- Canonical-listen relationships suppress duplicate aggregation only; they never delete source observations.
+- Automatic duplicate evidence is limited to exact provider IDs, exact recording MBIDs within 1,000 ms, or exact Spotify track IDs within 1,000 ms.
+- Trusted Level 4 release evidence is probable only when the release identity and normalized artist/title recording signature match and both durations are known, positive and within 2,000 ms; artist/title, live, remix, cover, tribute and same-name text evidence never auto-merges.
+- Unknown duration is never fabricated and does not block exact-ID evidence.
+- Later migration must be chunked, resumable, idempotent, additive and rollback-safe for the 250,000+ event archive.
+- Migration integrity fails closed unless explicit before/after source counts are present and equal.
+- Candidate audit reports pair evidence counts only and does not claim a canonical reduction before one-to-one assignment.
+- Audit output is aggregate-only and excludes names, titles, raw timestamps, URLs, tokens and payloads.
+- Existing screens continue using current source-event aggregation until later Build 3.2 stages are separately approved.
 
 ## v81 listening-insights product state
 

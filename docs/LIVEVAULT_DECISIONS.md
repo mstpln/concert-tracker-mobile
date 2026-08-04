@@ -327,3 +327,35 @@
 **Reason:** The title-case label has a better chance of fitting in mobile launcher layouts, and the simpler icon remains clearer at small sizes.
 
 **Consequence:** Manifest, document application metadata, favicon, Apple touch icon and PWA/maskable icon assets use the refined installed identity. The in-app banner, application UI, stable IDs, user data, local-storage and IndexedDB identifiers, provider boundaries, remote data and `concert-tracker-shell-*` namespace remain unchanged.
+
+## 2026-08-04 — Listening identity and deduplication remain additive
+
+**Decision:** Build 3.2 introduces versioned identity records and canonical-listen relationships as derived data. Original Spotify and ListenBrainz observations remain intact. Deduplication suppresses duplicate aggregation only and never deletes a source event.
+
+**Reason:** Provider observations are evidence and must remain recoverable, while visible statistics need one logical listen when two providers clearly describe the same play.
+
+**Consequence:** BANDMARKR band IDs remain authoritative for application identity. MusicBrainz and Spotify IDs remain provider-owned evidence. User-reviewed identity and keep-separate/merge decisions cannot be overwritten by automation.
+
+## 2026-08-04 — Automatic listening matches require trusted identity evidence
+
+**Decision:** Automatic duplicate matching is limited to exact same-provider event IDs, exact MusicBrainz recording IDs within 1,000 ms, or exact Spotify track IDs within 1,000 ms. Level 4 remains probable only and requires matching release identity, timestamp compatibility, two known positive durations within 2,000 ms, and a matching normalized artist/title recording signature. Artist/title, same-name, live, remix, cover and tribute text evidence never auto-merges by itself.
+
+**Reason:** The current ListenBrainz adapter has integer-second timestamps and the existing overlap logic compares same-second fingerprints. A narrow one-second boundary preserves that reality without turning text similarity into identity, while the extra recording signature prevents different tracks on the same release from becoming noisy probable candidates.
+
+**Consequence:** Unknown duration does not block exact-ID matches and is never fabricated. Level 4 cannot be satisfied by release identity or duration alone. Candidate assignment in later builds must be one-to-one so two genuine nearby listens remain distinct.
+
+## 2026-08-04 — Listening migration must be chunked and rollback-safe
+
+**Decision:** Any later identity or canonicalization migration over the 250,000+ event archive must be chunked, resumable, idempotent and additive, with persisted cursors, versioned checkpoints, source-count verification and rollback by disabling/removing derived records.
+
+**Reason:** All-at-once transactions, all-pairs comparison and destructive rewrites are unsafe at archive scale and would make interruption recovery difficult.
+
+**Consequence:** No aggregate switches to canonical representatives until integrity checks pass. Production migration, provider backfill, R2 writes and archive replacement remain separately authorized actions.
+
+## 2026-08-04 — Top Tracks and Top Albums use trusted Spotify links in Build 3.3
+
+**Decision:** Build 3.3 will make Top Track titles open exact trusted Spotify tracks and Top Album titles open exact trusted Spotify albums, using the existing past-setlist Spotify-link interaction pattern.
+
+**Reason:** The user wants the same direct Spotify navigation already available from past-concert setlists.
+
+**Consequence:** Links are rendered only from trusted stored Spotify IDs or URLs. Missing or ambiguous identity leaves normal non-linked text; title-only guessing is prohibited.
