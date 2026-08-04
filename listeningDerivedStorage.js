@@ -5,10 +5,9 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.BandmarkrListeningDerivedStorage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
-  const DB_NAME = 'livevault-listening-history-v1';
-  const DB_VERSION = 2;
-  const SOURCE_STORE = 'listens';
-  const META_STORE = 'meta';
+  const DB_NAME = 'bandmarkr-listening-derived-v1';
+  const DB_VERSION = 1;
+  const SOURCE_DB_NAME = 'livevault-listening-history-v1';
   const IDENTITY_STORE = 'listen-identities';
   const CANONICAL_STORE = 'listen-canonical';
 
@@ -191,13 +190,12 @@
   async function storageSummary() {
     const db = await openDb();
     try {
-      const tx = db.transaction([SOURCE_STORE, IDENTITY_STORE, CANONICAL_STORE], 'readonly');
-      const [sourceEventCount, identityCount, canonicalCount] = await Promise.all([
-        requestResult(tx.objectStore(SOURCE_STORE).count()),
+      const tx = db.transaction([IDENTITY_STORE, CANONICAL_STORE], 'readonly');
+      const [identityCount, canonicalCount] = await Promise.all([
         requestResult(tx.objectStore(IDENTITY_STORE).count()),
         requestResult(tx.objectStore(CANONICAL_STORE).count()),
       ]);
-      return { sourceEventCount, identityCount, canonicalCount };
+      return { identityCount, canonicalCount };
     } finally {
       db.close();
     }
@@ -206,8 +204,7 @@
   return {
     DB_NAME,
     DB_VERSION,
-    SOURCE_STORE,
-    META_STORE,
+    SOURCE_DB_NAME,
     IDENTITY_STORE,
     CANONICAL_STORE,
     normalizeIdentity,
