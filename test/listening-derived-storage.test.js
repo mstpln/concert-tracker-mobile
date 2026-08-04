@@ -20,6 +20,7 @@ test('identity records are additive and preserve unknown future fields', () => {
   assert.equal(normalized.spotifyArtistId, 'spotify-artist');
   assert.deepEqual(normalized.unknownFutureField, { retained: true });
   assert.equal(normalized.status, 'unresolved');
+  assert.equal(normalized.updatedAt, null);
 });
 
 test('canonical records default to their own source event without deleting evidence', () => {
@@ -85,6 +86,28 @@ test('automation cannot overwrite a reviewed keep-separate decision', () => {
   assert.equal(merged.status, 'user_reviewed');
 });
 
+test('unknown reviewed actions protect all user-owned relationship fields', () => {
+  const existing = {
+    sourceEventId: 'listenbrainz:future-review',
+    status: 'user_reviewed',
+    bandId: 'band-human',
+    canonicalListenId: 'listenbrainz:future-review',
+    duplicateOf: null,
+    reviewedDecision: { action: 'future_manual_action' },
+  };
+  const incoming = {
+    sourceEventId: 'listenbrainz:future-review',
+    status: 'duplicate',
+    bandId: 'band-automatic',
+    canonicalListenId: 'spotify:other',
+    duplicateOf: 'spotify:other',
+  };
+  const merged = storage.mergeDerivedRecord(existing, incoming);
+  assert.equal(merged.bandId, 'band-human');
+  assert.equal(merged.canonicalListenId, 'listenbrainz:future-review');
+  assert.equal(merged.duplicateOf, null);
+});
+
 test('explicit reviewed replacement is possible only when requested', () => {
   const existing = {
     sourceEventId: 'listenbrainz:reviewed',
@@ -136,6 +159,27 @@ test('identity and canonical versions remain independent', () => {
   assert.equal(Object.hasOwn(canonical, 'identityVersion'), false);
 });
 
+test('batch normalization is bounded and rejects duplicate source IDs', () => {
+  assert.deepEqual(storage.normalizeBatch(storage.IDENTITY_STORE, []), []);
+  assert.throws(() => storage.normalizeBatch(storage.IDENTITY_STORE, null), /must be arrays/);
+  assert.throws(() => storage.normalizeBatch(storage.IDENTITY_STORE, [
+    { sourceEventId: 'same' },
+    { sourceEventId: 'same' },
+  ]), /cannot repeat sourceEventId/);
+  const oversized = Array.from({ length: storage.MAX_BATCH_SIZE + 1 }, (_, index) => ({ sourceEventId: `listen:${index}` }));
+  assert.throws(() => storage.normalizeBatch(storage.IDENTITY_STORE, oversized), /limited to 500/);
+});
+
+test('read and rollback limits remain bounded for archive-scale derived data', () => {
+  assert.equal(storage.MAX_BATCH_SIZE, 500);
+  assert.equal(storage.MAX_READ_LIMIT, 500);
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'listeningDerivedStorage.js'), 'utf8');
+  assert.match(source, /getAll\(range, limit\)/);
+  assert.doesNotMatch(source, /getAll\(\)/);
+  assert.match(source, /deleted >= limit/);
+  assert.match(source, /hasMore/);
+});
+
 test('schema upgrade adds only the two derived stores', () => {
   const created = [];
   const indexes = [];
@@ -152,7 +196,7 @@ test('schema upgrade adds only the two derived stores', () => {
     [storage.CANONICAL_STORE, { keyPath: 'sourceEventId' }],
   ]);
   assert.equal(indexes.length, 4);
-  assert.equal(created.some(([name]) => name === storage.SOURCE_STORE), false);
+  assert.equal(created.some(([name]) => name === 'listens'), false);
 });
 
 test('schema upgrade is idempotent for an already upgraded database', () => {
