@@ -100,7 +100,7 @@ function validateIcon(file, expectedSize) {
   const blue = [2, 77, 223, 255];
   const white = [255, 255, 255, 255];
   assert.deepEqual(pixel(image, 0, 0), blue, `${file} keeps the approved blue background`);
-  assert.deepEqual(pixel(image, Math.floor(image.width / 2), Math.floor(image.height * 0.25)), white, `${file} contains the white bookmark`);
+  assert.deepEqual(pixel(image, Math.floor(image.width * 0.3), Math.floor(image.height * 0.25)), white, `${file} contains the white bookmark`);
   assert.deepEqual(pixel(image, Math.floor(image.width / 2), Math.floor(image.height * 0.72)), blue, `${file} contains the blue bookmark notch`);
   let blueInside = 0;
   let whiteInside = 0;
