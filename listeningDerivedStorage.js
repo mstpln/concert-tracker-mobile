@@ -10,6 +10,8 @@
   const SOURCE_DB_NAME = 'livevault-listening-history-v1';
   const IDENTITY_STORE = 'listen-identities';
   const CANONICAL_STORE = 'listen-canonical';
+  const MAX_BATCH_SIZE = 500;
+  const MAX_READ_LIMIT = 500;
 
   function clean(value) {
     const text = String(value == null ? '' : value).trim();
@@ -24,6 +26,12 @@
     return Number.isInteger(value) && value > 0 ? value : fallback;
   }
 
+  function boundedLimit(value, fallback = MAX_READ_LIMIT) {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
+    return Math.min(parsed, MAX_READ_LIMIT);
+  }
+
   function normalizeIdentity(record = {}) {
     const sourceEventId = clean(record.sourceEventId || record.stableListenId);
     if (!sourceEventId) throw new Error('Derived identity records require sourceEventId.');
@@ -34,7 +42,7 @@
       status: clean(record.status) || 'unresolved',
       reviewedDecision: clone(record.reviewedDecision || null),
       reviewedAt: clean(record.reviewedAt),
-      updatedAt: clean(record.updatedAt) || new Date().toISOString(),
+      updatedAt: clean(record.updatedAt),
     };
   }
 
@@ -50,7 +58,7 @@
       status: clean(record.status) || 'unique',
       reviewedDecision: clone(record.reviewedDecision || null),
       reviewedAt: clean(record.reviewedAt),
-      updatedAt: clean(record.updatedAt) || new Date().toISOString(),
+      updatedAt: clean(record.updatedAt),
     };
   }
 
@@ -59,7 +67,7 @@
     const action = clean(existing.reviewedDecision.action);
     if (action === 'assign_band' || action === 'reject_band') return ['bandId'];
     if (action === 'merge' || action === 'keep_separate') return ['canonicalListenId', 'duplicateOf'];
-    return [];
+    return ['bandId', 'canonicalListenId', 'duplicateOf'];
   }
 
   function mergeDerivedRecord(existing, incoming, options = {}) {
@@ -112,14 +120,31 @@
     });
   }
 
+  function normalizeBatch(storeName, records) {
+    if (!Array.isArray(records)) throw new Error('Derived listening batches must be arrays.');
+    if (records.length > MAX_BATCH_SIZE) throw new Error(`Derived listening batches are limited to ${MAX_BATCH_SIZE} records.`);
+    const normalizer = storeName === IDENTITY_STORE ? normalizeIdentity : normalizeCanonical;
+    const normalized = records.map(normalizer);
+    const keys = new Set();
+    for (const record of normalized) {
+      if (keys.has(record.sourceEventId)) throw new Error('Derived listening batches cannot repeat sourceEventId.');
+      keys.add(record.sourceEventId);
+    }
+    return normalized;
+  }
+
   async function putRecord(storeName, record, options = {}) {
     const normalized = storeName === IDENTITY_STORE ? normalizeIdentity(record) : normalizeCanonical(record);
     const db = await openDb();
+    let merged = null;
     try {
-      const existing = await requestResult(db.transaction(storeName, 'readonly').objectStore(storeName).get(normalized.sourceEventId));
-      const merged = mergeDerivedRecord(existing, normalized, options);
       const tx = db.transaction(storeName, 'readwrite');
-      tx.objectStore(storeName).put(merged);
+      const store = tx.objectStore(storeName);
+      const request = store.get(normalized.sourceEventId);
+      request.onsuccess = () => {
+        merged = mergeDerivedRecord(request.result, normalized, options);
+        store.put(merged);
+      };
       await transactionDone(tx, 'Could not save derived listening data.');
       return clone(merged);
     } finally {
@@ -128,17 +153,18 @@
   }
 
   async function putMany(storeName, records, options = {}) {
-    const normalizer = storeName === IDENTITY_STORE ? normalizeIdentity : normalizeCanonical;
-    const normalized = (records || []).map(normalizer);
+    const normalized = normalizeBatch(storeName, records);
+    if (!normalized.length) return { written: 0 };
     const db = await openDb();
     try {
-      const existingRecords = await requestResult(db.transaction(storeName, 'readonly').objectStore(storeName).getAll());
-      const existingById = new Map(existingRecords.map((record) => [record.sourceEventId, record]));
-      const merged = normalized.map((record) => mergeDerivedRecord(existingById.get(record.sourceEventId), record, options));
       const tx = db.transaction(storeName, 'readwrite');
-      for (const record of merged) tx.objectStore(storeName).put(record);
+      const store = tx.objectStore(storeName);
+      for (const incoming of normalized) {
+        const request = store.get(incoming.sourceEventId);
+        request.onsuccess = () => store.put(mergeDerivedRecord(request.result, incoming, options));
+      }
       await transactionDone(tx, 'Could not save derived listening batch.');
-      return { written: merged.length };
+      return { written: normalized.length };
     } finally {
       db.close();
     }
@@ -155,33 +181,46 @@
     }
   }
 
-  async function listRecords(storeName) {
+  async function listRecords(storeName, options = {}) {
+    const limit = boundedLimit(options.limit);
+    const afterSourceEventId = clean(options.afterSourceEventId);
     const db = await openDb();
     try {
-      const records = await requestResult(db.transaction(storeName, 'readonly').objectStore(storeName).getAll());
-      return records.map(clone).sort((a, b) => a.sourceEventId.localeCompare(b.sourceEventId));
+      const store = db.transaction(storeName, 'readonly').objectStore(storeName);
+      const range = afterSourceEventId ? root.IDBKeyRange.lowerBound(afterSourceEventId, true) : undefined;
+      const records = await requestResult(store.getAll(range, limit));
+      const items = records.map(clone).sort((a, b) => a.sourceEventId.localeCompare(b.sourceEventId));
+      return {
+        items,
+        nextAfterSourceEventId: items.length === limit ? items.at(-1).sourceEventId : null,
+      };
     } finally {
       db.close();
     }
   }
 
-  async function deleteVersion(storeName, versionField, version) {
+  async function deleteVersion(storeName, versionField, version, options = {}) {
     if (!Number.isInteger(version) || version <= 0) throw new Error('A positive numeric derived-data version is required.');
+    const limit = boundedLimit(options.limit);
     const db = await openDb();
+    let matched = 0;
     let deleted = 0;
     try {
       const tx = db.transaction(storeName, 'readwrite');
       const index = tx.objectStore(storeName).index(versionField);
-      const request = index.openCursor(root.IDBKeyRange.only(version));
+      const range = root.IDBKeyRange.only(version);
+      const countRequest = index.count(range);
+      countRequest.onsuccess = () => { matched = Number(countRequest.result) || 0; };
+      const request = index.openCursor(range);
       request.onsuccess = () => {
         const cursor = request.result;
-        if (!cursor) return;
+        if (!cursor || deleted >= limit) return;
         cursor.delete();
         deleted += 1;
         cursor.continue();
       };
       await transactionDone(tx, 'Could not remove derived-data version.');
-      return { deleted };
+      return { deleted, remaining: Math.max(0, matched - deleted), hasMore: matched > deleted };
     } finally {
       db.close();
     }
@@ -207,8 +246,11 @@
     SOURCE_DB_NAME,
     IDENTITY_STORE,
     CANONICAL_STORE,
+    MAX_BATCH_SIZE,
+    MAX_READ_LIMIT,
     normalizeIdentity,
     normalizeCanonical,
+    normalizeBatch,
     protectedReviewedFields,
     mergeDerivedRecord,
     upgradeSchema,
@@ -219,10 +261,10 @@
     putCanonicalBatch: (records, options) => putMany(CANONICAL_STORE, records, options),
     getIdentity: (sourceEventId) => getRecord(IDENTITY_STORE, sourceEventId),
     getCanonical: (sourceEventId) => getRecord(CANONICAL_STORE, sourceEventId),
-    listIdentities: () => listRecords(IDENTITY_STORE),
-    listCanonical: () => listRecords(CANONICAL_STORE),
-    deleteIdentityVersion: (version) => deleteVersion(IDENTITY_STORE, 'identityVersion', version),
-    deleteDedupeVersion: (version) => deleteVersion(CANONICAL_STORE, 'dedupeVersion', version),
+    listIdentities: (options) => listRecords(IDENTITY_STORE, options),
+    listCanonical: (options) => listRecords(CANONICAL_STORE, options),
+    deleteIdentityVersion: (version, options) => deleteVersion(IDENTITY_STORE, 'identityVersion', version, options),
+    deleteDedupeVersion: (version, options) => deleteVersion(CANONICAL_STORE, 'dedupeVersion', version, options),
     storageSummary,
   };
 });
