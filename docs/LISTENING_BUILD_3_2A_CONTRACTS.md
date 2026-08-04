@@ -21,11 +21,11 @@ Identity data is derived and versioned. Source observations remain unchanged and
 
 - `bandId`: authoritative BANDMARKR application artist ID.
 - `artistMbid`, `recordingMbid`, `releaseMbid`, `releaseGroupMbid`: preferred external MusicBrainz identities.
-- `spotifyTrackId`, `spotifyAlbumId`: Spotify-owned identifiers only.
+- `spotifyArtistId`, `spotifyTrackId`, `spotifyAlbumId`: Spotify-owned identifiers only.
 - `source`, `sourceEventId`: provider provenance.
 - `status`: `unresolved`, `resolved`, `ambiguous`, `unmatched`, or `user_reviewed`.
 - `evidence`: deterministic evidence records.
-- `version`: identity contract/rule version.
+- `identityVersion`: identity contract/rule version. A compatibility `version` alias may remain while callers migrate.
 - `reviewedDecision`, `reviewedAt`: user-owned decisions that automation cannot overwrite.
 
 Same-name evidence alone never assigns an identity.
@@ -37,7 +37,7 @@ Same-name evidence alone never assigns an identity.
 - `status`: `unique`, `exact_duplicate`, `probable_duplicate`, `ambiguous`, or `user_reviewed`.
 - `method`: deterministic evidence class.
 - `evidenceTier`: matching hierarchy level, not an invented percentage.
-- `version`: dedupe rule version.
+- `dedupeVersion`: deduplication rule version. A compatibility `version` alias may remain while callers migrate.
 - `reviewedDecision`, `reviewedAt`: protected user-owned decision.
 - `source`, `sourceEventId`: preserved provider provenance.
 
@@ -50,7 +50,7 @@ Current Spotify and ListenBrainz adapters normalize timestamps to ISO values whi
 - Level 1: same provider and exact source event ID — automatic exact duplicate.
 - Level 2: exact recording MBID and timestamp distance no greater than 1,000 ms — automatic exact duplicate candidate.
 - Level 3: exact Spotify track ID and timestamp distance no greater than 1,000 ms — automatic exact duplicate candidate.
-- Level 4: trusted release evidence, compatible timestamp and two known positive durations within 2,000 ms — probable only; no automatic merge in 3.2A.
+- Level 4: trusted release identity, compatible timestamp, two known positive durations within 2,000 ms, and a matching normalized artist/title recording signature — probable only; no automatic merge in 3.2A.
 - Levels 5–6: normalized strings, same-name, cover, tribute or artist/title-only evidence — ambiguous or unmatched; never automatic.
 
 Unknown duration is never fabricated. It does not block Levels 1–3, but it cannot satisfy Level 4. Two close genuine listens remain protected because later candidate assignment must be one-to-one and cannot use title-only evidence.
