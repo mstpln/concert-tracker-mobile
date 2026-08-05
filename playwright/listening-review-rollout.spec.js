@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('v91 listening review shows local context, preserves alternatives, and defers without deciding', async ({ page }) => {
+test('v91 listening review keeps group metadata separate from canonical listens', async ({ page }) => {
   const browserErrors = [];
   page.on('pageerror', (error) => browserErrors.push(error.message));
   await page.goto('/');
@@ -30,12 +30,17 @@ test('v91 listening review shows local context, preserves alternatives, and defe
       tx.onerror = () => reject(tx.error);
     });
     db.close();
-    await BandmarkrListeningDerivedStorage.putCanonicalBatch([{
-      sourceEventId: 'qa-review-a',
+    await BandmarkrListeningDerivedStorage.putCanonicalBatch(events.map((event) => ({
+      sourceEventId: event.stableListenId,
       dedupeVersion: 1,
-      canonicalListenId: 'qa-review-a',
+      canonicalListenId: event.stableListenId,
+      duplicateOf: null,
+      status: 'unique',
+    })));
+    await BandmarkrListeningReviewRollout.reviewStorage.putGroups([{
+      reviewId: 'duplicate-group:qa-review-a|qa-review-b|qa-review-c',
+      reviewVersion: 1,
       status: 'probable_duplicate',
-      recordType: 'review_component',
       sourceEventIds: ['qa-review-a', 'qa-review-b', 'qa-review-c'],
       candidatePairs: [
         { pairKey: 'qa-review-a|qa-review-b', leftSourceEventId: 'qa-review-a', rightSourceEventId: 'qa-review-b', evidence: { tier: 4, outcome: 'probable_duplicate' } },
@@ -63,8 +68,12 @@ test('v91 listening review shows local context, preserves alternatives, and defe
   await page.getByRole('tab', { name: 'Research', exact: true }).click();
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
   await expect(card.locator('.listening-review-item')).toHaveCount(0);
-  const stored = await page.evaluate(() => BandmarkrListeningDerivedStorage.getCanonical('qa-review-a'));
-  expect(stored.status).toBe('user_reviewed');
-  expect(stored.reviewedDecision.action).toBe('keep_separate');
+  const stored = await page.evaluate(async () => ({
+    canonical: await Promise.all(['qa-review-a', 'qa-review-b', 'qa-review-c'].map((id) => BandmarkrListeningDerivedStorage.getCanonical(id))),
+    review: await BandmarkrListeningReviewRollout.reviewStorage.getGroup('duplicate-group:qa-review-a|qa-review-b|qa-review-c'),
+  }));
+  expect(stored.canonical.every((record) => record.status === 'unique' && record.duplicateOf === null)).toBe(true);
+  expect(stored.review.status).toBe('user_reviewed');
+  expect(stored.review.reviewedDecision.action).toBe('keep_separate');
   expect(browserErrors).toEqual([]);
 });
