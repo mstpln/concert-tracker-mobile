@@ -131,3 +131,55 @@ test('expired later-phase heartbeat becomes retryable without clearing completed
   assert.equal(result.state.status, 'error');
   assert.equal(JSON.parse(storage.getItem(api.MIGRATION_CHECKPOINT_KEY)).status, 'complete');
 });
+
+test('active operation refreshes an expired heartbeat before resume stall detection', (t) => {
+  t.after(cleanupGlobals);
+  const now = 4_000_000;
+  const storage = memoryStorage({
+    'bandmarkr-listening-canonical-activation-v1': JSON.stringify({
+      stateVersion: 1,
+      status: 'preparing',
+      preparationPhase: 'persisting-candidates',
+      preparationHeartbeatAt: new Date(now - 1000 - 300000).toISOString(),
+    }),
+    'bandmarkr-listening-derived-migration-v1': JSON.stringify({
+      status: 'complete',
+      processedEvents: 5000,
+      sourceEventCountAfter: 5000,
+      integrityStatus: 'passed',
+    }),
+  });
+  const api = loadModule(storage);
+  api.checkForStalledPreparation(storage, now - api.STALL_TIMEOUT_MS);
+  const token = api.beginActiveOperation('persisting-candidates');
+  const result = api.checkForStalledPreparation(storage, now);
+  api.endActiveOperation(token);
+  assert.equal(result.recovered, false);
+  assert.equal(result.state.status, 'preparing');
+  assert.equal(result.state.preparationHeartbeatAt, new Date(now).toISOString());
+});
+
+test('expired persisted preparation without an active operation remains retryable', (t) => {
+  t.after(cleanupGlobals);
+  const now = 5_000_000;
+  const storage = memoryStorage({
+    'bandmarkr-listening-canonical-activation-v1': JSON.stringify({
+      stateVersion: 1,
+      status: 'preparing',
+      preparationPhase: 'persisting-candidates',
+      preparationHeartbeatAt: new Date(now - 1000 - 300000).toISOString(),
+    }),
+    'bandmarkr-listening-derived-migration-v1': JSON.stringify({
+      status: 'complete',
+      processedEvents: 5000,
+      sourceEventCountAfter: 5000,
+      integrityStatus: 'passed',
+    }),
+  });
+  const api = loadModule(storage);
+  api.checkForStalledPreparation(storage, now - api.STALL_TIMEOUT_MS);
+  const result = api.checkForStalledPreparation(storage, now);
+  assert.equal(api.activeOperationPhase(), null);
+  assert.equal(result.recovered, true);
+  assert.equal(result.state.status, 'error');
+});
