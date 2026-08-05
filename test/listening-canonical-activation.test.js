@@ -43,6 +43,37 @@ test('canonicalization fails closed when a source record has no canonical record
   ), /incomplete/);
 });
 
+test('canonicalization rejects missing representatives and duplicate chains', () => {
+  assert.throws(() => activation.canonicalizeEvents(
+    [{ stableListenId: 'a' }, { stableListenId: 'b' }],
+    [
+      { sourceEventId: 'a', canonicalListenId: 'a', duplicateOf: 'missing' },
+      { sourceEventId: 'b', canonicalListenId: 'b', duplicateOf: null },
+    ],
+    [],
+  ), /inconsistent/);
+  assert.throws(() => activation.canonicalizeEvents(
+    [{ stableListenId: 'a' }, { stableListenId: 'b' }, { stableListenId: 'c' }],
+    [
+      { sourceEventId: 'a', canonicalListenId: 'a', duplicateOf: null },
+      { sourceEventId: 'b', canonicalListenId: 'a', duplicateOf: 'a' },
+      { sourceEventId: 'c', canonicalListenId: 'b', duplicateOf: 'b' },
+    ],
+    [],
+  ), /inconsistent/);
+});
+
+test('canonicalization rejects a non-duplicate record that points elsewhere', () => {
+  assert.throws(() => activation.canonicalizeEvents(
+    [{ stableListenId: 'a' }, { stableListenId: 'b' }],
+    [
+      { sourceEventId: 'a', canonicalListenId: 'a', duplicateOf: null },
+      { sourceEventId: 'b', canonicalListenId: 'a', duplicateOf: null },
+    ],
+    [],
+  ), /inconsistent/);
+});
+
 test('activation refuses to switch totals when source history changed after preparation', async () => {
   const stateStore = memoryStore({
     ...activation.defaultState(),
