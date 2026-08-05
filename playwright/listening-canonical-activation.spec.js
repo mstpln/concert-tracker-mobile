@@ -94,7 +94,7 @@ test('v92 fails closed when listening history changes after activation', async (
     };
     localStorage.setItem('bandmarkr-listening-canonical-activation-v1', JSON.stringify(state));
     listeningEvents = [{ stableListenId: 'only-one' }];
-    return BandmarkrListeningCanonicalActivation.applyToApp();
+    return BandmarkrListeningCanonicalActivation.applyToApp({ events: listeningEvents });
   });
   expect(result.applied).toBe(false);
   expect(result.reason).toContain('changed');
