@@ -7,9 +7,11 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   const SETTINGS_KEY = 'concertTrackerSettings';
   const LISTENBRAINZ_SETTINGS_KEY = 'livevault-listenbrainz-v1';
+  const LISTENING_ACTIVATION_KEY = 'bandmarkr-listening-canonical-activation-v1';
   const SHELL_CACHE_PREFIX = 'concert-tracker-shell-';
   const TICKET_DB_NAME = 'live-vault-owned-tickets';
   const DERIVED_LISTENING_DB_NAME = 'bandmarkr-listening-derived-v1';
+  const REVIEW_LISTENING_DB_NAME = 'bandmarkr-listening-review-v1';
 
   async function removeShellCaches(cacheStorage = root?.caches) {
     if (!cacheStorage?.keys) return [];
@@ -40,15 +42,24 @@
     clearHistory = () => root?.LiveVaultSpotifyHistory?.clear?.(),
     clearTickets = () => deleteDatabase(TICKET_DB_NAME),
     clearDerivedListening = () => deleteDatabase(DERIVED_LISTENING_DB_NAME),
+    clearReviewListening = () => deleteDatabase(REVIEW_LISTENING_DB_NAME),
     clearConnection = root?.rsClearConnection,
     storage = root?.localStorage,
     cacheStorage = root?.caches,
     reload = () => root?.location?.reload?.(),
   } = {}) {
-    await Promise.allSettled([clearSpotify?.(), clearListenBrainz?.(), clearHistory?.(), clearTickets?.(), clearDerivedListening?.()]);
+    await Promise.allSettled([
+      clearSpotify?.(),
+      clearListenBrainz?.(),
+      clearHistory?.(),
+      clearTickets?.(),
+      clearDerivedListening?.(),
+      clearReviewListening?.(),
+    ]);
     clearConnection?.();
     storage?.removeItem?.(SETTINGS_KEY);
     storage?.removeItem?.(LISTENBRAINZ_SETTINGS_KEY);
+    storage?.removeItem?.(LISTENING_ACTIVATION_KEY);
     await removeShellCaches(cacheStorage);
     reload?.();
   }
@@ -77,7 +88,7 @@
     const eraseHint = root.document.createElement('p');
     eraseHint.className = 'settings-hint';
     eraseHint.dataset.deviceEraseHint = 'true';
-    eraseHint.textContent = 'Erases this browser’s connection, settings, Spotify authorization, ListenBrainz token, listening history, derived listening data, cached ticket PDFs and Live Vault app cache. Remote R2 data and permanent ticket files are not deleted.';
+    eraseHint.textContent = 'Erases this browser’s connection, settings, Spotify authorization, ListenBrainz token, listening history, derived and review listening data, cached ticket PDFs and Live Vault app cache. Remote R2 data and permanent ticket files are not deleted.';
     eraseButton.after(eraseHint);
 
     button.addEventListener('click', (event) => {
@@ -107,5 +118,19 @@
     else observeSettings();
   }
 
-  return { SETTINGS_KEY, LISTENBRAINZ_SETTINGS_KEY, SHELL_CACHE_PREFIX, TICKET_DB_NAME, DERIVED_LISTENING_DB_NAME, removeShellCaches, deleteDatabase, disconnectDevice, eraseDevice, enhanceConnectionCard, observeSettings };
+  return {
+    SETTINGS_KEY,
+    LISTENBRAINZ_SETTINGS_KEY,
+    LISTENING_ACTIVATION_KEY,
+    SHELL_CACHE_PREFIX,
+    TICKET_DB_NAME,
+    DERIVED_LISTENING_DB_NAME,
+    REVIEW_LISTENING_DB_NAME,
+    removeShellCaches,
+    deleteDatabase,
+    disconnectDevice,
+    eraseDevice,
+    enhanceConnectionCard,
+    observeSettings,
+  };
 });
