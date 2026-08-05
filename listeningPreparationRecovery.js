@@ -95,12 +95,12 @@
     const processed = Math.max(0, Number(checkpoint?.processedEvents) || 0);
     const total = Math.max(0, Number(checkpoint?.sourceEventCountAfter ?? checkpoint?.sourceEventCountBefore) || 0);
     if (state?.preparationPhase === 'loading-source') return 'Loading listening history on this device…';
-    if (checkpoint?.status === 'complete' || state?.preparationPhase === 'generating-candidates' || state?.preparationPhase === 'assigning-candidates') {
-      return 'Checking the prepared history for confirmed and possible duplicates…';
-    }
     if (state?.preparationPhase === 'persisting-candidates') return 'Saving confirmed and possible duplicate matches…';
     if (state?.preparationPhase === 'verifying-storage' || state?.preparationPhase === 'reading-canonical' || state?.preparationPhase === 'reading-identities') {
       return 'Verifying cleaned listening totals…';
+    }
+    if (checkpoint?.status === 'complete' || state?.preparationPhase === 'generating-candidates' || state?.preparationPhase === 'assigning-candidates') {
+      return 'Checking the prepared history for confirmed and possible duplicates…';
     }
     if (total > 0) return `Preparing cleaned totals on this device… ${processed.toLocaleString()} of ${total.toLocaleString()} source listens processed.`;
     if (processed > 0) return `Preparing cleaned totals on this device… ${processed.toLocaleString()} source listens processed.`;
