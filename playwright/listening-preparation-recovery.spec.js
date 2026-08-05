@@ -29,13 +29,15 @@ test('v93 recovers a stalled preparation after a lock-style resume without reloa
   const card = page.locator('[data-canonical-activation]');
   await expect(card).toContainText('Preparing cleaned totals on this device');
 
-  const result = await page.evaluate(async () => {
+  const finalState = await page.evaluate(async () => {
     const recovery = BandmarkrListeningPreparationRecovery;
     await recovery.monitorTick(localStorage, 1000);
-    return recovery.monitorTick(localStorage, 1000 + recovery.STALL_TIMEOUT_MS);
+    await recovery.monitorTick(localStorage, 1000 + recovery.STALL_TIMEOUT_MS);
+    return JSON.parse(localStorage.getItem('bandmarkr-listening-canonical-activation-v1'));
   });
 
-  expect(result.recovered).toBe(true);
+  expect(finalState.status).toBe('error');
+  expect(finalState.error).toContain('interrupted');
   await expect(card).toContainText('Preparation stopped safely: Preparation was interrupted');
   await expect(card.getByRole('button', { name: 'Prepare again' })).toBeVisible();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('bandmarkr-listening-derived-migration-v1')).processedEvents)).toBe(1500);
