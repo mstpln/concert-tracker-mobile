@@ -386,8 +386,8 @@
 
 ## 2026-08-05 — Listening review is conservative, local and user-owned
 
-**Decision:** Trusted Levels 1–3 may be assigned automatically only through deterministic one-to-one candidate selection. Probable and ambiguous candidates remain local derived review records. **Decide later** is session-only and does not create a durable decision. Completed merge, keep-separate and identity decisions are user-owned.
+**Decision:** Trusted Levels 1–3 may be assigned automatically only through deterministic one-to-one candidate selection. Probable and ambiguous candidates remain local review groups in the separate disposable database `bandmarkr-listening-review-v1`. **Decide later** is session-only. A pair-level merge resolves only that displayed relationship; unresolved alternatives remain pending. **Keep all separate** resolves the remaining group without editing source observations.
 
-**Reason:** Uncertain evidence must neither silently change listening totals nor disappear as though the user made a choice. Source observations must remain immutable and every durable human decision must be distinguishable from automation.
+**Reason:** Uncertain evidence must neither silently change listening totals nor disappear as though the user made a choice. Review metadata must not occupy canonical source-event keys, and sequential pair decisions must not create canonical chains or overwrite prior human choices.
 
-**Consequence:** Candidate and review writes affect only `bandmarkr-listening-derived-v1`, use batches of at most 500 records, and preserve reviewed choices against later automated reruns. Audit output remains aggregate-only. No real archive migration, R2 access, provider call or visible canonical aggregation switch occurs without separate authorization.
+**Consequence:** Candidate writes affect only `bandmarkr-listening-derived-v1`; review-group writes affect only `bandmarkr-listening-review-v1`. Both remain local, bounded to 500 records per operation, rollback-safe and protected against reruns. Sequential merges flatten every member to one canonical representative, partial decisions remain available until completed, and source observations remain immutable. Audit output remains aggregate-only. No real archive migration, R2 access, provider call or visible canonical aggregation switch occurs without separate authorization.
