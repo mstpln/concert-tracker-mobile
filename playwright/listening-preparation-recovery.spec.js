@@ -23,7 +23,7 @@ test('v93 recovers a stalled preparation after a lock-style resume without reloa
       processedEvents: 1500,
       sourceEventCountAfter: 5000,
     }));
-    BandmarkrListeningCanonicalActivation.renderSettingsCard(document.querySelector('[data-canonical-activation]'));
+    BandmarkrListeningPreparationRecovery.renderCurrentProgress(localStorage);
   });
 
   const card = page.locator('[data-canonical-activation]');
