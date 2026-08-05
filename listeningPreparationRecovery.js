@@ -14,6 +14,8 @@
   let monitorTimer = null;
   let lastCheckpointSignature = null;
   let lastCheckpointActivityAt = 0;
+  let nextActiveOperationId = 1;
+  const activeOperations = new Map();
 
   function parse(storage, key) {
     try { return JSON.parse(storage?.getItem?.(key) || 'null'); } catch (_) { return null; }
@@ -56,6 +58,28 @@
     });
   }
 
+  function beginActiveOperation(phase) {
+    const token = nextActiveOperationId++;
+    activeOperations.set(token, phase);
+    return token;
+  }
+
+  function endActiveOperation(token) {
+    activeOperations.delete(token);
+  }
+
+  function activeOperationPhase() {
+    let phase = null;
+    for (const value of activeOperations.values()) phase = value;
+    return phase;
+  }
+
+  function refreshActivePreparation(storage = root?.localStorage, nowMs = Date.now()) {
+    const phase = activeOperationPhase();
+    if (!phase || activationStatus(storage) !== 'preparing') return null;
+    return touchPreparation(storage, phase, nowMs);
+  }
+
   function checkpointSignature(storage = root?.localStorage) {
     const checkpoint = parse(storage, MIGRATION_CHECKPOINT_KEY);
     return JSON.stringify({
@@ -67,13 +91,16 @@
   }
 
   function checkForStalledPreparation(storage = root?.localStorage, nowMs = Date.now()) {
-    const state = parse(storage, ACTIVATION_STATE_KEY);
+    let state = parse(storage, ACTIVATION_STATE_KEY);
     if (state?.status !== 'preparing') {
       lastCheckpointSignature = null;
       lastCheckpointActivityAt = 0;
       return { recovered: false, state };
     }
     if (root?.document?.visibilityState === 'hidden') return { recovered: false, state };
+
+    const refreshed = refreshActivePreparation(storage, nowMs);
+    if (refreshed) state = refreshed;
 
     const signature = checkpointSignature(storage);
     if (signature !== lastCheckpointSignature) {
@@ -145,17 +172,18 @@
         throw error;
       }
       if (result && typeof result.then === 'function') {
+        const activeToken = beginActiveOperation(phase);
         const pulse = root?.setInterval?.(() => touchPreparation(storage, phase), HEARTBEAT_INTERVAL_MS);
-        const stopPulse = () => {
+        const finish = (finalPhase) => {
           if (pulse != null) root?.clearInterval?.(pulse);
+          endActiveOperation(activeToken);
+          touchPreparation(storage, finalPhase);
         };
         return result.then((value) => {
-          stopPulse();
-          touchPreparation(storage, `${phase}-complete`);
+          finish(`${phase}-complete`);
           return value;
         }, (error) => {
-          stopPulse();
-          touchPreparation(storage, `${phase}-failed`);
+          finish(`${phase}-failed`);
           throw error;
         });
       }
@@ -249,7 +277,9 @@
       }
     }, true);
     root?.document?.addEventListener?.('visibilitychange', () => {
-      if (root.document.visibilityState === 'visible' && activationStatus(storage) === 'preparing') requestWakeLock();
+      if (root.document.visibilityState !== 'visible' || activationStatus(storage) !== 'preparing') return;
+      refreshActivePreparation(storage);
+      requestWakeLock();
     });
     root?.addEventListener?.('pagehide', releaseWakeLock);
   }
@@ -271,6 +301,10 @@
     HEARTBEAT_INTERVAL_MS,
     recoverInterruptedPreparation,
     touchPreparation,
+    beginActiveOperation,
+    endActiveOperation,
+    activeOperationPhase,
+    refreshActivePreparation,
     checkForStalledPreparation,
     checkpointSignature,
     progressText,
