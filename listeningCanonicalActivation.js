@@ -8,9 +8,15 @@
   const STATE_KEY = 'bandmarkr-listening-canonical-activation-v1';
   const STATE_VERSION = 1;
   const PAGE_SIZE = 500;
+  const SOURCE_OWNED_FIELDS = new Set([
+    'stableListenId', 'sourceEventId', 'canonicalListenId', 'duplicateOf',
+    'source', 'listenedAt', 'listenedAtMs', 'timestamp', 'listenedAtSeconds',
+  ]);
 
   const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value));
   const clean = (value) => String(value == null ? '' : value).trim() || null;
+  const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
+  const missingValue = (value) => value == null || value === '' || (Array.isArray(value) && value.length === 0) || (isPlainObject(value) && Object.keys(value).length === 0);
 
   function defaultState() {
     return {
@@ -54,32 +60,80 @@
     return output;
   }
 
+  function fillMissing(target, source) {
+    if (!isPlainObject(source)) return target;
+    const output = isPlainObject(target) ? clone(target) : {};
+    for (const [key, value] of Object.entries(source)) {
+      if (SOURCE_OWNED_FIELDS.has(key) || value == null) continue;
+      if (isPlainObject(value)) {
+        output[key] = fillMissing(output[key], value);
+      } else if (missingValue(output[key])) {
+        output[key] = clone(value);
+      }
+    }
+    return output;
+  }
+
+  function enrichRepresentative(representative, members = [], identities = new Map()) {
+    const representativeId = clean(representative?.stableListenId || representative?.sourceEventId);
+    let enriched = clone(representative);
+    for (const member of members) {
+      if (member === representative) continue;
+      enriched = fillMissing(enriched, member);
+    }
+    const memberIds = members.map((event) => clean(event?.stableListenId || event?.sourceEventId)).filter(Boolean);
+    const memberSources = [...new Set(members.map((event) => clean(event?.source)).filter(Boolean))];
+    const resolvedBandId = clean(identities.get(representativeId)?.bandId || identities.get(representativeId)?.localBandId || enriched.localBandId)
+      || memberIds.map((id) => clean(identities.get(id)?.bandId || identities.get(id)?.localBandId)).find(Boolean)
+      || null;
+    return {
+      ...enriched,
+      localBandId: resolvedBandId,
+      canonicalListenId: representativeId,
+      canonicalSourceEventIds: memberIds,
+      canonicalSources: memberSources,
+    };
+  }
+
   function canonicalizeEvents(events = [], canonicalRecords = [], identityRecords = []) {
     const canonicalById = new Map(canonicalRecords.map((record) => [clean(record.sourceEventId), record]));
     const identityById = new Map(identityRecords.map((record) => [clean(record.sourceEventId), record]));
-    const output = [];
+    const eventById = new Map();
+    const membersByRepresentative = new Map();
     let duplicateCount = 0;
+
     for (const event of events) {
       const sourceEventId = clean(event?.stableListenId || event?.sourceEventId);
+      if (!sourceEventId || eventById.has(sourceEventId)) throw new Error('Canonical listening data is incomplete.');
+      eventById.set(sourceEventId, event);
+    }
+
+    for (const [sourceEventId] of eventById) {
       const canonical = canonicalById.get(sourceEventId);
       const canonicalListenId = clean(canonical?.canonicalListenId);
       const duplicateOf = clean(canonical?.duplicateOf);
-      if (!sourceEventId || !canonical || !canonicalListenId) throw new Error('Canonical listening data is incomplete.');
+      if (!canonical || !canonicalListenId) throw new Error('Canonical listening data is incomplete.');
       if (duplicateOf) {
         const representative = canonicalById.get(duplicateOf);
-        if (canonicalListenId !== duplicateOf || !representative || clean(representative.canonicalListenId) !== duplicateOf || clean(representative.duplicateOf)) {
+        if (canonicalListenId !== duplicateOf || !eventById.has(duplicateOf) || !representative || clean(representative.canonicalListenId) !== duplicateOf || clean(representative.duplicateOf)) {
           throw new Error('Canonical listening relationships are inconsistent.');
         }
         duplicateCount += 1;
-        continue;
+      } else if (canonicalListenId !== sourceEventId) {
+        throw new Error('Canonical listening relationships are inconsistent.');
       }
-      if (canonicalListenId !== sourceEventId) throw new Error('Canonical listening relationships are inconsistent.');
-      const identity = identityById.get(sourceEventId);
-      output.push({
-        ...clone(event),
-        localBandId: clean(identity?.bandId || identity?.localBandId || event?.localBandId),
-        canonicalListenId: sourceEventId,
-      });
+      const representativeId = duplicateOf || sourceEventId;
+      const members = membersByRepresentative.get(representativeId) || [];
+      members.push(eventById.get(sourceEventId));
+      membersByRepresentative.set(representativeId, members);
+    }
+
+    const output = [];
+    for (const event of events) {
+      const sourceEventId = clean(event?.stableListenId || event?.sourceEventId);
+      const canonical = canonicalById.get(sourceEventId);
+      if (clean(canonical?.duplicateOf)) continue;
+      output.push(enrichRepresentative(event, membersByRepresentative.get(sourceEventId) || [event], identityById));
     }
     return { events: output, duplicateCount };
   }
@@ -97,9 +151,7 @@
     const storage = options.storage || root?.BandmarkrListeningDerivedStorage;
     const store = options.stateStore || stateStore(options.localStorage);
     const bands = options.bands || [];
-    if (!migration?.runToCompletion || !rollout?.generateCandidates || !rollout?.persistCandidatePlan || !storage?.storageSummary) {
-      throw new Error('Listening activation tools are unavailable.');
-    }
+    if (!migration?.runToCompletion || !rollout?.generateCandidates || !rollout?.persistCandidatePlan || !storage?.storageSummary) throw new Error('Listening activation tools are unavailable.');
     store.save({ ...store.load(), status: 'preparing', error: null });
     try {
       const events = await sourceEvents({ ...options, bands });
@@ -118,9 +170,7 @@
         batchSize: PAGE_SIZE,
       });
       const summary = await storage.storageSummary();
-      if (summary.canonicalCount !== events.length || migrationResult.checkpoint?.integrityStatus !== 'passed') {
-        throw new Error('Listening activation integrity check failed.');
-      }
+      if (summary.canonicalCount !== events.length || migrationResult.checkpoint?.integrityStatus !== 'passed') throw new Error('Listening activation integrity check failed.');
       const canonicalRecords = await listAll((page) => storage.listCanonical(page));
       const identityRecords = await listAll((page) => storage.listIdentities(page));
       const verified = canonicalizeEvents(events, canonicalRecords, identityRecords);
@@ -134,10 +184,7 @@
         activatedAt: null,
         error: null,
       });
-      return {
-        state: prepared,
-        audit: rollout.safeAudit({ ...plan, assignment: persisted.assignment }, { sourceCount: events.length, contracts }),
-      };
+      return { state: prepared, audit: rollout.safeAudit({ ...plan, assignment: persisted.assignment }, { sourceCount: events.length, contracts }) };
     } catch (error) {
       store.save({ ...store.load(), status: 'error', error: error?.message || 'Listening activation failed.' });
       throw error;
@@ -155,13 +202,7 @@
     const identityRecords = await listAll((page) => storage.listIdentities(page));
     if (canonicalRecords.length !== events.length) throw new Error('Canonical listening data is incomplete.');
     const result = canonicalizeEvents(events, canonicalRecords, identityRecords);
-    const active = store.save({
-      ...current,
-      status: 'active',
-      duplicateCount: result.duplicateCount,
-      activatedAt: current.activatedAt || new Date().toISOString(),
-      error: null,
-    });
+    const active = store.save({ ...current, status: 'active', duplicateCount: result.duplicateCount, activatedAt: current.activatedAt || new Date().toISOString(), error: null });
     return { ...result, state: active };
   }
 
@@ -170,12 +211,7 @@
     const current = store.load();
     const events = await sourceEvents(options);
     const status = current.sourceEventCount === events.length && current.canonicalRecordCount === events.length ? 'ready' : 'stale';
-    const next = store.save({
-      ...current,
-      status,
-      activatedAt: null,
-      error: status === 'stale' ? 'Listening history changed. Prepare cleaned totals again.' : null,
-    });
+    const next = store.save({ ...current, status, activatedAt: null, error: status === 'stale' ? 'Listening history changed. Prepare cleaned totals again.' : null });
     return { events, state: next };
   }
 
@@ -314,7 +350,7 @@
 
   return {
     STATE_KEY, STATE_VERSION, PAGE_SIZE, defaultState, stateStore, listAll,
-    canonicalizeEvents, sourceEvents, prepare, activate, deactivate, applyToApp,
-    installApplyWrapper, installReviewWrapper,
+    fillMissing, enrichRepresentative, canonicalizeEvents, sourceEvents,
+    prepare, activate, deactivate, applyToApp, installApplyWrapper, installReviewWrapper,
   };
 });
