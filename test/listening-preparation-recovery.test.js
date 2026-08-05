@@ -82,3 +82,52 @@ test('checkpoint advancement resets the stall window', (t) => {
   assert.equal(api.checkForStalledPreparation(storage, 1000 + api.STALL_TIMEOUT_MS).recovered, false);
   assert.equal(api.checkForStalledPreparation(storage, 1000 + (api.STALL_TIMEOUT_MS * 2)).recovered, true);
 });
+
+test('fresh later-phase heartbeat prevents a completed checkpoint false positive', (t) => {
+  t.after(cleanupGlobals);
+  const now = 2_000_000;
+  const storage = memoryStorage({
+    'bandmarkr-listening-canonical-activation-v1': JSON.stringify({
+      stateVersion: 1,
+      status: 'preparing',
+      preparationPhase: 'persisting-candidates',
+      preparationHeartbeatAt: new Date(now - 1000).toISOString(),
+    }),
+    'bandmarkr-listening-derived-migration-v1': JSON.stringify({
+      status: 'complete',
+      processedEvents: 5000,
+      sourceEventCountAfter: 5000,
+      integrityStatus: 'passed',
+    }),
+  });
+  const api = loadModule(storage);
+  api.checkForStalledPreparation(storage, now - api.STALL_TIMEOUT_MS);
+  const result = api.checkForStalledPreparation(storage, now);
+  assert.equal(result.recovered, false);
+  assert.equal(result.state.status, 'preparing');
+});
+
+test('expired later-phase heartbeat becomes retryable without clearing completed migration', (t) => {
+  t.after(cleanupGlobals);
+  const now = 3_000_000;
+  const storage = memoryStorage({
+    'bandmarkr-listening-canonical-activation-v1': JSON.stringify({
+      stateVersion: 1,
+      status: 'preparing',
+      preparationPhase: 'persisting-candidates',
+      preparationHeartbeatAt: new Date(now - 1000 - 300000).toISOString(),
+    }),
+    'bandmarkr-listening-derived-migration-v1': JSON.stringify({
+      status: 'complete',
+      processedEvents: 5000,
+      sourceEventCountAfter: 5000,
+      integrityStatus: 'passed',
+    }),
+  });
+  const api = loadModule(storage);
+  api.checkForStalledPreparation(storage, now - api.STALL_TIMEOUT_MS);
+  const result = api.checkForStalledPreparation(storage, now);
+  assert.equal(result.recovered, true);
+  assert.equal(result.state.status, 'error');
+  assert.equal(JSON.parse(storage.getItem(api.MIGRATION_CHECKPOINT_KEY)).status, 'complete');
+});
