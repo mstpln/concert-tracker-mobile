@@ -153,11 +153,13 @@
     },
     async deleteVersion(version, options = {}) {
       const limit = bounded(options.limit, MAX_PAGE_SIZE);
+      const afterReviewId = clean(options.afterReviewId);
       const db = await openReviewDb();
       let visited = 0;
       let removed = 0;
       let retained = 0;
       let hasMore = false;
+      let lastReviewId = afterReviewId;
       try {
         const tx = db.transaction(REVIEW_STORE, 'readwrite');
         const index = tx.objectStore(REVIEW_STORE).index('reviewVersion');
@@ -166,8 +168,17 @@
           request.onsuccess = () => {
             const cursor = request.result;
             if (!cursor) return resolve();
-            if (visited >= limit) { hasMore = true; return resolve(); }
+            const reviewId = clean(cursor.primaryKey);
+            if (afterReviewId && reviewId && reviewId <= afterReviewId) {
+              cursor.continue();
+              return;
+            }
+            if (visited >= limit) {
+              hasMore = true;
+              return resolve();
+            }
             visited += 1;
+            lastReviewId = reviewId || lastReviewId;
             if (shouldPreserveReviewGroup(cursor.value)) retained += 1;
             else { cursor.delete(); removed += 1; }
             cursor.continue();
@@ -175,7 +186,7 @@
           request.onerror = () => reject(request.error || new Error('Could not roll back local listening review groups.'));
         });
         await transactionDone(tx, 'Could not roll back local listening review groups.');
-        return { visited, removed, retained, hasMore };
+        return { visited, removed, retained, hasMore, nextAfterReviewId: hasMore ? lastReviewId : null };
       } finally { db.close(); }
     },
   };
@@ -357,10 +368,39 @@
     return { action, ...clone(details), decidedAt: now.toISOString(), owner: 'user' };
   }
 
-  function remainingPairsAfterMerge(current, pair, decision) {
-    const target = [pair.leftSourceEventId, pair.rightSourceEventId].sort()[0];
-    const duplicate = [pair.leftSourceEventId, pair.rightSourceEventId].sort()[1];
-    const remap = (id) => id === duplicate ? target : id;
+  function mergeComponent(current, pair, decision) {
+    const adjacency = new Map();
+    const addEdge = (left, right) => {
+      const a = clean(left);
+      const b = clean(right);
+      if (!a || !b || a === b) return;
+      if (!adjacency.has(a)) adjacency.set(a, new Set());
+      if (!adjacency.has(b)) adjacency.set(b, new Set());
+      adjacency.get(a).add(b);
+      adjacency.get(b).add(a);
+    };
+    for (const prior of current.pairDecisions || []) {
+      if (prior.action !== 'merge') continue;
+      const members = prior.mergedSourceEventIds || [prior.canonicalListenId, prior.duplicateSourceEventId];
+      for (let index = 1; index < members.length; index += 1) addEdge(members[0], members[index]);
+    }
+    addEdge(pair.leftSourceEventId, pair.rightSourceEventId);
+    const start = clean(pair.leftSourceEventId);
+    const members = new Set(start ? [start] : []);
+    const queue = start ? [start] : [];
+    while (queue.length) {
+      const currentId = queue.shift();
+      for (const next of adjacency.get(currentId) || []) {
+        if (members.has(next)) continue;
+        members.add(next);
+        queue.push(next);
+      }
+    }
+    const sortedMembers = [...members].sort();
+    if (sortedMembers.length < 2) throw new Error('Listening merge requires two stable source records.');
+    const target = sortedMembers[0];
+    const duplicates = sortedMembers.slice(1);
+    const remap = (id) => members.has(id) ? target : id;
     const seen = new Set();
     const remaining = [];
     for (const candidate of current.candidatePairs || []) {
@@ -374,12 +414,12 @@
     }
     return {
       target,
-      duplicate,
+      duplicates,
       group: {
         ...current,
         sourceEventIds: [...new Set((current.sourceEventIds || []).map(remap))].sort(),
         candidatePairs: remaining,
-        pairDecisions: [...(current.pairDecisions || []), { ...decision, pairKey: pair.pairKey, canonicalListenId: target, duplicateSourceEventId: duplicate }],
+        pairDecisions: [...(current.pairDecisions || []), { ...decision, pairKey: pair.pairKey, canonicalListenId: target, duplicateSourceEventId: duplicates.at(-1), mergedSourceEventIds: sortedMembers }],
         status: remaining.some((candidate) => candidate.evidence?.outcome !== 'probable_duplicate') ? 'ambiguous' : 'probable_duplicate',
         reviewedDecision: null,
         reviewedAt: null,
@@ -399,12 +439,14 @@
     if (action === 'keep_separate') return reviews.putDecision(current.reviewId, decision);
     const pair = (current.candidatePairs || []).find((candidate) => candidate.pairKey === details.pairKey);
     if (!pair) throw new Error('Choose one displayed candidate pair.');
-    const result = remainingPairsAfterMerge(current, pair, decision);
-    const existing = await storage.getCanonical(result.duplicate);
-    if (!existing) throw new Error('Canonical source record no longer exists.');
-    await storage.putCanonical({ ...existing, canonicalListenId: result.target, duplicateOf: result.target, status: 'user_reviewed', reviewedDecision: decision, reviewedAt: decision.decidedAt }, { replaceReviewedDecision: true });
+    const result = mergeComponent(current, pair, decision);
+    for (const duplicate of result.duplicates) {
+      const existing = await storage.getCanonical(duplicate);
+      if (!existing) throw new Error('Canonical source record no longer exists.');
+      await storage.putCanonical({ ...existing, canonicalListenId: result.target, duplicateOf: result.target, status: 'user_reviewed', reviewedDecision: decision, reviewedAt: decision.decidedAt }, { replaceReviewedDecision: true });
+    }
     if (result.group.candidatePairs.length) return reviews.replaceGroup(result.group);
-    return reviews.putDecision(current.reviewId, { ...decision, completedPairReview: true });
+    return reviews.putDecision(current.reviewId, { ...decision, completedPairReview: true, canonicalListenId: result.target, mergedSourceEventIds: [result.target, ...result.duplicates] });
   }
 
   async function rolloutStatus(options = {}) {
@@ -424,10 +466,10 @@
     const limit = bounded(options.limit, MAX_PAGE_SIZE);
     const identity = await storage.deleteIdentityVersion(version, { limit });
     const canonical = await storage.deleteDedupeVersion(version, { limit });
-    const review = reviews?.deleteVersion ? await reviews.deleteVersion(version, { limit }) : { removed: 0, retained: 0, hasMore: false };
+    const review = reviews?.deleteVersion ? await reviews.deleteVersion(version, { limit, afterReviewId: options.reviewAfterReviewId }) : { removed: 0, retained: 0, hasMore: false, nextAfterReviewId: null };
     const done = !identity.hasMore && !canonical.hasMore && !review.hasMore;
     if (done && options.clearCheckpoint !== false) (options.checkpoints || migration?.checkpointStore?.(options.localStorage))?.clear?.();
-    return { version, identity, canonical, review, done };
+    return { version, identity, canonical, review, reviewAfterReviewId: review.nextAfterReviewId, done };
   }
 
   return {
@@ -435,7 +477,7 @@
     reviewStorage, normalizeReviewGroup, shouldPreserveReviewGroup, stablePairKey, representativeFor,
     generateCandidates, assignOneToOne, canonicalUpdates, reviewComponents, reviewCandidateUpdates,
     safeAudit, batches, persistCandidatePlan, sourceEventsByIds, reviewQueue, reviewedDecision,
-    remainingPairsAfterMerge, applyReview, rolloutStatus, rollbackDerivedVersion,
+    mergeComponent, applyReview, rolloutStatus, rollbackDerivedVersion,
   };
 });
 
