@@ -9,10 +9,11 @@
   const MIGRATION_CHECKPOINT_KEY = 'bandmarkr-listening-derived-migration-v1';
   const INTERRUPTED_MESSAGE = 'Preparation was interrupted when this device slept or closed. Tap Prepare again to continue from the saved checkpoint.';
   const STALL_TIMEOUT_MS = 300000;
+  const LONG_PHASE_TIMEOUT_MS = 900000;
   let wakeLock = null;
   let monitorTimer = null;
-  let lastProgressSignature = null;
-  let lastProgressAt = 0;
+  let lastCheckpointSignature = null;
+  let lastCheckpointActivityAt = 0;
 
   function parse(storage, key) {
     try { return JSON.parse(storage?.getItem?.(key) || 'null'); } catch (_) { return null; }
@@ -27,9 +28,15 @@
     if (!store) return { recovered: false, state: null };
     const current = store.load();
     if (current.status !== 'preparing') return { recovered: false, state: current };
-    const next = store.save({ ...current, status: 'error', error: INTERRUPTED_MESSAGE });
-    lastProgressSignature = null;
-    lastProgressAt = 0;
+    const next = store.save({
+      ...current,
+      status: 'error',
+      preparationPhase: 'interrupted',
+      preparationHeartbeatAt: null,
+      error: INTERRUPTED_MESSAGE,
+    });
+    lastCheckpointSignature = null;
+    lastCheckpointActivityAt = 0;
     return { recovered: true, state: next };
   }
 
@@ -37,7 +44,19 @@
     return markInterrupted(storage);
   }
 
-  function progressSignature(storage = root?.localStorage) {
+  function touchPreparation(storage = root?.localStorage, phase = 'preparing', nowMs = Date.now()) {
+    const store = stateStore(storage);
+    if (!store) return null;
+    const current = store.load();
+    if (current.status !== 'preparing') return current;
+    return store.save({
+      ...current,
+      preparationPhase: phase,
+      preparationHeartbeatAt: new Date(nowMs).toISOString(),
+    });
+  }
+
+  function checkpointSignature(storage = root?.localStorage) {
     const checkpoint = parse(storage, MIGRATION_CHECKPOINT_KEY);
     return JSON.stringify({
       status: checkpoint?.status || null,
@@ -47,33 +66,49 @@
     });
   }
 
+  function phaseTimeout(phase) {
+    return ['loading-source', 'generating-candidates', 'assigning-candidates'].includes(phase)
+      ? LONG_PHASE_TIMEOUT_MS
+      : STALL_TIMEOUT_MS;
+  }
+
   function checkForStalledPreparation(storage = root?.localStorage, nowMs = Date.now()) {
-    if (activationStatus(storage) !== 'preparing') {
-      lastProgressSignature = null;
-      lastProgressAt = 0;
-      return { recovered: false, state: parse(storage, ACTIVATION_STATE_KEY) };
+    const state = parse(storage, ACTIVATION_STATE_KEY);
+    if (state?.status !== 'preparing') {
+      lastCheckpointSignature = null;
+      lastCheckpointActivityAt = 0;
+      return { recovered: false, state };
     }
-    if (root?.document?.visibilityState === 'hidden') {
-      lastProgressSignature = progressSignature(storage);
-      lastProgressAt = nowMs;
-      return { recovered: false, state: parse(storage, ACTIVATION_STATE_KEY) };
+    if (root?.document?.visibilityState === 'hidden') return { recovered: false, state };
+
+    const signature = checkpointSignature(storage);
+    if (signature !== lastCheckpointSignature) {
+      lastCheckpointSignature = signature;
+      lastCheckpointActivityAt = nowMs;
+      return { recovered: false, state };
     }
-    const signature = progressSignature(storage);
-    if (signature !== lastProgressSignature) {
-      lastProgressSignature = signature;
-      lastProgressAt = nowMs;
-      return { recovered: false, state: parse(storage, ACTIVATION_STATE_KEY) };
-    }
-    if (!lastProgressAt) lastProgressAt = nowMs;
-    if (nowMs - lastProgressAt < STALL_TIMEOUT_MS) return { recovered: false, state: parse(storage, ACTIVATION_STATE_KEY) };
+
+    const heartbeatMs = Date.parse(state.preparationHeartbeatAt || '');
+    const timeout = phaseTimeout(state.preparationPhase);
+    const heartbeatFresh = Number.isFinite(heartbeatMs) && nowMs - heartbeatMs < timeout;
+    const checkpointFresh = lastCheckpointActivityAt > 0 && nowMs - lastCheckpointActivityAt < timeout;
+    if (heartbeatFresh || checkpointFresh) return { recovered: false, state };
     return markInterrupted(storage);
   }
 
   function progressText(storage = root?.localStorage) {
     const checkpoint = parse(storage, MIGRATION_CHECKPOINT_KEY);
+    const state = parse(storage, ACTIVATION_STATE_KEY);
     const processed = Math.max(0, Number(checkpoint?.processedEvents) || 0);
     const total = Math.max(0, Number(checkpoint?.sourceEventCountAfter ?? checkpoint?.sourceEventCountBefore) || 0);
-    if (checkpoint?.status === 'complete') return 'Checking the prepared history for confirmed and possible duplicates…';
+    if (state?.preparationPhase === 'loading-source') return 'Loading listening history on this device…';
+    if (checkpoint?.status === 'complete' || state?.preparationPhase === 'generating-candidates' || state?.preparationPhase === 'assigning-candidates') {
+      return 'Checking the prepared history for confirmed and possible duplicates…';
+    }
+    if (state?.preparationPhase === 'persisting-candidates') return 'Saving confirmed and possible duplicate matches…';
+    if (state?.preparationPhase === 'verifying-storage' || state?.preparationPhase === 'reading-canonical' || state?.preparationPhase === 'reading-identities') {
+      return 'Verifying cleaned listening totals…';
+    }
     if (total > 0) return `Preparing cleaned totals on this device… ${processed.toLocaleString()} of ${total.toLocaleString()} source listens processed.`;
     if (processed > 0) return `Preparing cleaned totals on this device… ${processed.toLocaleString()} source listens processed.`;
     return 'Preparing cleaned totals on this device…';
@@ -104,6 +139,60 @@
     return true;
   }
 
+  function wrapMethod(target, name, phase, storage = root?.localStorage) {
+    if (!target || typeof target[name] !== 'function' || target[name].__preparationHeartbeatWrapped) return;
+    const original = target[name];
+    const wrapped = function wrappedPreparationMethod(...args) {
+      touchPreparation(storage, phase);
+      let result;
+      try {
+        result = original.apply(this, args);
+      } catch (error) {
+        touchPreparation(storage, `${phase}-failed`);
+        throw error;
+      }
+      if (result && typeof result.then === 'function') {
+        return result.then((value) => {
+          touchPreparation(storage, `${phase}-complete`);
+          return value;
+        }, (error) => {
+          touchPreparation(storage, `${phase}-failed`);
+          throw error;
+        });
+      }
+      touchPreparation(storage, `${phase}-complete`);
+      return result;
+    };
+    wrapped.__preparationHeartbeatWrapped = true;
+    target[name] = wrapped;
+  }
+
+  function installPreparationInstrumentation(storage = root?.localStorage) {
+    const history = root?.LiveVaultSpotifyHistory;
+    const migration = root?.BandmarkrListeningDerivedMigration;
+    const rollout = root?.BandmarkrListeningReviewRollout;
+    const derived = root?.BandmarkrListeningDerivedStorage;
+    const reviewStorage = rollout?.reviewStorage;
+
+    wrapMethod(history, 'loadEvents', 'loading-source', storage);
+    wrapMethod(migration, 'runToCompletion', 'migrating', storage);
+    wrapMethod(rollout, 'generateCandidates', 'generating-candidates', storage);
+    wrapMethod(rollout, 'assignOneToOne', 'assigning-candidates', storage);
+    wrapMethod(rollout, 'persistCandidatePlan', 'persisting-candidates', storage);
+    wrapMethod(rollout, 'reviewComponents', 'summarizing-review', storage);
+    wrapMethod(rollout, 'safeAudit', 'finalizing-audit', storage);
+
+    wrapMethod(derived, 'putIdentities', 'persisting-identities', storage);
+    wrapMethod(derived, 'putCanonicalBatch', 'persisting-canonical', storage);
+    wrapMethod(derived, 'storageSummary', 'verifying-storage', storage);
+    wrapMethod(derived, 'listCanonical', 'reading-canonical', storage);
+    wrapMethod(derived, 'listIdentities', 'reading-identities', storage);
+
+    for (const name of ['putGroups', 'putReviewGroups', 'listGroups', 'deleteGroups']) {
+      wrapMethod(reviewStorage, name, `review-${name}`, storage);
+    }
+  }
+
   async function requestWakeLock() {
     if (!root?.navigator?.wakeLock?.request || root?.document?.visibilityState === 'hidden') return null;
     if (wakeLock && !wakeLock.released) return wakeLock;
@@ -125,6 +214,7 @@
   }
 
   async function monitorTick(storage = root?.localStorage, nowMs = Date.now()) {
+    installPreparationInstrumentation(storage);
     const status = activationStatus(storage);
     if (status === 'preparing') {
       renderCurrentProgress(storage);
@@ -137,8 +227,8 @@
       if (root?.document?.visibilityState === 'visible') await requestWakeLock();
       return recovered;
     }
-    lastProgressSignature = null;
-    lastProgressAt = 0;
+    lastCheckpointSignature = null;
+    lastCheckpointActivityAt = 0;
     await releaseWakeLock();
     return { recovered: false, state: parse(storage, ACTIVATION_STATE_KEY) };
   }
@@ -149,21 +239,18 @@
   }
 
   function install(storage = root?.localStorage) {
+    installPreparationInstrumentation(storage);
     const recovered = recoverInterruptedPreparation(storage);
     if (recovered.recovered) root?.setTimeout?.(renderInterruptedState, 0);
     startMonitor(storage);
     root?.document?.addEventListener?.('click', (event) => {
       if (event.target?.closest?.('[data-canonical-prepare]')) {
-        lastProgressSignature = progressSignature(storage);
-        lastProgressAt = Date.now();
+        touchPreparation(storage, 'starting');
         requestWakeLock();
       }
     }, true);
     root?.document?.addEventListener?.('visibilitychange', () => {
-      if (activationStatus(storage) !== 'preparing') return;
-      lastProgressSignature = progressSignature(storage);
-      lastProgressAt = Date.now();
-      if (root.document.visibilityState === 'visible') requestWakeLock();
+      if (root.document.visibilityState === 'visible' && activationStatus(storage) === 'preparing') requestWakeLock();
     });
     root?.addEventListener?.('pagehide', releaseWakeLock);
   }
@@ -171,6 +258,7 @@
   if (root?.document) {
     install();
     root.addEventListener?.('DOMContentLoaded', () => {
+      installPreparationInstrumentation();
       const recovered = recoverInterruptedPreparation();
       if (recovered.recovered) renderInterruptedState();
     }, { once: true });
@@ -181,12 +269,17 @@
     MIGRATION_CHECKPOINT_KEY,
     INTERRUPTED_MESSAGE,
     STALL_TIMEOUT_MS,
+    LONG_PHASE_TIMEOUT_MS,
     recoverInterruptedPreparation,
+    touchPreparation,
     checkForStalledPreparation,
-    progressSignature,
+    checkpointSignature,
+    phaseTimeout,
     progressText,
     renderCurrentProgress,
     renderInterruptedState,
+    wrapMethod,
+    installPreparationInstrumentation,
     requestWakeLock,
     releaseWakeLock,
     activationStatus,
