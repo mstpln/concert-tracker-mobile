@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('v91 listening review keeps unresolved alternatives pending after a pair merge', async ({ page }) => {
+test('v91 listening review keeps alternatives pending and flattens sequential merges', async ({ page }) => {
   const browserErrors = [];
   page.on('pageerror', (error) => browserErrors.push(error.message));
   await page.goto('/');
@@ -58,7 +58,7 @@ test('v91 listening review keeps unresolved alternatives pending after a pair me
   await expect(card).toContainText('QA Review Track');
   await expect(card.getByRole('button', { name: 'These are the same listen' })).toHaveCount(2);
 
-  await card.getByRole('button', { name: 'These are the same listen' }).first().click();
+  await card.locator('[data-listening-pair="qa-review-b|qa-review-c"]').getByRole('button', { name: 'These are the same listen' }).click();
   await expect(card.locator('.listening-review-item')).toHaveCount(0);
   await page.getByRole('tab', { name: 'Research', exact: true }).click();
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
@@ -72,22 +72,26 @@ test('v91 listening review keeps unresolved alternatives pending after a pair me
     review: await BandmarkrListeningReviewRollout.reviewStorage.getGroup('duplicate-group:qa-review-a|qa-review-b|qa-review-c'),
   }));
   expect(afterFirst.a.duplicateOf).toBeNull();
-  expect(afterFirst.b.duplicateOf).toBe('qa-review-a');
-  expect(afterFirst.c.duplicateOf).toBeNull();
+  expect(afterFirst.b.duplicateOf).toBeNull();
+  expect(afterFirst.c.duplicateOf).toBe('qa-review-b');
   expect(afterFirst.review.reviewedDecision).toBeNull();
   expect(afterFirst.review.candidatePairs).toHaveLength(1);
-  expect(afterFirst.review.candidatePairs[0].pairKey).toBe('qa-review-a|qa-review-c');
+  expect(afterFirst.review.candidatePairs[0].pairKey).toBe('qa-review-a|qa-review-b');
 
-  await card.getByRole('button', { name: 'Keep all separate' }).click();
+  await card.locator('[data-listening-pair="qa-review-a|qa-review-b"]').getByRole('button', { name: 'These are the same listen' }).click();
   await page.getByRole('tab', { name: 'Research', exact: true }).click();
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
   await expect(card.locator('.listening-review-item')).toHaveCount(0);
   const finalState = await page.evaluate(async () => ({
+    a: await BandmarkrListeningDerivedStorage.getCanonical('qa-review-a'),
+    b: await BandmarkrListeningDerivedStorage.getCanonical('qa-review-b'),
     c: await BandmarkrListeningDerivedStorage.getCanonical('qa-review-c'),
     review: await BandmarkrListeningReviewRollout.reviewStorage.getGroup('duplicate-group:qa-review-a|qa-review-b|qa-review-c'),
   }));
-  expect(finalState.c.duplicateOf).toBeNull();
+  expect(finalState.a.duplicateOf).toBeNull();
+  expect(finalState.b.duplicateOf).toBe('qa-review-a');
+  expect(finalState.c.duplicateOf).toBe('qa-review-a');
   expect(finalState.review.status).toBe('user_reviewed');
-  expect(finalState.review.reviewedDecision.action).toBe('keep_separate');
+  expect(finalState.review.reviewedDecision.completedPairReview).toBe(true);
   expect(browserErrors).toEqual([]);
 });
