@@ -191,7 +191,7 @@
     const store = options.stateStore || stateStore(options.localStorage);
     if (store.load().status !== 'active') return { applied: false, reason: 'inactive' };
     try {
-      const result = await activate({ ...options, events: options.events || listeningEvents, stateStore: store });
+      const result = await activate({ ...options, stateStore: store });
       listeningEvents = result.events;
       refreshVisibleListeningScreens();
       return { applied: true, count: result.events.length, duplicateCount: result.duplicateCount };
@@ -207,10 +207,26 @@
     const original = history.applyToApp.bind(history);
     history.applyToApp = async (...args) => {
       const count = await original(...args);
-      await applyToApp();
+      await applyToApp({ events: typeof listeningEvents === 'undefined' ? undefined : listeningEvents });
       return count;
     };
     history.__canonicalActivationWrapped = true;
+  }
+
+  function installReviewWrapper() {
+    const review = root?.BandmarkrListeningReviewRollout;
+    if (!review?.applyReview || review.__canonicalActivationWrapped) return;
+    const original = review.applyReview.bind(review);
+    review.applyReview = async (...args) => {
+      const result = await original(...args);
+      if (args[1] === 'merge' && stateStore().load().status === 'active') {
+        await applyToApp();
+        const card = root?.document?.querySelector?.('[data-canonical-activation]');
+        if (card) renderSettingsCard(card);
+      }
+      return result;
+    };
+    review.__canonicalActivationWrapped = true;
   }
 
   function renderSettingsCard(container) {
@@ -288,14 +304,17 @@
 
   if (root?.document) {
     installApplyWrapper();
+    installReviewWrapper();
     root.addEventListener('DOMContentLoaded', () => {
       installApplyWrapper();
+      installReviewWrapper();
       observeSettings();
     }, { once: true });
   }
 
   return {
     STATE_KEY, STATE_VERSION, PAGE_SIZE, defaultState, stateStore, listAll,
-    canonicalizeEvents, sourceEvents, prepare, activate, deactivate, applyToApp, installApplyWrapper,
+    canonicalizeEvents, sourceEvents, prepare, activate, deactivate, applyToApp,
+    installApplyWrapper, installReviewWrapper,
   };
 });
