@@ -35,6 +35,7 @@ const SHELL_FILES = [
   './listeningReviewRollout.css',
   './app.js',
   './listeningReviewRollout.js',
+  './listeningReviewReconcile.js',
   './listeningCanonicalActivation.js',
   './devicePrivacy.js',
   './browserFetchPolicy.js',
