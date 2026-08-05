@@ -43,13 +43,13 @@
     };
   }
 
-  async function listAll(pageReader, cursorField = 'nextAfterSourceEventId') {
+  async function listAll(pageReader) {
     const output = [];
     let afterSourceEventId = null;
     do {
       const page = await pageReader({ limit: PAGE_SIZE, afterSourceEventId });
       output.push(...(page.items || []));
-      afterSourceEventId = clean(page[cursorField]);
+      afterSourceEventId = clean(page.nextAfterSourceEventId);
     } while (afterSourceEventId);
     return output;
   }
@@ -77,22 +77,39 @@
     return { events: output, duplicateCount };
   }
 
+  async function sourceEvents(options = {}) {
+    if (Array.isArray(options.events)) return clone(options.events);
+    const history = options.history || root?.LiveVaultSpotifyHistory;
+    if (!history?.loadEvents) throw new Error('Private listening history is unavailable.');
+    return history.loadEvents(options.bands || []);
+  }
+
   async function prepare(options = {}) {
     const migration = options.migration || root?.BandmarkrListeningDerivedMigration;
     const rollout = options.rollout || root?.BandmarkrListeningReviewRollout;
     const storage = options.storage || root?.BandmarkrListeningDerivedStorage;
     const store = options.stateStore || stateStore(options.localStorage);
-    const events = options.events || [];
     const bands = options.bands || [];
     if (!migration?.runToCompletion || !rollout?.generateCandidates || !rollout?.persistCandidatePlan || !storage?.storageSummary) {
       throw new Error('Listening activation tools are unavailable.');
     }
     store.save({ ...store.load(), status: 'preparing', error: null });
     try {
-      const migrationResult = await migration.runToCompletion({ bands, chunkSize: PAGE_SIZE });
-      const plan = rollout.generateCandidates(events, { contracts: options.contracts || root?.BandmarkrListeningIdentityContracts });
+      const events = await sourceEvents({ ...options, bands });
+      if (!events.length) throw new Error('No private listening history is stored on this device.');
+      const checkpoints = options.checkpoints || migration.checkpointStore?.(options.localStorage);
+      const previousCheckpoint = checkpoints?.load?.();
+      if (previousCheckpoint?.sourceEventCountAfter != null && previousCheckpoint.sourceEventCountAfter !== events.length) checkpoints.clear();
+      const migrationResult = await migration.runToCompletion({ bands, chunkSize: PAGE_SIZE, checkpoints });
+      const contracts = options.contracts || root?.BandmarkrListeningIdentityContracts;
+      const plan = rollout.generateCandidates(events, { contracts });
       plan.assignment = rollout.assignOneToOne(plan.candidates);
-      const persisted = await rollout.persistCandidatePlan(plan, { storage, reviewStorage: options.reviewStorage || rollout.reviewStorage, contracts: options.contracts || root?.BandmarkrListeningIdentityContracts, batchSize: PAGE_SIZE });
+      const persisted = await rollout.persistCandidatePlan(plan, {
+        storage,
+        reviewStorage: options.reviewStorage || rollout.reviewStorage,
+        contracts,
+        batchSize: PAGE_SIZE,
+      });
       const summary = await storage.storageSummary();
       if (summary.canonicalCount !== events.length || migrationResult.checkpoint?.integrityStatus !== 'passed') {
         throw new Error('Listening activation integrity check failed.');
@@ -107,7 +124,10 @@
         activatedAt: null,
         error: null,
       });
-      return { state: prepared, audit: rollout.safeAudit({ ...plan, assignment: persisted.assignment }, { sourceCount: events.length, contracts: options.contracts || root?.BandmarkrListeningIdentityContracts }) };
+      return {
+        state: prepared,
+        audit: rollout.safeAudit({ ...plan, assignment: persisted.assignment }, { sourceCount: events.length, contracts }),
+      };
     } catch (error) {
       store.save({ ...store.load(), status: 'error', error: error?.message || 'Listening activation failed.' });
       throw error;
@@ -118,31 +138,41 @@
     const storage = options.storage || root?.BandmarkrListeningDerivedStorage;
     const store = options.stateStore || stateStore(options.localStorage);
     const current = store.load();
-    const events = options.events || [];
+    const events = await sourceEvents(options);
     if (current.status !== 'ready' && current.status !== 'active') throw new Error('Prepare cleaned listening totals first.');
     if (events.length !== current.sourceEventCount) throw new Error('Listening history changed. Prepare cleaned totals again.');
     const canonicalRecords = await listAll((page) => storage.listCanonical(page));
     const identityRecords = await listAll((page) => storage.listIdentities(page));
     if (canonicalRecords.length !== events.length) throw new Error('Canonical listening data is incomplete.');
     const result = canonicalizeEvents(events, canonicalRecords, identityRecords);
-    const active = store.save({ ...current, status: 'active', duplicateCount: result.duplicateCount, activatedAt: current.activatedAt || new Date().toISOString(), error: null });
+    const active = store.save({
+      ...current,
+      status: 'active',
+      duplicateCount: result.duplicateCount,
+      activatedAt: current.activatedAt || new Date().toISOString(),
+      error: null,
+    });
     return { ...result, state: active };
   }
 
+  function refreshVisibleListeningScreens() {
+    if (typeof renderStatsScreen === 'function' && typeof currentScreen !== 'undefined' && currentScreen === 'stats') renderStatsScreen();
+    if (typeof renderTopBandsScreen === 'function' && typeof currentScreen !== 'undefined' && currentScreen === 'top-bands') renderTopBandsScreen();
+    if (typeof renderProfileScreen === 'function' && typeof currentScreen !== 'undefined' && currentScreen === 'profile') renderProfileScreen(activeProfileBandId);
+    if (typeof renderMyConcertsScreen === 'function' && typeof currentTab !== 'undefined' && currentTab === 'myconcerts') renderMyConcertsScreen();
+  }
+
   async function applyToApp(options = {}) {
+    if (typeof listeningEvents === 'undefined') return { applied: false, reason: 'app_unavailable' };
+    const store = options.stateStore || stateStore(options.localStorage);
+    if (store.load().status !== 'active') return { applied: false, reason: 'inactive' };
     try {
-      if (typeof listeningEvents === 'undefined') return { applied: false, reason: 'app_unavailable' };
-      const store = options.stateStore || stateStore(options.localStorage);
-      const current = store.load();
-      if (current.status !== 'active') return { applied: false, reason: 'inactive' };
       const result = await activate({ ...options, events: options.events || listeningEvents, stateStore: store });
       listeningEvents = result.events;
-      if (typeof renderStatsScreen === 'function' && typeof currentScreen !== 'undefined' && currentScreen === 'stats') renderStatsScreen();
-      if (typeof renderTopBandsScreen === 'function' && typeof currentScreen !== 'undefined' && currentScreen === 'top-bands') renderTopBandsScreen();
-      if (typeof renderProfileScreen === 'function' && typeof currentScreen !== 'undefined' && currentScreen === 'profile') renderProfileScreen(activeProfileBandId);
-      if (typeof renderMyConcertsScreen === 'function' && typeof currentTab !== 'undefined' && currentTab === 'myconcerts') renderMyConcertsScreen();
+      refreshVisibleListeningScreens();
       return { applied: true, count: result.events.length, duplicateCount: result.duplicateCount };
     } catch (error) {
+      store.save({ ...store.load(), status: 'stale', error: error?.message || 'Cleaned totals need to be prepared again.' });
       return { applied: false, reason: error?.message || 'activation_failed' };
     }
   }
@@ -160,22 +190,19 @@
   }
 
   function renderSettingsCard(container) {
-    const store = stateStore();
-    const state = store.load();
+    const state = stateStore().load();
     const status = container.querySelector('[data-canonical-activation-status]');
     const prepareButton = container.querySelector('[data-canonical-prepare]');
     const activateButton = container.querySelector('[data-canonical-activate]');
     const count = Number(state.duplicateCount) || 0;
-    status.textContent = state.status === 'active'
-      ? `Cleaned totals are active. ${count.toLocaleString()} confirmed duplicate listen${count === 1 ? '' : 's'} are excluded.`
-      : state.status === 'ready'
-        ? `Preparation complete. ${count.toLocaleString()} confirmed duplicate listen${count === 1 ? '' : 's'} found. Your visible totals have not changed yet.`
-        : state.status === 'preparing'
-          ? 'Preparing cleaned totals on this device…'
-          : state.status === 'error'
-            ? `Preparation stopped safely: ${state.error || 'Unknown error'}`
-            : 'Your current listening statistics still use the original source records.';
-    prepareButton.textContent = state.status === 'ready' || state.status === 'active' ? 'Prepare again' : 'Prepare cleaned totals';
+    if (state.status === 'active') status.textContent = `Cleaned totals are active. ${count.toLocaleString()} confirmed duplicate listen${count === 1 ? '' : 's'} are excluded.`;
+    else if (state.status === 'ready') status.textContent = `Preparation complete. ${count.toLocaleString()} confirmed duplicate listen${count === 1 ? '' : 's'} found. Your visible totals have not changed yet.`;
+    else if (state.status === 'preparing') status.textContent = 'Preparing cleaned totals on this device…';
+    else if (state.status === 'stale') status.textContent = 'Your listening history changed. Prepare cleaned totals again before using them.';
+    else if (state.status === 'error') status.textContent = `Preparation stopped safely: ${state.error || 'Unknown error'}`;
+    else status.textContent = 'Your current listening statistics still use the original source records.';
+    prepareButton.hidden = state.status === 'active';
+    prepareButton.textContent = ['ready', 'stale', 'error'].includes(state.status) ? 'Prepare again' : 'Prepare cleaned totals';
     activateButton.hidden = state.status !== 'ready';
   }
 
@@ -194,22 +221,21 @@
     prepareButton.addEventListener('click', async () => {
       prepareButton.disabled = true;
       wrapper.querySelector('[data-canonical-activation-status]').textContent = 'Preparing cleaned totals on this device…';
-      try {
-        await prepare({ events: typeof listeningEvents === 'undefined' ? [] : listeningEvents, bands: typeof bands === 'undefined' ? [] : bands });
-      } catch (_) {}
+      try { await prepare({ bands: typeof bands === 'undefined' ? [] : bands }); } catch (_) {}
       prepareButton.disabled = false;
       renderSettingsCard(wrapper);
     });
     activateButton.addEventListener('click', async () => {
       activateButton.disabled = true;
       try {
-        const result = await activate({ events: typeof listeningEvents === 'undefined' ? [] : listeningEvents });
+        const result = await activate({ bands: typeof bands === 'undefined' ? [] : bands });
         if (typeof listeningEvents !== 'undefined') listeningEvents = result.events;
-        renderSettingsCard(wrapper);
+        refreshVisibleListeningScreens();
       } catch (error) {
         wrapper.querySelector('[data-canonical-activation-status]').textContent = error?.message || 'Cleaned totals could not be activated.';
       }
       activateButton.disabled = false;
+      renderSettingsCard(wrapper);
     });
     renderSettingsCard(wrapper);
   }
@@ -231,5 +257,8 @@
     }, { once: true });
   }
 
-  return { STATE_KEY, STATE_VERSION, PAGE_SIZE, defaultState, stateStore, listAll, canonicalizeEvents, prepare, activate, applyToApp, installApplyWrapper };
+  return {
+    STATE_KEY, STATE_VERSION, PAGE_SIZE, defaultState, stateStore, listAll,
+    canonicalizeEvents, sourceEvents, prepare, activate, applyToApp, installApplyWrapper,
+  };
 });
