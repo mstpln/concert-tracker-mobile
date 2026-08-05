@@ -75,15 +75,16 @@ test('v92 activates cleaned listening totals only after explicit confirmation', 
   expect(browserErrors).toEqual([]);
 });
 
-test('v92 fails closed when listening history changes after preparation', async ({ page }) => {
+test('v92 fails closed when listening history changes after activation', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
     const state = {
       stateVersion: 1,
-      status: 'ready',
+      status: 'active',
       sourceEventCount: 2,
       canonicalRecordCount: 2,
       duplicateCount: 0,
+      activatedAt: '2026-01-01T12:05:00.000Z',
     };
     localStorage.setItem('bandmarkr-listening-canonical-activation-v1', JSON.stringify(state));
     listeningEvents = [{ stableListenId: 'only-one' }];
