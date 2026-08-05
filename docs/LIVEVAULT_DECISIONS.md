@@ -359,3 +359,35 @@
 **Reason:** The user wants the same direct Spotify navigation already available from past-concert setlists.
 
 **Consequence:** Links are rendered only from trusted stored Spotify IDs or URLs. Missing or ambiguous identity leaves normal non-linked text; title-only guessing is prohibited.
+
+## 2026-08-05 — Derived listening state is isolated and disposable
+
+**Decision:** Store generated listen-identity and canonical-listen records in the separate local IndexedDB database `bandmarkr-listening-derived-v1`, never in the immutable source-history store.
+
+**Reason:** Generated identity and deduplication state must be replaceable, rollback-safe and independently versioned without risking Spotify or ListenBrainz observations.
+
+**Consequence:** Identity and canonical writes are atomic, bounded to 500 records, preserve unknown future fields and protect reviewed decisions. Rollback removes or disables derived versions only; it never edits source events.
+
+## 2026-08-05 — Exact band-name mapping requires a unique owner
+
+**Decision:** The migration runner may map a source event by exact normalized stored-band name only when exactly one stable BANDMARKR band ID owns that normalized name. Duplicate normalized names are ambiguous and remain unresolved. An explicit stable band ID remains authoritative.
+
+**Reason:** Choosing the first or last matching band would create deterministic but incorrect identity assignments for same-name artists.
+
+**Consequence:** Automated migration prefers false negatives over false positives. Ambiguous events remain available for later review or stronger identity evidence and are never silently assigned by array order.
+
+## 2026-08-05 — Migration checkpoints follow complete derived writes
+
+**Decision:** A migration checkpoint advances only after both the identity batch and canonical batch have committed successfully, with source counts verified before and after the chunk.
+
+**Reason:** Advancing after a partial write would make resumed runs skip missing derived records, while a changing source archive would invalidate stable pagination assumptions.
+
+**Consequence:** Interrupted runs safely repeat the current chunk, writes remain idempotent, and any source-count change fails closed without advancing the checkpoint.
+
+## 2026-08-05 — Listening review is conservative, local and user-owned
+
+**Decision:** Trusted Levels 1–3 may be assigned automatically only through deterministic one-to-one candidate selection. Probable and ambiguous candidates remain local review groups in the separate disposable database `bandmarkr-listening-review-v1`. **Decide later** is session-only. A pair-level merge resolves only that displayed relationship; unresolved alternatives remain pending. **Keep all separate** resolves the remaining group without editing source observations.
+
+**Reason:** Uncertain evidence must neither silently change listening totals nor disappear as though the user made a choice. Review metadata must not occupy canonical source-event keys, and sequential pair decisions must not create canonical chains or overwrite prior human choices.
+
+**Consequence:** Candidate writes affect only `bandmarkr-listening-derived-v1`; review-group writes affect only `bandmarkr-listening-review-v1`. Both remain local, bounded to 500 records per operation, rollback-safe and protected against reruns. Sequential merges flatten every member to one canonical representative, partial decisions remain available until completed, and source observations remain immutable. Audit output remains aggregate-only. No real archive migration, R2 access, provider call or visible canonical aggregation switch occurs without separate authorization.

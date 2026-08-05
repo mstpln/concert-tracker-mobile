@@ -9,7 +9,7 @@ const out = path.join(root, 'dist');
 const sourceId = process.env.QA_BUILD_ID || process.env.GITHUB_SHA || process.env.CF_PAGES_COMMIT_SHA || 'local-qa';
 const id = String(sourceId).replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 80) || 'local-qa';
 const shell = [
-  'app.css', 'v72Corrections.css', 'listeningV81.css', 'concertCardsV86.css', 'bandmarkrV87.css', 'app.js', 'devicePrivacy.js',
+  'app.css', 'v72Corrections.css', 'listeningV81.css', 'concertCardsV86.css', 'bandmarkrV87.css', 'listeningReviewRollout.css', 'app.js', 'listeningReviewRollout.js', 'devicePrivacy.js',
   'browserFetchPolicy.js', 'v72Corrections.js', 'v72FinalAdjustments.js',
   'securityHardening.js', 'listeningInsightsV81.js', 'listeningV81BootFix.js', 'listeningV81ReviewFix.js', 'listeningV82Corrections.js', 'listeningV82GenreFix.js', 'listeningV82FailSafe.js', 'listeningV83ChartFix.js', 'listeningV83WindowFix.js', 'listeningV84ChartRenderFix.js', 'listeningV85RankingAndStatsUnits.js', 'dataLib.js', 'listeningStats.js', 'listeningStatsV81.js',
   'listeningFixtures.js', 'listeningIdentityContracts.js', 'listeningDerivedStorage.js', 'listeningDerivedMigration.js',
@@ -64,6 +64,9 @@ sw = sw
   );
 if (!sw.includes("k.startsWith('concert-tracker-qa-') && k !== CACHE_NAME")) {
   throw new Error('QA build could not scope service-worker cache cleanup to the QA namespace');
+}
+if (!sw.includes("'./qa-bootstrap.js'")) {
+  throw new Error('QA build could not add synthetic fixture files to the service-worker shell cache');
 }
 fs.writeFileSync(path.join(out, 'service-worker.js'), sw);
 
