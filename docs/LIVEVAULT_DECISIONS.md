@@ -391,3 +391,11 @@
 **Reason:** Uncertain evidence must neither silently change listening totals nor disappear as though the user made a choice. Review metadata must not occupy canonical source-event keys, and sequential pair decisions must not create canonical chains or overwrite prior human choices.
 
 **Consequence:** Candidate writes affect only `bandmarkr-listening-derived-v1`; review-group writes affect only `bandmarkr-listening-review-v1`. Both remain local, bounded to 500 records per operation, rollback-safe and protected against reruns. Sequential merges flatten every member to one canonical representative, partial decisions remain available until completed, and source observations remain immutable. Audit output remains aggregate-only. No real archive migration, R2 access, provider call or visible canonical aggregation switch occurs without separate authorization.
+
+## 2026-08-05 — Canonical listening totals require explicit local activation
+
+**Decision:** Preparing canonical listening data and using it for visible statistics are two separate local actions. Preparation writes and verifies derived identity, canonical and review records but leaves visible statistics unchanged. Visible statistics switch only after the user selects **Use cleaned totals**. Only trusted automatic or completed user-reviewed duplicate relationships are excluded; probable and ambiguous groups remain counted separately.
+
+**Reason:** The real listening archive is private and large, and derived matching can become stale when new listens arrive. A two-step flow lets the user see aggregate results before changing the app while preserving a clear fallback to the original source observations.
+
+**Consequence:** Activation fails closed when canonical coverage is incomplete or the source event count differs from the prepared count. A later history change marks activation stale and restores source-event totals until preparation is run again. Source observations, R2 objects and provider records are never rewritten, and development/QA use synthetic fixtures only.
