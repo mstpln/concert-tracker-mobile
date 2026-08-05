@@ -60,12 +60,16 @@
   function normalizeReviewGroup(group = {}) {
     const reviewId = clean(group.reviewId);
     const sourceEventIds = [...new Set((group.sourceEventIds || []).map(clean).filter(Boolean))].sort();
-    const candidatePairs = (group.candidatePairs || []).map((pair) => ({
-      pairKey: clean(pair.pairKey),
-      leftSourceEventId: clean(pair.leftSourceEventId),
-      rightSourceEventId: clean(pair.rightSourceEventId),
-      evidence: clone(pair.evidence || null),
-    })).filter((pair) => pair.pairKey && pair.leftSourceEventId && pair.rightSourceEventId);
+    const seenPairs = new Set();
+    const candidatePairs = [];
+    for (const pair of group.candidatePairs || []) {
+      const ids = [clean(pair.leftSourceEventId), clean(pair.rightSourceEventId)].filter(Boolean).sort();
+      if (ids.length !== 2 || ids[0] === ids[1]) continue;
+      const pairKey = ids.join('|');
+      if (seenPairs.has(pairKey)) continue;
+      seenPairs.add(pairKey);
+      candidatePairs.push({ pairKey, leftSourceEventId: ids[0], rightSourceEventId: ids[1], evidence: clone(pair.evidence || null) });
+    }
     if (!reviewId || sourceEventIds.length < 2 || !candidatePairs.length) throw new Error('Listening review groups require stable candidate relationships.');
     return {
       ...clone(group),
@@ -73,6 +77,7 @@
       reviewVersion: Number.isInteger(group.reviewVersion) && group.reviewVersion > 0 ? group.reviewVersion : 1,
       sourceEventIds,
       candidatePairs,
+      pairDecisions: Array.isArray(group.pairDecisions) ? clone(group.pairDecisions) : [],
       status: clean(group.status) || 'pending',
       reviewedDecision: clone(group.reviewedDecision || null),
       reviewedAt: clean(group.reviewedAt),
@@ -84,16 +89,30 @@
       if (!Array.isArray(groups) || groups.length > MAX_PAGE_SIZE) throw new Error(`Listening review batches are limited to ${MAX_PAGE_SIZE} groups.`);
       const normalized = groups.map(normalizeReviewGroup);
       const db = await openReviewDb();
+      let written = 0;
       try {
         const tx = db.transaction(REVIEW_STORE, 'readwrite');
         const store = tx.objectStore(REVIEW_STORE);
         for (const group of normalized) {
-          const existing = await requestResult(store.get(group.reviewId), 'Could not read local listening review group.');
-          if (existing?.reviewedDecision) continue;
-          store.put(group);
+          const request = store.get(group.reviewId);
+          request.onsuccess = () => {
+            if (request.result?.reviewedDecision) return;
+            store.put(group);
+            written += 1;
+          };
         }
         await transactionDone(tx, 'Could not save local listening review groups.');
-        return { written: normalized.length };
+        return { written };
+      } finally { db.close(); }
+    },
+    async replaceGroup(group) {
+      const normalized = normalizeReviewGroup(group);
+      const db = await openReviewDb();
+      try {
+        const tx = db.transaction(REVIEW_STORE, 'readwrite');
+        tx.objectStore(REVIEW_STORE).put(normalized);
+        await transactionDone(tx, 'Could not update local listening review group.');
+        return clone(normalized);
       } finally { db.close(); }
     },
     async getGroup(reviewId) {
@@ -131,7 +150,9 @@
     async deleteVersion(version, options = {}) {
       const limit = bounded(options.limit, MAX_PAGE_SIZE);
       const db = await openReviewDb();
+      let visited = 0;
       let removed = 0;
+      let retained = 0;
       let hasMore = false;
       try {
         const tx = db.transaction(REVIEW_STORE, 'readwrite');
@@ -141,15 +162,16 @@
           request.onsuccess = () => {
             const cursor = request.result;
             if (!cursor) return resolve();
-            if (removed >= limit) { hasMore = true; return resolve(); }
-            cursor.delete();
-            removed += 1;
+            if (visited >= limit) { hasMore = true; return resolve(); }
+            visited += 1;
+            if (cursor.value?.reviewedDecision || (cursor.value?.pairDecisions || []).length) retained += 1;
+            else { cursor.delete(); removed += 1; }
             cursor.continue();
           };
           request.onerror = () => reject(request.error || new Error('Could not roll back local listening review groups.'));
         });
         await transactionDone(tx, 'Could not roll back local listening review groups.');
-        return { removed, hasMore };
+        return { visited, removed, retained, hasMore };
       } finally { db.close(); }
     },
   };
@@ -173,13 +195,9 @@
   function generateCandidates(events = [], options = {}) {
     const contracts = options.contracts || root?.BandmarkrListeningIdentityContracts;
     if (!contracts?.matchingEvidence) throw new Error('Listening identity contracts are unavailable.');
-    const toleranceMs = Number.isFinite(options.toleranceMs)
-      ? Math.max(0, Number(options.toleranceMs))
-      : Number(contracts.TIMESTAMP_TOLERANCE_MS) || 1000;
-    const sorted = events
-      .map((event) => ({ event, at: eventTime(event), id: eventId(event) }))
-      .filter((entry) => entry.at !== null && entry.id)
-      .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+    const toleranceMs = Number.isFinite(options.toleranceMs) ? Math.max(0, Number(options.toleranceMs)) : Number(contracts.TIMESTAMP_TOLERANCE_MS) || 1000;
+    const sorted = events.map((event) => ({ event, at: eventTime(event), id: eventId(event) }))
+      .filter((entry) => entry.at !== null && entry.id).sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
     const candidates = [];
     let comparedPairs = 0;
     let windowStart = 0;
@@ -228,10 +246,7 @@
       const canonicalListenId = candidate.representativeId || representativeFor(candidate.left, candidate.right);
       for (const event of [candidate.left, candidate.right]) {
         const sourceEventId = eventId(event);
-        updates.push({
-          ...contracts.canonicalEnvelope({ ...event, sourceEventId, canonicalListenId, duplicateOf: sourceEventId === canonicalListenId ? null : canonicalListenId, dedupeStatus: sourceEventId === canonicalListenId ? 'unique' : 'exact_duplicate', dedupeMethod: candidate.evidence.method, dedupeEvidenceTier: candidate.evidence.tier }),
-          sourceEventId,
-        });
+        updates.push({ ...contracts.canonicalEnvelope({ ...event, sourceEventId, canonicalListenId, duplicateOf: sourceEventId === canonicalListenId ? null : canonicalListenId, dedupeStatus: sourceEventId === canonicalListenId ? 'unique' : 'exact_duplicate', dedupeMethod: candidate.evidence.method, dedupeEvidenceTier: candidate.evidence.tier }), sourceEventId });
       }
     }
     return updates.sort((a, b) => a.sourceEventId.localeCompare(b.sourceEventId));
@@ -265,6 +280,7 @@
         sourceEventIds: sortedIds,
         status: pairs.every((pair) => pair.evidence?.outcome === 'probable_duplicate') ? 'probable_duplicate' : 'ambiguous',
         candidatePairs: pairs.sort(compareCandidates).map((candidate) => ({ pairKey: candidate.pairKey, leftSourceEventId: eventId(candidate.left), rightSourceEventId: eventId(candidate.right), evidence: clone(candidate.evidence) })),
+        pairDecisions: [],
       });
     }
     return components.sort((a, b) => a.reviewId.localeCompare(b.reviewId));
@@ -279,19 +295,7 @@
       const tier = candidate?.evidence?.tier;
       if (Number.isInteger(tier) && byTier[`level${tier}`] !== undefined) byTier[`level${tier}`] += 1;
     }
-    return {
-      schemaVersion: 1,
-      sourceEventCount: Number(options.sourceCount) || 0,
-      indexedEventCount: Number(plan.indexedEvents) || 0,
-      comparedPairCount: Number(plan.comparedPairs) || 0,
-      candidateCount: (plan.candidates || []).length,
-      candidatesByTier: byTier,
-      automaticAssignmentCount: assignment.automatic.length,
-      reviewCandidateCount: assignment.review.length,
-      reviewComponentCount: reviewComponents(assignment.review).length,
-      conflictRejectedCount: assignment.rejectedByConflict.length,
-      automaticCanonicalRecordCount: canonicalUpdates(assignment, options.contracts).length,
-    };
+    return { schemaVersion: 1, sourceEventCount: Number(options.sourceCount) || 0, indexedEventCount: Number(plan.indexedEvents) || 0, comparedPairCount: Number(plan.comparedPairs) || 0, candidateCount: (plan.candidates || []).length, candidatesByTier: byTier, automaticAssignmentCount: assignment.automatic.length, reviewCandidateCount: assignment.review.length, reviewComponentCount: reviewComponents(assignment.review).length, conflictRejectedCount: assignment.rejectedByConflict.length, automaticCanonicalRecordCount: canonicalUpdates(assignment, options.contracts).length };
   }
 
   function batches(items, size = MAX_PAGE_SIZE) {
@@ -336,23 +340,47 @@
     let afterReviewId = null;
     do {
       const page = await reviews.listGroups({ limit: options.pageSize || REVIEW_PAGE_SIZE, afterReviewId });
-      records.push(...(page.items || []).filter((record) => ['probable_duplicate', 'ambiguous'].includes(record.status) && !record.reviewedDecision));
+      records.push(...(page.items || []).filter((record) => ['probable_duplicate', 'ambiguous'].includes(record.status) && !record.reviewedDecision && (record.candidatePairs || []).length));
       afterReviewId = records.length >= maxItems ? null : clean(page.nextAfterReviewId);
     } while (afterReviewId);
     const selected = records.slice(0, maxItems);
     const context = await sourceEventsByIds(selected.flatMap((record) => record.sourceEventIds || []), options);
-    return selected.map((record) => ({
-      kind: 'duplicate_component',
-      reviewId: record.reviewId,
-      status: record.status,
-      record,
-      candidatePairs: record.candidatePairs.map((pair) => ({ ...pair, left: clone(context[pair.leftSourceEventId] || null), right: clone(context[pair.rightSourceEventId] || null) })),
-    }));
+    return selected.map((record) => ({ kind: 'duplicate_component', reviewId: record.reviewId, status: record.status, record, candidatePairs: record.candidatePairs.map((pair) => ({ ...pair, left: clone(context[pair.leftSourceEventId] || null), right: clone(context[pair.rightSourceEventId] || null) })) }));
   }
 
   function reviewedDecision(action, details = {}, now = new Date()) {
     if (!REVIEW_ACTIONS.includes(action)) throw new Error('Unsupported listening review action.');
     return { action, ...clone(details), decidedAt: now.toISOString(), owner: 'user' };
+  }
+
+  function remainingPairsAfterMerge(current, pair, decision) {
+    const target = [pair.leftSourceEventId, pair.rightSourceEventId].sort()[0];
+    const duplicate = [pair.leftSourceEventId, pair.rightSourceEventId].sort()[1];
+    const remap = (id) => id === duplicate ? target : id;
+    const seen = new Set();
+    const remaining = [];
+    for (const candidate of current.candidatePairs || []) {
+      if (candidate.pairKey === pair.pairKey) continue;
+      const ids = [remap(candidate.leftSourceEventId), remap(candidate.rightSourceEventId)].sort();
+      if (!ids[0] || !ids[1] || ids[0] === ids[1]) continue;
+      const pairKey = ids.join('|');
+      if (seen.has(pairKey)) continue;
+      seen.add(pairKey);
+      remaining.push({ ...clone(candidate), pairKey, leftSourceEventId: ids[0], rightSourceEventId: ids[1] });
+    }
+    return {
+      target,
+      duplicate,
+      group: {
+        ...current,
+        sourceEventIds: [...new Set((current.sourceEventIds || []).map(remap))].sort(),
+        candidatePairs: remaining,
+        pairDecisions: [...(current.pairDecisions || []), { ...decision, pairKey: pair.pairKey, canonicalListenId: target, duplicateSourceEventId: duplicate }],
+        status: remaining.some((candidate) => candidate.evidence?.outcome !== 'probable_duplicate') ? 'ambiguous' : 'probable_duplicate',
+        reviewedDecision: null,
+        reviewedAt: null,
+      },
+    };
   }
 
   async function applyReview(item, action, details = {}, options = {}) {
@@ -364,16 +392,15 @@
     const current = item.record || await reviews.getGroup(item.reviewId);
     if (!current) throw new Error('Listening review group no longer exists.');
     const decision = reviewedDecision(action, details, options.now || new Date());
-    if (action === 'merge') {
-      const pair = (current.candidatePairs || []).find((candidate) => candidate.pairKey === details.pairKey);
-      if (!pair) throw new Error('Choose one displayed candidate pair.');
-      const target = [pair.leftSourceEventId, pair.rightSourceEventId].sort()[0];
-      const duplicate = [pair.leftSourceEventId, pair.rightSourceEventId].sort()[1];
-      const existing = await storage.getCanonical(duplicate);
-      if (!existing) throw new Error('Canonical source record no longer exists.');
-      await storage.putCanonical({ ...existing, canonicalListenId: target, duplicateOf: target, status: 'user_reviewed', reviewedDecision: decision, reviewedAt: decision.decidedAt }, { replaceReviewedDecision: true });
-    }
-    return reviews.putDecision(current.reviewId, decision);
+    if (action === 'keep_separate') return reviews.putDecision(current.reviewId, decision);
+    const pair = (current.candidatePairs || []).find((candidate) => candidate.pairKey === details.pairKey);
+    if (!pair) throw new Error('Choose one displayed candidate pair.');
+    const result = remainingPairsAfterMerge(current, pair, decision);
+    const existing = await storage.getCanonical(result.duplicate);
+    if (!existing) throw new Error('Canonical source record no longer exists.');
+    await storage.putCanonical({ ...existing, canonicalListenId: result.target, duplicateOf: result.target, status: 'user_reviewed', reviewedDecision: decision, reviewedAt: decision.decidedAt }, { replaceReviewedDecision: true });
+    if (result.group.candidatePairs.length) return reviews.replaceGroup(result.group);
+    return reviews.putDecision(current.reviewId, { ...decision, completedPairReview: true });
   }
 
   async function rolloutStatus(options = {}) {
@@ -393,7 +420,7 @@
     const limit = bounded(options.limit, MAX_PAGE_SIZE);
     const identity = await storage.deleteIdentityVersion(version, { limit });
     const canonical = await storage.deleteDedupeVersion(version, { limit });
-    const review = reviews?.deleteVersion ? await reviews.deleteVersion(version, { limit }) : { removed: 0, hasMore: false };
+    const review = reviews?.deleteVersion ? await reviews.deleteVersion(version, { limit }) : { removed: 0, retained: 0, hasMore: false };
     const done = !identity.hasMore && !canonical.hasMore && !review.hasMore;
     if (done && options.clearCheckpoint !== false) (options.checkpoints || migration?.checkpointStore?.(options.localStorage))?.clear?.();
     return { version, identity, canonical, review, done };
@@ -403,8 +430,8 @@
     MAX_PAGE_SIZE, REVIEW_PAGE_SIZE, MAX_REVIEW_ITEMS, REVIEW_DB_NAME, REVIEW_STORE, REVIEW_ACTIONS,
     reviewStorage, stablePairKey, representativeFor, generateCandidates, assignOneToOne,
     canonicalUpdates, reviewComponents, reviewCandidateUpdates, safeAudit, batches,
-    persistCandidatePlan, sourceEventsByIds, reviewQueue, reviewedDecision, applyReview,
-    rolloutStatus, rollbackDerivedVersion,
+    persistCandidatePlan, sourceEventsByIds, reviewQueue, reviewedDecision, remainingPairsAfterMerge,
+    applyReview, rolloutStatus, rollbackDerivedVersion,
   };
 });
 
@@ -449,7 +476,11 @@
           const action = button.dataset.listeningReviewAction;
           await api.applyReview(item, action, { pairKey: button.dataset.listeningPairKey || null });
           row.remove();
-          statusNode.textContent = action === 'defer' ? 'This group will remain available the next time you open the review area.' : 'Review decision saved locally. Source listening records were not changed.';
+          statusNode.textContent = action === 'defer'
+            ? 'This group will remain available the next time you open the review area.'
+            : action === 'merge'
+              ? 'That pair was saved locally. Any remaining alternatives will stay available for review.'
+              : 'Review decision saved locally. Source listening records were not changed.';
         } catch (_) {
           statusNode.textContent = 'The decision could not be saved. Nothing was changed.';
           button.disabled = false;
