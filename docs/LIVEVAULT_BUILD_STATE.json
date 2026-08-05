@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v92",
-  "serviceWorkerCacheVersion": "v92",
+  "appVersion": "v93",
+  "serviceWorkerCacheVersion": "v93",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 20,
@@ -28,6 +28,7 @@
     "listeningReviewRollout.js",
     "listeningReviewReconcile.js",
     "listeningCanonicalActivation.js",
+    "listeningPreparationRecovery.js",
     "devicePrivacy.js",
     "browserFetchPolicy.js",
     "securityHardening.js",
