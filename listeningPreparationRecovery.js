@@ -91,16 +91,13 @@
   }
 
   function checkForStalledPreparation(storage = root?.localStorage, nowMs = Date.now()) {
-    let state = parse(storage, ACTIVATION_STATE_KEY);
+    const state = parse(storage, ACTIVATION_STATE_KEY);
     if (state?.status !== 'preparing') {
       lastCheckpointSignature = null;
       lastCheckpointActivityAt = 0;
       return { recovered: false, state };
     }
     if (root?.document?.visibilityState === 'hidden') return { recovered: false, state };
-
-    const refreshed = refreshActivePreparation(storage, nowMs);
-    if (refreshed) state = refreshed;
 
     const signature = checkpointSignature(storage);
     if (signature !== lastCheckpointSignature) {
@@ -123,12 +120,8 @@
     const total = Math.max(0, Number(checkpoint?.sourceEventCountAfter ?? checkpoint?.sourceEventCountBefore) || 0);
     if (state?.preparationPhase === 'loading-source') return 'Loading listening history on this device…';
     if (state?.preparationPhase === 'persisting-candidates') return 'Saving confirmed and possible duplicate matches…';
-    if (state?.preparationPhase === 'verifying-storage' || state?.preparationPhase === 'reading-canonical' || state?.preparationPhase === 'reading-identities') {
-      return 'Verifying cleaned listening totals…';
-    }
-    if (checkpoint?.status === 'complete' || state?.preparationPhase === 'generating-candidates' || state?.preparationPhase === 'assigning-candidates') {
-      return 'Checking the prepared history for confirmed and possible duplicates…';
-    }
+    if (state?.preparationPhase === 'verifying-storage' || state?.preparationPhase === 'reading-canonical' || state?.preparationPhase === 'reading-identities') return 'Verifying cleaned listening totals…';
+    if (checkpoint?.status === 'complete' || state?.preparationPhase === 'generating-candidates' || state?.preparationPhase === 'assigning-candidates') return 'Checking the prepared history for confirmed and possible duplicates…';
     if (total > 0) return `Preparing cleaned totals on this device… ${processed.toLocaleString()} of ${total.toLocaleString()} source listens processed.`;
     if (processed > 0) return `Preparing cleaned totals on this device… ${processed.toLocaleString()} source listens processed.`;
     return 'Preparing cleaned totals on this device…';
@@ -200,7 +193,6 @@
     const rollout = root?.BandmarkrListeningReviewRollout;
     const derived = root?.BandmarkrListeningDerivedStorage;
     const reviewStorage = rollout?.reviewStorage;
-
     wrapMethod(history, 'loadEvents', 'loading-source', storage);
     wrapMethod(migration, 'runToCompletion', 'migrating', storage);
     wrapMethod(rollout, 'generateCandidates', 'generating-candidates', storage);
@@ -208,16 +200,12 @@
     wrapMethod(rollout, 'persistCandidatePlan', 'persisting-candidates', storage);
     wrapMethod(rollout, 'reviewComponents', 'summarizing-review', storage);
     wrapMethod(rollout, 'safeAudit', 'finalizing-audit', storage);
-
     wrapMethod(derived, 'putIdentities', 'persisting-identities', storage);
     wrapMethod(derived, 'putCanonicalBatch', 'persisting-canonical', storage);
     wrapMethod(derived, 'storageSummary', 'verifying-storage', storage);
     wrapMethod(derived, 'listCanonical', 'reading-canonical', storage);
     wrapMethod(derived, 'listIdentities', 'reading-identities', storage);
-
-    for (const name of ['putGroups', 'putReviewGroups', 'listGroups', 'deleteGroups']) {
-      wrapMethod(reviewStorage, name, `review-${name}`, storage);
-    }
+    for (const name of ['putGroups', 'putReviewGroups', 'listGroups', 'deleteGroups']) wrapMethod(reviewStorage, name, `review-${name}`, storage);
   }
 
   async function requestWakeLock() {
