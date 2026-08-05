@@ -62,11 +62,18 @@
     for (const event of events) {
       const sourceEventId = clean(event?.stableListenId || event?.sourceEventId);
       const canonical = canonicalById.get(sourceEventId);
-      if (!sourceEventId || !canonical) throw new Error('Canonical listening data is incomplete.');
-      if (canonical.duplicateOf || canonical.canonicalListenId !== sourceEventId) {
+      const canonicalListenId = clean(canonical?.canonicalListenId);
+      const duplicateOf = clean(canonical?.duplicateOf);
+      if (!sourceEventId || !canonical || !canonicalListenId) throw new Error('Canonical listening data is incomplete.');
+      if (duplicateOf) {
+        const representative = canonicalById.get(duplicateOf);
+        if (canonicalListenId !== duplicateOf || !representative || clean(representative.canonicalListenId) !== duplicateOf || clean(representative.duplicateOf)) {
+          throw new Error('Canonical listening relationships are inconsistent.');
+        }
         duplicateCount += 1;
         continue;
       }
+      if (canonicalListenId !== sourceEventId) throw new Error('Canonical listening relationships are inconsistent.');
       const identity = identityById.get(sourceEventId);
       output.push({
         ...clone(event),
@@ -114,11 +121,14 @@
       if (summary.canonicalCount !== events.length || migrationResult.checkpoint?.integrityStatus !== 'passed') {
         throw new Error('Listening activation integrity check failed.');
       }
+      const canonicalRecords = await listAll((page) => storage.listCanonical(page));
+      const identityRecords = await listAll((page) => storage.listIdentities(page));
+      const verified = canonicalizeEvents(events, canonicalRecords, identityRecords);
       const prepared = store.save({
         status: 'ready',
         sourceEventCount: events.length,
         canonicalRecordCount: summary.canonicalCount,
-        duplicateCount: persisted.assignment.automatic.length,
+        duplicateCount: verified.duplicateCount,
         reviewGroupCount: rollout.reviewComponents(persisted.assignment.review).length,
         preparedAt: new Date().toISOString(),
         activatedAt: null,
@@ -252,8 +262,6 @@
     root.addEventListener('DOMContentLoaded', () => {
       installApplyWrapper();
       observeSettings();
-      root.setTimeout(() => applyToApp(), 1200);
-      root.setTimeout(() => applyToApp(), 3200);
     }, { once: true });
   }
 
