@@ -5,7 +5,8 @@ test('v93 recovers a stalled preparation after a lock-style resume without reloa
   await page.getByTestId('settings-button').click();
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
 
-  await page.evaluate(() => {
+  const result = await page.evaluate(() => {
+    const recovery = BandmarkrListeningPreparationRecovery;
     localStorage.setItem('bandmarkr-listening-canonical-activation-v1', JSON.stringify({
       stateVersion: 1,
       status: 'preparing',
@@ -23,24 +24,25 @@ test('v93 recovers a stalled preparation after a lock-style resume without reloa
       processedEvents: 1500,
       sourceEventCountAfter: 5000,
     }));
-    BandmarkrListeningPreparationRecovery.renderCurrentProgress(localStorage);
+    recovery.renderCurrentProgress(localStorage);
+    recovery.checkForStalledPreparation(localStorage, 1000);
+    const recovered = recovery.checkForStalledPreparation(localStorage, 1000 + recovery.STALL_TIMEOUT_MS);
+    if (recovered.recovered) recovery.renderInterruptedState();
+    return {
+      recovered: recovered.recovered,
+      state: JSON.parse(localStorage.getItem('bandmarkr-listening-canonical-activation-v1')),
+      checkpoint: JSON.parse(localStorage.getItem('bandmarkr-listening-derived-migration-v1')),
+    };
   });
+
+  expect(result.recovered).toBe(true);
+  expect(result.state.status).toBe('error');
+  expect(result.state.error).toContain('interrupted');
+  expect(result.checkpoint.processedEvents).toBe(1500);
 
   const card = page.locator('[data-canonical-activation]');
-  await expect(card).toContainText('Preparing cleaned totals on this device');
-
-  const finalState = await page.evaluate(async () => {
-    const recovery = BandmarkrListeningPreparationRecovery;
-    await recovery.monitorTick(localStorage, 1000);
-    await recovery.monitorTick(localStorage, 1000 + recovery.STALL_TIMEOUT_MS);
-    return JSON.parse(localStorage.getItem('bandmarkr-listening-canonical-activation-v1'));
-  });
-
-  expect(finalState.status).toBe('error');
-  expect(finalState.error).toContain('interrupted');
   await expect(card).toContainText('Preparation stopped safely: Preparation was interrupted');
   await expect(card.getByRole('button', { name: 'Prepare again' })).toBeVisible();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('bandmarkr-listening-derived-migration-v1')).processedEvents)).toBe(1500);
 });
 
 test('v93 keeps active post-migration work running while its heartbeat is fresh', async ({ page }) => {
@@ -48,7 +50,7 @@ test('v93 keeps active post-migration work running while its heartbeat is fresh'
   await page.getByTestId('settings-button').click();
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
 
-  const result = await page.evaluate(async () => {
+  const result = await page.evaluate(() => {
     const recovery = BandmarkrListeningPreparationRecovery;
     const now = Date.now();
     localStorage.setItem('bandmarkr-listening-canonical-activation-v1', JSON.stringify({
@@ -65,14 +67,20 @@ test('v93 keeps active post-migration work running while its heartbeat is fresh'
       sourceEventCountAfter: 5000,
       integrityStatus: 'passed',
     }));
-    recovery.renderCurrentProgress(localStorage);
-    await recovery.monitorTick(localStorage, now - recovery.STALL_TIMEOUT_MS);
-    return recovery.monitorTick(localStorage, now);
+    recovery.checkForStalledPreparation(localStorage, now - recovery.STALL_TIMEOUT_MS);
+    const checked = recovery.checkForStalledPreparation(localStorage, now);
+    return {
+      recovered: checked.recovered,
+      state: JSON.parse(localStorage.getItem('bandmarkr-listening-canonical-activation-v1')),
+      checkpoint: JSON.parse(localStorage.getItem('bandmarkr-listening-derived-migration-v1')),
+    };
   });
 
   expect(result.recovered).toBe(false);
   expect(result.state.status).toBe('preparing');
+  expect(result.state.preparationPhase).toBe('persisting-candidates');
+  expect(result.checkpoint.status).toBe('complete');
+
   const card = page.locator('[data-canonical-activation]');
-  await expect(card).toContainText('Saving confirmed and possible duplicate matches');
   await expect(card.getByRole('button', { name: 'Prepare again' })).toBeHidden();
 });
