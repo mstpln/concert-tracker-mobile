@@ -14,7 +14,7 @@ const state = {
   playwrightProjects: ['desktop-chromium','mobile-chromium'],
   workflows: ['pr-qa.yml','full-pwa-qa.yml','production-smoke.yml'],
   shellFiles: [
-    'index.html','app.css','listeningV81.css','concertCardsV86.css','bandmarkrV87.css','listeningReviewRollout.css','icons/bandmarkr-wordmark.svg','app.js','listeningReviewRollout.js','devicePrivacy.js','browserFetchPolicy.js','securityHardening.js',
+    'index.html','app.css','listeningV81.css','concertCardsV86.css','bandmarkrV87.css','listeningReviewRollout.css','icons/bandmarkr-wordmark.svg','app.js','listeningReviewRollout.js','listeningReviewReconcile.js','listeningCanonicalActivation.js','devicePrivacy.js','browserFetchPolicy.js','securityHardening.js',
     'listeningInsightsV81.js','listeningV81BootFix.js','listeningV81ReviewFix.js','listeningV82Corrections.js','listeningV82GenreFix.js','listeningV82FailSafe.js','listeningV83ChartFix.js','listeningV83WindowFix.js','listeningV84ChartRenderFix.js','listeningV85RankingAndStatsUnits.js','dataLib.js','listeningStats.js','listeningStatsV81.js','listeningFixtures.js','listeningIdentityContracts.js','listeningDerivedStorage.js','listeningDerivedMigration.js','spotifyHistoryImport.js','listeningVaultBridge.js',
     'listeningVault.js','listeningHistoryV2.js','listeningIncrementalVault.js','listenbrainzSync.js',
     'spotifyHistoryBootstrap.js','conflictMerge.js','remoteStore.js','ownedTickets.js','service-worker.js'

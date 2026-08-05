@@ -40,7 +40,7 @@ test('disconnect removes only the Worker connection', () => {
   assert.deepEqual(calls, ['connection', 'reload']);
 });
 
-test('erase removes local credentials, source and derived stores, and only Live Vault shell caches', async () => {
+test('erase removes local credentials, source, derived and review stores, and only Live Vault shell caches', async () => {
   const calls = [];
   const storage = { removeItem: (key) => calls.push(`storage:${key}`) };
   const cacheStorage = {
@@ -52,14 +52,18 @@ test('erase removes local credentials, source and derived stores, and only Live 
     clearHistory: async () => calls.push('history'),
     clearTickets: async () => calls.push('tickets'),
     clearDerivedListening: async () => calls.push('derived-listening'),
+    clearReviewListening: async () => calls.push('review-listening'),
     clearConnection: () => calls.push('connection'), storage, cacheStorage,
     reload: () => calls.push('reload'),
   });
   assert.ok(calls.includes('spotify') && calls.includes('history') && calls.includes('tickets'));
   assert.ok(calls.includes('derived-listening'));
+  assert.ok(calls.includes('review-listening'));
   assert.equal(privacy.DERIVED_LISTENING_DB_NAME, 'bandmarkr-listening-derived-v1');
+  assert.equal(privacy.REVIEW_LISTENING_DB_NAME, 'bandmarkr-listening-review-v1');
   assert.ok(calls.includes('connection'));
   assert.ok(calls.includes('storage:concertTrackerSettings'));
+  assert.ok(calls.includes('storage:bandmarkr-listening-canonical-activation-v1'));
   assert.ok(calls.includes('cache:concert-tracker-shell-v75'));
   assert.ok(!calls.includes('cache:concert-tracker-qa-test'));
   assert.ok(!calls.includes('cache:other-app'));
