@@ -8,41 +8,28 @@
   const MAX_PAGE_SIZE = 500;
   const REVIEW_PAGE_SIZE = 50;
   const MAX_REVIEW_ITEMS = 100;
-  const REVIEW_ACTIONS = Object.freeze(['merge', 'keep_separate', 'assign_band', 'reject_band', 'defer']);
+  const REVIEW_ACTIONS = Object.freeze(['merge', 'keep_separate', 'defer']);
 
-  function clean(value) {
-    const text = String(value == null ? '' : value).trim();
-    return text || null;
-  }
-
-  function clone(value) {
-    return value == null ? value : JSON.parse(JSON.stringify(value));
-  }
-
-  function bounded(value, fallback, max = MAX_PAGE_SIZE) {
+  const clean = (value) => String(value == null ? '' : value).trim() || null;
+  const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value));
+  const bounded = (value, fallback, max = MAX_PAGE_SIZE) => {
     const number = Number(value);
-    if (!Number.isInteger(number) || number <= 0) return fallback;
-    return Math.min(number, max);
-  }
-
-  function timestamp(value) {
-    const parsed = Date.parse(value || '');
+    return Number.isInteger(number) && number > 0 ? Math.min(number, max) : fallback;
+  };
+  const eventId = (event) => clean(event?.sourceEventId || event?.stableListenId);
+  const eventTime = (event) => {
+    const parsed = Date.parse(event?.listenedAt || '');
     return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  function eventId(event) {
-    return clean(event?.sourceEventId || event?.stableListenId);
-  }
+  };
 
   function stablePairKey(left, right) {
     return [eventId(left), eventId(right)].sort().join('|');
   }
 
   function representativeFor(left, right) {
-    const leftId = eventId(left);
-    const rightId = eventId(right);
-    if (!leftId || !rightId) throw new Error('Candidate events require stable source identifiers.');
-    return leftId.localeCompare(rightId) <= 0 ? leftId : rightId;
+    const ids = [eventId(left), eventId(right)].filter(Boolean).sort();
+    if (ids.length !== 2) throw new Error('Candidate events require stable source identifiers.');
+    return ids[0];
   }
 
   function compareCandidates(left, right) {
@@ -58,7 +45,7 @@
       ? Math.max(0, Number(options.toleranceMs))
       : Number(contracts.TIMESTAMP_TOLERANCE_MS) || 1000;
     const sorted = events
-      .map((event) => ({ event, at: timestamp(event?.listenedAt), id: eventId(event) }))
+      .map((event) => ({ event, at: eventTime(event), id: eventId(event) }))
       .filter((entry) => entry.at !== null && entry.id)
       .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
     const candidates = [];
@@ -69,8 +56,7 @@
       while (windowStart < rightIndex && right.at - sorted[windowStart].at > toleranceMs) windowStart += 1;
       for (let leftIndex = windowStart; leftIndex < rightIndex; leftIndex += 1) {
         const left = sorted[leftIndex];
-        if (left.event.source && right.event.source && left.event.source === right.event.source
-          && left.id !== right.id) continue;
+        if (left.event.source && right.event.source && left.event.source === right.event.source && left.id !== right.id) continue;
         comparedPairs += 1;
         const evidence = contracts.matchingEvidence(left.event, right.event);
         if (!evidence?.tier || evidence.outcome === 'unique') continue;
@@ -108,11 +94,7 @@
       const rightId = eventId(candidate.right);
       if (!leftId || !rightId) continue;
       if (assigned.has(leftId) || assigned.has(rightId)) rejectedByConflict.push(candidate);
-      else {
-        assigned.add(leftId);
-        assigned.add(rightId);
-        review.push(candidate);
-      }
+      else review.push(candidate);
     }
     return { automatic, review, rejectedByConflict };
   }
@@ -141,25 +123,59 @@
     return updates.sort((a, b) => a.sourceEventId.localeCompare(b.sourceEventId));
   }
 
+  function reviewComponents(candidates = []) {
+    const remaining = [...candidates].sort(compareCandidates);
+    const components = [];
+    while (remaining.length) {
+      const seed = remaining.shift();
+      const eventIds = new Set([eventId(seed.left), eventId(seed.right)]);
+      const pairs = [seed];
+      let added;
+      do {
+        added = false;
+        for (let index = remaining.length - 1; index >= 0; index -= 1) {
+          const candidate = remaining[index];
+          const ids = [eventId(candidate.left), eventId(candidate.right)];
+          if (ids.some((id) => eventIds.has(id))) {
+            pairs.push(candidate);
+            ids.forEach((id) => eventIds.add(id));
+            remaining.splice(index, 1);
+            added = true;
+          }
+        }
+      } while (added);
+      components.push({
+        reviewId: [...eventIds].sort()[0],
+        sourceEventIds: [...eventIds].sort(),
+        candidatePairs: pairs.sort(compareCandidates).map((candidate) => ({
+          pairKey: candidate.pairKey,
+          leftSourceEventId: eventId(candidate.left),
+          rightSourceEventId: eventId(candidate.right),
+          evidence: clone(candidate.evidence),
+        })),
+      });
+    }
+    return components.sort((a, b) => a.reviewId.localeCompare(b.reviewId));
+  }
+
   function reviewCandidateUpdates(assignment = {}, contracts = root?.BandmarkrListeningIdentityContracts) {
     if (!contracts?.canonicalEnvelope) throw new Error('Listening identity contracts are unavailable.');
-    return (assignment.review || []).map((candidate) => {
-      const representativeId = candidate.representativeId || representativeFor(candidate.left, candidate.right);
-      const event = eventId(candidate.left) === representativeId ? candidate.right : candidate.left;
-      const sourceEventId = eventId(event);
+    return reviewComponents(assignment.review || []).map((component) => {
+      const probableOnly = component.candidatePairs.every((pair) => pair.evidence?.outcome === 'probable_duplicate');
       return {
         ...contracts.canonicalEnvelope({
-          ...event,
-          sourceEventId,
-          canonicalListenId: sourceEventId,
-          duplicateOf: representativeId,
-          dedupeStatus: candidate.evidence.outcome === 'probable_duplicate' ? 'probable_duplicate' : 'ambiguous',
-          dedupeMethod: candidate.evidence.method,
-          dedupeEvidenceTier: candidate.evidence.tier,
+          sourceEventId: component.reviewId,
+          canonicalListenId: component.reviewId,
+          dedupeStatus: probableOnly ? 'probable_duplicate' : 'ambiguous',
+          dedupeMethod: 'manual_review_component',
+          dedupeEvidenceTier: Math.min(...component.candidatePairs.map((pair) => pair.evidence?.tier || 99)),
         }),
-        sourceEventId,
+        sourceEventId: component.reviewId,
+        recordType: 'review_component',
+        sourceEventIds: component.sourceEventIds,
+        candidatePairs: component.candidatePairs,
       };
-    }).sort((a, b) => a.sourceEventId.localeCompare(b.sourceEventId));
+    });
   }
 
   function safeAudit(plan = {}, options = {}) {
@@ -178,9 +194,9 @@
       candidatesByTier: byTier,
       automaticAssignmentCount: assignment.automatic.length,
       reviewCandidateCount: assignment.review.length,
+      reviewComponentCount: reviewComponents(assignment.review).length,
       conflictRejectedCount: assignment.rejectedByConflict.length,
       automaticCanonicalRecordCount: canonicalUpdates(assignment, options.contracts).length,
-      pendingReviewRecordCount: reviewCandidateUpdates(assignment, options.contracts).length,
     };
   }
 
@@ -196,8 +212,9 @@
     if (!storage?.putCanonicalBatch) throw new Error('Derived listening storage is unavailable.');
     const assignment = plan.assignment || assignOneToOne(plan.candidates || []);
     const updates = [...canonicalUpdates(assignment, options.contracts), ...reviewCandidateUpdates(assignment, options.contracts)];
-    for (const batch of batches(updates, options.batchSize)) await storage.putCanonicalBatch(batch);
-    return { assignment, written: updates.length, batches: batches(updates, options.batchSize).length };
+    const chunks = batches(updates, options.batchSize);
+    for (const batch of chunks) await storage.putCanonicalBatch(batch);
+    return { assignment, written: updates.length, batches: chunks.length };
   }
 
   async function pagedRecords(listFn, options = {}) {
@@ -216,22 +233,46 @@
     return items;
   }
 
+  async function sourceEventsByIds(ids = [], options = {}) {
+    const uniqueIds = [...new Set(ids.map(clean).filter(Boolean))].slice(0, MAX_REVIEW_ITEMS * 4);
+    if (!uniqueIds.length) return {};
+    if (options.sourceReader) return options.sourceReader(uniqueIds);
+    const migration = options.migration || root?.BandmarkrListeningDerivedMigration;
+    const db = await (migration?.openSourceDb?.() || Promise.reject(new Error('Source listening storage is unavailable.')));
+    try {
+      const store = db.transaction(migration.SOURCE_STORE, 'readonly').objectStore(migration.SOURCE_STORE);
+      const entries = await Promise.all(uniqueIds.map((id) => new Promise((resolve, reject) => {
+        const request = store.get(id);
+        request.onsuccess = () => resolve([id, request.result || null]);
+        request.onerror = () => reject(request.error || new Error('Could not read local listening context.'));
+      })));
+      return Object.fromEntries(entries);
+    } finally { db.close(); }
+  }
+
   async function reviewQueue(options = {}) {
     const storage = options.storage || root?.BandmarkrListeningDerivedStorage;
-    if (!storage?.listIdentities || !storage?.listCanonical) throw new Error('Derived listening storage is unavailable.');
-    const [identities, canonical] = await Promise.all([
-      pagedRecords(storage.listIdentities, { pageSize: options.pageSize || REVIEW_PAGE_SIZE, maxItems: options.maxItems }),
-      pagedRecords(storage.listCanonical, { pageSize: options.pageSize || REVIEW_PAGE_SIZE, maxItems: options.maxItems }),
-    ]);
-    const identityItems = identities
-      .filter((record) => ['unresolved', 'ambiguous', 'unmatched'].includes(record.status) && !record.reviewedDecision)
-      .map((record) => ({ kind: 'identity', sourceEventId: record.sourceEventId, status: record.status, record }));
-    const duplicateItems = canonical
-      .filter((record) => ['probable_duplicate', 'ambiguous'].includes(record.status) && !record.reviewedDecision)
-      .map((record) => ({ kind: 'duplicate', sourceEventId: record.sourceEventId, status: record.status, record }));
-    return [...identityItems, ...duplicateItems]
-      .sort((a, b) => a.sourceEventId.localeCompare(b.sourceEventId))
-      .slice(0, bounded(options.maxItems, MAX_REVIEW_ITEMS, 1000));
+    if (!storage?.listCanonical) throw new Error('Derived listening storage is unavailable.');
+    const canonical = await pagedRecords(storage.listCanonical, {
+      pageSize: options.pageSize || REVIEW_PAGE_SIZE,
+      maxItems: options.maxItems,
+    });
+    const records = canonical.filter((record) => record.recordType === 'review_component'
+      && ['probable_duplicate', 'ambiguous'].includes(record.status)
+      && Array.isArray(record.candidatePairs) && record.candidatePairs.length
+      && !record.reviewedDecision);
+    const context = await sourceEventsByIds(records.flatMap((record) => record.sourceEventIds || []), options);
+    return records.map((record) => ({
+      kind: 'duplicate_component',
+      sourceEventId: record.sourceEventId,
+      status: record.status,
+      record,
+      candidatePairs: record.candidatePairs.map((pair) => ({
+        ...pair,
+        left: clone(context[pair.leftSourceEventId] || null),
+        right: clone(context[pair.rightSourceEventId] || null),
+      })),
+    })).slice(0, bounded(options.maxItems, MAX_REVIEW_ITEMS, 1000));
   }
 
   function reviewedDecision(action, details = {}, now = new Date()) {
@@ -242,37 +283,34 @@
   async function applyReview(item, action, details = {}, options = {}) {
     if (!REVIEW_ACTIONS.includes(action)) throw new Error('Unsupported listening review action.');
     if (action === 'defer') return clone(item?.record || null);
+    if (item?.kind !== 'duplicate_component') throw new Error('Unknown listening review item.');
     const storage = options.storage || root?.BandmarkrListeningDerivedStorage;
+    const current = item.record || await storage.getCanonical(item.sourceEventId);
+    if (!current) throw new Error('Listening review item no longer exists.');
     const decision = reviewedDecision(action, details, options.now || new Date());
-    if (item?.kind === 'identity') {
-      const current = item.record || await storage.getIdentity(item.sourceEventId);
-      if (!current) throw new Error('Listening identity review item no longer exists.');
-      const bandId = action === 'assign_band' ? clean(details.bandId) : current.bandId;
-      if (action === 'assign_band' && !bandId) throw new Error('A stable band ID is required.');
-      return storage.putIdentity({
-        ...current,
-        bandId,
-        status: 'user_reviewed',
-        reviewedDecision: decision,
-        reviewedAt: decision.decidedAt,
-      }, { replaceReviewedDecision: true });
-    }
-    if (item?.kind === 'duplicate') {
-      const current = item.record || await storage.getCanonical(item.sourceEventId);
-      if (!current) throw new Error('Listening duplicate review item no longer exists.');
-      const merge = action === 'merge';
-      const target = merge ? clean(details.canonicalListenId || current.duplicateOf) : current.sourceEventId;
-      if (merge && !target) throw new Error('A canonical listen target is required.');
-      return storage.putCanonical({
-        ...current,
+    if (action === 'merge') {
+      const pair = (current.candidatePairs || []).find((candidate) => candidate.pairKey === details.pairKey);
+      if (!pair) throw new Error('Choose one displayed candidate pair.');
+      const target = [pair.leftSourceEventId, pair.rightSourceEventId].sort()[0];
+      const duplicate = [pair.leftSourceEventId, pair.rightSourceEventId].sort()[1];
+      await storage.putCanonical({
+        sourceEventId: duplicate,
         canonicalListenId: target,
-        duplicateOf: merge ? target : null,
+        duplicateOf: target,
+        dedupeVersion: current.dedupeVersion || 1,
         status: 'user_reviewed',
         reviewedDecision: decision,
         reviewedAt: decision.decidedAt,
       }, { replaceReviewedDecision: true });
     }
-    throw new Error('Unknown listening review item.');
+    return storage.putCanonical({
+      ...current,
+      canonicalListenId: current.sourceEventId,
+      duplicateOf: null,
+      status: 'user_reviewed',
+      reviewedDecision: decision,
+      reviewedAt: decision.decidedAt,
+    }, { replaceReviewedDecision: true });
   }
 
   async function rolloutStatus(options = {}) {
@@ -281,7 +319,7 @@
     const checkpoint = (options.checkpoints || migration?.checkpointStore?.(options.localStorage))?.load?.()
       || migration?.defaultCheckpoint?.() || null;
     const summary = storage?.storageSummary ? await storage.storageSummary() : { identityCount: 0, canonicalCount: 0 };
-    const queue = await reviewQueue({ storage, maxItems: options.maxReviewItems || MAX_REVIEW_ITEMS });
+    const queue = await reviewQueue({ ...options, storage, maxItems: options.maxReviewItems || MAX_REVIEW_ITEMS });
     return {
       checkpoint: clone(checkpoint),
       identityCount: Number(summary.identityCount) || 0,
@@ -299,32 +337,16 @@
     const identity = await storage.deleteIdentityVersion(version, { limit });
     const canonical = await storage.deleteDedupeVersion(version, { limit });
     const done = !identity.hasMore && !canonical.hasMore;
-    if (done && options.clearCheckpoint !== false) {
-      (options.checkpoints || migration?.checkpointStore?.(options.localStorage))?.clear?.();
-    }
+    if (done && options.clearCheckpoint !== false) (options.checkpoints || migration?.checkpointStore?.(options.localStorage))?.clear?.();
     return { version, identity, canonical, done };
   }
 
   return {
-    MAX_PAGE_SIZE,
-    REVIEW_PAGE_SIZE,
-    MAX_REVIEW_ITEMS,
-    REVIEW_ACTIONS,
-    stablePairKey,
-    representativeFor,
-    generateCandidates,
-    assignOneToOne,
-    canonicalUpdates,
-    reviewCandidateUpdates,
-    safeAudit,
-    batches,
-    persistCandidatePlan,
-    pagedRecords,
-    reviewQueue,
-    reviewedDecision,
-    applyReview,
-    rolloutStatus,
-    rollbackDerivedVersion,
+    MAX_PAGE_SIZE, REVIEW_PAGE_SIZE, MAX_REVIEW_ITEMS, REVIEW_ACTIONS,
+    stablePairKey, representativeFor, generateCandidates, assignOneToOne,
+    canonicalUpdates, reviewComponents, reviewCandidateUpdates, safeAudit,
+    batches, persistCandidatePlan, pagedRecords, sourceEventsByIds, reviewQueue,
+    reviewedDecision, applyReview, rolloutStatus, rollbackDerivedVersion,
   };
 });
 
@@ -333,6 +355,12 @@
   if (typeof artistIdentityReviewHtml !== 'function' || typeof wireArtistIdentityReview !== 'function') return;
   const originalHtml = artistIdentityReviewHtml;
   const originalWire = wireArtistIdentityReview;
+  const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  const eventSummary = (event) => {
+    if (!event) return '<span class="settings-hint">Local source details unavailable</span>';
+    const when = Number.isFinite(Date.parse(event.listenedAt || '')) ? new Date(event.listenedAt).toLocaleString() : 'Unknown time';
+    return `<strong>${escapeHtml(event.artistCreditName || 'Unknown artist')} — ${escapeHtml(event.recordingTitle || 'Unknown track')}</strong><span class="settings-hint">${escapeHtml(when)} · ${escapeHtml(event.source || 'unknown source')}</span>`;
+  };
   artistIdentityReviewHtml = function listeningReviewHtml() {
     return `${originalHtml()}<div id="listening-review-maintenance" class="settings-card listening-review-card" aria-live="polite"><p class="section-label" style="margin-top:0">Listening data review</p><p class="settings-hint" data-listening-review-status>Checking local derived listening data…</p><div data-listening-review-items></div></div>`;
   };
@@ -347,7 +375,7 @@
       const processed = Number(status.checkpoint?.processedEvents) || 0;
       const total = Number(status.checkpoint?.sourceEventCountAfter || status.checkpoint?.sourceEventCountBefore) || 0;
       statusNode.textContent = status.complete
-        ? `Local preparation complete: ${processed.toLocaleString()} listens checked. ${status.reviewCount.toLocaleString()} item${status.reviewCount === 1 ? '' : 's'} need review.`
+        ? `Local preparation complete: ${processed.toLocaleString()} listens checked. ${status.reviewCount.toLocaleString()} group${status.reviewCount === 1 ? '' : 's'} need review.`
         : processed
           ? `Local preparation paused after ${processed.toLocaleString()}${total ? ` of ${total.toLocaleString()}` : ''} listens. It can resume safely.`
           : 'No private listening migration has been run on this device.';
@@ -356,17 +384,17 @@
         itemsNode.innerHTML = '<p class="settings-hint" style="margin:8px 0 0">There are no uncertain listening matches to review.</p>';
         return;
       }
-      itemsNode.innerHTML = queue.map((item, index) => `<div class="listening-review-item" data-listening-review-index="${index}"><div><strong>${item.kind === 'duplicate' ? 'Possible duplicate listen' : 'Unresolved artist identity'}</strong><p class="settings-hint" style="margin:3px 0 0">Kept unresolved because the evidence is not strong enough for an automatic decision.</p></div><div class="listening-review-actions"><button type="button" class="btn-secondary" data-listening-review-action="defer">Decide later</button>${item.kind === 'duplicate' ? '<button type="button" class="btn-secondary" data-listening-review-action="keep_separate">Keep separate</button><button type="button" class="btn-primary" data-listening-review-action="merge">Same listen</button>' : '<button type="button" class="btn-secondary" data-listening-review-action="reject_band">Keep unresolved</button>'}</div></div>`).join('');
+      itemsNode.innerHTML = queue.map((item, index) => `<div class="listening-review-item" data-listening-review-index="${index}"><div class="listening-review-context"><strong>Possible duplicate listen${item.candidatePairs.length === 1 ? '' : 's'}</strong><p class="settings-hint">Compare the local source records below. Nothing is sent anywhere.</p>${item.candidatePairs.map((pair) => `<div class="listening-review-pair" data-listening-pair="${escapeHtml(pair.pairKey)}"><div>${eventSummary(pair.left)}</div><div>${eventSummary(pair.right)}</div><button type="button" class="btn-primary" data-listening-review-action="merge" data-listening-pair-key="${escapeHtml(pair.pairKey)}">These are the same listen</button></div>`).join('')}</div><div class="listening-review-actions"><button type="button" class="btn-secondary" data-listening-review-action="defer">Decide later</button><button type="button" class="btn-secondary" data-listening-review-action="keep_separate">Keep all separate</button></div></div>`).join('');
       itemsNode.querySelectorAll('[data-listening-review-action]').forEach((button) => button.addEventListener('click', async () => {
         const row = button.closest('[data-listening-review-index]');
         const item = queue[Number(row?.dataset.listeningReviewIndex)];
         button.disabled = true;
         try {
           const action = button.dataset.listeningReviewAction;
-          await api.applyReview(item, action);
+          await api.applyReview(item, action, { pairKey: button.dataset.listeningPairKey || null });
           row.remove();
           statusNode.textContent = action === 'defer'
-            ? 'This item will remain available the next time you open the review area.'
+            ? 'This group will remain available the next time you open the review area.'
             : 'Review decision saved locally. Source listening records were not changed.';
         } catch (_) {
           statusNode.textContent = 'The decision could not be saved. Nothing was changed.';
