@@ -121,12 +121,14 @@ test('merging one pair keeps the unresolved alternative pending', async () => {
 test('final pair merge closes the group only after every alternative is decided', async () => {
   const canonical = new Map([
     ['a', { sourceEventId: 'a', canonicalListenId: 'a', duplicateOf: null, status: 'unique' }],
+    ['b', { sourceEventId: 'b', canonicalListenId: 'a', duplicateOf: 'a', status: 'user_reviewed' }],
     ['c', { sourceEventId: 'c', canonicalListenId: 'c', duplicateOf: null, status: 'unique' }],
   ]);
   let finalDecision;
   const record = {
     reviewId: 'duplicate-group:a|b|c', status: 'probable_duplicate', reviewVersion: 1,
-    sourceEventIds: ['a', 'c'], pairDecisions: [{ action: 'merge', pairKey: 'a|b' }],
+    sourceEventIds: ['a', 'c'],
+    pairDecisions: [{ action: 'merge', pairKey: 'a|b', canonicalListenId: 'a', duplicateSourceEventId: 'b', mergedSourceEventIds: ['a', 'b'] }],
     candidatePairs: [{ pairKey: 'a|c', leftSourceEventId: 'a', rightSourceEventId: 'c', evidence: { outcome: 'probable_duplicate' } }],
   };
   const storage = {
@@ -137,9 +139,41 @@ test('final pair merge closes the group only after every alternative is decided'
     async putDecision(id, decision) { finalDecision = { id, decision }; return { ...record, status: 'user_reviewed', reviewedDecision: decision }; },
   };
   await rollout.applyReview({ kind: 'duplicate_component', reviewId: record.reviewId, record }, 'merge', { pairKey: 'a|c' }, { storage, reviewStorage, now: new Date('2026-01-01T00:00:01Z') });
+  assert.equal(canonical.get('b').duplicateOf, 'a');
   assert.equal(canonical.get('c').duplicateOf, 'a');
   assert.equal(finalDecision.id, record.reviewId);
   assert.equal(finalDecision.decision.completedPairReview, true);
+});
+
+test('sequential merges flatten every member to one canonical record', async () => {
+  const canonical = new Map([
+    ['a', { sourceEventId: 'a', canonicalListenId: 'a', duplicateOf: null, status: 'unique' }],
+    ['b', { sourceEventId: 'b', canonicalListenId: 'b', duplicateOf: null, status: 'unique' }],
+    ['c', { sourceEventId: 'c', canonicalListenId: 'c', duplicateOf: null, status: 'unique' }],
+  ]);
+  let group = {
+    reviewId: 'duplicate-group:a|b|c', status: 'probable_duplicate', reviewVersion: 1,
+    sourceEventIds: ['a', 'b', 'c'], pairDecisions: [],
+    candidatePairs: [
+      { pairKey: 'b|c', leftSourceEventId: 'b', rightSourceEventId: 'c', evidence: { outcome: 'probable_duplicate' } },
+      { pairKey: 'a|b', leftSourceEventId: 'a', rightSourceEventId: 'b', evidence: { outcome: 'probable_duplicate' } },
+    ],
+  };
+  const storage = {
+    async getCanonical(id) { return structuredClone(canonical.get(id)); },
+    async putCanonical(value) { canonical.set(value.sourceEventId, structuredClone(value)); return value; },
+  };
+  const reviewStorage = {
+    async replaceGroup(value) { group = structuredClone(value); return value; },
+    async putDecision(id, decision) { group = { ...group, status: 'user_reviewed', reviewedDecision: decision }; return group; },
+  };
+  await rollout.applyReview({ kind: 'duplicate_component', reviewId: group.reviewId, record: group }, 'merge', { pairKey: 'b|c' }, { storage, reviewStorage, now: new Date('2026-01-01T00:00:00Z') });
+  assert.equal(canonical.get('c').duplicateOf, 'b');
+  assert.equal(group.candidatePairs[0].pairKey, 'a|b');
+  await rollout.applyReview({ kind: 'duplicate_component', reviewId: group.reviewId, record: group }, 'merge', { pairKey: 'a|b' }, { storage, reviewStorage, now: new Date('2026-01-01T00:00:01Z') });
+  assert.equal(canonical.get('b').duplicateOf, 'a');
+  assert.equal(canonical.get('c').duplicateOf, 'a');
+  assert.equal(group.status, 'user_reviewed');
 });
 
 test('partial and completed user decisions are preserved across candidate-plan reruns', () => {
@@ -159,18 +193,45 @@ test('keep separate changes no canonical source record', async () => {
   assert.equal(decisionWrites, 1);
 });
 
-test('rollback retains groups with user decisions', async () => {
-  const result = await rollout.rollbackDerivedVersion({
+test('rollback exposes a continuation cursor while retaining user decisions', async () => {
+  let receivedAfter = null;
+  const first = await rollout.rollbackDerivedVersion({
     version: 1,
+    limit: 2,
     storage: {
       async deleteIdentityVersion() { return { removed: 0, hasMore: false }; },
       async deleteDedupeVersion() { return { removed: 0, hasMore: false }; },
     },
-    reviewStorage: { async deleteVersion() { return { removed: 1, retained: 2, hasMore: false }; } },
+    reviewStorage: {
+      async deleteVersion(version, options) {
+        receivedAfter = options.afterReviewId || null;
+        return { removed: 0, retained: 2, hasMore: true, nextAfterReviewId: 'duplicate-group:b' };
+      },
+    },
+    checkpoints: { clear() { throw new Error('must not clear before completion'); } },
+  });
+  assert.equal(receivedAfter, null);
+  assert.equal(first.done, false);
+  assert.equal(first.reviewAfterReviewId, 'duplicate-group:b');
+
+  const second = await rollout.rollbackDerivedVersion({
+    version: 1,
+    limit: 2,
+    reviewAfterReviewId: first.reviewAfterReviewId,
+    storage: {
+      async deleteIdentityVersion() { return { removed: 0, hasMore: false }; },
+      async deleteDedupeVersion() { return { removed: 0, hasMore: false }; },
+    },
+    reviewStorage: {
+      async deleteVersion(version, options) {
+        receivedAfter = options.afterReviewId;
+        return { removed: 1, retained: 1, hasMore: false, nextAfterReviewId: null };
+      },
+    },
     checkpoints: { clear() {} },
   });
-  assert.equal(result.done, true);
-  assert.equal(result.review.retained, 2);
+  assert.equal(receivedAfter, 'duplicate-group:b');
+  assert.equal(second.done, true);
 });
 
 test('decide later writes nothing', async () => {
