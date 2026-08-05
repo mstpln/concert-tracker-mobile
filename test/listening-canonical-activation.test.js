@@ -117,6 +117,35 @@ test('activation reads every bounded page before switching totals', async () => 
   assert.equal(result.state.status, 'active');
 });
 
+test('deactivation restores original events without deleting prepared data', async () => {
+  const stateStore = memoryStore({
+    ...activation.defaultState(),
+    status: 'active',
+    sourceEventCount: 2,
+    canonicalRecordCount: 2,
+    duplicateCount: 1,
+    activatedAt: '2026-01-01T00:00:00.000Z',
+  });
+  const events = [{ stableListenId: 'a' }, { stableListenId: 'b' }];
+  const result = await activation.deactivate({ events, stateStore });
+  assert.deepEqual(result.events, events);
+  assert.equal(result.state.status, 'ready');
+  assert.equal(result.state.activatedAt, null);
+  assert.equal(result.state.duplicateCount, 1);
+});
+
+test('deactivation marks preparation stale when source history changed', async () => {
+  const stateStore = memoryStore({
+    ...activation.defaultState(),
+    status: 'active',
+    sourceEventCount: 2,
+    canonicalRecordCount: 2,
+  });
+  const result = await activation.deactivate({ events: [{ stableListenId: 'a' }], stateStore });
+  assert.equal(result.state.status, 'stale');
+  assert.match(result.state.error, /changed/);
+});
+
 test('inactive state never switches visible listening data', async () => {
   const stateStore = memoryStore();
   const result = await activation.applyToApp({ stateStore });
