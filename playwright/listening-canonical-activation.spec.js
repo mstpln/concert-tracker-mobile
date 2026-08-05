@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('v92 activates cleaned listening totals only after explicit confirmation', async ({ page }) => {
+test('v92 activates cleaned listening totals only after explicit confirmation and can restore originals', async ({ page }) => {
   const browserErrors = [];
   page.on('pageerror', (error) => browserErrors.push(error.message));
   await page.goto('/');
@@ -70,8 +70,14 @@ test('v92 activates cleaned listening totals only after explicit confirmation', 
 
   await card.getByRole('button', { name: 'Use cleaned totals' }).click();
   await expect(card).toContainText('Cleaned totals are active. 1 confirmed duplicate listen is excluded.');
+  await expect(card.getByRole('button', { name: 'Use original totals' })).toBeVisible();
   expect(await page.evaluate(() => listeningEvents.map((event) => event.stableListenId))).toEqual(['qa-activation-a']);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('bandmarkr-listening-canonical-activation-v1')).status)).toBe('active');
+
+  await card.getByRole('button', { name: 'Use original totals' }).click();
+  await expect(card).toContainText('Preparation complete. 1 confirmed duplicate listen found.');
+  expect(await page.evaluate(() => listeningEvents.map((event) => event.stableListenId))).toEqual(['qa-activation-a', 'qa-activation-b']);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('bandmarkr-listening-canonical-activation-v1')).status)).toBe('ready');
   expect(browserErrors).toEqual([]);
 });
 
