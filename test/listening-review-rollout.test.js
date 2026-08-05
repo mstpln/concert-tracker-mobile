@@ -142,6 +142,12 @@ test('final pair merge closes the group only after every alternative is decided'
   assert.equal(finalDecision.decision.completedPairReview, true);
 });
 
+test('partial and completed user decisions are preserved across candidate-plan reruns', () => {
+  assert.equal(rollout.shouldPreserveReviewGroup({ reviewedDecision: null, pairDecisions: [] }), false);
+  assert.equal(rollout.shouldPreserveReviewGroup({ reviewedDecision: { action: 'keep_separate' }, pairDecisions: [] }), true);
+  assert.equal(rollout.shouldPreserveReviewGroup({ reviewedDecision: null, pairDecisions: [{ action: 'merge', pairKey: 'a|b' }] }), true);
+});
+
 test('keep separate changes no canonical source record', async () => {
   let canonicalWrites = 0;
   let decisionWrites = 0;
