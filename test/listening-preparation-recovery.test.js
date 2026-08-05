@@ -15,10 +15,12 @@ function loadModule(storage) {
       },
     }),
   };
-  const api = require('../listeningPreparationRecovery');
+  return require('../listeningPreparationRecovery');
+}
+
+function cleanupGlobals() {
   delete global.localStorage;
   delete global.BandmarkrListeningCanonicalActivation;
-  return api;
 }
 
 function memoryStorage(initial = {}) {
@@ -29,7 +31,8 @@ function memoryStorage(initial = {}) {
   };
 }
 
-test('recovers an abandoned preparing state without clearing checkpoints', () => {
+test('recovers an abandoned preparing state without clearing checkpoints', (t) => {
+  t.after(cleanupGlobals);
   const storage = memoryStorage({
     'bandmarkr-listening-canonical-activation-v1': JSON.stringify({ stateVersion: 1, status: 'preparing', sourceEventCount: 0 }),
     'bandmarkr-listening-derived-migration-v1': JSON.stringify({ migrationVersion: 1, status: 'pending', processedEvents: 1500, sourceEventCountAfter: 5000 }),
@@ -42,7 +45,8 @@ test('recovers an abandoned preparing state without clearing checkpoints', () =>
   assert.equal(JSON.parse(storage.getItem(api.MIGRATION_CHECKPOINT_KEY)).processedEvents, 1500);
 });
 
-test('reports bounded migration progress and duplicate-check stage', () => {
+test('reports bounded migration progress and duplicate-check stage', (t) => {
+  t.after(cleanupGlobals);
   const storage = memoryStorage({
     'bandmarkr-listening-derived-migration-v1': JSON.stringify({ status: 'pending', processedEvents: 1500, sourceEventCountAfter: 5000 }),
   });
