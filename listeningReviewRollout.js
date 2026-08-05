@@ -84,6 +84,10 @@
     };
   }
 
+  function shouldPreserveReviewGroup(existing) {
+    return Boolean(existing?.reviewedDecision || (Array.isArray(existing?.pairDecisions) && existing.pairDecisions.length));
+  }
+
   const reviewStorage = {
     async putGroups(groups = []) {
       if (!Array.isArray(groups) || groups.length > MAX_PAGE_SIZE) throw new Error(`Listening review batches are limited to ${MAX_PAGE_SIZE} groups.`);
@@ -96,7 +100,7 @@
         for (const group of normalized) {
           const request = store.get(group.reviewId);
           request.onsuccess = () => {
-            if (request.result?.reviewedDecision) return;
+            if (shouldPreserveReviewGroup(request.result)) return;
             store.put(group);
             written += 1;
           };
@@ -164,7 +168,7 @@
             if (!cursor) return resolve();
             if (visited >= limit) { hasMore = true; return resolve(); }
             visited += 1;
-            if (cursor.value?.reviewedDecision || (cursor.value?.pairDecisions || []).length) retained += 1;
+            if (shouldPreserveReviewGroup(cursor.value)) retained += 1;
             else { cursor.delete(); removed += 1; }
             cursor.continue();
           };
@@ -428,10 +432,10 @@
 
   return {
     MAX_PAGE_SIZE, REVIEW_PAGE_SIZE, MAX_REVIEW_ITEMS, REVIEW_DB_NAME, REVIEW_STORE, REVIEW_ACTIONS,
-    reviewStorage, stablePairKey, representativeFor, generateCandidates, assignOneToOne,
-    canonicalUpdates, reviewComponents, reviewCandidateUpdates, safeAudit, batches,
-    persistCandidatePlan, sourceEventsByIds, reviewQueue, reviewedDecision, remainingPairsAfterMerge,
-    applyReview, rolloutStatus, rollbackDerivedVersion,
+    reviewStorage, normalizeReviewGroup, shouldPreserveReviewGroup, stablePairKey, representativeFor,
+    generateCandidates, assignOneToOne, canonicalUpdates, reviewComponents, reviewCandidateUpdates,
+    safeAudit, batches, persistCandidatePlan, sourceEventsByIds, reviewQueue, reviewedDecision,
+    remainingPairsAfterMerge, applyReview, rolloutStatus, rollbackDerivedVersion,
   };
 });
 
