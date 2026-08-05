@@ -26,7 +26,7 @@ test('v92 activates cleaned listening totals only after explicit confirmation an
     ];
     listeningEvents = structuredClone(events);
     LiveVaultSpotifyHistory = { loadEvents: async () => structuredClone(events) };
-    await BandmarkrListeningDerivedStorage.putIdentityBatch(events.map((event) => ({
+    await BandmarkrListeningDerivedStorage.putIdentities(events.map((event) => ({
       sourceEventId: event.stableListenId,
       identityVersion: 1,
       localBandId: null,
