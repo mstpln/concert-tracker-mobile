@@ -26,6 +26,7 @@
     "icons/bandmarkr-wordmark.svg",
     "app.js",
     "listeningReviewRollout.js",
+    "listeningReviewReconcile.js",
     "listeningCanonicalActivation.js",
     "devicePrivacy.js",
     "browserFetchPolicy.js",
