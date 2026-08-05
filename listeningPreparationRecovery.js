@@ -9,7 +9,7 @@
   const MIGRATION_CHECKPOINT_KEY = 'bandmarkr-listening-derived-migration-v1';
   const INTERRUPTED_MESSAGE = 'Preparation was interrupted when this device slept or closed. Tap Prepare again to continue from the saved checkpoint.';
   const STALL_TIMEOUT_MS = 300000;
-  const LONG_PHASE_TIMEOUT_MS = 900000;
+  const HEARTBEAT_INTERVAL_MS = 30000;
   let wakeLock = null;
   let monitorTimer = null;
   let lastCheckpointSignature = null;
@@ -66,12 +66,6 @@
     });
   }
 
-  function phaseTimeout(phase) {
-    return ['loading-source', 'generating-candidates', 'assigning-candidates'].includes(phase)
-      ? LONG_PHASE_TIMEOUT_MS
-      : STALL_TIMEOUT_MS;
-  }
-
   function checkForStalledPreparation(storage = root?.localStorage, nowMs = Date.now()) {
     const state = parse(storage, ACTIVATION_STATE_KEY);
     if (state?.status !== 'preparing') {
@@ -89,9 +83,8 @@
     }
 
     const heartbeatMs = Date.parse(state.preparationHeartbeatAt || '');
-    const timeout = phaseTimeout(state.preparationPhase);
-    const heartbeatFresh = Number.isFinite(heartbeatMs) && nowMs - heartbeatMs < timeout;
-    const checkpointFresh = lastCheckpointActivityAt > 0 && nowMs - lastCheckpointActivityAt < timeout;
+    const heartbeatFresh = Number.isFinite(heartbeatMs) && nowMs - heartbeatMs < STALL_TIMEOUT_MS;
+    const checkpointFresh = lastCheckpointActivityAt > 0 && nowMs - lastCheckpointActivityAt < STALL_TIMEOUT_MS;
     if (heartbeatFresh || checkpointFresh) return { recovered: false, state };
     return markInterrupted(storage);
   }
@@ -152,10 +145,16 @@
         throw error;
       }
       if (result && typeof result.then === 'function') {
+        const pulse = root?.setInterval?.(() => touchPreparation(storage, phase), HEARTBEAT_INTERVAL_MS);
+        const stopPulse = () => {
+          if (pulse != null) root?.clearInterval?.(pulse);
+        };
         return result.then((value) => {
+          stopPulse();
           touchPreparation(storage, `${phase}-complete`);
           return value;
         }, (error) => {
+          stopPulse();
           touchPreparation(storage, `${phase}-failed`);
           throw error;
         });
@@ -269,12 +268,11 @@
     MIGRATION_CHECKPOINT_KEY,
     INTERRUPTED_MESSAGE,
     STALL_TIMEOUT_MS,
-    LONG_PHASE_TIMEOUT_MS,
+    HEARTBEAT_INTERVAL_MS,
     recoverInterruptedPreparation,
     touchPreparation,
     checkForStalledPreparation,
     checkpointSignature,
-    phaseTimeout,
     progressText,
     renderCurrentProgress,
     renderInterruptedState,
