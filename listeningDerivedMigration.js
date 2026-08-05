@@ -86,8 +86,21 @@
   }
 
   function bandLookup(bands = []) {
-    return new Map((bands || []).filter((band) => clean(band?.id) && clean(band?.name))
-      .map((band) => [normalizeText(band.name), clean(band.id)]));
+    const byName = new Map();
+    const ambiguous = new Set();
+    for (const band of bands || []) {
+      const bandId = clean(band?.id);
+      const name = normalizeText(band?.name);
+      if (!bandId || !name || ambiguous.has(name)) continue;
+      const existing = byName.get(name);
+      if (existing && existing !== bandId) {
+        byName.delete(name);
+        ambiguous.add(name);
+      } else if (!existing) {
+        byName.set(name, bandId);
+      }
+    }
+    return byName;
   }
 
   function deriveRecords(events, bands = [], contracts = root?.BandmarkrListeningIdentityContracts) {
