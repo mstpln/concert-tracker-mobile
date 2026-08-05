@@ -195,7 +195,7 @@
     const prepareButton = container.querySelector('[data-canonical-prepare]');
     const activateButton = container.querySelector('[data-canonical-activate]');
     const count = Number(state.duplicateCount) || 0;
-    if (state.status === 'active') status.textContent = `Cleaned totals are active. ${count.toLocaleString()} confirmed duplicate listen${count === 1 ? '' : 's'} are excluded.`;
+    if (state.status === 'active') status.textContent = `Cleaned totals are active. ${count.toLocaleString()} confirmed duplicate listen${count === 1 ? '' : 's'} ${count === 1 ? 'is' : 'are'} excluded.`;
     else if (state.status === 'ready') status.textContent = `Preparation complete. ${count.toLocaleString()} confirmed duplicate listen${count === 1 ? '' : 's'} found. Your visible totals have not changed yet.`;
     else if (state.status === 'preparing') status.textContent = 'Preparing cleaned totals on this device…';
     else if (state.status === 'stale') status.textContent = 'Your listening history changed. Prepare cleaned totals again before using them.';
