@@ -67,6 +67,51 @@ test('canonicalization excludes only records explicitly marked as duplicates', (
   assert.equal(result.events[1].localBandId, 'band-c');
 });
 
+test('canonicalization fills missing metadata from duplicates without replacing representative-owned values', () => {
+  const source = [
+    {
+      stableListenId: 'a',
+      source: 'spotify_import',
+      listenedAt: '2026-01-01T12:00:00.000Z',
+      artistCreditName: 'Representative Artist',
+      recordingTitle: 'Representative Track',
+      listenedDurationMs: null,
+      releaseTitle: '',
+      providerIds: { spotifyTrackId: 'spotify-track' },
+    },
+    {
+      stableListenId: 'b',
+      source: 'listenbrainz',
+      listenedAt: '2026-01-01T12:00:00.500Z',
+      artistCreditName: 'Duplicate Artist',
+      recordingTitle: 'Duplicate Track',
+      listenedDurationMs: 180000,
+      releaseTitle: 'Filled Album',
+      providerIds: { recordingMbid: 'recording-mbid' },
+    },
+  ];
+  const canonical = [
+    { sourceEventId: 'a', canonicalListenId: 'a', duplicateOf: null },
+    { sourceEventId: 'b', canonicalListenId: 'a', duplicateOf: 'a' },
+  ];
+  const result = activation.canonicalizeEvents(source, canonical, [
+    { sourceEventId: 'b', localBandId: 'band-from-duplicate' },
+  ]);
+  assert.equal(result.events.length, 1);
+  const event = result.events[0];
+  assert.equal(event.stableListenId, 'a');
+  assert.equal(event.source, 'spotify_import');
+  assert.equal(event.listenedAt, '2026-01-01T12:00:00.000Z');
+  assert.equal(event.artistCreditName, 'Representative Artist');
+  assert.equal(event.recordingTitle, 'Representative Track');
+  assert.equal(event.listenedDurationMs, 180000);
+  assert.equal(event.releaseTitle, 'Filled Album');
+  assert.deepEqual(event.providerIds, { spotifyTrackId: 'spotify-track', recordingMbid: 'recording-mbid' });
+  assert.equal(event.localBandId, 'band-from-duplicate');
+  assert.deepEqual(event.canonicalSourceEventIds, ['a', 'b']);
+  assert.deepEqual(event.canonicalSources, ['spotify_import', 'listenbrainz']);
+});
+
 test('canonicalization fails closed when a source record has no canonical record', () => {
   assert.throws(() => activation.canonicalizeEvents(
     [{ stableListenId: 'a' }, { stableListenId: 'b' }],
