@@ -66,6 +66,6 @@ test('v88 keeps the BANDMARKR banner and exposes the simplified installed identi
     expect(icon.corner, `${icon.src} keeps the blue safe area`).toEqual([2, 77, 223, 255]);
   }
 
-  await expect(page.locator('#start-version-refresh')).toContainText('v91');
-  await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-v91-bandmarkr.png`), fullPage: true });
+  await expect(page.locator('#start-version-refresh')).toContainText('v92');
+  await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-v92-bandmarkr.png`), fullPage: true });
 });
