@@ -8,6 +8,9 @@
   const MAX_PAGE_SIZE = 500;
   const REVIEW_PAGE_SIZE = 50;
   const MAX_REVIEW_ITEMS = 100;
+  const REVIEW_DB_NAME = 'bandmarkr-listening-review-v1';
+  const REVIEW_DB_VERSION = 1;
+  const REVIEW_STORE = 'duplicate-review-groups';
   const REVIEW_ACTIONS = Object.freeze(['merge', 'keep_separate', 'defer']);
 
   const clean = (value) => String(value == null ? '' : value).trim() || null;
@@ -20,6 +23,135 @@
   const eventTime = (event) => {
     const parsed = Date.parse(event?.listenedAt || '');
     return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  function requestResult(request, message) {
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error(message));
+    });
+  }
+
+  function transactionDone(tx, message) {
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error || new Error(message));
+      tx.onabort = () => reject(tx.error || new Error(message));
+    });
+  }
+
+  function openReviewDb(indexedDB = root?.indexedDB) {
+    return new Promise((resolve, reject) => {
+      if (!indexedDB) return reject(new Error('This browser does not support local listening review storage.'));
+      const request = indexedDB.open(REVIEW_DB_NAME, REVIEW_DB_VERSION);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(REVIEW_STORE)) {
+          const store = request.result.createObjectStore(REVIEW_STORE, { keyPath: 'reviewId' });
+          store.createIndex('status', 'status', { unique: false });
+          store.createIndex('reviewVersion', 'reviewVersion', { unique: false });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('Could not open local listening review storage.'));
+      request.onblocked = () => reject(new Error('Close other Bandmarkr tabs and retry the review storage upgrade.'));
+    });
+  }
+
+  function normalizeReviewGroup(group = {}) {
+    const reviewId = clean(group.reviewId);
+    const sourceEventIds = [...new Set((group.sourceEventIds || []).map(clean).filter(Boolean))].sort();
+    const candidatePairs = (group.candidatePairs || []).map((pair) => ({
+      pairKey: clean(pair.pairKey),
+      leftSourceEventId: clean(pair.leftSourceEventId),
+      rightSourceEventId: clean(pair.rightSourceEventId),
+      evidence: clone(pair.evidence || null),
+    })).filter((pair) => pair.pairKey && pair.leftSourceEventId && pair.rightSourceEventId);
+    if (!reviewId || sourceEventIds.length < 2 || !candidatePairs.length) throw new Error('Listening review groups require stable candidate relationships.');
+    return {
+      ...clone(group),
+      reviewId,
+      reviewVersion: Number.isInteger(group.reviewVersion) && group.reviewVersion > 0 ? group.reviewVersion : 1,
+      sourceEventIds,
+      candidatePairs,
+      status: clean(group.status) || 'pending',
+      reviewedDecision: clone(group.reviewedDecision || null),
+      reviewedAt: clean(group.reviewedAt),
+    };
+  }
+
+  const reviewStorage = {
+    async putGroups(groups = []) {
+      if (!Array.isArray(groups) || groups.length > MAX_PAGE_SIZE) throw new Error(`Listening review batches are limited to ${MAX_PAGE_SIZE} groups.`);
+      const normalized = groups.map(normalizeReviewGroup);
+      const db = await openReviewDb();
+      try {
+        const tx = db.transaction(REVIEW_STORE, 'readwrite');
+        const store = tx.objectStore(REVIEW_STORE);
+        for (const group of normalized) {
+          const existing = await requestResult(store.get(group.reviewId), 'Could not read local listening review group.');
+          if (existing?.reviewedDecision) continue;
+          store.put(group);
+        }
+        await transactionDone(tx, 'Could not save local listening review groups.');
+        return { written: normalized.length };
+      } finally { db.close(); }
+    },
+    async getGroup(reviewId) {
+      const key = clean(reviewId);
+      if (!key) return null;
+      const db = await openReviewDb();
+      try {
+        return clone(await requestResult(db.transaction(REVIEW_STORE, 'readonly').objectStore(REVIEW_STORE).get(key), 'Could not read local listening review group.') || null);
+      } finally { db.close(); }
+    },
+    async listGroups(options = {}) {
+      const limit = bounded(options.limit, REVIEW_PAGE_SIZE);
+      const afterReviewId = clean(options.afterReviewId);
+      const db = await openReviewDb();
+      try {
+        const store = db.transaction(REVIEW_STORE, 'readonly').objectStore(REVIEW_STORE);
+        const range = afterReviewId ? root.IDBKeyRange.lowerBound(afterReviewId, true) : undefined;
+        const items = (await requestResult(store.getAll(range, limit), 'Could not list local listening review groups.'))
+          .map(clone).sort((a, b) => a.reviewId.localeCompare(b.reviewId));
+        return { items, nextAfterReviewId: items.length === limit ? items.at(-1).reviewId : null };
+      } finally { db.close(); }
+    },
+    async putDecision(reviewId, decision) {
+      const current = await this.getGroup(reviewId);
+      if (!current) throw new Error('Listening review group no longer exists.');
+      const updated = { ...current, status: 'user_reviewed', reviewedDecision: clone(decision), reviewedAt: decision.decidedAt };
+      const db = await openReviewDb();
+      try {
+        const tx = db.transaction(REVIEW_STORE, 'readwrite');
+        tx.objectStore(REVIEW_STORE).put(updated);
+        await transactionDone(tx, 'Could not save local listening review decision.');
+        return clone(updated);
+      } finally { db.close(); }
+    },
+    async deleteVersion(version, options = {}) {
+      const limit = bounded(options.limit, MAX_PAGE_SIZE);
+      const db = await openReviewDb();
+      let removed = 0;
+      let hasMore = false;
+      try {
+        const tx = db.transaction(REVIEW_STORE, 'readwrite');
+        const index = tx.objectStore(REVIEW_STORE).index('reviewVersion');
+        await new Promise((resolve, reject) => {
+          const request = index.openCursor(root.IDBKeyRange.only(Number(version) || 1));
+          request.onsuccess = () => {
+            const cursor = request.result;
+            if (!cursor) return resolve();
+            if (removed >= limit) { hasMore = true; return resolve(); }
+            cursor.delete();
+            removed += 1;
+            cursor.continue();
+          };
+          request.onerror = () => reject(request.error || new Error('Could not roll back local listening review groups.'));
+        });
+        await transactionDone(tx, 'Could not roll back local listening review groups.');
+        return { removed, hasMore };
+      } finally { db.close(); }
+    },
   };
 
   function stablePairKey(left, right) {
@@ -60,13 +192,7 @@
         comparedPairs += 1;
         const evidence = contracts.matchingEvidence(left.event, right.event);
         if (!evidence?.tier || evidence.outcome === 'unique') continue;
-        candidates.push({
-          pairKey: stablePairKey(left.event, right.event),
-          left: clone(left.event),
-          right: clone(right.event),
-          evidence: clone(evidence),
-          representativeId: representativeFor(left.event, right.event),
-        });
+        candidates.push({ pairKey: stablePairKey(left.event, right.event), left: clone(left.event), right: clone(right.event), evidence: clone(evidence), representativeId: representativeFor(left.event, right.event) });
       }
     }
     return { candidates: candidates.sort(compareCandidates), comparedPairs, indexedEvents: sorted.length };
@@ -83,11 +209,7 @@
       const rightId = eventId(candidate.right);
       if (!leftId || !rightId) continue;
       if (assigned.has(leftId) || assigned.has(rightId)) rejectedByConflict.push(candidate);
-      else {
-        assigned.add(leftId);
-        assigned.add(rightId);
-        automatic.push(candidate);
-      }
+      else { assigned.add(leftId); assigned.add(rightId); automatic.push(candidate); }
     }
     for (const candidate of ordered.filter((item) => !item.evidence?.automatic)) {
       const leftId = eventId(candidate.left);
@@ -107,15 +229,7 @@
       for (const event of [candidate.left, candidate.right]) {
         const sourceEventId = eventId(event);
         updates.push({
-          ...contracts.canonicalEnvelope({
-            ...event,
-            sourceEventId,
-            canonicalListenId,
-            duplicateOf: sourceEventId === canonicalListenId ? null : canonicalListenId,
-            dedupeStatus: sourceEventId === canonicalListenId ? 'unique' : 'exact_duplicate',
-            dedupeMethod: candidate.evidence.method,
-            dedupeEvidenceTier: candidate.evidence.tier,
-          }),
+          ...contracts.canonicalEnvelope({ ...event, sourceEventId, canonicalListenId, duplicateOf: sourceEventId === canonicalListenId ? null : canonicalListenId, dedupeStatus: sourceEventId === canonicalListenId ? 'unique' : 'exact_duplicate', dedupeMethod: candidate.evidence.method, dedupeEvidenceTier: candidate.evidence.tier }),
           sourceEventId,
         });
       }
@@ -144,39 +258,19 @@
           }
         }
       } while (added);
+      const sortedIds = [...eventIds].sort();
       components.push({
-        reviewId: [...eventIds].sort()[0],
-        sourceEventIds: [...eventIds].sort(),
-        candidatePairs: pairs.sort(compareCandidates).map((candidate) => ({
-          pairKey: candidate.pairKey,
-          leftSourceEventId: eventId(candidate.left),
-          rightSourceEventId: eventId(candidate.right),
-          evidence: clone(candidate.evidence),
-        })),
+        reviewId: `duplicate-group:${sortedIds.join('|')}`,
+        reviewVersion: 1,
+        sourceEventIds: sortedIds,
+        status: pairs.every((pair) => pair.evidence?.outcome === 'probable_duplicate') ? 'probable_duplicate' : 'ambiguous',
+        candidatePairs: pairs.sort(compareCandidates).map((candidate) => ({ pairKey: candidate.pairKey, leftSourceEventId: eventId(candidate.left), rightSourceEventId: eventId(candidate.right), evidence: clone(candidate.evidence) })),
       });
     }
     return components.sort((a, b) => a.reviewId.localeCompare(b.reviewId));
   }
 
-  function reviewCandidateUpdates(assignment = {}, contracts = root?.BandmarkrListeningIdentityContracts) {
-    if (!contracts?.canonicalEnvelope) throw new Error('Listening identity contracts are unavailable.');
-    return reviewComponents(assignment.review || []).map((component) => {
-      const probableOnly = component.candidatePairs.every((pair) => pair.evidence?.outcome === 'probable_duplicate');
-      return {
-        ...contracts.canonicalEnvelope({
-          sourceEventId: component.reviewId,
-          canonicalListenId: component.reviewId,
-          dedupeStatus: probableOnly ? 'probable_duplicate' : 'ambiguous',
-          dedupeMethod: 'manual_review_component',
-          dedupeEvidenceTier: Math.min(...component.candidatePairs.map((pair) => pair.evidence?.tier || 99)),
-        }),
-        sourceEventId: component.reviewId,
-        recordType: 'review_component',
-        sourceEventIds: component.sourceEventIds,
-        candidatePairs: component.candidatePairs,
-      };
-    });
-  }
+  const reviewCandidateUpdates = (assignment = {}) => reviewComponents(assignment.review || []);
 
   function safeAudit(plan = {}, options = {}) {
     const assignment = plan.assignment || assignOneToOne(plan.candidates || []);
@@ -209,28 +303,16 @@
 
   async function persistCandidatePlan(plan = {}, options = {}) {
     const storage = options.storage || root?.BandmarkrListeningDerivedStorage;
-    if (!storage?.putCanonicalBatch) throw new Error('Derived listening storage is unavailable.');
+    const reviews = options.reviewStorage || reviewStorage;
+    if (!storage?.putCanonicalBatch || !reviews?.putGroups) throw new Error('Listening derived or review storage is unavailable.');
     const assignment = plan.assignment || assignOneToOne(plan.candidates || []);
-    const updates = [...canonicalUpdates(assignment, options.contracts), ...reviewCandidateUpdates(assignment, options.contracts)];
-    const chunks = batches(updates, options.batchSize);
-    for (const batch of chunks) await storage.putCanonicalBatch(batch);
-    return { assignment, written: updates.length, batches: chunks.length };
-  }
-
-  async function pagedRecords(listFn, options = {}) {
-    const limit = bounded(options.pageSize, MAX_PAGE_SIZE);
-    const maxItems = bounded(options.maxItems, MAX_REVIEW_ITEMS, 1000);
-    const items = [];
-    let afterSourceEventId = null;
-    do {
-      const page = await listFn({ limit, afterSourceEventId });
-      for (const item of page?.items || []) {
-        items.push(item);
-        if (items.length >= maxItems) break;
-      }
-      afterSourceEventId = items.length >= maxItems ? null : clean(page?.nextAfterSourceEventId);
-    } while (afterSourceEventId);
-    return items;
+    const canonical = canonicalUpdates(assignment, options.contracts);
+    const groups = reviewCandidateUpdates(assignment);
+    const canonicalBatches = batches(canonical, options.batchSize);
+    const reviewBatches = batches(groups, options.batchSize);
+    for (const batch of canonicalBatches) await storage.putCanonicalBatch(batch);
+    for (const batch of reviewBatches) await reviews.putGroups(batch);
+    return { assignment, canonicalWritten: canonical.length, reviewGroupsWritten: groups.length, batches: canonicalBatches.length + reviewBatches.length };
   }
 
   async function sourceEventsByIds(ids = [], options = {}) {
@@ -241,38 +323,31 @@
     const db = await (migration?.openSourceDb?.() || Promise.reject(new Error('Source listening storage is unavailable.')));
     try {
       const store = db.transaction(migration.SOURCE_STORE, 'readonly').objectStore(migration.SOURCE_STORE);
-      const entries = await Promise.all(uniqueIds.map((id) => new Promise((resolve, reject) => {
-        const request = store.get(id);
-        request.onsuccess = () => resolve([id, request.result || null]);
-        request.onerror = () => reject(request.error || new Error('Could not read local listening context.'));
-      })));
+      const entries = await Promise.all(uniqueIds.map((id) => requestResult(store.get(id), 'Could not read local listening context.').then((record) => [id, record || null])));
       return Object.fromEntries(entries);
     } finally { db.close(); }
   }
 
   async function reviewQueue(options = {}) {
-    const storage = options.storage || root?.BandmarkrListeningDerivedStorage;
-    if (!storage?.listCanonical) throw new Error('Derived listening storage is unavailable.');
-    const canonical = await pagedRecords(storage.listCanonical, {
-      pageSize: options.pageSize || REVIEW_PAGE_SIZE,
-      maxItems: options.maxItems,
-    });
-    const records = canonical.filter((record) => record.recordType === 'review_component'
-      && ['probable_duplicate', 'ambiguous'].includes(record.status)
-      && Array.isArray(record.candidatePairs) && record.candidatePairs.length
-      && !record.reviewedDecision);
-    const context = await sourceEventsByIds(records.flatMap((record) => record.sourceEventIds || []), options);
-    return records.map((record) => ({
+    const reviews = options.reviewStorage || reviewStorage;
+    if (!reviews?.listGroups) throw new Error('Listening review storage is unavailable.');
+    const maxItems = bounded(options.maxItems, MAX_REVIEW_ITEMS, 1000);
+    const records = [];
+    let afterReviewId = null;
+    do {
+      const page = await reviews.listGroups({ limit: options.pageSize || REVIEW_PAGE_SIZE, afterReviewId });
+      records.push(...(page.items || []).filter((record) => ['probable_duplicate', 'ambiguous'].includes(record.status) && !record.reviewedDecision));
+      afterReviewId = records.length >= maxItems ? null : clean(page.nextAfterReviewId);
+    } while (afterReviewId);
+    const selected = records.slice(0, maxItems);
+    const context = await sourceEventsByIds(selected.flatMap((record) => record.sourceEventIds || []), options);
+    return selected.map((record) => ({
       kind: 'duplicate_component',
-      sourceEventId: record.sourceEventId,
+      reviewId: record.reviewId,
       status: record.status,
       record,
-      candidatePairs: record.candidatePairs.map((pair) => ({
-        ...pair,
-        left: clone(context[pair.leftSourceEventId] || null),
-        right: clone(context[pair.rightSourceEventId] || null),
-      })),
-    })).slice(0, bounded(options.maxItems, MAX_REVIEW_ITEMS, 1000));
+      candidatePairs: record.candidatePairs.map((pair) => ({ ...pair, left: clone(context[pair.leftSourceEventId] || null), right: clone(context[pair.rightSourceEventId] || null) })),
+    }));
   }
 
   function reviewedDecision(action, details = {}, now = new Date()) {
@@ -285,68 +360,51 @@
     if (action === 'defer') return clone(item?.record || null);
     if (item?.kind !== 'duplicate_component') throw new Error('Unknown listening review item.');
     const storage = options.storage || root?.BandmarkrListeningDerivedStorage;
-    const current = item.record || await storage.getCanonical(item.sourceEventId);
-    if (!current) throw new Error('Listening review item no longer exists.');
+    const reviews = options.reviewStorage || reviewStorage;
+    const current = item.record || await reviews.getGroup(item.reviewId);
+    if (!current) throw new Error('Listening review group no longer exists.');
     const decision = reviewedDecision(action, details, options.now || new Date());
     if (action === 'merge') {
       const pair = (current.candidatePairs || []).find((candidate) => candidate.pairKey === details.pairKey);
       if (!pair) throw new Error('Choose one displayed candidate pair.');
       const target = [pair.leftSourceEventId, pair.rightSourceEventId].sort()[0];
       const duplicate = [pair.leftSourceEventId, pair.rightSourceEventId].sort()[1];
-      await storage.putCanonical({
-        sourceEventId: duplicate,
-        canonicalListenId: target,
-        duplicateOf: target,
-        dedupeVersion: current.dedupeVersion || 1,
-        status: 'user_reviewed',
-        reviewedDecision: decision,
-        reviewedAt: decision.decidedAt,
-      }, { replaceReviewedDecision: true });
+      const existing = await storage.getCanonical(duplicate);
+      if (!existing) throw new Error('Canonical source record no longer exists.');
+      await storage.putCanonical({ ...existing, canonicalListenId: target, duplicateOf: target, status: 'user_reviewed', reviewedDecision: decision, reviewedAt: decision.decidedAt }, { replaceReviewedDecision: true });
     }
-    return storage.putCanonical({
-      ...current,
-      canonicalListenId: current.sourceEventId,
-      duplicateOf: null,
-      status: 'user_reviewed',
-      reviewedDecision: decision,
-      reviewedAt: decision.decidedAt,
-    }, { replaceReviewedDecision: true });
+    return reviews.putDecision(current.reviewId, decision);
   }
 
   async function rolloutStatus(options = {}) {
     const migration = options.migration || root?.BandmarkrListeningDerivedMigration;
     const storage = options.storage || root?.BandmarkrListeningDerivedStorage;
-    const checkpoint = (options.checkpoints || migration?.checkpointStore?.(options.localStorage))?.load?.()
-      || migration?.defaultCheckpoint?.() || null;
+    const checkpoint = (options.checkpoints || migration?.checkpointStore?.(options.localStorage))?.load?.() || migration?.defaultCheckpoint?.() || null;
     const summary = storage?.storageSummary ? await storage.storageSummary() : { identityCount: 0, canonicalCount: 0 };
     const queue = await reviewQueue({ ...options, storage, maxItems: options.maxReviewItems || MAX_REVIEW_ITEMS });
-    return {
-      checkpoint: clone(checkpoint),
-      identityCount: Number(summary.identityCount) || 0,
-      canonicalCount: Number(summary.canonicalCount) || 0,
-      reviewCount: queue.length,
-      complete: checkpoint?.status === 'complete' && checkpoint?.integrityStatus === 'passed',
-    };
+    return { checkpoint: clone(checkpoint), identityCount: Number(summary.identityCount) || 0, canonicalCount: Number(summary.canonicalCount) || 0, reviewCount: queue.length, complete: checkpoint?.status === 'complete' && checkpoint?.integrityStatus === 'passed' };
   }
 
   async function rollbackDerivedVersion(options = {}) {
     const storage = options.storage || root?.BandmarkrListeningDerivedStorage;
+    const reviews = options.reviewStorage || reviewStorage;
     const migration = options.migration || root?.BandmarkrListeningDerivedMigration;
     const version = Number(options.version || migration?.MIGRATION_VERSION || 1);
     const limit = bounded(options.limit, MAX_PAGE_SIZE);
     const identity = await storage.deleteIdentityVersion(version, { limit });
     const canonical = await storage.deleteDedupeVersion(version, { limit });
-    const done = !identity.hasMore && !canonical.hasMore;
+    const review = reviews?.deleteVersion ? await reviews.deleteVersion(version, { limit }) : { removed: 0, hasMore: false };
+    const done = !identity.hasMore && !canonical.hasMore && !review.hasMore;
     if (done && options.clearCheckpoint !== false) (options.checkpoints || migration?.checkpointStore?.(options.localStorage))?.clear?.();
-    return { version, identity, canonical, done };
+    return { version, identity, canonical, review, done };
   }
 
   return {
-    MAX_PAGE_SIZE, REVIEW_PAGE_SIZE, MAX_REVIEW_ITEMS, REVIEW_ACTIONS,
-    stablePairKey, representativeFor, generateCandidates, assignOneToOne,
-    canonicalUpdates, reviewComponents, reviewCandidateUpdates, safeAudit,
-    batches, persistCandidatePlan, pagedRecords, sourceEventsByIds, reviewQueue,
-    reviewedDecision, applyReview, rolloutStatus, rollbackDerivedVersion,
+    MAX_PAGE_SIZE, REVIEW_PAGE_SIZE, MAX_REVIEW_ITEMS, REVIEW_DB_NAME, REVIEW_STORE, REVIEW_ACTIONS,
+    reviewStorage, stablePairKey, representativeFor, generateCandidates, assignOneToOne,
+    canonicalUpdates, reviewComponents, reviewCandidateUpdates, safeAudit, batches,
+    persistCandidatePlan, sourceEventsByIds, reviewQueue, reviewedDecision, applyReview,
+    rolloutStatus, rollbackDerivedVersion,
   };
 });
 
@@ -376,9 +434,7 @@
       const total = Number(status.checkpoint?.sourceEventCountAfter || status.checkpoint?.sourceEventCountBefore) || 0;
       statusNode.textContent = status.complete
         ? `Local preparation complete: ${processed.toLocaleString()} listens checked. ${status.reviewCount.toLocaleString()} group${status.reviewCount === 1 ? '' : 's'} need review.`
-        : processed
-          ? `Local preparation paused after ${processed.toLocaleString()}${total ? ` of ${total.toLocaleString()}` : ''} listens. It can resume safely.`
-          : 'No private listening migration has been run on this device.';
+        : processed ? `Local preparation paused after ${processed.toLocaleString()}${total ? ` of ${total.toLocaleString()}` : ''} listens. It can resume safely.` : 'No private listening migration has been run on this device.';
       const queue = await api.reviewQueue({ maxItems: 20 });
       if (!queue.length) {
         itemsNode.innerHTML = '<p class="settings-hint" style="margin:8px 0 0">There are no uncertain listening matches to review.</p>';
@@ -393,9 +449,7 @@
           const action = button.dataset.listeningReviewAction;
           await api.applyReview(item, action, { pairKey: button.dataset.listeningPairKey || null });
           row.remove();
-          statusNode.textContent = action === 'defer'
-            ? 'This group will remain available the next time you open the review area.'
-            : 'Review decision saved locally. Source listening records were not changed.';
+          statusNode.textContent = action === 'defer' ? 'This group will remain available the next time you open the review area.' : 'Review decision saved locally. Source listening records were not changed.';
         } catch (_) {
           statusNode.textContent = 'The decision could not be saved. Nothing was changed.';
           button.disabled = false;
