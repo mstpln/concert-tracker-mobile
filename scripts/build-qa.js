@@ -9,7 +9,7 @@ const out = path.join(root, 'dist');
 const sourceId = process.env.QA_BUILD_ID || process.env.GITHUB_SHA || process.env.CF_PAGES_COMMIT_SHA || 'local-qa';
 const id = String(sourceId).replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 80) || 'local-qa';
 const shell = [
-  'app.css', 'v72Corrections.css', 'listeningV81.css', 'concertCardsV86.css', 'bandmarkrV87.css', 'app.js', 'devicePrivacy.js',
+  'app.css', 'v72Corrections.css', 'listeningV81.css', 'concertCardsV86.css', 'bandmarkrV87.css', 'listeningReviewRollout.css', 'app.js', 'listeningReviewRollout.js', 'devicePrivacy.js',
   'browserFetchPolicy.js', 'v72Corrections.js', 'v72FinalAdjustments.js',
   'securityHardening.js', 'listeningInsightsV81.js', 'listeningV81BootFix.js', 'listeningV81ReviewFix.js', 'listeningV82Corrections.js', 'listeningV82GenreFix.js', 'listeningV82FailSafe.js', 'listeningV83ChartFix.js', 'listeningV83WindowFix.js', 'listeningV84ChartRenderFix.js', 'listeningV85RankingAndStatsUnits.js', 'dataLib.js', 'listeningStats.js', 'listeningStatsV81.js',
   'listeningFixtures.js', 'listeningIdentityContracts.js', 'listeningDerivedStorage.js', 'listeningDerivedMigration.js',
@@ -55,14 +55,14 @@ let sw = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
 sw = sw
   .replace(/const CACHE_NAME = 'concert-tracker-shell-' \+ CACHE_NAME_LITERAL;/, `const CACHE_NAME = 'concert-tracker-qa-' + CACHE_NAME_LITERAL + '-${id}';`)
   .replace(
-    "  './version.js',",
-    "  './version.js',\n  './qa-fixtures.js',\n  './qa-v77-fixtures.js',\n  './qa-build-config.js',\n  './qa-bootstrap.js',\n  './qa.css',"
+    "'./version.js'",
+    "'./version.js','./qa-fixtures.js','./qa-v77-fixtures.js','./qa-build-config.js','./qa-bootstrap.js','./qa.css'"
   )
   .replace(
-    "k.startsWith('concert-tracker-shell-') && k !== CACHE_NAME",
-    "k.startsWith('concert-tracker-qa-') && k !== CACHE_NAME"
+    "k.startsWith('concert-tracker-shell-')&&k!==CACHE_NAME",
+    "k.startsWith('concert-tracker-qa-')&&k!==CACHE_NAME"
   );
-if (!sw.includes("k.startsWith('concert-tracker-qa-') && k !== CACHE_NAME")) {
+if (!sw.includes("k.startsWith('concert-tracker-qa-')&&k!==CACHE_NAME")) {
   throw new Error('QA build could not scope service-worker cache cleanup to the QA namespace');
 }
 fs.writeFileSync(path.join(out, 'service-worker.js'), sw);
