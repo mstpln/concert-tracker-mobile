@@ -7,7 +7,7 @@ test('v84 renders the selected two-week chart as visible daily points and keeps 
   page.on('pageerror', (error) => browserErrors.push(error.message));
   await page.goto('/');
 
-  await expect(page.locator('#start-version-refresh')).toContainText('v90');
+  await expect(page.locator('#start-version-refresh')).toContainText('v91');
   await page.getByRole('button', { name: 'View all' }).first().click();
   await page.getByRole('button', { name: '2 weeks' }).click();
   await page.locator('.full-top-bands-card .top-band-row').first().click();
