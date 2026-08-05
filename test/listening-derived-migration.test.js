@@ -39,6 +39,21 @@ test('derives identity and unique canonical baselines without changing source ev
   assert.equal(result.canonical[0].status, 'unique');
 });
 
+test('leaves duplicate normalized band names unresolved instead of choosing one', () => {
+  const source = [{
+    stableListenId: 'listenbrainz:ambiguous',
+    source: 'listenbrainz',
+    artistCreditName: 'Synthetic Artist',
+    recordingTitle: 'Synthetic Track',
+  }];
+  const result = migration.deriveRecords(source, [
+    { id: 'band-1', name: 'Synthetic Artist' },
+    { id: 'band-2', name: 'Synthétic Artist' },
+  ], contracts);
+  assert.equal(result.identities[0].bandId, null);
+  assert.equal(result.identities[0].status, 'unresolved');
+});
+
 test('runs in bounded resumable chunks and advances checkpoint only after both writes', async () => {
   const events = Array.from({ length: 3 }, (_, index) => ({
     stableListenId: `event-${index + 1}`,
