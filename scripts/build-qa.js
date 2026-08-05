@@ -55,14 +55,14 @@ let sw = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
 sw = sw
   .replace(/const CACHE_NAME = 'concert-tracker-shell-' \+ CACHE_NAME_LITERAL;/, `const CACHE_NAME = 'concert-tracker-qa-' + CACHE_NAME_LITERAL + '-${id}';`)
   .replace(
-    "'./version.js'",
-    "'./version.js','./qa-fixtures.js','./qa-v77-fixtures.js','./qa-build-config.js','./qa-bootstrap.js','./qa.css'"
+    "importScripts('./version.js');",
+    "importScripts('./version.js', './qa-fixtures.js', './qa-v77-fixtures.js', './qa-build-config.js', './qa-bootstrap.js', './qa.css');"
   )
   .replace(
-    "k.startsWith('concert-tracker-shell-')&&k!==CACHE_NAME",
-    "k.startsWith('concert-tracker-qa-')&&k!==CACHE_NAME"
+    "k.startsWith('concert-tracker-shell-') && k !== CACHE_NAME",
+    "k.startsWith('concert-tracker-qa-') && k !== CACHE_NAME"
   );
-if (!sw.includes("k.startsWith('concert-tracker-qa-')&&k!==CACHE_NAME")) {
+if (!sw.includes("k.startsWith('concert-tracker-qa-') && k !== CACHE_NAME")) {
   throw new Error('QA build could not scope service-worker cache cleanup to the QA namespace');
 }
 fs.writeFileSync(path.join(out, 'service-worker.js'), sw);
