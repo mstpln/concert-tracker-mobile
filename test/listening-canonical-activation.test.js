@@ -12,6 +12,38 @@ function memoryStore(initial = null) {
   };
 }
 
+function preparationHarness(checkpointStatus) {
+  let cleared = false;
+  const checkpoints = {
+    load() { return { status: checkpointStatus, sourceEventCountAfter: 1 }; },
+    clear() { cleared = true; },
+  };
+  const assignment = { automatic: [], review: [], rejectedByConflict: [] };
+  return {
+    checkpoints,
+    wasCleared: () => cleared,
+    migration: {
+      async runToCompletion(options) {
+        assert.equal(options.checkpoints, checkpoints);
+        return { checkpoint: { status: 'complete', integrityStatus: 'passed' } };
+      },
+    },
+    rollout: {
+      reviewStorage: {},
+      generateCandidates() { return { candidates: [], indexedEvents: 1, comparedPairs: 0 }; },
+      assignOneToOne() { return assignment; },
+      async persistCandidatePlan() { return { assignment }; },
+      reviewComponents() { return []; },
+      safeAudit() { return { sourceEventCount: 1 }; },
+    },
+    storage: {
+      async storageSummary() { return { canonicalCount: 1 }; },
+      async listCanonical() { return { items: [{ sourceEventId: 'a', canonicalListenId: 'a', duplicateOf: null }], nextAfterSourceEventId: null }; },
+      async listIdentities() { return { items: [{ sourceEventId: 'a', localBandId: 'band-a' }], nextAfterSourceEventId: null }; },
+    },
+  };
+}
+
 test('canonicalization excludes only records explicitly marked as duplicates', () => {
   const source = [
     { stableListenId: 'a', recordingTitle: 'Track', localBandId: null },
@@ -72,6 +104,33 @@ test('canonicalization rejects a non-duplicate record that points elsewhere', ()
     ],
     [],
   ), /inconsistent/);
+});
+
+test('explicit preparation rebuilds a completed checkpoint', async () => {
+  const harness = preparationHarness('complete');
+  const result = await activation.prepare({
+    events: [{ stableListenId: 'a' }],
+    checkpoints: harness.checkpoints,
+    migration: harness.migration,
+    rollout: harness.rollout,
+    storage: harness.storage,
+    stateStore: memoryStore(),
+  });
+  assert.equal(harness.wasCleared(), true);
+  assert.equal(result.state.status, 'ready');
+});
+
+test('interrupted preparation resumes its pending checkpoint', async () => {
+  const harness = preparationHarness('pending');
+  await activation.prepare({
+    events: [{ stableListenId: 'a' }],
+    checkpoints: harness.checkpoints,
+    migration: harness.migration,
+    rollout: harness.rollout,
+    storage: harness.storage,
+    stateStore: memoryStore(),
+  });
+  assert.equal(harness.wasCleared(), false);
 });
 
 test('activation refuses to switch totals when source history changed after preparation', async () => {
