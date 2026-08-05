@@ -8,7 +8,7 @@
   const ACTIVATION_STATE_KEY = 'bandmarkr-listening-canonical-activation-v1';
   const MIGRATION_CHECKPOINT_KEY = 'bandmarkr-listening-derived-migration-v1';
   const INTERRUPTED_MESSAGE = 'Preparation was interrupted when this device slept or closed. Tap Prepare again to continue from the saved checkpoint.';
-  const STALL_TIMEOUT_MS = 120000;
+  const STALL_TIMEOUT_MS = 300000;
   let wakeLock = null;
   let monitorTimer = null;
   let lastProgressSignature = null;
@@ -87,6 +87,23 @@
     return true;
   }
 
+  function renderInterruptedState() {
+    const card = root?.document?.querySelector?.('[data-canonical-activation]');
+    if (!card) return false;
+    const status = card.querySelector('[data-canonical-activation-status]');
+    const prepareButton = card.querySelector('[data-canonical-prepare]');
+    const activateButton = card.querySelector('[data-canonical-activate]');
+    const deactivateButton = card.querySelector('[data-canonical-deactivate]');
+    if (status) status.textContent = `Preparation stopped safely: ${INTERRUPTED_MESSAGE}`;
+    if (prepareButton) {
+      prepareButton.hidden = false;
+      prepareButton.textContent = 'Prepare again';
+    }
+    if (activateButton) activateButton.hidden = true;
+    if (deactivateButton) deactivateButton.hidden = true;
+    return true;
+  }
+
   async function requestWakeLock() {
     if (!root?.navigator?.wakeLock?.request || root?.document?.visibilityState === 'hidden') return null;
     if (wakeLock && !wakeLock.released) return wakeLock;
@@ -113,8 +130,7 @@
       renderCurrentProgress(storage);
       const recovered = checkForStalledPreparation(storage, nowMs);
       if (recovered.recovered) {
-        const card = root?.document?.querySelector?.('[data-canonical-activation]');
-        root?.BandmarkrListeningCanonicalActivation?.renderSettingsCard?.(card);
+        renderInterruptedState();
         await releaseWakeLock();
         return recovered;
       }
@@ -133,7 +149,8 @@
   }
 
   function install(storage = root?.localStorage) {
-    recoverInterruptedPreparation(storage);
+    const recovered = recoverInterruptedPreparation(storage);
+    if (recovered.recovered) root?.setTimeout?.(renderInterruptedState, 0);
     startMonitor(storage);
     root?.document?.addEventListener?.('click', (event) => {
       if (event.target?.closest?.('[data-canonical-prepare]')) {
@@ -153,7 +170,10 @@
 
   if (root?.document) {
     install();
-    root.addEventListener?.('DOMContentLoaded', () => recoverInterruptedPreparation(), { once: true });
+    root.addEventListener?.('DOMContentLoaded', () => {
+      const recovered = recoverInterruptedPreparation();
+      if (recovered.recovered) renderInterruptedState();
+    }, { once: true });
   }
 
   return {
@@ -166,6 +186,7 @@
     progressSignature,
     progressText,
     renderCurrentProgress,
+    renderInterruptedState,
     requestWakeLock,
     releaseWakeLock,
     activationStatus,
