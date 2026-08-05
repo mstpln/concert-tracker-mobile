@@ -11,8 +11,15 @@ test('v91 listening review shows local context, preserves alternatives, and defe
       { stableListenId: 'qa-review-b', listenedAt: '2026-01-01T12:00:00.500Z', artistCreditName: 'QA Review Artist', recordingTitle: 'QA Review Track', source: 'listenbrainz', listenedDurationMs: 180000 },
       { stableListenId: 'qa-review-c', listenedAt: '2026-01-01T12:00:00.700Z', artistCreditName: 'QA Review Artist', recordingTitle: 'QA Review Track', source: 'listenbrainz', listenedDurationMs: 180000 },
     ];
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase('livevault-listening-history-v1');
+      request.onsuccess = resolve;
+      request.onerror = () => reject(request.error);
+      request.onblocked = resolve;
+    });
     const db = await new Promise((resolve, reject) => {
       const request = indexedDB.open('livevault-listening-history-v1', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('listens', { keyPath: 'stableListenId' });
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
