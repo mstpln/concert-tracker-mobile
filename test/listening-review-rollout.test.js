@@ -8,22 +8,23 @@ function event(id, source, at, extra = {}) {
   return { stableListenId: id, source, listenedAt: at, artistCreditName: 'Synthetic Artist', recordingTitle: 'Synthetic Track', ...extra };
 }
 
-test('assigns trusted exact matches one-to-one and leaves probable matches for review', () => {
+test('assigns trusted exact matches one-to-one and preserves all uncertain alternatives', () => {
   const events = [
     event('a', 'spotify_import', '2026-01-01T00:00:00.000Z', { recordingMbid: 'rec-1' }),
     event('b', 'listenbrainz', '2026-01-01T00:00:00.500Z', { recordingMbid: 'rec-1' }),
     event('c', 'listenbrainz', '2026-01-01T00:00:00.700Z', { recordingMbid: 'rec-1' }),
     event('d', 'spotify_import', '2026-01-02T00:00:00.000Z', { releaseMbid: 'rel-1', listenedDurationMs: 200000 }),
     event('e', 'listenbrainz', '2026-01-02T00:00:00.500Z', { releaseMbid: 'rel-1', listenedDurationMs: 200500 }),
+    event('f', 'listenbrainz', '2026-01-02T00:00:00.700Z', { releaseMbid: 'rel-1', listenedDurationMs: 200700 }),
   ];
   const plan = rollout.generateCandidates(events, { contracts });
   const assignment = rollout.assignOneToOne(plan.candidates);
   assert.equal(assignment.automatic.length, 1);
-  assert.equal(assignment.rejectedByConflict.length, 1);
-  assert.equal(assignment.review.length, 1);
-  assert.equal(assignment.review[0].evidence.tier, 4);
-  assert.equal(rollout.canonicalUpdates(assignment, contracts).length, 2);
-  assert.equal(rollout.reviewCandidateUpdates(assignment, contracts).length, 1);
+  assert.equal(assignment.review.length, 2);
+  const components = rollout.reviewComponents(assignment.review);
+  assert.equal(components.length, 1);
+  assert.equal(components[0].candidatePairs.length, 2);
+  assert.deepEqual(components[0].sourceEventIds, ['d', 'e', 'f']);
 });
 
 test('archive-shaped synthetic validation stays bounded instead of comparing all pairs', () => {
@@ -42,57 +43,62 @@ test('aggregate audit excludes listening content', () => {
   const audit = rollout.safeAudit({ ...plan, assignment: rollout.assignOneToOne(plan.candidates) }, { sourceCount: 2, contracts });
   const serialized = JSON.stringify(audit);
   assert.equal(audit.automaticAssignmentCount, 1);
-  assert.equal(audit.automaticCanonicalRecordCount, 2);
   assert.equal(serialized.includes('Synthetic Artist'), false);
   assert.equal(serialized.includes('Synthetic Track'), false);
   assert.equal(serialized.includes('track-1'), false);
 });
 
-test('candidate persistence writes bounded canonical and review batches only', async () => {
+test('candidate persistence stores one grouped review record with every alternative', async () => {
   const plan = rollout.generateCandidates([
-    event('a', 'spotify_import', '2026-01-01T00:00:00.000Z', { spotifyTrackId: 'track-1' }),
-    event('b', 'listenbrainz', '2026-01-01T00:00:00.500Z', { spotifyTrackId: 'track-1' }),
-    event('c', 'spotify_import', '2026-01-02T00:00:00.000Z', { releaseMbid: 'rel-1', listenedDurationMs: 200000 }),
-    event('d', 'listenbrainz', '2026-01-02T00:00:00.500Z', { releaseMbid: 'rel-1', listenedDurationMs: 200500 }),
+    event('a', 'spotify_import', '2026-01-02T00:00:00.000Z', { releaseMbid: 'rel-1', listenedDurationMs: 200000 }),
+    event('b', 'listenbrainz', '2026-01-02T00:00:00.500Z', { releaseMbid: 'rel-1', listenedDurationMs: 200500 }),
+    event('c', 'listenbrainz', '2026-01-02T00:00:00.700Z', { releaseMbid: 'rel-1', listenedDurationMs: 200700 }),
   ], { contracts });
   const writes = [];
   const storage = { async putCanonicalBatch(records) { writes.push(structuredClone(records)); } };
   const result = await rollout.persistCandidatePlan(plan, { storage, contracts, batchSize: 2 });
-  assert.equal(result.written, 3);
-  assert.equal(result.batches, 2);
-  assert.deepEqual(writes.map((batch) => batch.length), [2, 1]);
-  assert.ok(writes.flat().some((record) => record.status === 'probable_duplicate'));
-  assert.ok(writes.every((batch) => batch.length <= 2));
+  assert.equal(result.written, 1);
+  const record = writes.flat()[0];
+  assert.equal(record.recordType, 'review_component');
+  assert.equal(record.candidatePairs.length, 2);
+  assert.deepEqual(record.sourceEventIds, ['a', 'b', 'c']);
 });
 
-test('review queue includes unresolved identity and probable duplicate records', async () => {
-  const storage = {
-    async listIdentities() { return { items: [{ sourceEventId: 'identity-1', status: 'unresolved' }], nextAfterSourceEventId: null }; },
-    async listCanonical() { return { items: [{ sourceEventId: 'listen-2', status: 'probable_duplicate', duplicateOf: 'listen-1' }], nextAfterSourceEventId: null }; },
+test('review queue excludes baseline unresolved identities and includes local source context', async () => {
+  const record = {
+    sourceEventId: 'a', recordType: 'review_component', status: 'probable_duplicate',
+    sourceEventIds: ['a', 'b'],
+    candidatePairs: [{ pairKey: 'a|b', leftSourceEventId: 'a', rightSourceEventId: 'b', evidence: { tier: 4 } }],
   };
-  const queue = await rollout.reviewQueue({ storage });
-  assert.deepEqual(queue.map((item) => item.kind), ['identity', 'duplicate']);
+  const storage = { async listCanonical() { return { items: [record], nextAfterSourceEventId: null }; } };
+  const sourceReader = async () => ({
+    a: event('a', 'spotify_import', '2026-01-01T00:00:00Z', { artistCreditName: 'Artist A', recordingTitle: 'Track A' }),
+    b: event('b', 'listenbrainz', '2026-01-01T00:00:00.500Z', { artistCreditName: 'Artist A', recordingTitle: 'Track A' }),
+  });
+  const queue = await rollout.reviewQueue({ storage, sourceReader });
+  assert.equal(queue.length, 1);
+  assert.equal(queue[0].kind, 'duplicate_component');
+  assert.equal(queue[0].candidatePairs[0].left.artistCreditName, 'Artist A');
 });
 
-test('review decisions are user-owned and stored without changing source records', async () => {
-  let saved;
-  const item = { kind: 'duplicate', sourceEventId: 'right', record: { sourceEventId: 'right', canonicalListenId: 'right', duplicateOf: 'left', status: 'probable_duplicate' } };
-  const source = structuredClone(item.record);
-  const storage = { async putCanonical(record) { saved = record; return record; } };
-  await rollout.applyReview(item, 'keep_separate', {}, { storage, now: new Date('2026-01-01T00:00:00Z') });
-  assert.deepEqual(item.record, source);
-  assert.equal(saved.canonicalListenId, 'right');
-  assert.equal(saved.duplicateOf, null);
-  assert.equal(saved.status, 'user_reviewed');
-  assert.equal(saved.reviewedDecision.owner, 'user');
+test('merge requires one displayed pair and stores a protected user decision', async () => {
+  const writes = [];
+  const record = {
+    sourceEventId: 'a', recordType: 'review_component', status: 'probable_duplicate', dedupeVersion: 1,
+    candidatePairs: [{ pairKey: 'a|b', leftSourceEventId: 'a', rightSourceEventId: 'b' }],
+  };
+  const storage = { async putCanonical(value) { writes.push(structuredClone(value)); return value; } };
+  await rollout.applyReview({ kind: 'duplicate_component', sourceEventId: 'a', record }, 'merge', { pairKey: 'a|b' }, { storage, now: new Date('2026-01-01T00:00:00Z') });
+  assert.equal(writes.length, 2);
+  assert.equal(writes[0].sourceEventId, 'b');
+  assert.equal(writes[0].duplicateOf, 'a');
+  assert.equal(writes[1].reviewedDecision.owner, 'user');
 });
 
-test('decide later is session-only and writes no reviewed decision', async () => {
+test('decide later writes nothing', async () => {
   let writes = 0;
-  const item = { kind: 'duplicate', sourceEventId: 'right', record: { sourceEventId: 'right', status: 'probable_duplicate' } };
   const storage = { async putCanonical() { writes += 1; } };
-  const result = await rollout.applyReview(item, 'defer', {}, { storage });
+  const item = { kind: 'duplicate_component', record: { sourceEventId: 'a' } };
+  await rollout.applyReview(item, 'defer', {}, { storage });
   assert.equal(writes, 0);
-  assert.deepEqual(result, item.record);
-  assert.notEqual(result, item.record);
 });
