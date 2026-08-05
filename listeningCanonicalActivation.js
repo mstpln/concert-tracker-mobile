@@ -106,7 +106,7 @@
       if (!events.length) throw new Error('No private listening history is stored on this device.');
       const checkpoints = options.checkpoints || migration.checkpointStore?.(options.localStorage);
       const previousCheckpoint = checkpoints?.load?.();
-      if (previousCheckpoint?.sourceEventCountAfter != null && previousCheckpoint.sourceEventCountAfter !== events.length) checkpoints.clear();
+      if (previousCheckpoint?.status === 'complete' || (previousCheckpoint?.sourceEventCountAfter != null && previousCheckpoint.sourceEventCountAfter !== events.length)) checkpoints.clear();
       const migrationResult = await migration.runToCompletion({ bands, chunkSize: PAGE_SIZE, checkpoints });
       const contracts = options.contracts || root?.BandmarkrListeningIdentityContracts;
       const plan = rollout.generateCandidates(events, { contracts });
