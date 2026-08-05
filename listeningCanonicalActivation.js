@@ -165,6 +165,20 @@
     return { ...result, state: active };
   }
 
+  async function deactivate(options = {}) {
+    const store = options.stateStore || stateStore(options.localStorage);
+    const current = store.load();
+    const events = await sourceEvents(options);
+    const status = current.sourceEventCount === events.length && current.canonicalRecordCount === events.length ? 'ready' : 'stale';
+    const next = store.save({
+      ...current,
+      status,
+      activatedAt: null,
+      error: status === 'stale' ? 'Listening history changed. Prepare cleaned totals again.' : null,
+    });
+    return { events, state: next };
+  }
+
   function refreshVisibleListeningScreens() {
     if (typeof renderStatsScreen === 'function' && typeof currentScreen !== 'undefined' && currentScreen === 'stats') renderStatsScreen();
     if (typeof renderTopBandsScreen === 'function' && typeof currentScreen !== 'undefined' && currentScreen === 'top-bands') renderTopBandsScreen();
@@ -204,6 +218,7 @@
     const status = container.querySelector('[data-canonical-activation-status]');
     const prepareButton = container.querySelector('[data-canonical-prepare]');
     const activateButton = container.querySelector('[data-canonical-activate]');
+    const deactivateButton = container.querySelector('[data-canonical-deactivate]');
     const count = Number(state.duplicateCount) || 0;
     if (state.status === 'active') status.textContent = `Cleaned totals are active. ${count.toLocaleString()} confirmed duplicate listen${count === 1 ? '' : 's'} ${count === 1 ? 'is' : 'are'} excluded.`;
     else if (state.status === 'ready') status.textContent = `Preparation complete. ${count.toLocaleString()} confirmed duplicate listen${count === 1 ? '' : 's'} found. Your visible totals have not changed yet.`;
@@ -214,6 +229,7 @@
     prepareButton.hidden = state.status === 'active';
     prepareButton.textContent = ['ready', 'stale', 'error'].includes(state.status) ? 'Prepare again' : 'Prepare cleaned totals';
     activateButton.hidden = state.status !== 'ready';
+    deactivateButton.hidden = state.status !== 'active';
   }
 
   function ensureSettingsUi() {
@@ -224,10 +240,11 @@
     const wrapper = root.document.createElement('div');
     wrapper.dataset.canonicalActivation = 'true';
     wrapper.className = 'settings-card';
-    wrapper.innerHTML = `<p class="section-label" style="margin-top:0">Cleaned listening totals</p><p class="settings-hint" data-canonical-activation-status aria-live="polite"></p><div class="show-buttons" style="margin-top:8px"><button type="button" class="btn-primary" data-canonical-prepare>Prepare cleaned totals</button><button type="button" class="btn-secondary" data-canonical-activate hidden>Use cleaned totals</button></div>`;
+    wrapper.innerHTML = `<p class="section-label" style="margin-top:0">Cleaned listening totals</p><p class="settings-hint" data-canonical-activation-status aria-live="polite"></p><div class="show-buttons" style="margin-top:8px"><button type="button" class="btn-primary" data-canonical-prepare>Prepare cleaned totals</button><button type="button" class="btn-secondary" data-canonical-activate hidden>Use cleaned totals</button><button type="button" class="btn-secondary" data-canonical-deactivate hidden>Use original totals</button></div>`;
     reviewCard.after(wrapper);
     const prepareButton = wrapper.querySelector('[data-canonical-prepare]');
     const activateButton = wrapper.querySelector('[data-canonical-activate]');
+    const deactivateButton = wrapper.querySelector('[data-canonical-deactivate]');
     prepareButton.addEventListener('click', async () => {
       prepareButton.disabled = true;
       wrapper.querySelector('[data-canonical-activation-status]').textContent = 'Preparing cleaned totals on this device…';
@@ -245,6 +262,18 @@
         wrapper.querySelector('[data-canonical-activation-status]').textContent = error?.message || 'Cleaned totals could not be activated.';
       }
       activateButton.disabled = false;
+      renderSettingsCard(wrapper);
+    });
+    deactivateButton.addEventListener('click', async () => {
+      deactivateButton.disabled = true;
+      try {
+        const result = await deactivate({ bands: typeof bands === 'undefined' ? [] : bands });
+        if (typeof listeningEvents !== 'undefined') listeningEvents = result.events;
+        refreshVisibleListeningScreens();
+      } catch (error) {
+        wrapper.querySelector('[data-canonical-activation-status]').textContent = error?.message || 'Original totals could not be restored.';
+      }
+      deactivateButton.disabled = false;
       renderSettingsCard(wrapper);
     });
     renderSettingsCard(wrapper);
@@ -267,6 +296,6 @@
 
   return {
     STATE_KEY, STATE_VERSION, PAGE_SIZE, defaultState, stateStore, listAll,
-    canonicalizeEvents, sourceEvents, prepare, activate, applyToApp, installApplyWrapper,
+    canonicalizeEvents, sourceEvents, prepare, activate, deactivate, applyToApp, installApplyWrapper,
   };
 });
