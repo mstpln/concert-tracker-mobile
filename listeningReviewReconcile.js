@@ -117,6 +117,28 @@
     return totals;
   }
 
+  function installRolloutWrapper() {
+    const rollout = root?.BandmarkrListeningReviewRollout;
+    if (!rollout?.persistCandidatePlan || rollout.__reviewReconcileWrapped) return false;
+    const original = rollout.persistCandidatePlan.bind(rollout);
+    rollout.persistCandidatePlan = async (plan = {}, options = {}) => {
+      const assignment = plan.assignment || rollout.assignOneToOne(plan.candidates || []);
+      const groups = rollout.reviewCandidateUpdates({ ...assignment, review: assignment.review || [] });
+      const reviewStorage = options.reviewStorage || rollout.reviewStorage;
+      const canUseDefaultDb = reviewStorage === rollout.reviewStorage;
+      if (canUseDefaultDb) await reconcileToPlan(groups, { limit: options.batchSize || MAX_PAGE_SIZE });
+      else if (reviewStorage?.reconcileToPlan) await reviewStorage.reconcileToPlan(groups, { limit: options.batchSize || MAX_PAGE_SIZE });
+      return original({ ...plan, assignment }, options);
+    };
+    rollout.__reviewReconcileWrapped = true;
+    return true;
+  }
+
+  if (root?.document) {
+    installRolloutWrapper();
+    root.addEventListener('DOMContentLoaded', installRolloutWrapper, { once: true });
+  }
+
   return {
     REVIEW_DB_NAME,
     REVIEW_DB_VERSION,
@@ -126,5 +148,6 @@
     openReviewDb,
     reconcilePage,
     reconcileToPlan,
+    installRolloutWrapper,
   };
 });
