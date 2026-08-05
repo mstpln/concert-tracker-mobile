@@ -87,18 +87,8 @@ test('fresh later-phase heartbeat prevents a completed checkpoint false positive
   t.after(cleanupGlobals);
   const now = 2_000_000;
   const storage = memoryStorage({
-    'bandmarkr-listening-canonical-activation-v1': JSON.stringify({
-      stateVersion: 1,
-      status: 'preparing',
-      preparationPhase: 'persisting-candidates',
-      preparationHeartbeatAt: new Date(now - 1000).toISOString(),
-    }),
-    'bandmarkr-listening-derived-migration-v1': JSON.stringify({
-      status: 'complete',
-      processedEvents: 5000,
-      sourceEventCountAfter: 5000,
-      integrityStatus: 'passed',
-    }),
+    'bandmarkr-listening-canonical-activation-v1': JSON.stringify({ stateVersion: 1, status: 'preparing', preparationPhase: 'persisting-candidates', preparationHeartbeatAt: new Date(now - 1000).toISOString() }),
+    'bandmarkr-listening-derived-migration-v1': JSON.stringify({ status: 'complete', processedEvents: 5000, sourceEventCountAfter: 5000, integrityStatus: 'passed' }),
   });
   const api = loadModule(storage);
   api.checkForStalledPreparation(storage, now - api.STALL_TIMEOUT_MS);
@@ -111,18 +101,8 @@ test('expired later-phase heartbeat becomes retryable without clearing completed
   t.after(cleanupGlobals);
   const now = 3_000_000;
   const storage = memoryStorage({
-    'bandmarkr-listening-canonical-activation-v1': JSON.stringify({
-      stateVersion: 1,
-      status: 'preparing',
-      preparationPhase: 'persisting-candidates',
-      preparationHeartbeatAt: new Date(now - 1000 - 300000).toISOString(),
-    }),
-    'bandmarkr-listening-derived-migration-v1': JSON.stringify({
-      status: 'complete',
-      processedEvents: 5000,
-      sourceEventCountAfter: 5000,
-      integrityStatus: 'passed',
-    }),
+    'bandmarkr-listening-canonical-activation-v1': JSON.stringify({ stateVersion: 1, status: 'preparing', preparationPhase: 'persisting-candidates', preparationHeartbeatAt: new Date(now - 1000 - 300000).toISOString() }),
+    'bandmarkr-listening-derived-migration-v1': JSON.stringify({ status: 'complete', processedEvents: 5000, sourceEventCountAfter: 5000, integrityStatus: 'passed' }),
   });
   const api = loadModule(storage);
   api.checkForStalledPreparation(storage, now - api.STALL_TIMEOUT_MS);
@@ -132,52 +112,36 @@ test('expired later-phase heartbeat becomes retryable without clearing completed
   assert.equal(JSON.parse(storage.getItem(api.MIGRATION_CHECKPOINT_KEY)).status, 'complete');
 });
 
-test('active operation refreshes an expired heartbeat before resume stall detection', (t) => {
+test('active operation gets one resume heartbeat before stall detection', (t) => {
   t.after(cleanupGlobals);
   const now = 4_000_000;
   const storage = memoryStorage({
-    'bandmarkr-listening-canonical-activation-v1': JSON.stringify({
-      stateVersion: 1,
-      status: 'preparing',
-      preparationPhase: 'persisting-candidates',
-      preparationHeartbeatAt: new Date(now - 1000 - 300000).toISOString(),
-    }),
-    'bandmarkr-listening-derived-migration-v1': JSON.stringify({
-      status: 'complete',
-      processedEvents: 5000,
-      sourceEventCountAfter: 5000,
-      integrityStatus: 'passed',
-    }),
+    'bandmarkr-listening-canonical-activation-v1': JSON.stringify({ stateVersion: 1, status: 'preparing', preparationPhase: 'persisting-candidates', preparationHeartbeatAt: new Date(now - 1000 - 300000).toISOString() }),
+    'bandmarkr-listening-derived-migration-v1': JSON.stringify({ status: 'complete', processedEvents: 5000, sourceEventCountAfter: 5000, integrityStatus: 'passed' }),
   });
   const api = loadModule(storage);
   api.checkForStalledPreparation(storage, now - api.STALL_TIMEOUT_MS);
   const token = api.beginActiveOperation('persisting-candidates');
+  const refreshed = api.refreshActivePreparation(storage, now);
   const result = api.checkForStalledPreparation(storage, now);
-  api.endActiveOperation(token);
+  assert.equal(refreshed.preparationHeartbeatAt, new Date(now).toISOString());
   assert.equal(result.recovered, false);
   assert.equal(result.state.status, 'preparing');
-  assert.equal(result.state.preparationHeartbeatAt, new Date(now).toISOString());
+  const stalled = api.checkForStalledPreparation(storage, now + api.STALL_TIMEOUT_MS);
+  api.endActiveOperation(token);
+  assert.equal(stalled.recovered, true);
 });
 
 test('expired persisted preparation without an active operation remains retryable', (t) => {
   t.after(cleanupGlobals);
   const now = 5_000_000;
   const storage = memoryStorage({
-    'bandmarkr-listening-canonical-activation-v1': JSON.stringify({
-      stateVersion: 1,
-      status: 'preparing',
-      preparationPhase: 'persisting-candidates',
-      preparationHeartbeatAt: new Date(now - 1000 - 300000).toISOString(),
-    }),
-    'bandmarkr-listening-derived-migration-v1': JSON.stringify({
-      status: 'complete',
-      processedEvents: 5000,
-      sourceEventCountAfter: 5000,
-      integrityStatus: 'passed',
-    }),
+    'bandmarkr-listening-canonical-activation-v1': JSON.stringify({ stateVersion: 1, status: 'preparing', preparationPhase: 'persisting-candidates', preparationHeartbeatAt: new Date(now - 1000 - 300000).toISOString() }),
+    'bandmarkr-listening-derived-migration-v1': JSON.stringify({ status: 'complete', processedEvents: 5000, sourceEventCountAfter: 5000, integrityStatus: 'passed' }),
   });
   const api = loadModule(storage);
   api.checkForStalledPreparation(storage, now - api.STALL_TIMEOUT_MS);
+  assert.equal(api.refreshActivePreparation(storage, now), null);
   const result = api.checkForStalledPreparation(storage, now);
   assert.equal(api.activeOperationPhase(), null);
   assert.equal(result.recovered, true);
