@@ -30,14 +30,38 @@ test('v99 shows exact Spotify links and identity-backed artwork across listening
   const profile = page.locator('#screen-profile');
   await expect(profile.getByRole('tab', { name: 'Listening', exact: true })).toHaveAttribute('aria-selected', 'true');
 
+  await page.evaluate(() => {
+    const bandId = activeProfileBandId;
+    const band = bands.find((candidate) => candidate.id === bandId);
+    const now = Date.now();
+    const exact = Array.from({ length: 24 }, (_, index) => ({
+      id: `v99-profile-exact-${index}`,
+      listenedAtMs: now - index * 1000,
+      listenedDurationMs: 240000,
+      recordingTitle: 'V99 Exact Profile Track',
+      releaseTitle: 'V99 Exact Profile Album',
+      artistCreditName: band?.name || 'Synthetic Artist',
+      bandId,
+      localBandId: bandId,
+      spotifyTrackId: 'V99ExactTrack123',
+      spotifyTrackUrl: 'https://open.spotify.com/track/V99ExactTrack123',
+      spotifyAlbumId: 'V99ExactAlbum456',
+      spotifyAlbumUrl: 'https://open.spotify.com/album/V99ExactAlbum456',
+      albumArtworkUrl: 'https://fixtures.livevault.test/images/v99-exact-profile.jpg',
+      spotifyMetadataSource: 'spotify_exact_track_id',
+    }));
+    listeningEvents = [...listeningEvents, ...exact];
+    renderProfileScreen(bandId);
+  });
+
   const trackCard = profile.locator('.top-tracks-card');
-  const linkedTrackRow = trackCard.locator('.top-track-row').filter({ has: page.locator('.trusted-listening-link') }).first();
-  await expect(linkedTrackRow.locator('.trusted-listening-link')).toHaveAttribute('href', /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]+$/);
+  const linkedTrackRow = trackCard.locator('.top-track-row').filter({ hasText: 'V99 Exact Profile Track' });
+  await expect(linkedTrackRow.locator('.trusted-listening-link')).toHaveAttribute('href', 'https://open.spotify.com/track/V99ExactTrack123');
   await expect(linkedTrackRow.locator('.track-artwork img')).toBeVisible();
 
   await trackCard.getByRole('tab', { name: 'Top Albums' }).click();
-  const linkedAlbumRow = profile.locator('.top-tracks-card .top-track-row').filter({ has: page.locator('.trusted-listening-link') }).first();
-  await expect(linkedAlbumRow.locator('.trusted-listening-link')).toHaveAttribute('href', /^https:\/\/open\.spotify\.com\/album\/[A-Za-z0-9]+$/);
+  const linkedAlbumRow = profile.locator('.top-tracks-card .top-track-row').filter({ hasText: 'V99 Exact Profile Album' });
+  await expect(linkedAlbumRow.locator('.trusted-listening-link')).toHaveAttribute('href', 'https://open.spotify.com/album/V99ExactAlbum456');
   await expect(linkedAlbumRow.locator('.track-artwork img')).toBeVisible();
 
   const unresolved = await page.evaluate(() => {
