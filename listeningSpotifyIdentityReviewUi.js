@@ -13,11 +13,6 @@
     return String(value || 'unchecked').replaceAll('_', ' ');
   }
 
-  function candidateUrl(candidate) {
-    if (candidate?.url && /^https:\/\/open\.spotify\.com\/artist\/[A-Za-z0-9]+(?:[/?#].*)?$/.test(candidate.url)) return candidate.url;
-    return candidate?.id ? `https://open.spotify.com/artist/${encodeURIComponent(candidate.id)}` : null;
-  }
-
   async function loadListeningEvents() {
     if (root.LiveVaultSpotifyHistory?.loadEvents) {
       try { return await root.LiveVaultSpotifyHistory.loadEvents([]); } catch (_) { return []; }
@@ -31,7 +26,7 @@
   }
 
   function candidateHtml(row, candidate) {
-    const url = candidateUrl(candidate);
+    const url = root.ListeningSpotifyIdentityReview.safeSpotifyArtistUrl(candidate);
     const detail = [candidate.artistName || candidate.name, candidate.area || candidate.country, candidate.disambiguation].filter(Boolean).join(' · ');
     return `<div class="spotify-review-candidate">
       <div>
@@ -82,50 +77,23 @@
     wireActions(section, rows);
   }
 
-  function latestRecordFor(latestBands, bandId) {
-    const band = latestBands.find((item) => item?.id === bandId);
-    return { band, spotify: band?.musicbrainz?.spotify || null };
-  }
-
-  function isProtectedDecision(record) {
-    return record?.status === 'manual_confirmed' || record?.status === 'manual_rejected';
-  }
-
   async function saveDecision(row, action, candidateId) {
     if (!remote) throw new Error('No connection');
     const latestBands = await dlReadJsonFile(remote, 'bands.json', []);
-    const { band, spotify } = latestRecordFor(latestBands, row.bandId);
-    if (!band) throw new Error('Band no longer exists');
-    if (isProtectedDecision(spotify) && spotify.status !== row.status) throw new Error('A newer manual decision already exists');
-    const reviewedAt = new Date().toISOString();
-    let nextSpotify;
-    if (action === 'confirm') {
-      const candidate = row.candidates.find((item) => item.id === candidateId);
-      if (!candidate) throw new Error('Candidate is no longer available');
-      nextSpotify = {
-        ...spotify,
-        ...candidate,
-        id: candidate.id,
-        url: candidateUrl(candidate),
-        artistName: candidate.artistName || candidate.name || spotify?.artistName || band.name,
-        status: 'manual_confirmed',
-        reviewedAt,
-        reviewedBy: 'user',
-      };
-    } else {
-      nextSpotify = {
-        ...spotify,
-        status: 'manual_rejected',
-        reviewedAt,
-        reviewedBy: 'user',
-        rejectedCandidateIds: row.candidates.map((item) => item.id),
-      };
-    }
-    const updated = latestBands.map((item) => item.id === row.bandId
-      ? { ...item, musicbrainz: { ...(item.musicbrainz || {}), spotify: nextSpotify } }
-      : item);
-    await dlWriteJsonFile(remote, 'bands.json', updated);
-    bands = updated;
+    const result = root.ListeningSpotifyIdentityReview.applySpotifyReviewDecision(
+      latestBands,
+      row,
+      { action, candidateId },
+    );
+    const messages = {
+      missing_band: 'Band no longer exists',
+      newer_manual_decision: 'A newer manual decision already exists',
+      candidate_missing: 'Candidate is no longer available',
+      no_change: 'No decision was made',
+    };
+    if (result.kind !== 'updated') throw new Error(messages[result.kind] || 'The decision could not be saved');
+    await dlWriteJsonFile(remote, 'bands.json', result.bands);
+    bands = result.bands;
   }
 
   function wireActions(section, rows) {
