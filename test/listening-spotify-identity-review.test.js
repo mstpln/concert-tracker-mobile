@@ -115,3 +115,16 @@ test('stale review cannot recreate a deleted band or replace a newer manual deci
   assert.equal(stale.kind, 'newer_manual_decision');
   assert.equal(stale.bands[0].musicbrainz.spotify.id, 'new-manual');
 });
+
+test('stale review cannot confirm a candidate removed from the latest provider record', () => {
+  const latest = band('a', 'Alpha', {
+    status: 'needs_review',
+    reviewCandidates: [{ id: 'replacement', artistName: 'Replacement' }],
+  });
+  const stale = review.applySpotifyReviewDecision([latest], {
+    bandId: 'a', status: 'needs_review', candidates: [{ id: 'removed', artistName: 'Removed' }],
+  }, { action: 'confirm', candidateId: 'removed' });
+  assert.equal(stale.kind, 'candidate_missing');
+  assert.equal(stale.bands[0].musicbrainz.spotify.status, 'needs_review');
+  assert.equal(stale.bands[0].musicbrainz.spotify.reviewCandidates[0].id, 'replacement');
+});
