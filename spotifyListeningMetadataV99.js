@@ -23,6 +23,8 @@
     return { kind: 'livevault-spotify-listening-metadata', schemaVersion: SCHEMA_VERSION, updatedAt: null, records: {} };
   }
 
+  let activeDocument = emptyDocument();
+
   function normalizeRecord(record) {
     if (!record || !validSpotifyId(record.spotifyTrackId)) return null;
     const spotifyTrackUrl = safeString(record.spotifyTrackUrl);
@@ -56,15 +58,38 @@
     return output;
   }
 
+  function mergeRecord(left, right) {
+    if (!left) return right;
+    if (!right) return left;
+    const leftTime = Date.parse(left.fetchedAt) || 0;
+    const rightTime = Date.parse(right.fetchedAt) || 0;
+    const newer = rightTime >= leftTime ? right : left;
+    const older = newer === right ? left : right;
+    return normalizeRecord({ ...older, ...newer });
+  }
+
   function mergeDocuments(base, incoming) {
     const left = normalizeDocument(base);
     const right = normalizeDocument(incoming);
+    const records = { ...left.records };
+    for (const [id, record] of Object.entries(right.records)) records[id] = mergeRecord(records[id], record);
+    const leftTime = Date.parse(left.updatedAt) || 0;
+    const rightTime = Date.parse(right.updatedAt) || 0;
     return {
       kind: left.kind,
       schemaVersion: SCHEMA_VERSION,
-      updatedAt: right.updatedAt || left.updatedAt,
-      records: { ...left.records, ...right.records },
+      updatedAt: rightTime >= leftTime ? right.updatedAt : left.updatedAt,
+      records,
     };
+  }
+
+  function setActive(document) {
+    activeDocument = normalizeDocument(document);
+    return activeDocument;
+  }
+
+  function recordForTrack(spotifyTrackId) {
+    return activeDocument.records[safeString(spotifyTrackId)] || null;
   }
 
   function openDb() {
@@ -102,7 +127,7 @@
       tx.onabort = () => reject(tx.error || new Error('Listening metadata save was cancelled.'));
     });
     db.close();
-    return value;
+    return setActive(value);
   }
 
   function remoteConfig() {
@@ -140,9 +165,9 @@
     return response.headers.get('etag') || null;
   }
 
-  function applyToEvents(document) {
+  function applyToEvents(document = activeDocument) {
     if (typeof listeningEvents === 'undefined') return 0;
-    const records = normalizeDocument(document).records;
+    const records = setActive(document).records;
     let applied = 0;
     listeningEvents = (listeningEvents || []).map((event) => {
       const record = records[event?.spotifyTrackId];
@@ -176,10 +201,10 @@
       const remoteState = await readRemote();
       merged = mergeDocuments(local, remoteState.document);
       await saveLocal(merged);
-    } catch (_) {}
+    } catch (_) { setActive(local); }
     applyToEvents(merged);
     rerenderCurrentScreen();
-    return merged;
+    return activeDocument;
   }
 
   function recordFromSpotifyTrack(track, now = new Date().toISOString()) {
@@ -207,6 +232,7 @@
     if (!root.SpotifyUser?.request) throw new Error('Spotify connection support is unavailable.');
     const remoteState = await readRemote(fetchImpl);
     let document = mergeDocuments(await loadLocal().catch(() => emptyDocument()), remoteState.document);
+    setActive(document);
     const ids = unresolvedTrackIds(document).slice(0, Math.max(1, Math.min(MAX_TRACKS_PER_RUN, Number(cap) || MAX_TRACKS_PER_RUN)));
     if (!ids.length) {
       applyToEvents(document);
@@ -221,11 +247,11 @@
       for (const track of payload.tracks) {
         const record = recordFromSpotifyTrack(track);
         if (!record) continue;
-        document.records[record.spotifyTrackId] = record;
+        document.records[record.spotifyTrackId] = mergeRecord(document.records[record.spotifyTrackId], record);
         added += 1;
       }
       document.updatedAt = new Date().toISOString();
-      await saveLocal(document);
+      document = await saveLocal(document);
       applyToEvents(document);
       onProgress({ processed: Math.min(ids.length, index + batch.length), total: ids.length, added });
     }
@@ -258,14 +284,27 @@
         const result = await enrich({ onProgress: ({ processed, total, added }) => { status.textContent = `Fetched ${processed.toLocaleString()} of ${total.toLocaleString()} · ${added.toLocaleString()} matched`; } });
         status.textContent = result.requested
           ? `${result.added.toLocaleString()} exact Spotify records added · ${result.total.toLocaleString()} cached`
-          : `Artwork metadata is already complete for the trusted Spotify track IDs on this device.`;
+          : 'Artwork metadata is already complete for the trusted Spotify track IDs on this device.';
       } catch (error) {
         status.textContent = error?.message || 'Spotify listening artwork could not be fetched.';
       } finally { button.disabled = false; }
     });
   }
 
+  function installLoadHook() {
+    if (typeof loadDataAndShowApp !== 'function' || loadDataAndShowApp.__liveVaultSpotifyMetadataV99) return;
+    const previous = loadDataAndShowApp;
+    const wrapped = async function loadDataAndShowAppWithSpotifyMetadata(...args) {
+      const result = await previous.apply(this, args);
+      await restore().catch(() => {});
+      return result;
+    };
+    wrapped.__liveVaultSpotifyMetadataV99 = true;
+    loadDataAndShowApp = wrapped;
+  }
+
   function install() {
+    installLoadHook();
     restore().catch(() => {});
     injectSettingsUi();
   }
@@ -280,6 +319,7 @@
   return {
     DB_NAME, STORE_NAME, REMOTE_PATH, SCHEMA_VERSION, BATCH_SIZE, MAX_TRACKS_PER_RUN,
     emptyDocument, normalizeRecord, normalizeDocument, mergeDocuments, recordFromSpotifyTrack,
-    unresolvedTrackIds, loadLocal, saveLocal, readRemote, writeRemote, applyToEvents, restore, enrich,
+    unresolvedTrackIds, loadLocal, saveLocal, readRemote, writeRemote, recordForTrack,
+    applyToEvents, restore, enrich, installLoadHook,
   };
 });
