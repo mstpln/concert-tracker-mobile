@@ -14,10 +14,13 @@
   }
 
   async function loadListeningEvents() {
+    try {
+      if (Array.isArray(listeningEvents)) return listeningEvents;
+    } catch (_) {}
     if (root.LiveVaultSpotifyHistory?.loadEvents) {
       try { return await root.LiveVaultSpotifyHistory.loadEvents([]); } catch (_) { return []; }
     }
-    try { return Array.isArray(listeningEvents) ? listeningEvents : []; } catch (_) { return []; }
+    return [];
   }
 
   function impactHtml(row) {
@@ -126,5 +129,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
 
-  root.ListeningSpotifyIdentityReviewUi = { render, saveDecision };
+  root.ListeningSpotifyIdentityReviewUi = { render, saveDecision, loadListeningEvents };
 })(window);
