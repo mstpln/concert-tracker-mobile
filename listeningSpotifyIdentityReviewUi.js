@@ -80,11 +80,7 @@
   async function saveDecision(row, action, candidateId) {
     if (!remote) throw new Error('No connection');
     const latestBands = await dlReadJsonFile(remote, 'bands.json', []);
-    const result = root.ListeningSpotifyIdentityReview.applySpotifyReviewDecision(
-      latestBands,
-      row,
-      { action, candidateId },
-    );
+    const result = root.ListeningSpotifyIdentityReview.applySpotifyReviewDecision(latestBands, row, { action, candidateId });
     const messages = {
       missing_band: 'Band no longer exists',
       newer_manual_decision: 'A newer manual decision already exists',
@@ -119,12 +115,12 @@
   const observer = new MutationObserver(() => {
     const screen = document.getElementById('screen-settings');
     if (!screen || screen.classList.contains('hidden')) return;
-    if (screen.querySelector('[data-settings-tab="review"].active')) render();
+    if (screen.querySelector('[data-settings-tab="review"].active') && !document.getElementById(SECTION_ID)) render();
   });
 
   function start() {
     const screen = document.getElementById('screen-settings');
-    if (screen) observer.observe(screen, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    if (screen) observer.observe(screen, { childList: true, subtree: true });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
