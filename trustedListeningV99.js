@@ -36,11 +36,7 @@
     const id = listen?.spotifyTrackId || listen?.spotify?.trackId || metadata?.spotifyTrackId || null;
     const url = spotifyUrl('track', id, listen?.spotifyTrackUrl || listen?.spotify?.trackUrl || metadata?.spotifyTrackUrl);
     if (!id || !url) return null;
-    return {
-      spotifyTrackId: String(id),
-      spotifyTrackUrl: url,
-      artworkPath: trustedArtwork(listen, metadata),
-    };
+    return { spotifyTrackId: String(id), spotifyTrackUrl: url, artworkPath: trustedArtwork(listen, metadata) };
   }
 
   function trustedAlbumMeta(listen) {
@@ -48,11 +44,7 @@
     const id = listen?.spotifyAlbumId || listen?.spotify?.albumId || metadata?.spotifyAlbumId || null;
     const url = spotifyUrl('album', id, listen?.spotifyAlbumUrl || listen?.spotify?.albumUrl || metadata?.spotifyAlbumUrl);
     if (!id || !url) return null;
-    return {
-      spotifyAlbumId: String(id),
-      spotifyAlbumUrl: url,
-      artworkPath: trustedArtwork(listen, metadata),
-    };
+    return { spotifyAlbumId: String(id), spotifyAlbumUrl: url, artworkPath: trustedArtwork(listen, metadata) };
   }
 
   function aggregate(listens, kind, limit = 10) {
@@ -67,9 +59,7 @@
       const stable = kind === 'album'
         ? (listen.musicbrainzReleaseId || listen.musicbrainzReleaseGroupId || listen.stableReleaseId || trusted?.spotifyAlbumId)
         : (listen.musicbrainzRecordingId || listen.stableRecordingId || trusted?.spotifyTrackId);
-      const key = stable
-        ? `stable:${stable}`
-        : `event:${listen.id || listen.eventId || listen.listenId || `${api.listenTimeMs(listen)}:${index}`}`;
+      const key = stable ? `stable:${stable}` : `event:${listen.id || listen.eventId || listen.listenId || `${api.listenTimeMs(listen)}:${index}`}`;
       const titleKey = kind === 'album' ? 'releaseTitle' : 'recordingTitle';
       const item = grouped.get(key) || {
         recordingKey: key,
@@ -121,10 +111,7 @@
     });
     const titleKey = kind === 'album' ? 'releaseTitle' : 'recordingTitle';
     return [...grouped.values()]
-      .sort((a, b) => b.listenCount - a.listenCount
-        || b.durationMs - a.durationMs
-        || b.lastListenedMs - a.lastListenedMs
-        || normalize(a[titleKey]).localeCompare(normalize(b[titleKey])))
+      .sort((a, b) => b.listenCount - a.listenCount || b.durationMs - a.durationMs || b.lastListenedMs - a.lastListenedMs || normalize(a[titleKey]).localeCompare(normalize(b[titleKey])))
       .slice(0, Math.max(0, Number(limit) || 0))
       .map((item, index) => ({ ...item, rank: index + 1 }));
   }
@@ -136,9 +123,7 @@
   }
 
   function trustedArtworkHtml(item) {
-    if (!item?.trustedSpotifyIdentity || !item.artworkPath) {
-      return `<span class="track-artwork is-placeholder" aria-hidden="true">${icon('music')}</span>`;
-    }
+    if (!item?.trustedSpotifyIdentity || !item.artworkPath) return `<span class="track-artwork is-placeholder" aria-hidden="true">${icon('music')}</span>`;
     return `<span class="track-artwork"><span aria-hidden="true">${icon('music')}</span><img src="${escapeAttr(item.artworkPath)}" alt="" data-listening-image /></span>`;
   }
 
@@ -175,16 +160,11 @@
   function exactMetadataForItem(item, albumMode, sourceListens) {
     const matching = albumMode
       ? (sourceListens || []).filter((listen) => normalize(listen.releaseTitle) === normalize(item.releaseTitle))
-      : (sourceListens || []).filter((listen) => normalize(listen.recordingTitle) === normalize(item.recordingTitle)
-        && normalize(listen.releaseTitle) === normalize(item.releaseTitle));
+      : (sourceListens || []).filter((listen) => normalize(listen.recordingTitle) === normalize(item.recordingTitle) && normalize(listen.releaseTitle) === normalize(item.releaseTitle));
     const trusted = matching.map(albumMode ? trustedAlbumMeta : trustedTrackMeta).filter(Boolean);
     const ids = new Set(trusted.map((entry) => albumMode ? entry.spotifyAlbumId : entry.spotifyTrackId));
     if (ids.size !== 1) return null;
-    return {
-      ...trusted[0],
-      artworkPath: trusted.find((entry) => entry.artworkPath)?.artworkPath || null,
-      trustedSpotifyIdentity: true,
-    };
+    return { ...trusted[0], artworkPath: trusted.find((entry) => entry.artworkPath)?.artworkPath || null, trustedSpotifyIdentity: true };
   }
 
   function bandRankedItems(albumMode, rankingListens, sourceListens = rankingListens) {
@@ -198,15 +178,16 @@
     });
   }
 
-  function sourceListensForStats(stats, bandId) {
-    const window = stats?.window;
+  function sourceListensForStats(stats, bandId, timeframe = profileListeningTimeframe) {
+    const source = typeof listeningEvents === 'undefined' ? [] : listeningEvents;
+    const supplied = stats?.window;
+    const now = typeof listeningNow === 'function' ? listeningNow() : new Date();
+    const fallback = typeof api.resolveWindow === 'function' ? api.resolveWindow(timeframe, now, source) : null;
+    const window = supplied && Number.isFinite(supplied.startMs) && Number.isFinite(supplied.endMs) ? supplied : fallback;
     if (!window || !Number.isFinite(window.startMs) || !Number.isFinite(window.endMs)) return [];
-    return (typeof listeningEvents === 'undefined' ? [] : listeningEvents).filter((listen) => {
+    return source.filter((listen) => {
       const time = api.listenTimeMs(listen);
-      return listenBandId(listen) === bandId
-        && Number.isFinite(time)
-        && time >= window.startMs
-        && time < window.endMs;
+      return listenBandId(listen) === bandId && Number.isFinite(time) && time >= window.startMs && time < window.endMs;
     });
   }
 
@@ -218,7 +199,7 @@
     if (card.dataset.v99Trusted === signature) return;
     const stats = globalListeningStats(profileListeningTimeframe);
     const rankingListens = (stats.listens || []).filter((listen) => listenBandId(listen) === activeProfileBandId);
-    const sourceListens = sourceListensForStats(stats, activeProfileBandId);
+    const sourceListens = sourceListensForStats(stats, activeProfileBandId, profileListeningTimeframe);
     const items = bandRankedItems(albumMode, rankingListens, sourceListens);
     let enhanced = 0;
     card.querySelectorAll('.top-track-row').forEach((row, index) => {
@@ -250,8 +231,8 @@
   }
 
   globalThis.TrustedListeningV99 = {
-    aggregate, trustedTrackMeta, trustedAlbumMeta, spotifyUrl, trustedTitleHtml,
-    trustedArtworkHtml, bandRankedItems, sourceListensForStats, listenBandId, install, enhanceBandDetail,
+    aggregate, trustedTrackMeta, trustedAlbumMeta, spotifyUrl, trustedTitleHtml, trustedArtworkHtml,
+    bandRankedItems, sourceListensForStats, listenBandId, install, enhanceBandDetail,
   };
 })();
 
