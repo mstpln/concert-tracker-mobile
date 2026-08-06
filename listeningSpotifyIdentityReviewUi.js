@@ -88,6 +88,7 @@
       missing_band: 'Band no longer exists',
       newer_manual_decision: 'A newer manual decision already exists',
       candidate_missing: 'Candidate is no longer available',
+      candidate_set_changed: 'The candidate list changed. Review the refreshed list before deciding.',
       no_change: 'No decision was made',
     };
     if (result.kind !== 'updated') throw new Error(messages[result.kind] || 'The decision could not be saved');
