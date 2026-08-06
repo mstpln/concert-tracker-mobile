@@ -11,57 +11,10 @@ function topListTabsHtml() {
   return `<div class="toplist-tabs" role="tablist" aria-label="Toplist ranking">${[['bands', 'Top Bands'], ['tracks', 'Top Tracks']].map(([key, label]) => `<button type="button" class="toplist-tab${topListMode === key ? ' active' : ''}" data-toplist-mode="${key}" role="tab" aria-selected="${topListMode === key}"${topListMode === key ? '' : ' tabindex="-1"'}>${label}</button>`).join('')}</div>`;
 }
 
-function topListTrustedRecordingKey(listen, index) {
-  if (listen?.musicbrainzRecordingId) return `mbid:${listen.musicbrainzRecordingId}`;
-  if (listen?.stableRecordingId) return `recording:${listen.stableRecordingId}`;
-  if (listen?.spotifyTrackId) return `spotify:${listen.spotifyTrackId}`;
-  const eventId = listen?.sourceEventId || listen?.listenId || listen?.id;
-  return eventId ? `event:${eventId}` : `event:${ListeningStats.listenTimeMs(listen)}:${index}`;
-}
-
-function topListTracks(listens, limit = 100) {
-  const grouped = new Map();
-  (listens || []).forEach((listen, index) => {
-    if (!ListeningStats.isValidListen(listen) || !String(listen?.recordingTitle || '').trim()) return;
-    const recordingKey = topListTrustedRecordingKey(listen, index);
-    const item = grouped.get(recordingKey) || {
-      recordingKey,
-      recordingTitle: String(listen.recordingTitle).trim(),
-      artistCreditName: listen.artistCreditName || 'Unknown artist',
-      localBandId: listen.localBandId || null,
-      artworkPath: listen.artworkPath || null,
-      durationMs: 0,
-      listenCount: 0,
-      lastListenedMs: 0,
-    };
-    item.durationMs += ListeningStats.validDurationMs(listen);
-    item.listenCount += 1;
-    item.lastListenedMs = Math.max(item.lastListenedMs, ListeningStats.listenTimeMs(listen));
-    if (!item.artworkPath && listen.artworkPath) item.artworkPath = listen.artworkPath;
-    grouped.set(recordingKey, item);
-  });
-  return [...grouped.values()]
-    .sort((a, b) => b.listenCount - a.listenCount || b.durationMs - a.durationMs || b.lastListenedMs - a.lastListenedMs || ListeningStats.normalizeText(a.recordingTitle).localeCompare(ListeningStats.normalizeText(b.recordingTitle)))
-    .slice(0, limit)
-    .map((item, index) => ({ ...item, rank: index + 1 }));
-}
-
-function topListTrackMovement(current, previous, timeframe) {
-  const previousRanks = new Map((previous || []).map((track, index) => [track.recordingKey, track.rank || index + 1]));
-  return (current || []).map((track, index) => {
-    if (timeframe === 'allTime') return { ...track, movement: null };
-    const rank = track.rank || index + 1;
-    const previousRank = previousRanks.get(track.recordingKey);
-    if (!previousRank) return { ...track, movement: { kind: 'new', delta: null, label: 'New' } };
-    const delta = previousRank - rank;
-    if (delta > 0) return { ...track, movement: { kind: 'up', delta, label: `Up ${delta}` } };
-    if (delta < 0) return { ...track, movement: { kind: 'down', delta: Math.abs(delta), label: `Down ${Math.abs(delta)}` } };
-    return { ...track, movement: null };
-  });
-}
-
 function topListTrackRowsHtml(stats) {
-  const tracks = topListTrackMovement(topListTracks(stats.listens), topListTracks(stats.previousListens || []), topBandsTimeframe);
+  const current = ToplistStatsV96.rankTracks(stats.listens, 100);
+  const previous = ToplistStatsV96.rankTracks(stats.previousListens || [], 100);
+  const tracks = ToplistStatsV96.withMovement(current, previous, topBandsTimeframe);
   if (!tracks.length) return '<p class="listening-empty">No tracks are available for this period.</p>';
   return tracks.map((track) => {
     const band = track.localBandId ? bands.find((candidate) => candidate.id === track.localBandId) : null;
