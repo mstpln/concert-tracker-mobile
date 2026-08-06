@@ -13,4 +13,34 @@ on:
         description: Maximum bands to inspect in this run (1-25)
         required: true
         type: number
-        default: 
+        default: 25
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-vault-data-writes
+  cancel-in-progress: false
+
+jobs:
+  spotify-candidate-acquisition:
+    if: ${{ inputs.ACQUIRE_SPOTIFY_CANDIDATES == true && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Run review-only Spotify candidate acquisition
+        env:
+          CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
+          CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+          SPOTIFY_CANDIDATE_BAND_CAP: ${{ inputs.BAND_CAP }}
+        run: node scripts/spotify-candidate-acquisition.js
