@@ -5,7 +5,7 @@
   const TOKEN_KEY = 'spotifyUserAuthorization'; const PENDING_KEY = 'spotifyUserPkcePending';
   const SCOPE = 'playlist-modify-private'; const ACCOUNTS = 'https://accounts.spotify.com'; const API = 'https://api.spotify.com/v1';
   const random = (bytes = 32) => { const data = new Uint8Array(bytes); crypto.getRandomValues(data); return btoa(String.fromCharCode(...data)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, ''); };
-  const challengeFor = async (verifier) => { const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)); return btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, ''); };
+  const challengeFor = async (verifier) => { const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)); return btoa(String.fromCharCode(...new Uint8Array(digest)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')); };
   const redirectUri = () => `${location.origin}${location.pathname}`;
   const getAuth = async () => (await chrome.storage.local.get(TOKEN_KEY))[TOKEN_KEY] || null;
   const setAuth = async (auth) => chrome.storage.local.set({ [TOKEN_KEY]: auth });
@@ -45,5 +45,5 @@
     for (let index = added; index < uris.length; index += 100) { try { await request(`/playlists/${encodeURIComponent(playlist.id)}/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uris: uris.slice(index, index + 100), position: index }) }, fetchImpl); added = Math.min(uris.length, index + 100); } catch (error) { error.operation = { playlist, added }; throw error; } }
     return { playlist, added };
   }
-  window.SpotifyUser = { SCOPE, TOKEN_KEY, redirectUri, random, challengeFor, getAuth, setAuth, clearAuth, beginAuthorization, handleCallback, refresh, createPrivatePlaylist };
+  window.SpotifyUser = { SCOPE, TOKEN_KEY, redirectUri, random, challengeFor, getAuth, setAuth, clearAuth, beginAuthorization, handleCallback, refresh, validAuth, request, createPrivatePlaylist };
 })();
