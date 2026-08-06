@@ -16,6 +16,7 @@ const SPOTIFY_IDENTITY_FIELDS = new Set([
   'followers', 'popularity', 'status', 'matchMethod', 'confidence', 'matchedAt',
   'reviewedAt', 'reviewedBy', 'lastAttemptedAt', 'lastCheckedAt',
   'nextEligibleCheckAt', 'errorCategory', 'candidateAcquisition',
+  'reviewCandidates', 'rejectedCandidateIds',
 ]);
 
 function clone(value) {
