@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const worker = require('./lib/workerClient');
 const { UsageTracker } = require('./lib/usageTracker');
-const spotify = require('./lib/spotify');
+const spotifyCandidateSearch = require('./lib/spotifyCandidateSearch');
 const identities = require('../providerIdentityState');
 
 const DEFAULT_BAND_CAP = 25;
@@ -53,10 +53,11 @@ function normalizeCandidate(candidate) {
 }
 
 function candidatesFromResolution(result) {
+  const direct = Array.isArray(result?.candidates) ? result.candidates : null;
   const identity = result?.identity;
-  const raw = Array.isArray(identity?.reviewCandidates) && identity.reviewCandidates.length
+  const raw = direct || (Array.isArray(identity?.reviewCandidates) && identity.reviewCandidates.length
     ? identity.reviewCandidates
-    : identity?.id ? [identity] : [];
+    : identity?.id ? [identity] : []);
   const byId = new Map();
   for (const item of raw) {
     const candidate = normalizeCandidate(item);
@@ -94,7 +95,7 @@ function buildCandidateRecord(prior, candidates, now) {
     reviewCandidates,
     candidateAcquisition: {
       ...(prior?.candidateAcquisition || {}),
-      source: 'spotify_artist_resolution',
+      source: 'spotify_artist_search',
       method: 'review_only',
       acquiredAt: now,
       candidateSetFingerprint: fingerprint(reviewCandidates),
@@ -131,12 +132,14 @@ async function runSpotifyCandidateAcquisition({
   readBands = worker.readJson,
   writeBands = worker.writeJson,
   loadUsage = UsageTracker.load,
-  resolveArtistIdentity = spotify.resolveArtistIdentity,
+  searchCandidates = spotifyCandidateSearch.searchArtistCandidates,
+  resolveArtistIdentity = null,
   bandCap = DEFAULT_BAND_CAP,
   now = new Date().toISOString(),
   log = console.log,
 } = {}) {
-  const effectiveBandCap = Math.max(0, Math.min(DEFAULT_BAND_CAP, Number.isFinite(bandCap) ? Math.floor(bandCap) : DEFAULT_BAND_CAP));
+  const numericBandCap = Number(bandCap);
+  const effectiveBandCap = Math.max(0, Math.min(DEFAULT_BAND_CAP, Number.isFinite(numericBandCap) ? Math.floor(numericBandCap) : DEFAULT_BAND_CAP));
   const usage = await loadUsage();
   const summary = {
     mode: 'spotify-candidate-acquisition',
@@ -164,10 +167,13 @@ async function runSpotifyCandidateAcquisition({
     const updates = [];
 
     for (const band of eligible.slice(0, effectiveBandCap)) {
-      if (!usage.canCallSpotify() && !metadataForBand(band).spotify?.id) break;
+      if (!usage.canCallSpotify()) break;
       summary.considered += 1;
       const prior = clone(band.musicbrainz?.spotify || null);
-      const result = await resolveArtistIdentity({ band, metadata: metadataForBand(band), usage, now });
+      const metadata = metadataForBand(band);
+      const result = resolveArtistIdentity
+        ? await resolveArtistIdentity({ band, metadata, usage, now })
+        : await searchCandidates({ band, metadata, usage, now });
       if (result?.kind === 'error' || result?.kind === 'unavailable') summary.errors += 1;
       const candidates = candidatesFromResolution(result);
       if (!candidates.length) {
@@ -198,7 +204,7 @@ async function runSpotifyCandidateAcquisition({
 }
 
 if (require.main === module) {
-  runSpotifyCandidateAcquisition().catch((error) => {
+  runSpotifyCandidateAcquisition({ bandCap: process.env.SPOTIFY_CANDIDATE_BAND_CAP }).catch((error) => {
     console.error('Spotify candidate acquisition failed:', error.message);
     process.exitCode = 1;
   });
