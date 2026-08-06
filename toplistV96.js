@@ -36,13 +36,13 @@ function topListModeForKey(mode, key) {
   return null;
 }
 
-function topListCardHtml(stats, mode, { preview = false } = {}) {
+function topListCardHtml(stats, mode, { preview = false, timeframe = stats.timeframe || 'threeMonths' } = {}) {
   const heading = topListHeading(mode, stats.label);
   const list = mode === 'tracks'
-    ? `<div class="toplist-track-list">${topListTrackRowsHtml(stats, { limit: preview ? 5 : 100, timeframe: stats.timeframe })}</div>`
-    : `<div class="top-bands-list">${topBandRowsHtml(preview ? stats.topBands.slice(0, 5) : stats.topBands, { timeframe: stats.timeframe })}</div>`;
-  const viewAll = preview ? '<button type="button" class="listening-link" data-open-top-bands>View all</button>' : '';
-  const footer = preview ? `<button type="button" class="listening-card-footer" data-open-top-bands>View full top 100${icon('chevronRight')}</button>` : '';
+    ? `<div class="toplist-track-list">${topListTrackRowsHtml(stats, { limit: preview ? 5 : 100, timeframe })}</div>`
+    : `<div class="top-bands-list">${topBandRowsHtml(preview ? stats.topBands.slice(0, 5) : stats.topBands, { timeframe })}</div>`;
+  const viewAll = preview ? '<button type="button" class="listening-link" data-open-toplist>View all</button>' : '';
+  const footer = preview ? `<button type="button" class="listening-card-footer" data-open-toplist>View full top 100${icon('chevronRight')}</button>` : '';
   return `<section class="listening-card ${preview ? 'top-bands-card' : 'full-top-bands-card'} toplist-card" aria-labelledby="${preview ? 'stats-toplist-title' : 'toplist-title'}">
     ${topListTabsHtml(mode, preview ? 'stats-toplist' : 'toplist')}
     <div class="listening-card-heading"><p id="${preview ? 'stats-toplist-title' : 'toplist-title'}">${escapeHtml(heading)}</p>${viewAll}</div>
@@ -51,13 +51,17 @@ function topListCardHtml(stats, mode, { preview = false } = {}) {
 }
 
 topBandsPreviewHtml = function topListPreviewHtml(stats) {
-  return topListCardHtml(stats, statsTopListMode, { preview: true });
+  const timeframe = typeof statsListeningTimeframe === 'string' ? statsListeningTimeframe : 'threeMonths';
+  return topListCardHtml(stats, statsTopListMode, { preview: true, timeframe });
 };
 
-const renderStatsScreenBeforeToplistLayout = renderStatsScreen;
-renderStatsScreen = function renderStatsScreenWithToplistCard() {
-  renderStatsScreenBeforeToplistLayout();
-  const container = el('screen-stats');
+function wireStatsToplistCard(container) {
+  const timeframe = typeof statsListeningTimeframe === 'string' ? statsListeningTimeframe : 'threeMonths';
+  const existing = container.querySelector('.top-bands-card');
+  if (existing) {
+    const stats = globalListeningStats(timeframe);
+    existing.outerHTML = topListCardHtml(stats, statsTopListMode, { preview: true, timeframe });
+  }
   container.querySelectorAll('[data-stats-toplist-mode]').forEach((button) => {
     const activate = (mode, focus = false) => {
       statsTopListMode = mode === 'tracks' ? 'tracks' : 'bands';
@@ -72,6 +76,17 @@ renderStatsScreen = function renderStatsScreenWithToplistCard() {
       activate(next, true);
     });
   });
+  container.querySelectorAll('[data-open-toplist]').forEach((button) => {
+    button.addEventListener('click', () => openTopBandsScreen({ timeframe, mode: statsTopListMode }));
+  });
+  wireListeningBandRows(container);
+  wireListeningImages(container);
+}
+
+const renderStatsScreenBeforeToplistLayout = renderStatsScreen;
+renderStatsScreen = function renderStatsScreenWithToplistCard() {
+  renderStatsScreenBeforeToplistLayout();
+  wireStatsToplistCard(el('screen-stats'));
 };
 
 openTopBandsScreen = function openToplistScreen({ fromHistory = false, timeframe = 'threeMonths', mode = 'bands' } = {}) {
@@ -90,7 +105,7 @@ openTopBandsScreen = function openToplistScreen({ fromHistory = false, timeframe
 renderTopBandsScreen = function renderToplistScreen() {
   const container = el('screen-top-bands');
   const stats = globalListeningStats(topBandsTimeframe);
-  container.innerHTML = `${topListTimeframeControlHtml(topBandsTimeframe)}${topListCardHtml(stats, topListMode)}`;
+  container.innerHTML = `${topListTimeframeControlHtml(topBandsTimeframe)}${topListCardHtml(stats, topListMode, { timeframe: topBandsTimeframe })}`;
   wireListeningTimeframe(container, (timeframe) => {
     topBandsTimeframe = timeframe;
     if (history.state?.screen === 'top-bands') history.replaceState({ ...history.state, timeframe, mode: topListMode }, '');
