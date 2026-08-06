@@ -5,7 +5,7 @@ test('v98 keeps ranking semantics and aligns Band Detail listening tabs', async 
   page.on('pageerror', (error) => browserErrors.push(error.message));
   await page.goto('/');
 
-  await expect(page.locator('#start-version-refresh')).toContainText('v98');
+  await expect(page.locator('#start-version-refresh')).toContainText('v99');
 
   const teaserItems = page.locator('.stats-teaser-item');
   const traveled = teaserItems.filter({ hasText: 'traveled' });
