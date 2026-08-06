@@ -6,7 +6,7 @@ const identityState = require('../providerIdentityState');
 const review = require('../listeningSpotifyIdentityReview');
 
 function band(id, name, spotify) {
-  return { id, name, favorite: true, notes: 'preserve', futureField: { keep: true }, musicbrainz: { mbid: `mb-${id}`, status: 'confirmed', ...(spotify ? { spotify } : {}) } };
+  return { id, name, favorite: true, notes: 'preserve', futureField: { keep: true }, musicbrainz: { mbid: `mb-${id}`, status: 'confirmed', ticketmaster: { id: `tm-${id}`, status: 'confirmed', unknownTicketmasterField: true }, ...(spotify ? { spotify } : {}) } };
 }
 
 test('audits every unresolved Spotify identity and separates stored candidates from acquisition work', () => {
@@ -63,4 +63,55 @@ test('deduplicates stored candidates without mutating provider records', () => {
   const [row] = review.auditSpotifyArtistIdentities(bands, [], { identityState, now: '2026-08-06T00:00:00.000Z' });
   assert.deepEqual(row.candidates.map((candidate) => candidate.id), ['one', 'two']);
   assert.deepEqual(bands, before);
+});
+
+test('manual confirmation changes only the Spotify provider record and preserves user, provider, and future fields', () => {
+  const original = band('a', 'Alpha', {
+    status: 'needs_review',
+    reviewCandidates: [{ id: 'spotify-alpha', artistName: 'Alpha', url: 'https://open.spotify.com/artist/spotify-alpha', score: 99 }],
+    unknownSpotifyField: { keep: true },
+  });
+  const result = review.applySpotifyReviewDecision([original], {
+    bandId: 'a', status: 'needs_review', candidates: original.musicbrainz.spotify.reviewCandidates,
+  }, { action: 'confirm', candidateId: 'spotify-alpha' }, { reviewedAt: '2026-08-06T00:00:00.000Z' });
+  assert.equal(result.kind, 'updated');
+  assert.notEqual(result.bands, [original]);
+  assert.equal(result.bands[0].favorite, true);
+  assert.equal(result.bands[0].notes, 'preserve');
+  assert.deepEqual(result.bands[0].futureField, { keep: true });
+  assert.equal(result.bands[0].musicbrainz.mbid, 'mb-a');
+  assert.equal(result.bands[0].musicbrainz.ticketmaster.id, 'tm-a');
+  assert.deepEqual(result.bands[0].musicbrainz.spotify.unknownSpotifyField, { keep: true });
+  assert.equal(result.bands[0].musicbrainz.spotify.status, 'manual_confirmed');
+  assert.equal(result.bands[0].musicbrainz.spotify.id, 'spotify-alpha');
+  assert.equal(result.bands[0].musicbrainz.spotify.reviewedBy, 'user');
+});
+
+test('manual rejection preserves candidate evidence and records exact rejected candidate IDs', () => {
+  const original = band('a', 'Alpha', {
+    status: 'needs_review',
+    reviewCandidates: [{ id: 'one', artistName: 'One' }, { id: 'two', artistName: 'Two' }],
+    unknownSpotifyField: 'keep',
+  });
+  const result = review.applySpotifyReviewDecision([original], {
+    bandId: 'a', status: 'needs_review', candidates: original.musicbrainz.spotify.reviewCandidates,
+  }, { action: 'reject' }, { reviewedAt: '2026-08-06T00:00:00.000Z' });
+  assert.equal(result.kind, 'updated');
+  assert.equal(result.bands[0].musicbrainz.spotify.status, 'manual_rejected');
+  assert.deepEqual(result.bands[0].musicbrainz.spotify.rejectedCandidateIds, ['one', 'two']);
+  assert.equal(result.bands[0].musicbrainz.spotify.reviewCandidates.length, 2);
+  assert.equal(result.bands[0].musicbrainz.spotify.unknownSpotifyField, 'keep');
+});
+
+test('stale review cannot recreate a deleted band or replace a newer manual decision', () => {
+  const deleted = review.applySpotifyReviewDecision([], { bandId: 'gone', status: 'needs_review', candidates: [] }, { action: 'reject' });
+  assert.equal(deleted.kind, 'missing_band');
+  assert.deepEqual(deleted.bands, []);
+
+  const latest = band('a', 'Alpha', { id: 'new-manual', status: 'manual_confirmed', reviewedAt: '2026-08-06T01:00:00.000Z' });
+  const stale = review.applySpotifyReviewDecision([latest], {
+    bandId: 'a', status: 'needs_review', candidates: [{ id: 'old', artistName: 'Old' }],
+  }, { action: 'confirm', candidateId: 'old' });
+  assert.equal(stale.kind, 'newer_manual_decision');
+  assert.equal(stale.bands[0].musicbrainz.spotify.id, 'new-manual');
 });
