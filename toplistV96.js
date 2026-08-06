@@ -24,7 +24,8 @@ function topListTrackRowsHtml(stats, { limit = 100, timeframe = topBandsTimefram
   return tracks.map((track) => {
     const band = track.localBandId ? bands.find((candidate) => candidate.id === track.localBandId) : null;
     const artist = band?.name || track.artistCreditName || 'Unknown artist';
-    const content = `<span class="top-track-rank">#${track.rank}</span>${trackArtworkHtml(track)}<span class="top-track-copy"><strong>${escapeHtml(track.recordingTitle)}</strong><span class="top-track-artist">${escapeHtml(artist)}</span><small>${track.listenCount.toLocaleString()} listens · ${ListeningStats.formatDuration(track.durationMs)}</small></span>${movementHtml(track.movement)}`;
+    const movement = track.movement ? movementHtml(track.movement) : '';
+    const content = `<span class="top-track-rank">#${track.rank}</span>${trackArtworkHtml(track)}<span class="top-track-copy"><strong>${escapeHtml(track.recordingTitle)}</strong><span class="top-track-artist">${escapeHtml(artist)}</span><small>${track.listenCount.toLocaleString()} listens · ${ListeningStats.formatDuration(track.durationMs)}</small></span>${movement}`;
     return band ? `<button type="button" class="toplist-track-row" data-listening-band-id="${escapeAttr(band.id)}" data-listening-source-timeframe="${escapeAttr(timeframe)}">${content}</button>` : `<div class="toplist-track-row">${content}</div>`;
   }).join('');
 }
