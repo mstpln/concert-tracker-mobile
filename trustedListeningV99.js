@@ -193,6 +193,18 @@
     });
   }
 
+  function bandDetailDomMatches(rows, items, albumMode) {
+    if (rows.length !== items.length) return false;
+    return rows.every((row, index) => {
+      const item = items[index];
+      const expectedUrl = albumMode ? item.spotifyAlbumUrl : item.spotifyTrackUrl;
+      const link = row.querySelector('.trusted-listening-link');
+      if ((link?.getAttribute('href') || null) !== (expectedUrl || null)) return false;
+      const image = row.querySelector('.track-artwork img');
+      return Boolean(image) === Boolean(item.trustedSpotifyIdentity && item.artworkPath);
+    });
+  }
+
   function enhanceBandDetail(root = document) {
     const card = root.querySelector?.('#screen-profile .top-tracks-card');
     if (!card || !activeProfileBandId) return;
@@ -201,13 +213,14 @@
     const rankingListens = (stats.listens || []).filter((listen) => listenBandId(listen) === activeProfileBandId);
     const sourceListens = sourceListensForStats(stats, activeProfileBandId, profileListeningTimeframe);
     const items = bandRankedItems(albumMode, rankingListens, sourceListens);
+    const rows = [...card.querySelectorAll('.top-track-row')];
     const metadataSignature = items.map((item) => [
       item.spotifyTrackId || '', item.spotifyTrackUrl || '', item.spotifyAlbumId || '', item.spotifyAlbumUrl || '', item.artworkPath || '',
     ].join(':')).join('|');
     const signature = `${activeProfileBandId}:${profileListeningTimeframe}:${albumMode ? 'albums' : 'tracks'}:${metadataSignature}`;
-    if (card.dataset.v99Trusted === signature) return;
+    if (card.dataset.v99Trusted === signature && bandDetailDomMatches(rows, items, albumMode)) return;
     let enhanced = 0;
-    card.querySelectorAll('.top-track-row').forEach((row, index) => {
+    rows.forEach((row, index) => {
       const item = items[index];
       if (!item) return;
       const art = row.querySelector('.track-artwork');
