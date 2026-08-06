@@ -158,9 +158,11 @@
   }
 
   function exactMetadataForItem(item, albumMode, sourceListens) {
+    const itemArtist = normalize(item.artistCreditName);
     const matching = albumMode
       ? (sourceListens || []).filter((listen) => normalize(listen.releaseTitle) === normalize(item.releaseTitle))
-      : (sourceListens || []).filter((listen) => normalize(listen.recordingTitle) === normalize(item.recordingTitle) && normalize(listen.releaseTitle) === normalize(item.releaseTitle));
+      : (sourceListens || []).filter((listen) => normalize(listen.recordingTitle) === normalize(item.recordingTitle)
+        && (!itemArtist || normalize(listen.artistCreditName) === itemArtist));
     const trusted = matching.map(albumMode ? trustedAlbumMeta : trustedTrackMeta).filter(Boolean);
     const ids = new Set(trusted.map((entry) => albumMode ? entry.spotifyAlbumId : entry.spotifyTrackId));
     if (ids.size !== 1) return null;
