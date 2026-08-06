@@ -172,19 +172,41 @@
     topListTrackRowsHtml = render;
   }
 
-  function bandRankedItems(albumMode, listens) {
-    const items = albumMode ? api.topAlbums(listens, 10) : api.topTracks(listens, 10);
+  function exactMetadataForItem(item, albumMode, sourceListens) {
+    const matching = albumMode
+      ? (sourceListens || []).filter((listen) => normalize(listen.releaseTitle) === normalize(item.releaseTitle))
+      : (sourceListens || []).filter((listen) => normalize(listen.recordingTitle) === normalize(item.recordingTitle)
+        && normalize(listen.releaseTitle) === normalize(item.releaseTitle));
+    const trusted = matching.map(albumMode ? trustedAlbumMeta : trustedTrackMeta).filter(Boolean);
+    const ids = new Set(trusted.map((entry) => albumMode ? entry.spotifyAlbumId : entry.spotifyTrackId));
+    if (ids.size !== 1) return null;
+    return {
+      ...trusted[0],
+      artworkPath: trusted.find((entry) => entry.artworkPath)?.artworkPath || null,
+      trustedSpotifyIdentity: true,
+    };
+  }
+
+  function bandRankedItems(albumMode, rankingListens, sourceListens = rankingListens) {
+    const items = albumMode ? api.topAlbums(rankingListens, 10) : api.topTracks(rankingListens, 10);
     return items.map((item) => {
-      if (albumMode) {
-        const matching = (listens || []).filter((listen) => normalize(listen.releaseTitle) === normalize(item.releaseTitle));
-        const trusted = matching.map(trustedAlbumMeta).filter(Boolean);
-        const ids = new Set(trusted.map((entry) => entry.spotifyAlbumId));
-        return ids.size === 1 ? { ...item, ...trusted[0], artworkPath: trusted.find((entry) => entry.artworkPath)?.artworkPath || null, trustedSpotifyIdentity: true } : { ...item, spotifyAlbumId: null, spotifyAlbumUrl: null, artworkPath: null, trustedSpotifyIdentity: false };
-      }
-      const matching = (listens || []).filter((listen) => normalize(listen.recordingTitle) === normalize(item.recordingTitle) && normalize(listen.releaseTitle) === normalize(item.releaseTitle));
-      const trusted = matching.map(trustedTrackMeta).filter(Boolean);
-      const ids = new Set(trusted.map((entry) => entry.spotifyTrackId));
-      return ids.size === 1 ? { ...item, ...trusted[0], artworkPath: trusted.find((entry) => entry.artworkPath)?.artworkPath || null, trustedSpotifyIdentity: true } : { ...item, spotifyTrackId: null, spotifyTrackUrl: null, artworkPath: null, trustedSpotifyIdentity: false };
+      const exact = exactMetadataForItem(item, albumMode, sourceListens);
+      if (exact) return { ...item, ...exact };
+      return albumMode
+        ? { ...item, spotifyAlbumId: null, spotifyAlbumUrl: null, artworkPath: null, trustedSpotifyIdentity: false }
+        : { ...item, spotifyTrackId: null, spotifyTrackUrl: null, artworkPath: null, trustedSpotifyIdentity: false };
+    });
+  }
+
+  function sourceListensForStats(stats, bandId) {
+    const window = stats?.window;
+    if (!window || !Number.isFinite(window.startMs) || !Number.isFinite(window.endMs)) return [];
+    return (typeof listeningEvents === 'undefined' ? [] : listeningEvents).filter((listen) => {
+      const time = api.listenTimeMs(listen);
+      return listenBandId(listen) === bandId
+        && Number.isFinite(time)
+        && time >= window.startMs
+        && time < window.endMs;
     });
   }
 
@@ -195,8 +217,9 @@
     const signature = `${activeProfileBandId}:${profileListeningTimeframe}:${albumMode ? 'albums' : 'tracks'}`;
     if (card.dataset.v99Trusted === signature) return;
     const stats = globalListeningStats(profileListeningTimeframe);
-    const listens = (stats.listens || []).filter((listen) => listenBandId(listen) === activeProfileBandId);
-    const items = bandRankedItems(albumMode, listens);
+    const rankingListens = (stats.listens || []).filter((listen) => listenBandId(listen) === activeProfileBandId);
+    const sourceListens = sourceListensForStats(stats, activeProfileBandId);
+    const items = bandRankedItems(albumMode, rankingListens, sourceListens);
     let enhanced = 0;
     card.querySelectorAll('.top-track-row').forEach((row, index) => {
       const item = items[index];
@@ -228,7 +251,7 @@
 
   globalThis.TrustedListeningV99 = {
     aggregate, trustedTrackMeta, trustedAlbumMeta, spotifyUrl, trustedTitleHtml,
-    trustedArtworkHtml, bandRankedItems, listenBandId, install, enhanceBandDetail,
+    trustedArtworkHtml, bandRankedItems, sourceListensForStats, listenBandId, install, enhanceBandDetail,
   };
 })();
 
