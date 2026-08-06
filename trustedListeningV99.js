@@ -63,8 +63,8 @@
       if (!title) return;
       const trusted = kind === 'album' ? trustedAlbumMeta(listen) : trustedTrackMeta(listen);
       const stable = kind === 'album'
-        ? (trusted?.spotifyAlbumId || listen.musicbrainzReleaseId || listen.musicbrainzReleaseGroupId || listen.stableReleaseId)
-        : (trusted?.spotifyTrackId || listen.musicbrainzRecordingId || listen.stableRecordingId);
+        ? (listen.musicbrainzReleaseId || listen.musicbrainzReleaseGroupId || listen.stableReleaseId || trusted?.spotifyAlbumId)
+        : (listen.musicbrainzRecordingId || listen.stableRecordingId || trusted?.spotifyTrackId);
       const key = stable
         ? `stable:${stable}`
         : `event:${listen.id || listen.eventId || listen.listenId || `${api.listenTimeMs(listen)}:${index}`}`;
