@@ -38,13 +38,13 @@ test('v97 Toplist keeps tabs and dynamic timeframe headings inside ranking cards
   expect(hierarchy).toEqual({ tabsInsideCard: true, headingAfterTabs: true, listAfterHeading: true });
 
   await page.getByRole('button', { name: '1 year' }).click();
-  await expect(page.locator('.full-top-bands-card.toplist-card #toplist-title')).toHaveText('TOP TRACKS · 1 YEAR');
+  await expect(fullCard.locator('#toplist-title')).toHaveText('TOP TRACKS · 1 YEAR');
   await fullCard.getByRole('tab', { name: 'Top Bands' }).click();
-  await expect(page.locator('.full-top-bands-card.toplist-card #toplist-title')).toHaveText('TOP BANDS · 1 YEAR');
+  await expect(fullCard.locator('#toplist-title')).toHaveText('TOP BANDS · 1 YEAR');
   await fullCard.getByRole('tab', { name: 'Top Tracks' }).click();
   await page.getByRole('button', { name: 'All time' }).click();
-  await expect(page.locator('.full-top-bands-card.toplist-card #toplist-title')).toHaveText('TOP TRACKS · ALL TIME');
-  await expect(page.locator('.toplist-track-row .rank-movement')).toHaveCount(0);
+  await expect(fullCard.locator('#toplist-title')).toHaveText('TOP TRACKS · ALL TIME');
+  await expect(fullCard.locator('.toplist-track-row .rank-movement')).toHaveCount(0);
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   expect(browserErrors).toEqual([]);
