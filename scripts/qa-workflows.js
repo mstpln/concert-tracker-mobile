@@ -77,7 +77,16 @@ assert(cleanup.source.includes('news-before-v77-cleanup.json'), 'release cleanup
 assert(cleanup.source.includes('actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'), 'release cleanup backup action must be pinned');
 assert(!cleanup.source.includes('queue: max'), 'release cleanup must use supported concurrency fields only');
 
-for (const workflow of [structured, tavily, cleanup]) {
+const spotifyCandidates = getWorkflow('spotify-candidate-acquisition.yml');
+assert(spotifyCandidates.source.includes('workflow_dispatch:'), 'Spotify candidate acquisition must remain manual');
+assert(!spotifyCandidates.source.includes('schedule:'), 'Spotify candidate acquisition must never be scheduled');
+assert(spotifyCandidates.source.includes('ACQUIRE_SPOTIFY_CANDIDATES'), 'Spotify candidate acquisition must require explicit confirmation');
+assert(spotifyCandidates.source.includes("github.ref == 'refs/heads/main'"), 'Spotify candidate acquisition must run only from main');
+assert(spotifyCandidates.source.includes('SPOTIFY_CANDIDATE_BAND_CAP'), 'Spotify candidate acquisition must pass the explicit band cap');
+assert(spotifyCandidates.source.includes('contents: read'), 'Spotify candidate acquisition must use read-only repository permissions');
+assert(!spotifyCandidates.source.includes('queue: max'), 'Spotify candidate acquisition must use supported concurrency fields only');
+
+for (const workflow of [structured, tavily, cleanup, spotifyCandidates]) {
   assert(workflow.source.includes('group: live-vault-data-writes'), 'production writers must share the data-write concurrency group');
   assert(workflow.source.includes('cancel-in-progress: false'), 'production writers must not cancel an active write');
 }

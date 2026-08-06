@@ -91,8 +91,29 @@ async function writeJson(filename, data) {
   return reconcileCallerData(data, intended);
 }
 
+async function writeJsonStrict(filename, data) {
+  let state = documentState.get(filename);
+  if (!state) {
+    await readJson(filename, undefined);
+    state = documentState.get(filename);
+  }
+
+  const intended = clone(data);
+  const res = await putJson(filename, intended, state);
+  if (res.status === 412) {
+    await readJson(filename, undefined);
+    const error = new Error(`PUT ${filename} conflict: document changed after validation`);
+    error.code = 'ETAG_CONFLICT';
+    error.status = 412;
+    throw error;
+  }
+  if (!res.ok) throw new Error(`PUT ${filename} failed: ${res.status} ${await res.text()}`);
+  documentState.set(filename, { etag: res.headers.get('ETag'), missing: false, value: clone(intended) });
+  return reconcileCallerData(data, intended);
+}
+
 function resetDocumentState() {
   documentState.clear();
 }
 
-module.exports = { readJson, writeJson, resetDocumentState };
+module.exports = { readJson, writeJson, writeJsonStrict, resetDocumentState };
