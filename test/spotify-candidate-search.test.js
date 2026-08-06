@@ -34,6 +34,7 @@ test('artist candidate search keeps only exact accepted names and full provider 
           images: [{ url: 'https://images.example/2.jpg', width: 640, height: 640 }],
           followers: { total: 200 },
           popularity: 60,
+          future_provider_field: { preserve: true },
         },
         {
           id: 'spotify-1',
@@ -63,6 +64,7 @@ test('artist candidate search keeps only exact accepted names and full provider 
   assert.equal(result.candidates[0].followers, 500);
   assert.deepEqual(result.candidates[1].genres, ['synthetic rock']);
   assert.equal(result.candidates[1].images[0].url, 'https://images.example/2.jpg');
+  assert.deepEqual(result.candidates[1].future_provider_field, { preserve: true });
   assert.equal(tracker.calls(), 1);
 });
 
