@@ -81,6 +81,16 @@
       .map((candidate) => ({ ...candidate }));
   }
 
+  function candidateIds(candidates) {
+    return [...new Set((candidates || []).map((candidate) => String(candidate?.id || '')).filter(Boolean))].sort();
+  }
+
+  function sameCandidateSet(left, right) {
+    const leftIds = candidateIds(left);
+    const rightIds = candidateIds(right);
+    return leftIds.length === rightIds.length && leftIds.every((id, index) => id === rightIds[index]);
+  }
+
   function safeSpotifyArtistUrl(candidate) {
     if (candidate?.url && /^https:\/\/open\.spotify\.com\/artist\/[A-Za-z0-9]+(?:[/?#].*)?$/.test(candidate.url)) return candidate.url;
     return candidate?.id ? `https://open.spotify.com/artist/${encodeURIComponent(candidate.id)}` : null;
@@ -95,10 +105,14 @@
     if (['manual_confirmed', 'manual_rejected'].includes(current.status) && current.status !== row?.status) {
       return { kind: 'newer_manual_decision', bands: rows };
     }
+    const currentCandidates = storedCandidates(current);
+    if (!sameCandidateSet(currentCandidates, row?.candidates || [])) {
+      return { kind: 'candidate_set_changed', bands: rows };
+    }
     const reviewedAt = options.reviewedAt || new Date().toISOString();
     let spotify;
     if (decision?.action === 'confirm') {
-      const candidate = storedCandidates(current).find((item) => item.id === decision.candidateId);
+      const candidate = currentCandidates.find((item) => item.id === decision.candidateId);
       if (!candidate) return { kind: 'candidate_missing', bands: rows };
       spotify = {
         ...current,
@@ -116,7 +130,7 @@
         status: 'manual_rejected',
         reviewedAt,
         reviewedBy: 'user',
-        rejectedCandidateIds: storedCandidates(current).map((item) => item.id),
+        rejectedCandidateIds: currentCandidates.map((item) => item.id),
       };
     } else {
       return { kind: 'no_change', bands: rows };
@@ -187,7 +201,7 @@
       || String(a.bandId).localeCompare(String(b.bandId)));
   }
 
-  const api = { TWO_WEEKS_MS, normalizeName, eventTimestamp, eventArtistName, spotifyTrackId, periodCutoffs, safeSpotifyArtistUrl, applySpotifyReviewDecision, auditSpotifyArtistIdentities };
+  const api = { TWO_WEEKS_MS, normalizeName, eventTimestamp, eventArtistName, spotifyTrackId, periodCutoffs, storedCandidates, candidateIds, sameCandidateSet, safeSpotifyArtistUrl, applySpotifyReviewDecision, auditSpotifyArtistIdentities };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.ListeningSpotifyIdentityReview = api;
 })(typeof window !== 'undefined' ? window : globalThis);
