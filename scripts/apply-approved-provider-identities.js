@@ -11,6 +11,13 @@ const APPROVED_IDENTITIES = Object.freeze([
   Object.freeze({ name: 'LE SSERAFIM', musicbrainzId: '1ee37742-1e3d-4e61-84d2-bc85f4c1459a', spotifyId: '4SpbR6yFEvexJuaBpgAU5p' }),
 ]);
 
+const SPOTIFY_IDENTITY_FIELDS = new Set([
+  'id', 'url', 'artistName', 'name', 'external_urls', 'genres', 'images',
+  'followers', 'popularity', 'status', 'matchMethod', 'confidence', 'matchedAt',
+  'reviewedAt', 'reviewedBy', 'lastAttemptedAt', 'lastCheckedAt',
+  'nextEligibleCheckAt', 'errorCategory', 'candidateAcquisition',
+]);
+
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
@@ -24,6 +31,21 @@ function normalizeName(value) {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
     .replace(/\s+/g, ' ');
+}
+
+function preserveUnknownSpotifyFields(record) {
+  return Object.fromEntries(Object.entries(clone(record || {}))
+    .filter(([key]) => !SPOTIFY_IDENTITY_FIELDS.has(key)));
+}
+
+function approvedCandidateMetadata(record, spotifyId) {
+  const candidate = (Array.isArray(record?.reviewCandidates) ? record.reviewCandidates : [])
+    .find((item) => String(item?.id || '') === spotifyId);
+  if (!candidate) return {};
+  const allowed = ['genres', 'images', 'followers', 'popularity'];
+  return Object.fromEntries(allowed
+    .filter((key) => candidate[key] !== undefined)
+    .map((key) => [key, clone(candidate[key])]));
 }
 
 function assertUniqueTargets(bands, mappings = APPROVED_IDENTITIES) {
@@ -85,27 +107,30 @@ function applyApprovedIdentities(bands, mappings = APPROVED_IDENTITIES, options 
       && identities.isConfirmed(currentSpotify, 'spotify');
     if (musicbrainzAlreadyApproved && spotifyAlreadyApproved) return band;
     changed += 1;
+    const spotifyUnknown = preserveUnknownSpotifyFields(currentSpotify);
+    const candidateMetadata = approvedCandidateMetadata(currentSpotify, mapping.spotifyId);
     return {
       ...band,
       musicbrainz: {
         ...currentMusicbrainz,
         mbid: mapping.musicbrainzId,
-        artistName: currentMusicbrainz.artistName || band.name,
+        artistName: band.name,
         status: 'manual_confirmed',
         matchMethod: 'user_approved_exact_id',
         confidence: 'user_confirmed',
-        matchedAt: currentMusicbrainz.matchedAt || reviewedAt,
+        matchedAt: reviewedAt,
         reviewedAt,
         reviewedBy: 'user',
         spotify: {
-          ...currentSpotify,
+          ...spotifyUnknown,
+          ...candidateMetadata,
           id: mapping.spotifyId,
           url: `https://open.spotify.com/artist/${mapping.spotifyId}`,
-          artistName: currentSpotify.artistName || band.name,
+          artistName: band.name,
           status: 'manual_confirmed',
           matchMethod: 'user_approved_exact_id',
           confidence: 'user_confirmed',
-          matchedAt: currentSpotify.matchedAt || reviewedAt,
+          matchedAt: reviewedAt,
           reviewedAt,
           reviewedBy: 'user',
         },
@@ -138,6 +163,8 @@ if (require.main === module) {
 module.exports = {
   APPROVED_IDENTITIES,
   normalizeName,
+  preserveUnknownSpotifyFields,
+  approvedCandidateMetadata,
   assertUniqueTargets,
   assertNoProviderConflicts,
   applyApprovedIdentities,
