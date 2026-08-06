@@ -1,11 +1,11 @@
 const { test, expect } = require('@playwright/test');
 
-test('v85 ranks tracks and albums by listens and moves concert units into labels', async ({ page }) => {
+test('v98 keeps ranking semantics and aligns Band Detail listening tabs', async ({ page }) => {
   const browserErrors = [];
   page.on('pageerror', (error) => browserErrors.push(error.message));
   await page.goto('/');
 
-  await expect(page.locator('#start-version-refresh')).toContainText('v97');
+  await expect(page.locator('#start-version-refresh')).toContainText('v98');
 
   const teaserItems = page.locator('.stats-teaser-item');
   const traveled = teaserItems.filter({ hasText: 'traveled' });
@@ -37,8 +37,32 @@ test('v85 ranks tracks and albums by listens and moves concert units into labels
   await page.getByRole('button', { name: 'View all' }).first().click();
   await page.locator('.full-top-bands-card .top-band-row').first().click();
   const profile = page.locator('#screen-profile');
+  const tabs = profile.locator('.ranked-list-tabs');
   await expect(profile.getByRole('tab', { name: 'Top Tracks' })).toHaveAttribute('aria-selected', 'true');
   await expect(profile.locator('.top-track-row').first()).toContainText(/listen/i);
+
+  const geometry = await tabs.evaluate((control) => {
+    const card = control.closest('.listening-card');
+    const controlBox = control.getBoundingClientRect();
+    const cardBox = card.getBoundingClientRect();
+    const next = control.nextElementSibling;
+    const style = getComputedStyle(control);
+    return {
+      leftInset: Math.round(controlBox.left - cardBox.left),
+      rightInset: Math.round(cardBox.right - controlBox.right),
+      gapBelow: next ? Math.round(next.getBoundingClientRect().top - controlBox.bottom) : null,
+      height: Math.round(control.querySelector('button').getBoundingClientRect().height),
+      radius: style.borderRadius,
+      padding: style.padding,
+    };
+  });
+  expect(geometry.leftInset).toBeLessThanOrEqual(3);
+  expect(geometry.rightInset).toBeLessThanOrEqual(3);
+  expect(geometry.gapBelow).toBe(10);
+  expect(geometry.height).toBeGreaterThanOrEqual(42);
+  expect(geometry.radius).toBe('12px');
+  expect(geometry.padding).toBe('4px');
+
   await profile.getByRole('tab', { name: 'Top Albums' }).click();
   await expect(profile.getByRole('tab', { name: 'Top Albums' })).toHaveAttribute('aria-selected', 'true');
   await expect(profile.locator('.top-track-row').first()).toContainText(/listen/i);
