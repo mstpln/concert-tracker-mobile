@@ -97,6 +97,27 @@ async function rsWriteAttempt(remote, filename, data, state) {
   });
 }
 
+async function dlWriteJsonFileIfCurrent(remote, filename, data) {
+  const state = RS_DOCUMENT_STATE.get(filename);
+  if (!state) throw new Error(`Read ${filename} before saving it`);
+  const intended = rsClone(data);
+  const res = await rsWriteAttempt(remote, filename, intended, state);
+  if (res.status === 412) {
+    await rsReadDocument(remote, filename, undefined);
+    throw new Error(`${filename} changed. Review the latest data before saving again.`);
+  }
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`HTTP ${res.status} saving ${filename}${detail ? `: ${detail}` : ''}`);
+  }
+  RS_DOCUMENT_STATE.set(filename, {
+    etag: res.headers.get('ETag'),
+    missing: false,
+    value: rsClone(intended),
+  });
+  return rsReconcileCallerData(data, intended);
+}
+
 async function dlWriteJsonFile(remote, filename, data) {
   let state = RS_DOCUMENT_STATE.get(filename);
   if (!state) {

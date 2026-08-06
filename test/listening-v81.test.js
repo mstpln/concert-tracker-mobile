@@ -162,8 +162,8 @@ test('current build facts, contrast and shell entries remain deterministic', () 
   assert.match(css, /@media\(min-width:391px\)/);
   assert.match(concertCss, /--concert-card-background-v86:\s*#232a32/);
   assert.match(brandCss, /--bandmarkr-blue:\s*#024ddf/);
-  assert.equal(state.appVersion, 'v93');
-  assert.equal(state.serviceWorkerCacheVersion, 'v93');
+  assert.equal(state.appVersion, 'v94');
+  assert.equal(state.serviceWorkerCacheVersion, 'v94');
   assert.ok(state.shellFiles.includes('concertCardsV86.css'));
   assert.ok(state.shellFiles.includes('bandmarkrV87.css'));
   assert.ok(state.shellFiles.includes('listeningV82Corrections.js'));
@@ -177,4 +177,6 @@ test('current build facts, contrast and shell entries remain deterministic', () 
   assert.ok(state.shellFiles.includes('listeningReviewRollout.js'));
   assert.ok(state.shellFiles.includes('listeningCanonicalActivation.js'));
   assert.ok(state.shellFiles.includes('listeningReviewRollout.css'));
+  assert.ok(state.shellFiles.includes('listeningSpotifyIdentityReview.js'));
+  assert.ok(state.shellFiles.includes('listeningSpotifyIdentityReviewUi.js'));
 });
