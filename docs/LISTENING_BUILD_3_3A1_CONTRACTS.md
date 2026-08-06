@@ -6,19 +6,19 @@ Build 3.3A1 audits BANDMARKR bands without a trusted Spotify artist identity and
 
 ## Identity ownership
 
-Durable Spotify artist identity and review decisions remain under `band.musicbrainz.spotify`. Audit counts are derived from local listening history and are not stored in source listening observations.
+Durable Spotify artist identity and review decisions remain under `band.musicbrainz.spotify`. Audit counts are derived from the active local listening dataset and are not stored in source listening observations.
 
 Trusted Spotify statuses are `confirmed` and `manual_confirmed`. Duplicate trusted Spotify artist IDs remain unresolved conflicts.
 
 ## Conservative listening association
 
-Listening evidence maps to a band by an existing stable `bandId` or `localBandId`. Text fallback is allowed only when an exact normalized artist name belongs to exactly one stored band. Ambiguous names remain unmapped. No fuzzy matching is used.
+Listening evidence maps to a band by an existing stable `bandId` or `localBandId`. An explicit stable ID is authoritative and never falls back to a different current band when its referenced band is missing. Text fallback is allowed only when no stable ID exists and an exact normalized artist name belongs to exactly one stored band. Ambiguous names remain unmapped. No fuzzy matching is used.
 
 ## Manual review
 
-Only exact stored `reviewCandidates` can be confirmed. No candidate is selected automatically. Confirmation uses `manual_confirmed`; rejection reuses `manual_rejected` and records the exact rejected candidate IDs while preserving candidate evidence.
+Only exact stored `reviewCandidates` can be confirmed. No candidate is selected automatically. Confirmation uses `manual_confirmed`; rejection reuses `manual_rejected` and records the exact rejected candidate IDs while preserving candidate evidence. **Decide later** is session-only and writes nothing.
 
-Before writing, the app re-reads the latest `bands.json`, locates the band by stable ID, and merges only the nested Spotify provider record. Deleted bands are not recreated, and newer manual decisions are not replaced.
+Before writing, the app re-reads the latest `bands.json`, locates the band by stable ID, and merges only the nested Spotify provider record. Deleted bands are not recreated, newer manual decisions are not replaced, and a changed candidate set fails closed so unseen candidates cannot be confirmed or rejected from a stale page.
 
 ## Preservation
 
