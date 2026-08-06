@@ -42,6 +42,7 @@ function candidateAcquisitionEligible(band) {
 function normalizeCandidate(candidate) {
   if (!candidate?.id) return null;
   return {
+    ...clone(candidate),
     id: String(candidate.id),
     artistName: candidate.artistName || candidate.name || null,
     url: candidate.url || candidate.external_urls?.spotify || `https://open.spotify.com/artist/${candidate.id}`,
