@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const metadata = require('../spotifyListeningMetadataV99.js');
 
@@ -30,11 +32,15 @@ test('recordFromSpotifyTrack keeps exact Spotify track and album identity', () =
   });
 });
 
-test('normalization rejects guessed, malformed and non-https metadata', () => {
+test('normalization rejects guessed, mismatched and non-https metadata', () => {
   assert.equal(metadata.normalizeRecord({ spotifyTrackId: 'bad-id' }), null);
   assert.equal(metadata.normalizeRecord({
     spotifyTrackId: 'TrackABC123',
     spotifyTrackUrl: 'http://open.spotify.com/track/TrackABC123',
+  }), null);
+  assert.equal(metadata.normalizeRecord({
+    spotifyTrackId: 'TrackABC123',
+    spotifyTrackUrl: 'https://open.spotify.com/track/Other999',
   }), null);
   assert.equal(metadata.normalizeRecord({
     spotifyTrackId: 'TrackABC123',
@@ -100,29 +106,12 @@ test('unresolvedTrackIds uses only exact Spotify IDs and deduplicates safely', (
   assert.deepEqual(ids, ['New456']);
 });
 
-test('Worker validator accepts exact metadata and rejects mismatched URLs', async () => {
-  const validator = await import('../spotifyMetadataValidatorV99.mjs');
-  const valid = {
-    kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: '2026-08-06T00:00:00.000Z',
-    records: {
-      TrackABC123: {
-        spotifyTrackId: 'TrackABC123',
-        spotifyTrackUrl: 'https://open.spotify.com/track/TrackABC123',
-        spotifyAlbumId: 'AlbumXYZ789',
-        spotifyAlbumUrl: 'https://open.spotify.com/album/AlbumXYZ789',
-        artworkUrl: 'https://i.scdn.co/image/cover',
-        fetchedAt: '2026-08-06T00:00:00.000Z',
-        source: 'spotify_exact_track_id',
-      },
-    },
-  };
-  assert.equal(validator.spotifyListeningMetadataIsValid(valid), true);
-  assert.equal(validator.spotifyListeningMetadataIsValid({
-    ...valid,
-    records: { TrackABC123: { ...valid.records.TrackABC123, spotifyTrackUrl: 'https://open.spotify.com/track/Other999' } },
-  }), false);
-  assert.equal(validator.spotifyListeningMetadataIsValid({
-    ...valid,
-    records: { TrackABC123: { ...valid.records.TrackABC123, artworkUrl: 'http://example.com/cover.jpg' } },
-  }), false);
+test('Worker keeps metadata validation self-contained and exact-ID only', () => {
+  const worker = fs.readFileSync(path.join(__dirname, '..', 'worker.js'), 'utf8');
+  assert.doesNotMatch(worker, /^import\s/m);
+  assert.match(worker, /SPOTIFY_METADATA_PATH = 'listening\/spotify-metadata\.json'/);
+  assert.match(worker, /spotifyMetadataSpotifyUrlIsValid/);
+  assert.match(worker, /url\.hostname==='open\.spotify\.com'/);
+  assert.match(worker, /record\.source!=='spotify_exact_track_id'/);
+  assert.match(worker, /MAX_SPOTIFY_METADATA_RECORDS/);
 });
