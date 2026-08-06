@@ -1,4 +1,4 @@
-import { spotifyListeningMetadataIsValid } from './spotifyMetadataValidatorV99.js';
+import { spotifyListeningMetadataIsValid } from './spotifyMetadataValidatorV99.mjs';
 
 const ALLOWED_FILES = new Set(['bands.json','concerts.json','news.json','apiUsage.json']);
 const JSON_ROOT_TYPES = {'bands.json':'array','concerts.json':'array','news.json':'array','apiUsage.json':'object'};
