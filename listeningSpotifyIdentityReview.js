@@ -98,8 +98,7 @@
     const reviewedAt = options.reviewedAt || new Date().toISOString();
     let spotify;
     if (decision?.action === 'confirm') {
-      const candidate = storedCandidates(current).find((item) => item.id === decision.candidateId)
-        || (row?.candidates || []).find((item) => item.id === decision.candidateId);
+      const candidate = storedCandidates(current).find((item) => item.id === decision.candidateId);
       if (!candidate) return { kind: 'candidate_missing', bands: rows };
       spotify = {
         ...current,
