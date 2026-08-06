@@ -69,12 +69,18 @@ function candidatesFromResolution(result) {
 
 function mergeCandidateLists(existing, incoming) {
   const byId = new Map();
-  for (const item of [...(existing || []), ...(incoming || [])]) {
+  for (const item of existing || []) {
+    if (!item?.id) continue;
+    byId.set(String(item.id), clone(item));
+  }
+  for (const item of incoming || []) {
     const candidate = normalizeCandidate(item);
     if (!candidate) continue;
-    byId.set(candidate.id, { ...(byId.get(candidate.id) || {}), ...candidate });
+    const prior = byId.get(candidate.id) || {};
+    const definedCandidateFields = Object.fromEntries(Object.entries(candidate).filter(([, value]) => value !== undefined));
+    byId.set(candidate.id, { ...prior, ...definedCandidateFields, id: candidate.id });
   }
-  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+  return [...byId.values()].sort((a, b) => String(a.id).localeCompare(String(b.id)));
 }
 
 function buildCandidateRecord(prior, candidates, now) {
@@ -130,7 +136,7 @@ function mergeCandidateUpdates(latestBands, updates) {
 
 async function runSpotifyCandidateAcquisition({
   readBands = worker.readJson,
-  writeBands = worker.writeJson,
+  writeBandsStrict = worker.writeJsonStrict,
   loadUsage = UsageTracker.load,
   searchCandidates = spotifyCandidateSearch.searchArtistCandidates,
   resolveArtistIdentity = null,
@@ -189,7 +195,7 @@ async function runSpotifyCandidateAcquisition({
       const merged = mergeCandidateUpdates(latest, updates);
       summary.bandsUpdated = merged.applied;
       summary.staleSkipped = merged.stale;
-      if (merged.applied > 0) await writeBands('bands.json', merged.bands);
+      if (merged.applied > 0) await writeBandsStrict('bands.json', merged.bands);
     }
 
     await saveUsage('ok');
