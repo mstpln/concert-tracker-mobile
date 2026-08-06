@@ -45,5 +45,5 @@
     for (let index = added; index < uris.length; index += 100) { try { await request(`/playlists/${encodeURIComponent(playlist.id)}/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uris: uris.slice(index, index + 100), position: index }) }, fetchImpl); added = Math.min(uris.length, index + 100); } catch (error) { error.operation = { playlist, added }; throw error; } }
     return { playlist, added };
   }
-  window.SpotifyUser = { SCOPE, TOKEN_KEY, redirectUri, random, challengeFor, getAuth, setAuth, clearAuth, beginAuthorization, handleCallback, refresh, createPrivatePlaylist };
+  window.SpotifyUser = { SCOPE, TOKEN_KEY, redirectUri, random, challengeFor, getAuth, setAuth, clearAuth, beginAuthorization, handleCallback, refresh, validAuth, request, createPrivatePlaylist };
 })();

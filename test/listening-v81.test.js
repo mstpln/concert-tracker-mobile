@@ -162,8 +162,8 @@ test('current build facts, contrast and shell entries remain deterministic', () 
   assert.match(css, /@media\(min-width:391px\)/);
   assert.match(concertCss, /--concert-card-background-v86:\s*#232a32/);
   assert.match(brandCss, /--bandmarkr-blue:\s*#024ddf/);
-  assert.equal(state.appVersion, 'v98');
-  assert.equal(state.serviceWorkerCacheVersion, 'v98');
+  assert.equal(state.appVersion, 'v99');
+  assert.equal(state.serviceWorkerCacheVersion, 'v99');
   assert.ok(state.shellFiles.includes('concertCardsV86.css'));
   assert.ok(state.shellFiles.includes('bandmarkrV87.css'));
   assert.ok(state.shellFiles.includes('listeningV82Corrections.js'));
@@ -174,6 +174,10 @@ test('current build facts, contrast and shell entries remain deterministic', () 
   assert.ok(state.shellFiles.includes('toplistStatsV96.js'));
   assert.ok(state.shellFiles.includes('toplistV96.js'));
   assert.ok(state.shellFiles.includes('toplistV96.css'));
+  assert.ok(state.shellFiles.includes('trustedListeningV99.css'));
+  assert.ok(state.shellFiles.includes('spotifyListeningMetadataV99.js'));
+  assert.ok(state.shellFiles.includes('trustedListeningV99.js'));
+  assert.ok(state.shellFiles.includes('listeningFixturesV99.js'));
   assert.ok(state.shellFiles.includes('listeningIdentityContracts.js'));
   assert.ok(state.shellFiles.includes('listeningDerivedStorage.js'));
   assert.ok(state.shellFiles.includes('listeningDerivedMigration.js'));

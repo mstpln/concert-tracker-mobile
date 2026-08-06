@@ -1,0 +1,28 @@
+.trusted-listening-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.trusted-listening-link:focus-visible,
+.trusted-listening-link:hover {
+  color: var(--accent, #4f86ff);
+}
+
+.trusted-listening-artist {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trusted-listening-artist:focus-visible,
+.trusted-listening-artist:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
