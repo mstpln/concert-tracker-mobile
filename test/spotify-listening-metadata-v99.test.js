@@ -7,6 +7,27 @@ const path = require('node:path');
 
 const metadata = require('../spotifyListeningMetadataV99.js');
 
+function metadataRecord(id, fetchedAt = '2026-08-06T00:00:00.000Z') {
+  return {
+    spotifyTrackId: id,
+    spotifyTrackUrl: `https://open.spotify.com/track/${id}`,
+    spotifyAlbumId: null,
+    spotifyAlbumUrl: null,
+    artworkUrl: null,
+    fetchedAt,
+    source: 'spotify_exact_track_id',
+  };
+}
+
+function metadataDocument(records = {}, updatedAt = null) {
+  return {
+    kind: 'livevault-spotify-listening-metadata',
+    schemaVersion: 1,
+    updatedAt,
+    records,
+  };
+}
+
 test('recordFromSpotifyTrack keeps exact Spotify track and album identity', () => {
   const record = metadata.recordFromSpotifyTrack({
     id: 'TrackABC123',
@@ -47,33 +68,23 @@ test('normalization rejects guessed, malformed and non-https metadata', () => {
 });
 
 test('mergeDocuments preserves unknown fields and keeps the newest exact record', () => {
-  const older = {
-    kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: '2026-08-05T00:00:00.000Z', records: {
-      TrackABC123: {
-        spotifyTrackId: 'TrackABC123',
-        spotifyTrackUrl: 'https://open.spotify.com/track/TrackABC123',
-        spotifyAlbumId: 'AlbumOld123',
-        spotifyAlbumUrl: 'https://open.spotify.com/album/AlbumOld123',
-        artworkUrl: 'https://i.scdn.co/image/old',
-        fetchedAt: '2026-08-05T00:00:00.000Z',
-        source: 'spotify_exact_track_id',
-        futureField: { keep: true },
-      },
+  const older = metadataDocument({
+    TrackABC123: {
+      ...metadataRecord('TrackABC123', '2026-08-05T00:00:00.000Z'),
+      spotifyAlbumId: 'AlbumOld123',
+      spotifyAlbumUrl: 'https://open.spotify.com/album/AlbumOld123',
+      artworkUrl: 'https://i.scdn.co/image/old',
+      futureField: { keep: true },
     },
-  };
-  const newer = {
-    kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: '2026-08-06T00:00:00.000Z', records: {
-      TrackABC123: {
-        spotifyTrackId: 'TrackABC123',
-        spotifyTrackUrl: 'https://open.spotify.com/track/TrackABC123',
-        spotifyAlbumId: 'AlbumNew123',
-        spotifyAlbumUrl: 'https://open.spotify.com/album/AlbumNew123',
-        artworkUrl: 'https://i.scdn.co/image/new',
-        fetchedAt: '2026-08-06T00:00:00.000Z',
-        source: 'spotify_exact_track_id',
-      },
+  }, '2026-08-05T00:00:00.000Z');
+  const newer = metadataDocument({
+    TrackABC123: {
+      ...metadataRecord('TrackABC123', '2026-08-06T00:00:00.000Z'),
+      spotifyAlbumId: 'AlbumNew123',
+      spotifyAlbumUrl: 'https://open.spotify.com/album/AlbumNew123',
+      artworkUrl: 'https://i.scdn.co/image/new',
     },
-  };
+  }, '2026-08-06T00:00:00.000Z');
 
   const merged = metadata.mergeDocuments(older, newer);
   assert.equal(merged.records.TrackABC123.spotifyAlbumId, 'AlbumNew123');
@@ -81,17 +92,23 @@ test('mergeDocuments preserves unknown fields and keeps the newest exact record'
   assert.equal(merged.updatedAt, '2026-08-06T00:00:00.000Z');
 });
 
+test('pending local-only metadata remains detectable after a conflict and needs no provider refetch', () => {
+  const remote = metadataDocument({ Remote123: metadataRecord('Remote123') }, '2026-08-06T00:00:00.000Z');
+  const localAfterConflict = metadataDocument({
+    Remote123: metadataRecord('Remote123'),
+    Local456: metadataRecord('Local456', '2026-08-06T01:00:00.000Z'),
+  }, '2026-08-06T01:00:00.000Z');
+
+  const mergedOnNextRun = metadata.mergeDocuments(localAfterConflict, remote);
+  assert.equal(metadata.documentsEqual(mergedOnNextRun, remote), false, 'local-only record must trigger another conditional R2 write');
+  assert.deepEqual(metadata.unresolvedTrackIds(mergedOnNextRun, [{ spotifyTrackId: 'Local456' }]), [], 'already-resolved local record must not be fetched from Spotify again');
+
+  const remoteAfterRetry = metadata.normalizeDocument(mergedOnNextRun);
+  assert.equal(metadata.documentsEqual(mergedOnNextRun, remoteAfterRetry), true, 'successful retry leaves no pending remote synchronization');
+});
+
 test('unresolvedTrackIds uses only exact Spotify IDs and deduplicates safely', () => {
-  const document = {
-    kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null,
-    records: {
-      Known123: {
-        spotifyTrackId: 'Known123', spotifyTrackUrl: 'https://open.spotify.com/track/Known123',
-        spotifyAlbumId: null, spotifyAlbumUrl: null, artworkUrl: null,
-        fetchedAt: '2026-08-06T00:00:00.000Z', source: 'spotify_exact_track_id',
-      },
-    },
-  };
+  const document = metadataDocument({ Known123: metadataRecord('Known123') });
   const ids = metadata.unresolvedTrackIds(document, [
     { spotifyTrackId: 'Known123' },
     { spotifyTrackId: 'New456' },
