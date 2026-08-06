@@ -86,7 +86,17 @@ assert(spotifyCandidates.source.includes('SPOTIFY_CANDIDATE_BAND_CAP'), 'Spotify
 assert(spotifyCandidates.source.includes('contents: read'), 'Spotify candidate acquisition must use read-only repository permissions');
 assert(!spotifyCandidates.source.includes('queue: max'), 'Spotify candidate acquisition must use supported concurrency fields only');
 
-for (const workflow of [structured, tavily, cleanup, spotifyCandidates]) {
+const approvedIdentities = getWorkflow('apply-approved-provider-identities.yml');
+assert(approvedIdentities.source.includes('workflow_dispatch:'), 'approved identity update must remain manual');
+assert(!approvedIdentities.source.includes('schedule:'), 'approved identity update must never be scheduled');
+assert(approvedIdentities.source.includes('APPLY_APPROVED_IDENTITIES'), 'approved identity update must require explicit confirmation');
+assert(approvedIdentities.source.includes("github.ref == 'refs/heads/main'"), 'approved identity update must run only from main');
+assert(approvedIdentities.source.includes('contents: read'), 'approved identity update must use read-only repository permissions');
+assert(approvedIdentities.source.includes('CF_WORKER_TOKEN'), 'approved identity update must use the automation Worker token');
+assert(!approvedIdentities.source.includes('SPOTIFY_CLIENT_SECRET'), 'approved identity update must not receive Spotify credentials');
+assert(!approvedIdentities.source.includes('queue: max'), 'approved identity update must use supported concurrency fields only');
+
+for (const workflow of [structured, tavily, cleanup, spotifyCandidates, approvedIdentities]) {
   assert(workflow.source.includes('group: live-vault-data-writes'), 'production writers must share the data-write concurrency group');
   assert(workflow.source.includes('cancel-in-progress: false'), 'production writers must not cancel an active write');
 }
