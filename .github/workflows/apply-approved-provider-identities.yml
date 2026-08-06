@@ -1,0 +1,38 @@
+name: Apply approved provider identities
+run-name: Apply approved provider identities — @${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      APPLY_APPROVED_IDENTITIES:
+        description: Confirm this one-time run may update five approved identities in bands.json
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-vault-data-writes
+  cancel-in-progress: false
+
+jobs:
+  apply-approved-provider-identities:
+    if: ${{ inputs.APPLY_APPROVED_IDENTITIES == true && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Apply five approved provider identities
+        env:
+          CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
+          CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
+        run: node scripts/apply-approved-provider-identities.js
