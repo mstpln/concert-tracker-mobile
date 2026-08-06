@@ -72,3 +72,11 @@ renderTopBandsScreen = function renderToplistScreen() {
   wireListeningBandRows(container);
   wireListeningImages(container);
 };
+
+window.addEventListener('popstate', (event) => {
+  if (event.state?.screen !== 'top-bands') return;
+  setTimeout(() => {
+    topListMode = event.state.mode === 'tracks' ? 'tracks' : 'bands';
+    if (currentScreen === 'top-bands') renderTopBandsScreen();
+  }, 0);
+});
