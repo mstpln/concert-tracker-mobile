@@ -13,20 +13,16 @@ test('v97 Toplist keeps tabs and dynamic timeframe headings inside ranking cards
   const preview = page.locator('.top-bands-card.toplist-card');
   await expect(preview.getByRole('tab', { name: 'Top Bands' })).toHaveAttribute('aria-selected', 'true');
   await expect(preview.locator('#stats-toplist-title')).toHaveText('TOP BANDS · 3 MONTHS');
-  await expect(preview.getByRole('tab', { name: 'Top Bands' })).toBeVisible();
-  await expect(preview.getByRole('tab', { name: 'Top Tracks' })).toBeVisible();
+  await expect(preview.locator('.top-band-row')).toHaveCount(7);
   await preview.getByRole('tab', { name: 'Top Tracks' }).click();
   await expect(page.locator('.top-bands-card.toplist-card #stats-toplist-title')).toHaveText('TOP TRACKS · 3 MONTHS');
-  await expect(page.locator('.top-bands-card.toplist-card .toplist-track-row').first()).toBeVisible();
-
-  await page.getByRole('button', { name: '1 year' }).click();
-  await expect(page.locator('.top-bands-card.toplist-card #stats-toplist-title')).toHaveText('TOP TRACKS · 1 YEAR');
+  await expect(page.locator('.top-bands-card.toplist-card .toplist-track-row')).toHaveCount(7);
   await page.locator('.top-bands-card.toplist-card').getByRole('button', { name: 'View all' }).click();
 
   await expect(page.locator('#header-title')).toHaveText('Toplist');
   const fullCard = page.locator('.full-top-bands-card.toplist-card');
-  await expect(fullCard.getByRole('tab', { name: 'Top Bands' })).toHaveAttribute('aria-selected', 'true');
-  await expect(fullCard.locator('#toplist-title')).toHaveText('TOP BANDS · 1 YEAR');
+  await expect(fullCard.getByRole('tab', { name: 'Top Tracks' })).toHaveAttribute('aria-selected', 'true');
+  await expect(fullCard.locator('#toplist-title')).toHaveText('TOP TRACKS · 3 MONTHS');
   await expect(fullCard.locator('.toplist-tabs')).toBeVisible();
 
   const hierarchy = await fullCard.evaluate((card) => {
@@ -41,8 +37,11 @@ test('v97 Toplist keeps tabs and dynamic timeframe headings inside ranking cards
   });
   expect(hierarchy).toEqual({ tabsInsideCard: true, headingAfterTabs: true, listAfterHeading: true });
 
-  await fullCard.getByRole('tab', { name: 'Top Tracks' }).click();
+  await page.getByRole('button', { name: '1 year' }).click();
   await expect(page.locator('.full-top-bands-card.toplist-card #toplist-title')).toHaveText('TOP TRACKS · 1 YEAR');
+  await fullCard.getByRole('tab', { name: 'Top Bands' }).click();
+  await expect(page.locator('.full-top-bands-card.toplist-card #toplist-title')).toHaveText('TOP BANDS · 1 YEAR');
+  await fullCard.getByRole('tab', { name: 'Top Tracks' }).click();
   await page.getByRole('button', { name: 'All time' }).click();
   await expect(page.locator('.full-top-bands-card.toplist-card #toplist-title')).toHaveText('TOP TRACKS · ALL TIME');
   await expect(page.locator('.toplist-track-row .rank-movement')).toHaveCount(0);
