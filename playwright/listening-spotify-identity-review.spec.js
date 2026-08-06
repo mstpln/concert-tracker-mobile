@@ -41,6 +41,16 @@ test('v94 Spotify identity review is local, deterministic, and mobile-safe', asy
       { stableListenId: 'qa-listen-1', bandId: 'qa-candidate', playedAt: new Date(Date.now() - 86400000).toISOString(), source: 'spotify', spotifyTrackId: 'qa-track-1' },
       { stableListenId: 'qa-listen-2', bandId: 'qa-acquisition', playedAt: new Date(Date.now() - 86400000 * 30).toISOString(), source: 'spotify', spotifyTrackId: 'qa-track-2' },
     ];
+    window.__rawHistoryReads = 0;
+    window.LiveVaultSpotifyHistory = {
+      loadEvents: async () => {
+        window.__rawHistoryReads += 1;
+        return [
+          ...listeningEvents,
+          { stableListenId: 'qa-excluded-duplicate', bandId: 'qa-candidate', playedAt: new Date(Date.now() - 3600000).toISOString(), source: 'spotify', spotifyTrackId: 'qa-track-1' },
+        ];
+      },
+    };
   });
 
   await page.getByTestId('settings-button').click();
@@ -53,10 +63,13 @@ test('v94 Spotify identity review is local, deterministic, and mobile-safe', asy
   await expect(section).toContainText('1 need candidate acquisition');
   await expect(section).toContainText('Synthetic Artist Without Candidate');
   await expect(section).toContainText('Candidate acquisition required');
+  await expect(section.locator('[data-spotify-review-band="qa-candidate"] .spotify-review-impact')).toContainText('1 listens affected');
   await expect(section.getByRole('button', { name: 'Use this artist' })).toHaveCount(1);
   await expect(section.getByRole('button', { name: 'None of these' })).toHaveCount(1);
   await expect(section.getByRole('link', { name: 'Open Spotify' })).toHaveAttribute('href', 'https://open.spotify.com/artist/qaSpotifyCandidate123');
 
+  const state = await page.evaluate(() => ({ rawHistoryReads: window.__rawHistoryReads }));
+  expect(state.rawHistoryReads).toBe(0);
   const overflow = await section.evaluate((node) => node.scrollWidth > node.clientWidth + 1);
   expect(overflow).toBe(false);
   expect(providerRequests).toEqual([]);
