@@ -47,8 +47,8 @@ test('single resolver match is converted to review-only candidate instead of con
   assert.equal(record.candidateAcquisition.method, 'review_only');
 });
 
-test('candidate merge is additive, deterministic and idempotent', () => {
-  const existing = [{ id: 'b', artistName: 'Old B', unknown: 'keep' }];
+test('candidate merge is additive, deterministic, idempotent and preserves unknown stored fields', () => {
+  const existing = [{ id: 'b', artistName: 'Old B', unknownFutureCandidateField: { keep: true } }];
   const incoming = [
     { id: 'a', artistName: 'A' },
     { id: 'b', artistName: 'New B', popularity: 7 },
@@ -59,6 +59,7 @@ test('candidate merge is additive, deterministic and idempotent', () => {
   assert.deepEqual(once.map((candidate) => candidate.id), ['a', 'b']);
   assert.deepEqual(twice, once);
   assert.equal(once[1].artistName, 'New B');
+  assert.deepEqual(once[1].unknownFutureCandidateField, { keep: true });
 });
 
 test('manual decisions and confirmed identities are never overwritten', () => {
@@ -94,7 +95,7 @@ test('successful acquisition preserves user-owned, unrelated and future fields',
   const usage = fakeUsage();
   const summary = await acquisition.runSpotifyCandidateAcquisition({
     readBands: async () => { reads += 1; return JSON.parse(JSON.stringify(initial)); },
-    writeBands: async (_filename, value) => { written = value; },
+    writeBandsStrict: async (_filename, value) => { written = value; },
     loadUsage: async () => usage,
     resolveArtistIdentity: async () => ({
       kind: 'confirmed',
@@ -118,13 +119,33 @@ test('successful acquisition preserves user-owned, unrelated and future fields',
   assert.equal(usage.saved, true);
 });
 
+test('strict write conflict aborts without retrying or reporting success', async () => {
+  const rows = [band()];
+  const usage = fakeUsage();
+  let writeAttempts = 0;
+  const conflict = new Error('PUT bands.json conflict: document changed after validation');
+  conflict.code = 'ETAG_CONFLICT';
+
+  await assert.rejects(() => acquisition.runSpotifyCandidateAcquisition({
+    readBands: async () => JSON.parse(JSON.stringify(rows)),
+    writeBandsStrict: async () => { writeAttempts += 1; throw conflict; },
+    loadUsage: async () => usage,
+    resolveArtistIdentity: async () => ({ kind: 'ok', candidates: [{ id: 'spotify-1', artistName: 'Synthetic Artist' }] }),
+    log: () => {},
+  }), (error) => error === conflict);
+
+  assert.equal(writeAttempts, 1);
+  assert.equal(usage.saved, true);
+  assert.equal(usage.finished.status, 'error');
+});
+
 test('band cap bounds the run and no-candidate results do not write bands', async () => {
   const rows = Array.from({ length: 5 }, (_, index) => band({ id: `band-${index + 1}` }));
   let resolves = 0;
   let writes = 0;
   const summary = await acquisition.runSpotifyCandidateAcquisition({
     readBands: async () => JSON.parse(JSON.stringify(rows)),
-    writeBands: async () => { writes += 1; },
+    writeBandsStrict: async () => { writes += 1; },
     loadUsage: async () => fakeUsage(),
     resolveArtistIdentity: async () => { resolves += 1; return { kind: 'no_match', identity: { status: 'no_match', reviewCandidates: [] } }; },
     bandCap: 2,
