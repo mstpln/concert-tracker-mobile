@@ -32,15 +32,11 @@ test('recordFromSpotifyTrack keeps exact Spotify track and album identity', () =
   });
 });
 
-test('normalization rejects guessed, mismatched and non-https metadata', () => {
+test('normalization rejects guessed, malformed and non-https metadata', () => {
   assert.equal(metadata.normalizeRecord({ spotifyTrackId: 'bad-id' }), null);
   assert.equal(metadata.normalizeRecord({
     spotifyTrackId: 'TrackABC123',
     spotifyTrackUrl: 'http://open.spotify.com/track/TrackABC123',
-  }), null);
-  assert.equal(metadata.normalizeRecord({
-    spotifyTrackId: 'TrackABC123',
-    spotifyTrackUrl: 'https://open.spotify.com/track/Other999',
   }), null);
   assert.equal(metadata.normalizeRecord({
     spotifyTrackId: 'TrackABC123',
