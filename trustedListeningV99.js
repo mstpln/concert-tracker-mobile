@@ -13,28 +13,43 @@
 
   const spotifyUrl = (kind, id, explicitUrl) => {
     const explicit = String(explicitUrl || '').trim();
-    if (/^https:\/\/open\.spotify\.com\/(track|album)\/[A-Za-z0-9_-]+(?:[?#].*)?$/i.test(explicit)) return explicit;
+    if (/^https:\/\/open\.spotify\.com\/(track|album)\/[A-Za-z0-9]+(?:[?#].*)?$/i.test(explicit)) return explicit;
     const safeId = String(id || '').trim();
-    return safeId ? `https://open.spotify.com/${kind}/${encodeURIComponent(safeId)}` : null;
+    return /^[A-Za-z0-9]{1,64}$/.test(safeId) ? `https://open.spotify.com/${kind}/${safeId}` : null;
   };
 
+  function cachedMetadata(listen) {
+    return globalThis.SpotifyListeningMetadataV99?.recordForTrack?.(listen?.spotifyTrackId) || null;
+  }
+
+  function trustedArtwork(listen, metadata) {
+    if (metadata?.artworkUrl) return metadata.artworkUrl;
+    if (listen?.albumArtworkUrl) return listen.albumArtworkUrl;
+    if (listen?.spotifyMetadataSource === 'spotify_exact_track_id') return listen.artworkPath || null;
+    return null;
+  }
+
   function trustedTrackMeta(listen) {
-    const id = listen?.spotifyTrackId || listen?.spotify?.trackId || null;
-    if (!id) return null;
+    const metadata = cachedMetadata(listen);
+    const id = listen?.spotifyTrackId || listen?.spotify?.trackId || metadata?.spotifyTrackId || null;
+    const url = spotifyUrl('track', id, listen?.spotifyTrackUrl || listen?.spotify?.trackUrl || metadata?.spotifyTrackUrl);
+    if (!id || !url) return null;
     return {
       spotifyTrackId: String(id),
-      spotifyTrackUrl: spotifyUrl('track', id, listen.spotifyTrackUrl || listen.spotifyTrackUri || listen.spotify?.trackUrl || listen.externalUrls?.spotify),
-      artworkPath: listen.artworkPath || listen.albumArtworkUrl || listen.spotifyArtworkUrl || null,
+      spotifyTrackUrl: url,
+      artworkPath: trustedArtwork(listen, metadata),
     };
   }
 
   function trustedAlbumMeta(listen) {
-    const id = listen?.spotifyAlbumId || listen?.spotify?.albumId || null;
-    if (!id) return null;
+    const metadata = cachedMetadata(listen);
+    const id = listen?.spotifyAlbumId || listen?.spotify?.albumId || metadata?.spotifyAlbumId || null;
+    const url = spotifyUrl('album', id, listen?.spotifyAlbumUrl || listen?.spotify?.albumUrl || metadata?.spotifyAlbumUrl);
+    if (!id || !url) return null;
     return {
       spotifyAlbumId: String(id),
-      spotifyAlbumUrl: spotifyUrl('album', id, listen.spotifyAlbumUrl || listen.spotifyAlbumUri || listen.spotify?.albumUrl || listen.albumExternalUrls?.spotify),
-      artworkPath: listen.artworkPath || listen.albumArtworkUrl || listen.spotifyArtworkUrl || null,
+      spotifyAlbumUrl: url,
+      artworkPath: trustedArtwork(listen, metadata),
     };
   }
 
@@ -48,13 +63,15 @@
       if (!title) return;
       const trusted = kind === 'album' ? trustedAlbumMeta(listen) : trustedTrackMeta(listen);
       const stable = kind === 'album'
-        ? (listen.spotifyAlbumId || listen.musicbrainzReleaseId || listen.musicbrainzReleaseGroupId || listen.stableReleaseId)
-        : (listen.spotifyTrackId || listen.musicbrainzRecordingId || listen.stableRecordingId);
+        ? (trusted?.spotifyAlbumId || listen.musicbrainzReleaseId || listen.musicbrainzReleaseGroupId || listen.stableReleaseId)
+        : (trusted?.spotifyTrackId || listen.musicbrainzRecordingId || listen.stableRecordingId);
       const key = stable
         ? `stable:${stable}`
         : `event:${listen.id || listen.eventId || listen.listenId || `${api.listenTimeMs(listen)}:${index}`}`;
       const titleKey = kind === 'album' ? 'releaseTitle' : 'recordingTitle';
       const item = grouped.get(key) || {
+        recordingKey: key,
+        trustedIdentity: !!stable,
         [titleKey]: title,
         artistCreditName: listen.artistCreditName || 'Unknown artist',
         releaseTitle: listen.releaseTitle || null,
@@ -68,22 +85,35 @@
         spotifyAlbumId: null,
         spotifyAlbumUrl: null,
         trustedSpotifyIdentity: false,
+        spotifyConflict: false,
       };
       const durationMs = api.validDurationMs(listen);
       const listenedAtMs = api.listenTimeMs(listen);
       item.durationMs += Number.isFinite(durationMs) ? durationMs : 0;
       item.listenCount += 1;
       if (Number.isFinite(listenedAtMs)) item.lastListenedMs = Math.max(item.lastListenedMs, listenedAtMs);
-      if (trusted) {
-        item.trustedSpotifyIdentity = true;
-        if (kind === 'album') {
-          item.spotifyAlbumId ||= trusted.spotifyAlbumId;
-          item.spotifyAlbumUrl ||= trusted.spotifyAlbumUrl;
+      if (trusted && !item.spotifyConflict) {
+        const currentId = kind === 'album' ? item.spotifyAlbumId : item.spotifyTrackId;
+        const nextId = kind === 'album' ? trusted.spotifyAlbumId : trusted.spotifyTrackId;
+        if (currentId && currentId !== nextId) {
+          item.spotifyConflict = true;
+          item.trustedSpotifyIdentity = false;
+          item.spotifyTrackId = null;
+          item.spotifyTrackUrl = null;
+          item.spotifyAlbumId = null;
+          item.spotifyAlbumUrl = null;
+          item.artworkPath = null;
         } else {
-          item.spotifyTrackId ||= trusted.spotifyTrackId;
-          item.spotifyTrackUrl ||= trusted.spotifyTrackUrl;
+          item.trustedSpotifyIdentity = true;
+          if (kind === 'album') {
+            item.spotifyAlbumId = trusted.spotifyAlbumId;
+            item.spotifyAlbumUrl = trusted.spotifyAlbumUrl;
+          } else {
+            item.spotifyTrackId = trusted.spotifyTrackId;
+            item.spotifyTrackUrl = trusted.spotifyTrackUrl;
+          }
+          if (!item.artworkPath && trusted.artworkPath) item.artworkPath = trusted.artworkPath;
         }
-        if (!item.artworkPath && trusted.artworkPath) item.artworkPath = trusted.artworkPath;
       }
       grouped.set(key, item);
     });
@@ -97,31 +127,13 @@
       .map((item, index) => ({ ...item, rank: index + 1 }));
   }
 
-  function installStatsAggregation() {
-    api.topTracks = (listens, limit = 10) => aggregate(listens, 'track', limit);
-    api.topAlbums = (listens, limit = 10) => aggregate(listens, 'album', limit);
-    if (!api.selectedStats?.__liveVaultV99) {
-      const previousSelectedStats = api.selectedStats;
-      const selectedStatsV99 = function selectedStatsV99(listens, localBands, timeframe = 'threeMonths', now = new Date()) {
-        const result = previousSelectedStats.call(this, listens, localBands, timeframe, now);
-        return {
-          ...result,
-          topTracks: aggregate(result?.listens || [], 'track', 10),
-          topAlbums: aggregate(result?.listens || [], 'album', 10),
-        };
-      };
-      selectedStatsV99.__liveVaultV99 = true;
-      api.selectedStats = selectedStatsV99;
-    }
-  }
-
   function trustedTitleHtml(item, kind, title) {
     const url = kind === 'album' ? item.spotifyAlbumUrl : item.spotifyTrackUrl;
     if (!url) return `<strong>${escapeHtml(title)}</strong>`;
     return `<strong><a class="trusted-listening-link" href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a></strong>`;
   }
 
-  function trustedArtworkHtml(item, album = false) {
+  function trustedArtworkHtml(item) {
     if (!item?.trustedSpotifyIdentity || !item.artworkPath) {
       return `<span class="track-artwork is-placeholder" aria-hidden="true">${icon('music')}</span>`;
     }
@@ -129,14 +141,14 @@
   }
 
   function installToplistRendering() {
-    if (typeof topListTrackRowsHtml !== 'function') return;
-    topListTrackRowsHtml = function topListTrackRowsV99(stats, { limit = 100, timeframe = topBandsTimeframe } = {}) {
+    if (typeof topListTrackRowsHtml !== 'function' || topListTrackRowsHtml.__liveVaultV99) return;
+    const render = function topListTrackRowsV99(stats, { limit = 100, timeframe = topBandsTimeframe } = {}) {
       const current = aggregate(stats.listens, 'track', limit);
       const previous = aggregate(stats.previousListens || [], 'track', limit);
-      const previousRanks = new Map(previous.filter((item) => item.spotifyTrackId).map((item) => [item.spotifyTrackId, item.rank]));
+      const previousRanks = new Map(previous.filter((item) => item.trustedIdentity).map((item) => [item.recordingKey, item.rank]));
       const tracks = current.map((item) => {
-        if (timeframe === 'allTime' || !item.spotifyTrackId) return { ...item, movement: null };
-        const previousRank = previousRanks.get(item.spotifyTrackId);
+        if (timeframe === 'allTime' || !item.trustedIdentity) return { ...item, movement: null };
+        const previousRank = previousRanks.get(item.recordingKey);
         if (!previousRank) return { ...item, movement: { kind: 'new', delta: null, label: 'New' } };
         const delta = previousRank - item.rank;
         if (delta > 0) return { ...item, movement: { kind: 'up', delta, label: `Up ${delta}` } };
@@ -154,6 +166,24 @@
         return `<div class="toplist-track-row"><span class="top-track-rank">#${track.rank}</span>${trustedArtworkHtml(track)}<span class="top-track-copy">${trustedTitleHtml(track, 'track', track.recordingTitle)}${artistHtml}<small>${track.listenCount.toLocaleString()} listens · ${ListeningStats.formatDuration(track.durationMs)}</small></span>${movement}</div>`;
       }).join('');
     };
+    render.__liveVaultV99 = true;
+    topListTrackRowsHtml = render;
+  }
+
+  function bandRankedItems(albumMode, listens) {
+    const items = albumMode ? api.topAlbums(listens, 10) : api.topTracks(listens, 10);
+    return items.map((item) => {
+      if (albumMode) {
+        const matching = (listens || []).filter((listen) => normalize(listen.releaseTitle) === normalize(item.releaseTitle));
+        const trusted = matching.map(trustedAlbumMeta).filter(Boolean);
+        const ids = new Set(trusted.map((entry) => entry.spotifyAlbumId));
+        return ids.size === 1 ? { ...item, ...trusted[0], artworkPath: trusted.find((entry) => entry.artworkPath)?.artworkPath || null, trustedSpotifyIdentity: true } : { ...item, spotifyAlbumId: null, spotifyAlbumUrl: null, artworkPath: null, trustedSpotifyIdentity: false };
+      }
+      const matching = (listens || []).filter((listen) => normalize(listen.recordingTitle) === normalize(item.recordingTitle) && normalize(listen.releaseTitle) === normalize(item.releaseTitle));
+      const trusted = matching.map(trustedTrackMeta).filter(Boolean);
+      const ids = new Set(trusted.map((entry) => entry.spotifyTrackId));
+      return ids.size === 1 ? { ...item, ...trusted[0], artworkPath: trusted.find((entry) => entry.artworkPath)?.artworkPath || null, trustedSpotifyIdentity: true } : { ...item, spotifyTrackId: null, spotifyTrackUrl: null, artworkPath: null, trustedSpotifyIdentity: false };
+    });
   }
 
   function enhanceBandDetail(root = document) {
@@ -162,12 +192,12 @@
     const albumMode = card.querySelector('[data-v81-ranked="albums"]')?.getAttribute('aria-selected') === 'true';
     const stats = globalListeningStats(profileListeningTimeframe);
     const listens = (stats.listens || []).filter((listen) => listen.localBandId === activeProfileBandId);
-    const items = aggregate(listens, albumMode ? 'album' : 'track', 10);
+    const items = bandRankedItems(albumMode, listens);
     card.querySelectorAll('.top-track-row').forEach((row, index) => {
       const item = items[index];
       if (!item) return;
       const art = row.querySelector('.track-artwork');
-      if (art) art.outerHTML = trustedArtworkHtml(item, albumMode);
+      if (art) art.outerHTML = trustedArtworkHtml(item);
       const strong = row.querySelector('.top-track-copy strong');
       if (strong) strong.outerHTML = trustedTitleHtml(item, albumMode ? 'album' : 'track', albumMode ? item.releaseTitle : item.recordingTitle);
     });
@@ -176,7 +206,6 @@
   }
 
   function install() {
-    installStatsAggregation();
     installToplistRendering();
     if (typeof document !== 'undefined') enhanceBandDetail(document);
   }
@@ -190,7 +219,10 @@
     globalThis.addEventListener?.('load', install, { once: true });
   }
 
-  globalThis.TrustedListeningV99 = { aggregate, trustedTrackMeta, trustedAlbumMeta, spotifyUrl, install, enhanceBandDetail };
+  globalThis.TrustedListeningV99 = {
+    aggregate, trustedTrackMeta, trustedAlbumMeta, spotifyUrl, trustedTitleHtml,
+    trustedArtworkHtml, bandRankedItems, install, enhanceBandDetail,
+  };
 })();
 
 if (typeof module === 'object' && module.exports) module.exports = globalThis.TrustedListeningV99;
