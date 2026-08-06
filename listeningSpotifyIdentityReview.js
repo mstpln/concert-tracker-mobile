@@ -106,14 +106,14 @@
       return { kind: 'newer_manual_decision', bands: rows };
     }
     const currentCandidates = storedCandidates(current);
-    if (!sameCandidateSet(currentCandidates, row?.candidates || [])) {
-      return { kind: 'candidate_set_changed', bands: rows };
-    }
     const reviewedAt = options.reviewedAt || new Date().toISOString();
     let spotify;
     if (decision?.action === 'confirm') {
       const candidate = currentCandidates.find((item) => item.id === decision.candidateId);
       if (!candidate) return { kind: 'candidate_missing', bands: rows };
+      if (!sameCandidateSet(currentCandidates, row?.candidates || [])) {
+        return { kind: 'candidate_set_changed', bands: rows };
+      }
       spotify = {
         ...current,
         ...candidate,
@@ -125,6 +125,9 @@
         reviewedBy: 'user',
       };
     } else if (decision?.action === 'reject') {
+      if (!sameCandidateSet(currentCandidates, row?.candidates || [])) {
+        return { kind: 'candidate_set_changed', bands: rows };
+      }
       spotify = {
         ...current,
         status: 'manual_rejected',
