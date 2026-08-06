@@ -1,11 +1,7 @@
 'use strict';
 
 (function (root) {
-  const PERIODS = Object.freeze({
-    twoWeeks: 14 * 24 * 60 * 60 * 1000,
-    threeMonths: 92 * 24 * 60 * 60 * 1000,
-    oneYear: 365 * 24 * 60 * 60 * 1000,
-  });
+  const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
 
   function normalizeName(value) {
     return String(value || '')
@@ -38,6 +34,15 @@
     const uri = event?.spotify_track_uri || event?.spotifyTrackUri || '';
     const match = String(uri).match(/(?:spotify:track:|open\.spotify\.com\/track\/)([A-Za-z0-9]+)/);
     return match ? match[1] : null;
+  }
+
+  function periodCutoffs(nowMs) {
+    const now = new Date(nowMs);
+    const threeMonths = new Date(nowMs);
+    threeMonths.setUTCMonth(threeMonths.getUTCMonth() - 3);
+    const oneYear = new Date(nowMs);
+    oneYear.setUTCFullYear(oneYear.getUTCFullYear() - 1);
+    return { twoWeeks: nowMs - TWO_WEEKS_MS, threeMonths: threeMonths.getTime(), oneYear: oneYear.getTime(), now: now.getTime() };
   }
 
   function buildUniqueNameIndex(bands) {
@@ -118,6 +123,7 @@
     if (!identityState) throw new Error('ProviderIdentityState is required');
     const nowMs = options.now instanceof Date ? options.now.getTime() : Date.parse(options.now || new Date().toISOString());
     const safeNow = Number.isFinite(nowMs) ? nowMs : Date.now();
+    const cutoffs = periodCutoffs(safeNow);
     const rows = Array.isArray(bands) ? bands : [];
     const byId = new Map(rows.map((band) => [band.id, band]));
     const uniqueNames = buildUniqueNameIndex(rows);
@@ -133,10 +139,9 @@
       value.allTime += 1;
       const timestamp = eventTimestamp(event);
       if (timestamp !== null) {
-        const age = safeNow - timestamp;
-        if (age >= 0 && age <= PERIODS.twoWeeks) value.twoWeeks += 1;
-        if (age >= 0 && age <= PERIODS.threeMonths) value.threeMonths += 1;
-        if (age >= 0 && age <= PERIODS.oneYear) value.oneYear += 1;
+        if (timestamp >= cutoffs.twoWeeks && timestamp <= cutoffs.now) value.twoWeeks += 1;
+        if (timestamp >= cutoffs.threeMonths && timestamp <= cutoffs.now) value.threeMonths += 1;
+        if (timestamp >= cutoffs.oneYear && timestamp <= cutoffs.now) value.oneYear += 1;
         value.firstAt = value.firstAt === null ? timestamp : Math.min(value.firstAt, timestamp);
         value.lastAt = value.lastAt === null ? timestamp : Math.max(value.lastAt, timestamp);
       }
@@ -173,7 +178,7 @@
       || String(a.bandId).localeCompare(String(b.bandId)));
   }
 
-  const api = { PERIODS, normalizeName, eventTimestamp, eventArtistName, spotifyTrackId, safeSpotifyArtistUrl, applySpotifyReviewDecision, auditSpotifyArtistIdentities };
+  const api = { TWO_WEEKS_MS, normalizeName, eventTimestamp, eventArtistName, spotifyTrackId, periodCutoffs, safeSpotifyArtistUrl, applySpotifyReviewDecision, auditSpotifyArtistIdentities };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.ListeningSpotifyIdentityReview = api;
 })(typeof window !== 'undefined' ? window : globalThis);
