@@ -197,12 +197,15 @@
     const card = root.querySelector?.('#screen-profile .top-tracks-card');
     if (!card || !activeProfileBandId) return;
     const albumMode = card.querySelector('[data-v81-ranked="albums"]')?.getAttribute('aria-selected') === 'true';
-    const signature = `${activeProfileBandId}:${profileListeningTimeframe}:${albumMode ? 'albums' : 'tracks'}`;
-    if (card.dataset.v99Trusted === signature) return;
     const stats = globalListeningStats(profileListeningTimeframe);
     const rankingListens = (stats.listens || []).filter((listen) => listenBandId(listen) === activeProfileBandId);
     const sourceListens = sourceListensForStats(stats, activeProfileBandId, profileListeningTimeframe);
     const items = bandRankedItems(albumMode, rankingListens, sourceListens);
+    const metadataSignature = items.map((item) => [
+      item.spotifyTrackId || '', item.spotifyTrackUrl || '', item.spotifyAlbumId || '', item.spotifyAlbumUrl || '', item.artworkPath || '',
+    ].join(':')).join('|');
+    const signature = `${activeProfileBandId}:${profileListeningTimeframe}:${albumMode ? 'albums' : 'tracks'}:${metadataSignature}`;
+    if (card.dataset.v99Trusted === signature) return;
     let enhanced = 0;
     card.querySelectorAll('.top-track-row').forEach((row, index) => {
       const item = items[index];
