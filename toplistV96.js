@@ -36,17 +36,19 @@ function topListModeForKey(mode, key) {
   return null;
 }
 
-function topListCardHtml(stats, mode, { preview = false, timeframe = stats.timeframe || 'threeMonths' } = {}) {
+function topListCardHtml(stats, mode, { preview = false, timeframe = stats.timeframe || 'threeMonths', warning = '' } = {}) {
   const heading = topListHeading(mode, stats.label);
+  const previewLimit = 7;
   const list = mode === 'tracks'
-    ? `<div class="toplist-track-list">${topListTrackRowsHtml(stats, { limit: preview ? 5 : 100, timeframe })}</div>`
-    : `<div class="top-bands-list">${topBandRowsHtml(preview ? stats.topBands.slice(0, 5) : stats.topBands, { timeframe })}</div>`;
+    ? `<div class="toplist-track-list">${topListTrackRowsHtml(stats, { limit: preview ? previewLimit : 100, timeframe })}</div>`
+    : `<div class="top-bands-list">${topBandRowsHtml(preview ? stats.topBands.slice(0, previewLimit) : stats.topBands, { timeframe })}</div>`;
   const viewAll = preview ? '<button type="button" class="listening-link" data-open-toplist>View all</button>' : '';
   const footer = preview ? `<button type="button" class="listening-card-footer" data-open-toplist>View full top 100${icon('chevronRight')}</button>` : '';
+  const warningHtml = warning ? `<p class="listening-known-time-note toplist-warning">${escapeHtml(warning)}</p>` : '';
   return `<section class="listening-card ${preview ? 'top-bands-card' : 'full-top-bands-card'} toplist-card" aria-labelledby="${preview ? 'stats-toplist-title' : 'toplist-title'}">
     ${topListTabsHtml(mode, preview ? 'stats-toplist' : 'toplist')}
     <div class="listening-card-heading"><p id="${preview ? 'stats-toplist-title' : 'toplist-title'}">${escapeHtml(heading)}</p>${viewAll}</div>
-    ${list}${footer}
+    ${list}${warningHtml}${footer}
   </section>`;
 }
 
@@ -60,7 +62,10 @@ function wireStatsToplistCard(container) {
   const existing = container.querySelector('.top-bands-card');
   if (existing) {
     const stats = globalListeningStats(timeframe);
-    existing.outerHTML = topListCardHtml(stats, statsTopListMode, { preview: true, timeframe });
+    const warning = existing.textContent.includes('Some listening charts could not be displayed')
+      ? 'Some listening charts could not be displayed'
+      : '';
+    existing.outerHTML = topListCardHtml(stats, statsTopListMode, { preview: true, timeframe, warning });
   }
   container.querySelectorAll('[data-stats-toplist-mode]').forEach((button) => {
     const activate = (mode, focus = false) => {
