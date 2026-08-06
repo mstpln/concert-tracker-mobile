@@ -55,7 +55,7 @@ ListenBrainz is now connected on the user's primary mobile device and disconnect
 ## Build 3.2 identity, canonical and storage state
 
 - Source Spotify and ListenBrainz observations remain immutable evidence.
-- Explicit BANDMARKR `bandId` is authoritative over derived `localBandId` when both exists.
+- Explicit BANDMARKR `bandId` is authoritative over derived `localBandId` when both exist.
 - Derived identity records preserve BANDMARKR band IDs, MusicBrainz IDs, Spotify IDs, provider provenance and protected reviewed decisions.
 - Canonical-listen relationships suppress duplicate aggregation only; they never delete source observations.
 - Automatic duplicate evidence is limited to exact provider IDs, exact recording MBIDs within 1,000 ms, or exact Spotify track IDs within 1,000 ms.
