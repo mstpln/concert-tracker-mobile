@@ -40,10 +40,27 @@ test('v98 keeps listening tab controls full-width and evenly spaced', async ({ p
 
   await preview.getByRole('tab', { name: 'Top Tracks' }).click();
   await expect(page.locator('.top-bands-card.toplist-card #stats-toplist-title')).toHaveText('TOP TRACKS · 3 MONTHS');
+  await expect(page.locator('.top-bands-card.toplist-card .toplist-track-row')).toHaveCount(7);
   await page.locator('.top-bands-card.toplist-card').getByRole('button', { name: 'View all' }).click();
 
+  await expect(page.locator('#header-title')).toHaveText('Toplist');
   const fullCard = page.locator('.full-top-bands-card.toplist-card');
+  await expect(fullCard.getByRole('tab', { name: 'Top Tracks' })).toHaveAttribute('aria-selected', 'true');
   await expect(fullCard.locator('#toplist-title')).toHaveText('TOP TRACKS · 3 MONTHS');
+  await expect(fullCard.locator('.toplist-tabs')).toBeVisible();
+
+  const hierarchy = await fullCard.evaluate((card) => {
+    const tabs = card.querySelector('.toplist-tabs');
+    const heading = card.querySelector('.listening-card-heading');
+    const list = card.querySelector('.top-bands-list, .toplist-track-list');
+    return {
+      tabsInsideCard: !!tabs && tabs.parentElement === card,
+      headingAfterTabs: !!tabs && !!heading && tabs.nextElementSibling === heading,
+      listAfterHeading: !!heading && !!list && heading.nextElementSibling === list,
+    };
+  });
+  expect(hierarchy).toEqual({ tabsInsideCard: true, headingAfterTabs: true, listAfterHeading: true });
+
   const fullGeometry = await fullCard.evaluate((card) => {
     const tabs = card.querySelector('.toplist-tabs');
     const heading = card.querySelector('.listening-card-heading');
@@ -55,11 +72,21 @@ test('v98 keeps listening tab controls full-width and evenly spaced', async ({ p
       tabToHeading: Math.round(heading.getBoundingClientRect().top - tabsBox.bottom),
     };
   });
-  expect(fullGeometry).toEqual(previewGeometry && {
+  expect(fullGeometry).toEqual({
     leftInset: previewGeometry.leftInset,
     rightInset: previewGeometry.rightInset,
     tabToHeading: previewGeometry.tabToHeading,
   });
+
+  await page.getByRole('button', { name: '1 year' }).click();
+  await expect(fullCard.locator('#toplist-title')).toHaveText('TOP TRACKS · 1 YEAR');
+  await fullCard.getByRole('tab', { name: 'Top Bands' }).click();
+  await expect(fullCard.locator('#toplist-title')).toHaveText('TOP BANDS · 1 YEAR');
+  await expect(page.getByRole('button', { name: '1 year' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(fullCard.locator('.top-band-row').first()).toBeVisible();
+  await fullCard.getByRole('tab', { name: 'Top Tracks' }).click();
+  await expect(page.getByRole('button', { name: '1 year' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(fullCard.locator('.toplist-track-row').first()).toBeVisible();
 
   await page.getByRole('button', { name: 'All time' }).click();
   await expect(fullCard.locator('#toplist-title')).toHaveText('TOP TRACKS · ALL TIME');
