@@ -17,8 +17,19 @@ function band(mapping, extra = {}) {
     unknownFutureField: { preserved: true },
     musicbrainz: {
       existingUnknown: 'keep',
+      artistName: 'stale MusicBrainz candidate',
       spotify: {
-        reviewCandidates: [{ id: mapping.spotifyId, providerExtra: 'keep' }],
+        reviewCandidates: [{
+          id: mapping.spotifyId,
+          artistName: mapping.name,
+          genres: ['approved genre'],
+          images: [{ url: 'https://example.invalid/image.jpg' }],
+          followers: 123,
+          popularity: 45,
+          providerExtra: 'keep',
+        }],
+        artistName: 'stale Spotify candidate',
+        genres: ['stale genre'],
         spotifyUnknown: 'keep',
       },
     },
@@ -36,15 +47,34 @@ test('applies all five approved identities and preserves unrelated and unknown f
   for (const mapping of APPROVED_IDENTITIES) {
     const updated = result.bands.find((item) => item.name === mapping.name);
     assert.equal(updated.musicbrainz.mbid, mapping.musicbrainzId);
+    assert.equal(updated.musicbrainz.artistName, mapping.name);
     assert.equal(updated.musicbrainz.status, 'manual_confirmed');
     assert.equal(updated.musicbrainz.spotify.id, mapping.spotifyId);
+    assert.equal(updated.musicbrainz.spotify.artistName, mapping.name);
     assert.equal(updated.musicbrainz.spotify.status, 'manual_confirmed');
     assert.equal(updated.musicbrainz.spotify.url, `https://open.spotify.com/artist/${mapping.spotifyId}`);
+    assert.deepEqual(updated.musicbrainz.spotify.genres, ['approved genre']);
+    assert.deepEqual(updated.musicbrainz.spotify.images, [{ url: 'https://example.invalid/image.jpg' }]);
+    assert.equal(updated.musicbrainz.spotify.followers, 123);
+    assert.equal(updated.musicbrainz.spotify.popularity, 45);
     assert.deepEqual(updated.unknownFutureField, { preserved: true });
     assert.equal(updated.musicbrainz.existingUnknown, 'keep');
     assert.equal(updated.musicbrainz.spotify.spotifyUnknown, 'keep');
-    assert.equal(updated.musicbrainz.spotify.reviewCandidates[0].providerExtra, 'keep');
+    assert.equal(updated.musicbrainz.spotify.reviewCandidates, undefined);
   }
+});
+
+test('does not carry stale provider-owned metadata when the approved candidate is absent', () => {
+  const mapping = APPROVED_IDENTITIES[0];
+  const source = APPROVED_IDENTITIES.map((item) => band(item));
+  source[0].musicbrainz.spotify.reviewCandidates = [{ id: 'different-id', genres: ['wrong'] }];
+  const result = applyApprovedIdentities(source, APPROVED_IDENTITIES, { reviewedAt: '2026-08-06T07:00:00.000Z' });
+  const updated = result.bands.find((item) => item.name === mapping.name);
+  assert.equal(updated.musicbrainz.spotify.artistName, mapping.name);
+  assert.equal(updated.musicbrainz.spotify.genres, undefined);
+  assert.equal(updated.musicbrainz.spotify.images, undefined);
+  assert.equal(updated.musicbrainz.spotify.reviewCandidates, undefined);
+  assert.equal(updated.musicbrainz.spotify.spotifyUnknown, 'keep');
 });
 
 test('fails closed when a target name is absent or duplicated', () => {
