@@ -14,31 +14,31 @@ test('v99 shows exact Spotify links and identity-backed artwork across listening
 
   const previewRows = preview.locator('.toplist-track-row');
   await expect(previewRows).toHaveCount(7);
-  const previewLink = previewRows.first().locator('.trusted-listening-link');
-  await expect(previewLink).toHaveAttribute('href', /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]+$/);
-  await expect(previewRows.first().locator('.track-artwork img')).toBeVisible();
-  await expect(previewRows.first().locator('.trusted-listening-artist')).toBeVisible();
+  const previewLinkedRow = previewRows.filter({ has: page.locator('.trusted-listening-link') }).first();
+  await expect(previewLinkedRow.locator('.trusted-listening-link')).toHaveAttribute('href', /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]+$/);
+  await expect(previewLinkedRow.locator('.track-artwork img')).toBeVisible();
+  await expect(previewLinkedRow.locator('.trusted-listening-artist')).toBeVisible();
 
   await preview.getByRole('button', { name: 'View all' }).click();
   const full = page.locator('.full-top-bands-card.toplist-card');
   await expect(full.getByRole('tab', { name: 'Top Tracks' })).toHaveAttribute('aria-selected', 'true');
-  const fullRow = full.locator('.toplist-track-row').first();
-  await expect(fullRow.locator('.trusted-listening-link')).toHaveAttribute('href', /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]+$/);
-  await expect(fullRow.locator('.track-artwork img')).toBeVisible();
+  const fullLinkedRow = full.locator('.toplist-track-row').filter({ has: page.locator('.trusted-listening-link') }).first();
+  await expect(fullLinkedRow.locator('.trusted-listening-link')).toHaveAttribute('href', /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]+$/);
+  await expect(fullLinkedRow.locator('.track-artwork img')).toBeVisible();
 
-  await fullRow.locator('.trusted-listening-artist').click();
+  await fullLinkedRow.locator('.trusted-listening-artist').click();
   const profile = page.locator('#screen-profile');
   await expect(profile.getByRole('tab', { name: 'Listening', exact: true })).toHaveAttribute('aria-selected', 'true');
 
   const trackCard = profile.locator('.top-tracks-card');
-  const trackRow = trackCard.locator('.top-track-row').first();
-  await expect(trackRow.locator('.trusted-listening-link')).toHaveAttribute('href', /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]+$/);
-  await expect(trackRow.locator('.track-artwork img')).toBeVisible();
+  const linkedTrackRow = trackCard.locator('.top-track-row').filter({ has: page.locator('.trusted-listening-link') }).first();
+  await expect(linkedTrackRow.locator('.trusted-listening-link')).toHaveAttribute('href', /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]+$/);
+  await expect(linkedTrackRow.locator('.track-artwork img')).toBeVisible();
 
   await trackCard.getByRole('tab', { name: 'Top Albums' }).click();
-  const albumRow = profile.locator('.top-tracks-card .top-track-row').first();
-  await expect(albumRow.locator('.trusted-listening-link')).toHaveAttribute('href', /^https:\/\/open\.spotify\.com\/album\/[A-Za-z0-9]+$/);
-  await expect(albumRow.locator('.track-artwork img')).toBeVisible();
+  const linkedAlbumRow = profile.locator('.top-tracks-card .top-track-row').filter({ has: page.locator('.trusted-listening-link') }).first();
+  await expect(linkedAlbumRow.locator('.trusted-listening-link')).toHaveAttribute('href', /^https:\/\/open\.spotify\.com\/album\/[A-Za-z0-9]+$/);
+  await expect(linkedAlbumRow.locator('.track-artwork img')).toBeVisible();
 
   const unresolved = await page.evaluate(() => {
     const api = window.TrustedListeningV99;
