@@ -30,7 +30,7 @@ test('v99 shows exact Spotify links and identity-backed artwork across listening
   const profile = page.locator('#screen-profile');
   await expect(profile.getByRole('tab', { name: 'Listening', exact: true })).toHaveAttribute('aria-selected', 'true');
 
-  await page.evaluate(() => {
+  const diagnostic = await page.evaluate(() => {
     const bandId = activeProfileBandId;
     const band = bands.find((candidate) => candidate.id === bandId);
     const now = Date.now();
@@ -52,7 +52,22 @@ test('v99 shows exact Spotify links and identity-backed artwork across listening
     }));
     listeningEvents = [...listeningEvents, ...exact];
     renderProfileScreen(bandId);
+    const stats = globalListeningStats(profileListeningTimeframe);
+    const bandListens = stats.listens.filter((listen) => TrustedListeningV99.listenBandId(listen) === bandId);
+    const ranked = TrustedListeningV99.bandRankedItems(false, bandListens);
+    TrustedListeningV99.enhanceBandDetail(document);
+    const row = [...document.querySelectorAll('#screen-profile .top-track-row')]
+      .find((candidate) => candidate.textContent.includes('V99 Exact Profile Track'));
+    return {
+      bandId,
+      timeframe: profileListeningTimeframe,
+      bandListenCount: bandListens.length,
+      ranked: ranked.find((item) => item.recordingTitle === 'V99 Exact Profile Track') || null,
+      dataset: document.querySelector('#screen-profile .top-tracks-card')?.dataset.v99Trusted || null,
+      rowHtml: row?.innerHTML || null,
+    };
   });
+  console.log('v99-band-detail-diagnostic', JSON.stringify(diagnostic));
 
   const trackCard = profile.locator('.top-tracks-card');
   const linkedTrackRow = trackCard.locator('.top-track-row').filter({ hasText: 'V99 Exact Profile Track' });
