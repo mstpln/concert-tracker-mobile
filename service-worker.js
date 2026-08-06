@@ -1,6 +1,7 @@
 'use strict';
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v95';
+const CACHE_NAME_LITERAL = 'v96';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v95'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v94'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v93'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v92'.
@@ -28,85 +29,18 @@ if (CACHE_NAME_LITERAL !== APP_VERSION) {
 }
 const CACHE_NAME = 'concert-tracker-shell-' + CACHE_NAME_LITERAL;
 const SHELL_FILES = [
-  './',
-  './index.html',
-  './app.css',
-  './v72Corrections.css',
-  './listeningV81.css',
-  './concertCardsV86.css',
-  './bandmarkrV87.css',
-  './listeningReviewRollout.css',
-  './app.js',
-  './listeningReviewRollout.js',
-  './listeningReviewReconcile.js',
-  './listeningCanonicalActivation.js',
-  './listeningPreparationRecovery.js',
-  './listeningSpotifyIdentityReview.js',
-  './listeningSpotifyIdentityReviewUi.js',
-  './devicePrivacy.js',
-  './browserFetchPolicy.js',
-  './v72Corrections.js',
-  './v72FinalAdjustments.js',
-  './securityHardening.js',
-  './listeningInsightsV81.js',
-  './listeningV81BootFix.js',
-  './listeningV81ReviewFix.js',
-  './listeningV82Corrections.js',
-  './listeningV82GenreFix.js',
-  './listeningV82FailSafe.js',
-  './listeningV83ChartFix.js',
-  './listeningV83WindowFix.js',
-  './listeningV84ChartRenderFix.js',
-  './listeningV85RankingAndStatsUnits.js',
-  './dataLib.js',
-  './listeningStats.js',
-  './listeningStatsV81.js',
-  './listeningFixtures.js',
-  './listeningIdentityContracts.js',
-  './listeningDerivedStorage.js',
-  './listeningDerivedMigration.js',
-  './spotifyHistoryImport.js',
-  './listeningVaultBridge.js',
-  './listeningVault.js',
-  './listeningHistoryV2.js',
-  './listeningIncrementalVault.js',
-  './listenbrainzSync.js',
-  './spotifyHistoryBootstrap.js',
-  './icons.js',
-  './conflictMerge.js',
-  './remoteStore.js',
-  './ownedTickets.js',
-  './musicbrainzState.js',
-  './providerIdentityState.js',
-  './weather.js',
-  './spotifyUser.js',
-  './version.js',
-  './manifest.json',
-  './icons/bandmarkr-wordmark.svg',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-192-maskable.png',
-  './icons/icon-512-maskable.png',
-  './assets/listening/album-blue.svg',
-  './assets/listening/album-purple.svg',
-  './assets/listening/album-cyan.svg',
-  './assets/listening/album-gold.svg',
+  './', './index.html', './app.css', './v72Corrections.css', './listeningV81.css', './concertCardsV86.css', './bandmarkrV87.css', './listeningReviewRollout.css', './toplistV96.css',
+  './app.js', './listeningReviewRollout.js', './listeningReviewReconcile.js', './listeningCanonicalActivation.js', './listeningPreparationRecovery.js', './listeningSpotifyIdentityReview.js', './listeningSpotifyIdentityReviewUi.js', './devicePrivacy.js', './browserFetchPolicy.js', './v72Corrections.js', './v72FinalAdjustments.js', './securityHardening.js', './listeningInsightsV81.js', './listeningV81BootFix.js', './listeningV81ReviewFix.js', './listeningV82Corrections.js', './listeningV82GenreFix.js', './listeningV82FailSafe.js', './listeningV83ChartFix.js', './listeningV83WindowFix.js', './listeningV84ChartRenderFix.js', './listeningV85RankingAndStatsUnits.js', './toplistV96.js',
+  './dataLib.js', './listeningStats.js', './listeningStatsV81.js', './listeningFixtures.js', './listeningIdentityContracts.js', './listeningDerivedStorage.js', './listeningDerivedMigration.js', './spotifyHistoryImport.js', './listeningVaultBridge.js', './listeningVault.js', './listeningHistoryV2.js', './listeningIncrementalVault.js', './listenbrainzSync.js', './spotifyHistoryBootstrap.js', './icons.js', './conflictMerge.js', './remoteStore.js', './ownedTickets.js', './musicbrainzState.js', './providerIdentityState.js', './weather.js', './spotifyUser.js', './version.js', './manifest.json',
+  './icons/bandmarkr-wordmark.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-192-maskable.png', './icons/icon-512-maskable.png', './assets/listening/album-blue.svg', './assets/listening/album-purple.svg', './assets/listening/album-cyan.svg', './assets/listening/album-gold.svg'
 ];
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) =>
-      Promise.all(SHELL_FILES.map((url) => fetch(url, { cache: 'reload' }).then((res) => cache.put(url, res))))
-    )
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => Promise.all(SHELL_FILES.map((url) => fetch(url, { cache: 'reload' }).then((res) => cache.put(url, res))))));
   self.skipWaiting();
 });
-self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
-});
+self.addEventListener('message', (event) => { if (event.data?.type === 'SKIP_WAITING') self.skipWaiting(); });
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('concert-tracker-shell-') && k !== CACHE_NAME).map((k) => caches.delete(k))))
-  );
+  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith('concert-tracker-shell-') && key !== CACHE_NAME).map((key) => caches.delete(key)))));
   self.clients.claim();
 });
 self.addEventListener('fetch', (event) => {
