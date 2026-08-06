@@ -1,0 +1,16 @@
+name: Spotify candidate acquisition
+run-name: Spotify candidate acquisition — @${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ACQUIRE_SPOTIFY_CANDIDATES:
+        description: Confirm this review-only run may update Spotify candidates in bands.json
+        required: true
+        type: boolean
+        default: false
+      BAND_CAP:
+        description: Maximum bands to inspect in this run (1-25)
+        required: true
+        type: number
+        default: 
