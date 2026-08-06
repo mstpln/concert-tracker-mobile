@@ -83,6 +83,16 @@
     };
   }
 
+  function documentsEqual(left, right) {
+    const a = normalizeDocument(left);
+    const b = normalizeDocument(right);
+    const aKeys = Object.keys(a.records).sort();
+    const bKeys = Object.keys(b.records).sort();
+    if (aKeys.length !== bKeys.length) return false;
+    return aKeys.every((key, index) => key === bKeys[index]
+      && JSON.stringify(a.records[key]) === JSON.stringify(b.records[key]));
+  }
+
   function setActive(document) {
     activeDocument = normalizeDocument(document);
     return activeDocument;
@@ -234,10 +244,6 @@
     let document = mergeDocuments(await loadLocal().catch(() => emptyDocument()), remoteState.document);
     setActive(document);
     const ids = unresolvedTrackIds(document).slice(0, Math.max(1, Math.min(MAX_TRACKS_PER_RUN, Number(cap) || MAX_TRACKS_PER_RUN)));
-    if (!ids.length) {
-      applyToEvents(document);
-      return { requested: 0, added: 0, total: Object.keys(document.records).length };
-    }
     let added = 0;
     for (let index = 0; index < ids.length; index += BATCH_SIZE) {
       const batch = ids.slice(index, index + BATCH_SIZE);
@@ -255,9 +261,11 @@
       applyToEvents(document);
       onProgress({ processed: Math.min(ids.length, index + batch.length), total: ids.length, added });
     }
-    await writeRemote(document, remoteState.etag, remoteState.missing, fetchImpl);
+    const remoteChanged = !documentsEqual(document, remoteState.document);
+    if (remoteChanged) await writeRemote(document, remoteState.etag, remoteState.missing, fetchImpl);
+    applyToEvents(document);
     rerenderCurrentScreen();
-    return { requested: ids.length, added, total: Object.keys(document.records).length };
+    return { requested: ids.length, added, total: Object.keys(document.records).length, synced: remoteChanged };
   }
 
   function injectSettingsUi() {
@@ -284,7 +292,9 @@
         const result = await enrich({ onProgress: ({ processed, total, added }) => { status.textContent = `Fetched ${processed.toLocaleString()} of ${total.toLocaleString()} · ${added.toLocaleString()} matched`; } });
         status.textContent = result.requested
           ? `${result.added.toLocaleString()} exact Spotify records added · ${result.total.toLocaleString()} cached`
-          : 'Artwork metadata is already complete for the trusted Spotify track IDs on this device.';
+          : result.synced
+            ? `Pending listening artwork metadata synchronized · ${result.total.toLocaleString()} cached`
+            : 'Artwork metadata is already complete for the trusted Spotify track IDs on this device.';
       } catch (error) {
         status.textContent = error?.message || 'Spotify listening artwork could not be fetched.';
       } finally { button.disabled = false; }
@@ -318,7 +328,7 @@
 
   return {
     DB_NAME, STORE_NAME, REMOTE_PATH, SCHEMA_VERSION, BATCH_SIZE, MAX_TRACKS_PER_RUN,
-    emptyDocument, normalizeRecord, normalizeDocument, mergeDocuments, recordFromSpotifyTrack,
+    emptyDocument, normalizeRecord, normalizeDocument, mergeDocuments, documentsEqual, recordFromSpotifyTrack,
     unresolvedTrackIds, loadLocal, saveLocal, readRemote, writeRemote, recordForTrack,
     applyToEvents, restore, enrich, installLoadHook,
   };
