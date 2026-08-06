@@ -22,7 +22,7 @@ test('v82 listening corrections remain usable, bounded, independent, and respons
   await page.goto('/');
 
   await expect(page.locator('.start-top-bands-card')).toContainText('YOUR TOP BANDS · 2 WEEKS');
-  await expect(page.locator('#start-version-refresh')).toContainText('v96');
+  await expect(page.locator('#start-version-refresh')).toContainText('v97');
   const refreshButton = page.getByRole('button', { name: 'Check for app update and reload' });
   await expect(refreshButton).toBeVisible();
   const refreshGeometry = await page.evaluate(() => {
