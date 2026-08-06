@@ -70,7 +70,7 @@
 
   function resolveBandId(event, byId, uniqueNames) {
     const explicit = event?.bandId || event?.localBandId || null;
-    if (explicit && byId.has(explicit)) return explicit;
+    if (explicit) return byId.has(explicit) ? explicit : null;
     return uniqueNames.get(normalizeName(eventArtistName(event))) || null;
   }
 
