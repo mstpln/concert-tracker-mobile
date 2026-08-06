@@ -11,6 +11,8 @@
     .replace(/\s+/g, ' ')
     .toLocaleLowerCase('en');
 
+  const listenBandId = (listen) => listen?.bandId || listen?.localBandId || null;
+
   const spotifyUrl = (kind, id, explicitUrl) => {
     const explicit = String(explicitUrl || '').trim();
     if (/^https:\/\/open\.spotify\.com\/(track|album)\/[A-Za-z0-9]+(?:[?#].*)?$/i.test(explicit)) return explicit;
@@ -75,7 +77,7 @@
         [titleKey]: title,
         artistCreditName: listen.artistCreditName || 'Unknown artist',
         releaseTitle: listen.releaseTitle || null,
-        localBandId: listen.localBandId || null,
+        localBandId: listenBandId(listen),
         durationMs: 0,
         listenCount: 0,
         lastListenedMs: 0,
@@ -188,11 +190,14 @@
 
   function enhanceBandDetail(root = document) {
     const card = root.querySelector?.('#screen-profile .top-tracks-card');
-    if (!card || card.dataset.v99Trusted === 'true' || !activeProfileBandId) return;
+    if (!card || !activeProfileBandId) return;
     const albumMode = card.querySelector('[data-v81-ranked="albums"]')?.getAttribute('aria-selected') === 'true';
+    const signature = `${activeProfileBandId}:${profileListeningTimeframe}:${albumMode ? 'albums' : 'tracks'}`;
+    if (card.dataset.v99Trusted === signature) return;
     const stats = globalListeningStats(profileListeningTimeframe);
-    const listens = (stats.listens || []).filter((listen) => listen.localBandId === activeProfileBandId);
+    const listens = (stats.listens || []).filter((listen) => listenBandId(listen) === activeProfileBandId);
     const items = bandRankedItems(albumMode, listens);
+    let enhanced = 0;
     card.querySelectorAll('.top-track-row').forEach((row, index) => {
       const item = items[index];
       if (!item) return;
@@ -200,8 +205,10 @@
       if (art) art.outerHTML = trustedArtworkHtml(item);
       const strong = row.querySelector('.top-track-copy strong');
       if (strong) strong.outerHTML = trustedTitleHtml(item, albumMode ? 'album' : 'track', albumMode ? item.releaseTitle : item.recordingTitle);
+      enhanced += 1;
     });
-    card.dataset.v99Trusted = 'true';
+    if (!enhanced) return;
+    card.dataset.v99Trusted = signature;
     wireListeningImages(card);
   }
 
@@ -221,7 +228,7 @@
 
   globalThis.TrustedListeningV99 = {
     aggregate, trustedTrackMeta, trustedAlbumMeta, spotifyUrl, trustedTitleHtml,
-    trustedArtworkHtml, bandRankedItems, install, enhanceBandDetail,
+    trustedArtworkHtml, bandRankedItems, listenBandId, install, enhanceBandDetail,
   };
 })();
 
