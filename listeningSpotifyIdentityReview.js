@@ -15,18 +15,28 @@
   }
 
   function eventTimestamp(event) {
-    const value = event?.playedAt ?? event?.timestamp ?? event?.ts ?? event?.endTime ?? null;
+    const value = event?.listenedAtMs ?? event?.playedAt ?? event?.listenedAt ?? event?.timestamp ?? event?.ts ?? event?.endTime ?? null;
     if (typeof value === 'number' && Number.isFinite(value)) return value < 1e12 ? value * 1000 : value;
+    if (typeof value === 'string' && /^\d+$/.test(value)) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) return numeric < 1e12 ? numeric * 1000 : numeric;
+    }
     const parsed = value ? Date.parse(value) : NaN;
     return Number.isFinite(parsed) ? parsed : null;
   }
 
   function eventArtistName(event) {
-    return event?.artistName || event?.artist || event?.masterMetadataAlbumArtistName || event?.trackMetadata?.artist_name || '';
+    return event?.artistName
+      || event?.artistCreditName
+      || event?.artist
+      || event?.masterMetadataAlbumArtistName
+      || event?.master_metadata_album_artist_name
+      || event?.trackMetadata?.artist_name
+      || '';
   }
 
   function isSpotifyEvent(event) {
-    return event?.source === 'spotify' || Boolean(event?.spotifyTrackId || event?.spotify_track_uri || event?.spotifyTrackUri);
+    return event?.source === 'spotify' || event?.source === 'spotify_import' || Boolean(event?.spotifyTrackId || event?.spotify_track_uri || event?.spotifyTrackUri);
   }
 
   function spotifyTrackId(event) {
