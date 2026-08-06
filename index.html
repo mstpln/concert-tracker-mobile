@@ -18,18 +18,14 @@
 <link rel="stylesheet" href="concertCardsV86.css" />
 <link rel="stylesheet" href="bandmarkrV87.css" />
 <link rel="stylesheet" href="listeningReviewRollout.css" />
+<link rel="stylesheet" href="toplistV96.css" />
 </head>
 <body>
-
 <div id="onboarding" class="screen">
   <div class="onboarding-inner">
     <div class="onboarding-icon"></div>
     <h1>Concert tracker</h1>
-    <p>
-      Connect this app to your Cloudflare Worker so it can read and write your
-      band list and concert data. See SETUP.md for how to get the URL and
-      token below.
-    </p>
+    <p>Connect this app to your Cloudflare Worker so it can read and write your band list and concert data. See SETUP.md for how to get the URL and token below.</p>
     <label for="connect-endpoint">Worker URL</label>
     <input type="text" id="connect-endpoint" placeholder="https://concert-tracker-api.yoursubdomain.workers.dev" />
     <label for="connect-token">Access token</label>
@@ -38,20 +34,15 @@
     <p id="onboarding-error" class="error hidden"></p>
   </div>
 </div>
-
 <div id="app" class="hidden">
   <div id="brand-banner" class="brand-banner"><img class="brand-wordmark" src="icons/bandmarkr-wordmark.svg" alt="BANDMARKR" /></div>
   <header id="app-header">
     <button id="back-btn" class="icon-btn hidden" aria-label="Back" data-testid="back-button"></button>
-    <div class="header-brand">
-      <span id="header-icon" class="header-icon"></span>
-      <span id="header-title" class="header-title"><span class="brand-blue">CONCERT</span>DATES</span>
-    </div>
+    <div class="header-brand"><span id="header-icon" class="header-icon"></span><span id="header-title" class="header-title"><span class="brand-blue">CONCERT</span>DATES</span></div>
     <button id="nearby-toggle-btn" class="icon-btn" aria-label="Show nearby only" title="Show nearby only"></button>
     <button id="europe-toggle-btn" class="icon-btn" aria-label="Show Europe only" title="Show Europe only"></button>
     <button id="settings-btn" class="icon-btn" aria-label="Settings" data-testid="settings-button"></button>
   </header>
-
   <main id="content">
     <section id="screen-concerts" class="screen hidden"></section>
     <section id="screen-myconcerts" class="screen"></section>
@@ -62,14 +53,8 @@
     <section id="screen-settings" class="screen hidden"></section>
     <section id="screen-stats" class="screen hidden"></section>
     <section id="screen-top-bands" class="screen hidden"></section>
-    <section id="screen-connection-error" class="screen hidden">
-      <div class="screen-empty">
-        <p>Couldn't reach your data. Check your connection and try again.</p>
-        <button id="retry-connect-btn" class="btn-primary" style="margin-top:12px">Retry</button>
-      </div>
-    </section>
+    <section id="screen-connection-error" class="screen hidden"><div class="screen-empty"><p>Couldn't reach your data. Check your connection and try again.</p><button id="retry-connect-btn" class="btn-primary" style="margin-top:12px">Retry</button></div></section>
   </main>
-
   <nav id="tabbar" data-testid="bottom-navigation">
     <button class="tabitem active" data-tab="myconcerts"><span class="tab-icon"></span>Concerts</button>
     <button class="tabitem" data-tab="concerts"><span class="tab-icon"></span>Dates</button>
@@ -78,7 +63,6 @@
     <button class="tabitem" data-tab="news"><span class="tab-icon-wrap"><span class="tab-icon"></span><span id="news-unread-dot" class="tab-unread-dot hidden"></span></span>Alerts</button>
   </nav>
 </div>
-
 <script src="version.js"></script>
 <script src="browserFetchPolicy.js"></script>
 <script src="icons.js"></script>
@@ -124,5 +108,6 @@
 <script src="listeningV83WindowFix.js"></script>
 <script src="listeningV84ChartRenderFix.js"></script>
 <script src="listeningV85RankingAndStatsUnits.js"></script>
+<script src="toplistV96.js"></script>
 </body>
 </html>
