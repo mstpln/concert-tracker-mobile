@@ -2,6 +2,7 @@
 
 (function attachSpotifyIdentityReviewUi(root) {
   const SECTION_ID = 'spotify-identity-review-section';
+  const deferredBandIds = new Set();
   let renderToken = 0;
   let notice = '';
 
@@ -11,6 +12,11 @@
 
   function statusLabel(value) {
     return String(value || 'unchecked').replaceAll('_', ' ');
+  }
+
+  function dateLabel(value) {
+    if (!value) return '—';
+    return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(value));
   }
 
   async function loadListeningEvents() {
@@ -25,7 +31,9 @@
 
   function impactHtml(row) {
     const counts = row.affectedListens;
-    return `<p class="settings-hint spotify-review-impact">${escapeHtml(String(counts.allTime))} listens affected · ${escapeHtml(String(counts.twoWeeks))} in 2 weeks · ${escapeHtml(String(counts.threeMonths))} in 3 months · ${escapeHtml(String(counts.oneYear))} in 1 year · ${escapeHtml(String(counts.spotify))} Spotify listens</p>`;
+    return `<p class="settings-hint spotify-review-impact">${escapeHtml(String(counts.allTime))} listens affected · ${escapeHtml(String(counts.twoWeeks))} in 2 weeks · ${escapeHtml(String(counts.threeMonths))} in 3 months · ${escapeHtml(String(counts.oneYear))} in 1 year · ${escapeHtml(String(counts.spotify))} Spotify listens</p>
+      <p class="settings-hint spotify-review-evidence">${escapeHtml(String(row.distinctSpotifyTrackIds))} distinct Spotify track IDs · ${escapeHtml(dateLabel(row.firstAffectedAt))}–${escapeHtml(dateLabel(row.lastAffectedAt))}</p>
+      <p class="settings-hint spotify-review-blocking"><strong>Blocks trusted Spotify linking and enrichment.</strong></p>`;
   }
 
   function candidateHtml(row, candidate) {
@@ -52,6 +60,7 @@
       ${row.actionState === 'candidate_acquisition_required'
         ? '<p class="settings-hint"><strong>Candidate acquisition required.</strong> No exact Spotify artist candidate is currently stored.</p>'
         : `<div class="spotify-review-candidates">${candidates}</div><button class="btn-secondary" type="button" data-spotify-review-action="reject" data-band-id="${escapeHtml(row.bandId)}">None of these</button>`}
+      <button class="btn-secondary" type="button" data-spotify-review-action="defer" data-band-id="${escapeHtml(row.bandId)}">Decide later</button>
     </article>`;
   }
 
@@ -71,12 +80,14 @@
     if (token !== renderToken || !document.body.contains(section)) return;
     let currentBands = [];
     try { currentBands = Array.isArray(bands) ? bands : []; } catch (_) {}
-    const rows = root.ListeningSpotifyIdentityReview.auditSpotifyArtistIdentities(currentBands, events, { identityState: root.ProviderIdentityState });
+    const allRows = root.ListeningSpotifyIdentityReview.auditSpotifyArtistIdentities(currentBands, events, { identityState: root.ProviderIdentityState });
+    const rows = allRows.filter((row) => !deferredBandIds.has(row.bandId));
     const actionable = rows.filter((row) => row.actionState === 'candidate_available').length;
     const acquisition = rows.length - actionable;
-    section.innerHTML = `<div class="settings-section-header"><h3>Spotify artist review</h3><p class="settings-hint">${escapeHtml(String(rows.length))} unresolved · ${escapeHtml(String(actionable))} ready to review · ${escapeHtml(String(acquisition))} need candidate acquisition</p></div>
+    const deferred = allRows.length - rows.length;
+    section.innerHTML = `<div class="settings-section-header"><h3>Spotify artist review</h3><p class="settings-hint">${escapeHtml(String(rows.length))} unresolved · ${escapeHtml(String(actionable))} ready to review · ${escapeHtml(String(acquisition))} need candidate acquisition${deferred ? ` · ${escapeHtml(String(deferred))} deferred this session` : ''}</p></div>
       ${notice ? `<p class="settings-hint spotify-review-notice" role="status">${escapeHtml(notice)}</p>` : ''}
-      ${rows.length ? rows.map(rowHtml).join('') : '<div class="settings-card"><p class="settings-hint" style="margin:0">All bands have a trusted Spotify artist identity.</p></div>'}`;
+      ${rows.length ? rows.map(rowHtml).join('') : '<div class="settings-card"><p class="settings-hint" style="margin:0">No Spotify artist identities remain in this review session.</p></div>'}`;
     wireActions(section, rows);
   }
 
@@ -100,6 +111,12 @@
     section.querySelectorAll('[data-spotify-review-action]').forEach((button) => button.addEventListener('click', async () => {
       const row = rows.find((item) => item.bandId === button.dataset.bandId);
       if (!row) return;
+      if (button.dataset.spotifyReviewAction === 'defer') {
+        deferredBandIds.add(row.bandId);
+        notice = `${row.bandName} was deferred for this session only.`;
+        await render();
+        return;
+      }
       button.disabled = true;
       const previous = button.textContent;
       button.textContent = 'Saving…';
