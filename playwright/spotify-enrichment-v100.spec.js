@@ -7,8 +7,19 @@ const LEGACY_SPOTIFY_USER = `'use strict';
   const setAuth = async (auth) => chrome.storage.local.set({ [TOKEN_KEY]: auth });
   const clearAuth = async () => chrome.storage.local.remove(TOKEN_KEY);
   const refresh = async (auth) => auth;
-  const request = async () => { throw new Error('legacy private request should not be called directly'); };
-  window.SpotifyUser = { TOKEN_KEY, getAuth, setAuth, clearAuth, refresh };
+  const handleCallback = async () => ({ kind: 'none' });
+  const beginAuthorization = async () => {};
+  const createPrivatePlaylist = async () => ({ playlist: null, added: 0 });
+  window.SpotifyUser = {
+    TOKEN_KEY,
+    getAuth,
+    setAuth,
+    clearAuth,
+    refresh,
+    handleCallback,
+    beginAuthorization,
+    createPrivatePlaylist,
+  };
 })();`;
 
 test('v100 reuses the authorization shown as connected when fetching listening artwork', async ({ page }) => {
