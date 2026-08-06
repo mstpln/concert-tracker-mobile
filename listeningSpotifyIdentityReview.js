@@ -66,6 +66,53 @@
       .map((candidate) => ({ ...candidate }));
   }
 
+  function safeSpotifyArtistUrl(candidate) {
+    if (candidate?.url && /^https:\/\/open\.spotify\.com\/artist\/[A-Za-z0-9]+(?:[/?#].*)?$/.test(candidate.url)) return candidate.url;
+    return candidate?.id ? `https://open.spotify.com/artist/${encodeURIComponent(candidate.id)}` : null;
+  }
+
+  function applySpotifyReviewDecision(latestBands, row, decision, options = {}) {
+    const rows = Array.isArray(latestBands) ? latestBands : [];
+    const index = rows.findIndex((band) => band?.id === row?.bandId);
+    if (index < 0) return { kind: 'missing_band', bands: rows };
+    const band = rows[index];
+    const current = band?.musicbrainz?.spotify || {};
+    if (['manual_confirmed', 'manual_rejected'].includes(current.status) && current.status !== row?.status) {
+      return { kind: 'newer_manual_decision', bands: rows };
+    }
+    const reviewedAt = options.reviewedAt || new Date().toISOString();
+    let spotify;
+    if (decision?.action === 'confirm') {
+      const candidate = storedCandidates(current).find((item) => item.id === decision.candidateId)
+        || (row?.candidates || []).find((item) => item.id === decision.candidateId);
+      if (!candidate) return { kind: 'candidate_missing', bands: rows };
+      spotify = {
+        ...current,
+        ...candidate,
+        id: candidate.id,
+        url: safeSpotifyArtistUrl(candidate),
+        artistName: candidate.artistName || candidate.name || current.artistName || band.name,
+        status: 'manual_confirmed',
+        reviewedAt,
+        reviewedBy: 'user',
+      };
+    } else if (decision?.action === 'reject') {
+      spotify = {
+        ...current,
+        status: 'manual_rejected',
+        reviewedAt,
+        reviewedBy: 'user',
+        rejectedCandidateIds: storedCandidates(current).map((item) => item.id),
+      };
+    } else {
+      return { kind: 'no_change', bands: rows };
+    }
+    const next = rows.map((item, itemIndex) => itemIndex === index
+      ? { ...item, musicbrainz: { ...(item.musicbrainz || {}), spotify } }
+      : item);
+    return { kind: 'updated', bands: next, spotify };
+  }
+
   function auditSpotifyArtistIdentities(bands, events, options = {}) {
     const identityState = options.identityState || root.ProviderIdentityState;
     if (!identityState) throw new Error('ProviderIdentityState is required');
@@ -126,7 +173,7 @@
       || String(a.bandId).localeCompare(String(b.bandId)));
   }
 
-  const api = { PERIODS, normalizeName, eventTimestamp, eventArtistName, spotifyTrackId, auditSpotifyArtistIdentities };
+  const api = { PERIODS, normalizeName, eventTimestamp, eventArtistName, spotifyTrackId, safeSpotifyArtistUrl, applySpotifyReviewDecision, auditSpotifyArtistIdentities };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.ListeningSpotifyIdentityReview = api;
 })(typeof window !== 'undefined' ? window : globalThis);
