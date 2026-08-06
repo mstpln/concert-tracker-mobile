@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('node:fs');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
@@ -110,4 +111,17 @@ test('writes exactly once through the strict conditional writer', async () => {
   assert.deepEqual(summary, { matched: 5, changed: 5 });
   assert.equal(writes, 1);
   assert.equal(written.length, 5);
+});
+
+test('production workflow remains manual, main-only, least-privilege and serialized', () => {
+  const source = fs.readFileSync('.github/workflows/apply-approved-provider-identities.yml', 'utf8');
+  assert.match(source, /workflow_dispatch:/);
+  assert.doesNotMatch(source, /schedule:/);
+  assert.match(source, /APPLY_APPROVED_IDENTITIES/);
+  assert.match(source, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(source, /contents: read/);
+  assert.match(source, /group: live-vault-data-writes/);
+  assert.match(source, /cancel-in-progress: false/);
+  assert.match(source, /CF_WORKER_TOKEN/);
+  assert.doesNotMatch(source, /SPOTIFY_CLIENT_SECRET|MUSICBRAINZ/);
 });
