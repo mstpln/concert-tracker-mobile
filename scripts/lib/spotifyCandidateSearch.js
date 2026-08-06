@@ -4,6 +4,10 @@ const config = require('./config');
 
 let cachedToken = null;
 
+function clone(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
 function normalizeName(value) {
   return String(value || '')
     .toLocaleLowerCase()
@@ -58,12 +62,13 @@ function acceptedNamesForBand(band, metadata) {
 function normalizeCandidate(candidate) {
   if (!candidate?.id) return null;
   return {
+    ...clone(candidate),
     id: String(candidate.id),
-    artistName: candidate.name || null,
-    url: candidate.external_urls?.spotify || `https://open.spotify.com/artist/${candidate.id}`,
+    artistName: candidate.name || candidate.artistName || null,
+    url: candidate.external_urls?.spotify || candidate.url || `https://open.spotify.com/artist/${candidate.id}`,
     genres: Array.isArray(candidate.genres) ? [...candidate.genres] : [],
     images: Array.isArray(candidate.images) ? candidate.images.map((image) => ({ ...image })) : [],
-    followers: Number.isFinite(candidate.followers?.total) ? candidate.followers.total : null,
+    followers: Number.isFinite(candidate.followers?.total) ? candidate.followers.total : Number.isFinite(candidate.followers) ? candidate.followers : null,
     popularity: Number.isFinite(candidate.popularity) ? candidate.popularity : null,
   };
 }
