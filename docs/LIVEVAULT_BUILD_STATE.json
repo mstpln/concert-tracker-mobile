@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v100",
-  "serviceWorkerCacheVersion": "v100",
+  "appVersion": "v101",
+  "serviceWorkerCacheVersion": "v101",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 20,
@@ -30,6 +30,7 @@
     "toplistStatsV96.js",
     "toplistV96.js",
     "spotifyListeningMetadataV99.js",
+    "spotifyListeningMetadataV101.js",
     "trustedListeningV99.js",
     "listeningReviewRollout.js",
     "listeningReviewReconcile.js",
