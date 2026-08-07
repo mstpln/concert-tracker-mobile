@@ -39,22 +39,47 @@ test('production checkpoint path is restricted to the ignored maintenance direct
   assert.throws(() => production.assertPrivateCheckpointPath('.livevault-maintenance/../checkpoint.json'), /must stay inside/);
 });
 
-test('invalid private checkpoint fails closed before provider work can start', async () => {
+test('private checkpoint is normalized before production use and unknown fields are not carried forward', async () => {
+  const normalized = await production.loadValidatedCheckpoint('.livevault-maintenance/test.json', async () => ({
+    schemaVersion: 1,
+    plannedIds: ['Track1'],
+    remainingIds: [],
+    stagedRecords: {
+      Track1: {
+        spotifyTrackId: 'Track1',
+        spotifyTrackUrl: 'https://open.spotify.com/track/Track1',
+        spotifyAlbumId: null,
+        spotifyAlbumUrl: null,
+        artworkUrl: 'https://images.invalid/cover.jpg',
+        fetchedAt: '2026-08-07T09:00:00.000Z',
+        source: 'spotify_exact_track_id',
+        injectedSecretField: 'must-not-survive',
+      },
+    },
+    terminalNotFoundIds: [],
+    requestCount: 1,
+    topLevelInjectedField: 'drop-me',
+  }));
+  assert.equal(normalized.topLevelInjectedField, undefined);
+  assert.equal(normalized.stagedRecords.Track1.injectedSecretField, undefined);
+  assert.equal(normalized.stagedRecords.Track1.spotifyTrackId, 'Track1');
+});
+
+test('structurally invalid private checkpoint fails closed before provider work can start', async () => {
   await assert.rejects(
     () => production.loadValidatedCheckpoint('.livevault-maintenance/test.json', async () => ({
       schemaVersion: 1,
       plannedIds: ['Track1'],
-      remainingIds: [],
+      remainingIds: ['Track1'],
       stagedRecords: {
         Track1: {
           spotifyTrackId: 'Track1',
           spotifyTrackUrl: 'https://open.spotify.com/track/Track1',
           spotifyAlbumId: null,
           spotifyAlbumUrl: null,
-          artworkUrl: 'https://images.invalid/cover.jpg',
+          artworkUrl: null,
           fetchedAt: '2026-08-07T09:00:00.000Z',
           source: 'spotify_exact_track_id',
-          injectedSecretField: 'must-not-survive',
         },
       },
       terminalNotFoundIds: [],
