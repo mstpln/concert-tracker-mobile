@@ -56,8 +56,31 @@
     }
     if (!response.ok) throw new Error(`Spotify track metadata request failed (${response.status}).`);
     const track = await response.json();
-    if (!track || track.id !== id) throw new Error('Spotify returned an invalid track metadata response.');
+    if (!track || !validSpotifyId(track.id)) throw new Error('Spotify returned an invalid track metadata response.');
     return track;
+  }
+
+  function recordForRequestedTrack(metadata, requestedSpotifyTrackId, track) {
+    const requestedId = String(requestedSpotifyTrackId || '').trim();
+    const resolvedId = String(track?.id || '').trim();
+    if (!validSpotifyId(requestedId) || !validSpotifyId(resolvedId)) return null;
+
+    const requestedTrack = {
+      ...track,
+      id: requestedId,
+      external_urls: {
+        ...(track.external_urls || {}),
+        spotify: `https://open.spotify.com/track/${requestedId}`,
+      },
+    };
+    const record = metadata.recordFromSpotifyTrack(requestedTrack);
+    if (!record) return null;
+    if (resolvedId === requestedId) return record;
+    return {
+      ...record,
+      spotifyProviderResolvedTrackId: resolvedId,
+      spotifyProviderRelinked: true,
+    };
   }
 
   async function enrich({
@@ -78,9 +101,10 @@
     let added = 0;
 
     for (let index = 0; index < ids.length; index += 1) {
-      const track = await requestTrack(ids[index], { fetchImpl, spotifyUser, requestDelayMs });
+      const requestedId = ids[index];
+      const track = await requestTrack(requestedId, { fetchImpl, spotifyUser, requestDelayMs });
       if (track) {
-        const record = metadata.recordFromSpotifyTrack(track);
+        const record = recordForRequestedTrack(metadata, requestedId, track);
         if (record) {
           document.records[record.spotifyTrackId] = record;
           added += 1;
@@ -153,5 +177,5 @@
     root.setTimeout?.(install, 0);
   }
 
-  return { MAX_TRACKS_PER_RUN, PERSIST_EVERY, REQUEST_DELAY_MS, requestTrack, enrich, install };
+  return { MAX_TRACKS_PER_RUN, PERSIST_EVERY, REQUEST_DELAY_MS, requestTrack, recordForRequestedTrack, enrich, install };
 });
