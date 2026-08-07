@@ -41,34 +41,36 @@ test('v100 reuses the authorization shown as connected when fetching listening a
   await page.route('**/spotifyUser.js', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: LEGACY_SPOTIFY_USER });
   });
-  await page.route('https://api.spotify.com/v1/tracks?**', async (route) => {
-    expect(route.request().headers().authorization).toBe('Bearer synthetic-access-token');
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        tracks: [{
-          id: 'V100ExactTrack123',
-          external_urls: { spotify: 'https://open.spotify.com/track/V100ExactTrack123' },
-          album: {
-            id: 'V100ExactAlbum456',
-            external_urls: { spotify: 'https://open.spotify.com/album/V100ExactAlbum456' },
-            images: [{ url: 'https://fixtures.livevault.test/images/v100-cover.jpg', width: 640 }],
-          },
-        }],
-      }),
-    });
-  });
-  await page.route('**/listening/spotify-metadata.json', async (route) => {
-    if (route.request().method() === 'PUT') {
-      await route.fulfill({ status: 200, headers: { etag: '"v100-saved"' }, body: '{}' });
-      return;
-    }
-    await route.fulfill({ status: 404, body: '' });
-  });
 
   await page.goto('/');
   await page.evaluate(() => {
+    const qaFetch = window.fetch;
+    window.__v100SpotifyAuthorizationHeaders = [];
+    window.fetch = async (input, options = {}) => {
+      const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+      if (url.origin === 'https://api.spotify.com' && url.pathname === '/v1/tracks') {
+        window.__v100SpotifyAuthorizationHeaders.push(new Headers(options.headers || {}).get('Authorization'));
+        return new Response(JSON.stringify({
+          tracks: [{
+            id: 'V100ExactTrack123',
+            external_urls: { spotify: 'https://open.spotify.com/track/V100ExactTrack123' },
+            album: {
+              id: 'V100ExactAlbum456',
+              external_urls: { spotify: 'https://open.spotify.com/album/V100ExactAlbum456' },
+              images: [{ url: 'https://fixtures.livevault.test/images/v100-cover.jpg', width: 640 }],
+            },
+          }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.origin === 'https://qa.invalid' && url.pathname === '/listening/spotify-metadata.json') {
+        if ((options.method || 'GET').toUpperCase() === 'PUT') {
+          return new Response('{}', { status: 200, headers: { etag: '"v100-saved"' } });
+        }
+        return new Response('', { status: 404 });
+      }
+      return qaFetch(input, options);
+    };
+
     listeningEvents = [{
       id: 'v100-exact-listen',
       listenedAtMs: Date.now(),
@@ -90,6 +92,9 @@ test('v100 reuses the authorization shown as connected when fetching listening a
   await artworkButton.click();
   await expect(page.locator('[data-v99-enrich-status]')).toContainText('1 exact Spotify records added');
   await expect(spotifyPlaylistCard.getByRole('button', { name: 'Disconnect' })).toBeVisible();
+
+  const authorizationHeaders = await page.evaluate(() => window.__v100SpotifyAuthorizationHeaders);
+  expect(authorizationHeaders).toEqual(['Bearer synthetic-access-token']);
 
   const stored = await page.evaluate(async () => SpotifyListeningMetadataV99.loadLocal());
   expect(stored.records.V100ExactTrack123).toMatchObject({
