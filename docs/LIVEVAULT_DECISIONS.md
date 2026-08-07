@@ -431,3 +431,11 @@
 **Reason:** The first controlled physical v104 identity-completion run reached the MusicBrainz route and was rate-limited after roughly three processed combinations while using the previous 1,000 ms boundary. MusicBrainz documents approximately one request per second as the normal client limit, so operating exactly at that boundary left too little margin for real network timing and service pressure.
 
 **Consequence:** Release-context enrichment is intentionally slower but more conservative. A MusicBrainz-heavy 25-combination run may spend roughly 50 seconds or more on provider pacing, while source listening events, R2 data, identity evidence rules and album-edition boundaries remain unchanged. Automated QA remains synthetic and does not call the live provider.
+
+## 2026-08-07 — Release-group context must not block recording identity completion
+
+**Decision:** The manual **Complete listening identities** action resolves only missing recording MBIDs through ListenBrainz and does not call MusicBrainz release context. Existing trusted release and release-group identities remain preserved. The authenticated Worker release-context route and its pacing guard remain available for a future separately scoped enrichment path.
+
+**Reason:** Controlled physical runs on both v104 and v105 stopped on MusicBrainz rate limiting, including after v105 doubled browser-side pacing. Release-group identity is optional context and is not an album grouping key, so Worker-egress or MusicBrainz availability must not block conservative recording identity work that ListenBrainz can complete.
+
+**Consequence:** v106 prefers completing recording identity and deferring release-group enrichment. The 25-combination cap, resumable local cursor, trusted-artist requirement, exact normalized artist/recording matching, source immutability, no guessed release edition, additive derived identity writes and no hidden retry remain unchanged.
