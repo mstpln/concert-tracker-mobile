@@ -1,6 +1,7 @@
 'use strict';
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v104';
+const CACHE_NAME_LITERAL = 'v105';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v104'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v103'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v102'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v101'.
@@ -31,7 +32,7 @@ const CACHE_NAME_LITERAL = 'v104';
 // Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v76'.
 // Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v75'.
 // Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v74'.
-// Legacy owned-ticket release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v70'.
+// Legacy owned-ticket release marker retained for historical regression coverage: CACHE_NAME_LITERAL = 'v70'.
 if (CACHE_NAME_LITERAL !== APP_VERSION) {
   console.warn(`service-worker.js CACHE_NAME_LITERAL ("${CACHE_NAME_LITERAL}") is out of sync with version.js APP_VERSION ("${APP_VERSION}") — bump CACHE_NAME_LITERAL in service-worker.js to match, otherwise old installs won't update.`);
 }
@@ -54,6 +55,7 @@ const SHELL_FILES = [
   './listeningPreparationRecovery.js',
   './listeningSpotifyIdentityReview.js',
   './listeningSpotifyIdentityReviewUi.js',
+  './listeningIdentityPacingV105.js',
   './listeningIdentityCompletionV104.js',
   './listeningIdentityGroupingV104.js',
   './devicePrivacy.js',
