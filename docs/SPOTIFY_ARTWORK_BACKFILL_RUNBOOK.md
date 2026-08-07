@@ -1,6 +1,6 @@
 # Spotify artwork backfill runbook
 
-This runbook is for the one-time private listening-artwork maintenance operation. It is not an app feature, it does not run automatically, and it must not be used until live Spotify calls and the intended production data access/write scope have been explicitly authorized.
+This runbook is for the one-time private listening-artwork maintenance operation. It is not an app feature, it does not run automatically, and it must not be used until the intended private-data/provider/write scope has been explicitly authorized.
 
 ## Supported entrypoint
 
@@ -19,45 +19,52 @@ The production entrypoint reads these environment variables:
 - `SPOTIFY_CLIENT_ID`
 - `SPOTIFY_CLIENT_SECRET`
 - `LIVEVAULT_BACKFILL_CONFIRM`
+- `LIVEVAULT_BACKFILL_WRITE_CONFIRM` only when `--write` is requested
 
 The runner maps the already-authorized local Worker credential to the existing `UsageTracker` client only inside the process. It does not commit or print the credential.
 
-The confirmation value is intentionally fixed in source so an invocation must opt into the maintenance operation explicitly:
+Private production reads and live Spotify backfill calls require this confirmation value:
 
-`I_UNDERSTAND_THIS_CALLS_SPOTIFY_AND_CAN_WRITE_PRIVATE_LISTENING_METADATA`
+`I_AUTHORIZE_PRIVATE_LISTENING_READS_AND_LIVE_SPOTIFY_BACKFILL_CALLS`
+
+A production metadata write is a separate authorization and additionally requires:
+
+`I_AUTHORIZE_PRODUCTION_SPOTIFY_METADATA_WRITES`
+
+Setting the first value does not authorize `--write`.
 
 ## Before any live invocation
 
 1. Confirm PR review and tests are green on the exact commit being used.
 2. Confirm the Spotify Development Mode quota is available; do not repeatedly probe while `QUOTA_EXCEEDED` is known to be active.
-3. Confirm `.livevault-maintenance/` is ignored by Git.
+3. Confirm `.livevault-maintenance/` is ignored by Git. The supported production entrypoint refuses checkpoint paths outside that directory.
 4. Confirm the private Worker credential and Spotify application credentials exist only in the local secret environment.
 5. Confirm the approved request cap. The initial production cap is 25 track requests per invocation and the hard code ceiling is 100.
-6. Confirm whether the invocation is provider-only staging or is also authorized to write `listening/spotify-metadata.json`.
+6. Confirm whether the invocation is provider-only staging or is also separately authorized to write `listening/spotify-metadata.json`.
 
 ## Inventory-only dry run
 
 The separate network-free dry-run tool remains the safest first check because it consumes fictional/local input and cannot call Spotify or production storage:
 
 ```text
-node scripts/spotify-artwork-backfill-dry-run.js <synthetic-events.json> <synthetic-metadata.json>
+node scripts/spotify-artwork-backfill-dry-run.js --events <synthetic-events.json> --metadata <synthetic-metadata.json>
 ```
 
 Production inventory requires reading private production listening data and therefore remains a production action even when no Spotify call or R2 write is made.
 
 ## Provider-only controlled invocation
 
-After explicit authorization for private production reads plus live Spotify calls, but without production metadata-write authorization, use the production entrypoint without `--write`:
+After explicit authorization for private production reads plus live Spotify calls, but without production metadata-write authorization, set the required values in the trusted local environment and use the production entrypoint without `--write`:
 
 ```text
 node scripts/spotify-artwork-backfill-production.js --execute --cap 25
 ```
 
-Successful provider results are staged in the ignored local checkpoint. They are not written to `listening/spotify-metadata.json` until a later separately authorized `--write` invocation.
+Successful provider results are staged in the ignored local checkpoint. They are not written to `listening/spotify-metadata.json` until a later separately authorized `--write` invocation. A fully staged logical batch is deliberately not expanded into a fresh provider batch until its staged metadata has been synchronized, preventing local accumulation and accidental repeated work.
 
 ## Controlled invocation with metadata synchronization
 
-Only after explicit authorization to write production listening metadata:
+Only after separate explicit authorization to write production listening metadata, set the write-confirmation value in the trusted local environment and use:
 
 ```text
 node scripts/spotify-artwork-backfill-production.js --execute --write --cap 25
@@ -73,6 +80,7 @@ The runner rereads the latest metadata and uses ETag/create-only conditions. An 
 - 404: classify that trusted ID as terminal-not-found so later quota windows do not spend another request on it.
 - malformed 200 response: fail closed; do not create metadata.
 - Worker ETag conflict: fail closed; reread on the next controlled invocation.
+- invalid/corrupt private checkpoint: fail closed before provider work; checkpoint fields are normalized through an allowlist before use.
 - process interruption: completed provider results already checkpointed remain staged and are not re-requested.
 
 ## Source and identity rules
