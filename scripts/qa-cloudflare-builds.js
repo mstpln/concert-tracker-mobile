@@ -9,7 +9,7 @@ function assert(condition, message) {
 const configText = fs.readFileSync('wrangler.jsonc', 'utf8');
 const config = JSON.parse(configText);
 assert(config.name === 'concert-tracker-api', 'Worker name must match the existing production Worker');
-assert(config.main === './workerV104.js', 'Worker entry point must use the reviewed v104 wrapper');
+assert(config.main === './worker.js', 'Worker entry point must remain worker.js');
 assert(/^\d{4}-\d{2}-\d{2}$/.test(config.compatibility_date), 'compatibility_date must be explicit');
 assert(config.workers_dev === true, 'workers.dev route must remain enabled');
 assert(config.preview_urls === true, 'preview URLs must remain enabled for safe branch builds');
@@ -18,13 +18,12 @@ assert(config.r2_buckets[0].binding === 'BUCKET', 'R2 binding name must remain B
 assert(config.r2_buckets[0].bucket_name === 'concert-tracker-data', 'R2 bucket must remain concert-tracker-data');
 assert(!configText.match(/BROWSER_TOKEN|AUTOMATION_TOKEN|READ_ONLY_TOKEN|API_TOKEN/), 'runtime secrets must not be committed');
 
-const wrapper = fs.readFileSync('workerV104.js', 'utf8');
-assert(wrapper.includes("import baseWorker from './worker.js'"), 'v104 wrapper must delegate existing Worker behavior');
-assert(wrapper.includes("const ROUTE = '/musicbrainz/release-context'"), 'v104 wrapper must expose only the reviewed MusicBrainz context route');
-assert(wrapper.includes("env.BROWSER_TOKEN") && !wrapper.includes('env.AUTOMATION_TOKEN'), 'MusicBrainz context route must remain browser-role only');
-assert(wrapper.includes("upstream.searchParams.set('inc', 'release-groups')"), 'MusicBrainz lookup must request release-group context from an exact release');
-assert(wrapper.includes("'User-Agent': USER_AGENT"), 'MusicBrainz requests must carry the reviewed meaningful User-Agent');
-assert(!/BUCKET\.(?:put|delete)\s*\(/.test(wrapper), 'MusicBrainz context wrapper must not write R2 data');
+const worker = fs.readFileSync('worker.js', 'utf8');
+assert(worker.includes("const MUSICBRAINZ_RELEASE_CONTEXT_PATH = '/musicbrainz/release-context'"), 'reviewed MusicBrainz context route must live in the watched Worker');
+assert(worker.includes("upstream.searchParams.set('inc','release-groups')"), 'MusicBrainz lookup must request release-group context from an exact release');
+assert(worker.includes("'User-Agent':MUSICBRAINZ_USER_AGENT"), 'MusicBrainz requests must carry the reviewed meaningful User-Agent');
+assert(worker.includes("if(role!=='browser')return response('Forbidden',{status:403})"), 'MusicBrainz context route must remain browser-role only');
+assert(worker.includes('MUSICBRAINZ_TIMEOUT_MS = 10000'), 'MusicBrainz provider request must remain timeout-bounded');
 
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 assert(packageJson.scripts['qa:cloudflare-builds'] === 'node scripts/qa-cloudflare-builds.js', 'package script must run the Cloudflare Builds guard');
