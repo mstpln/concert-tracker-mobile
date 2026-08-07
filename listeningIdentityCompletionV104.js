@@ -58,7 +58,6 @@
     const artistName = clean(event.artistCreditName);
     const recordingName = clean(event.recordingTitle);
     const releaseName = clean(event.releaseTitle);
-    if (!identity.releaseMbid && (!artistName || !recordingName)) return null;
     if (!identity.recordingMbid && (!artistName || !recordingName)) return null;
     return {
       key: [
@@ -180,14 +179,36 @@
     return output;
   }
 
+  function providerIdentityRecord(record) {
+    return Boolean(record?.recordingMbid || record?.releaseMbid || record?.releaseGroupMbid || record?.artistMbid || record?.artistMbids?.length);
+  }
+
+  function canonicalFallbackIdentity(event, byId) {
+    const siblingIds = Array.isArray(event?.canonicalSourceEventIds)
+      ? event.canonicalSourceEventIds.map(clean).filter(Boolean).filter((id) => id !== sourceEventId(event))
+      : [];
+    const siblingRecords = siblingIds.map((id) => byId.get(id)).filter(providerIdentityRecord);
+    const recordingMbids = [...new Set(siblingRecords.map((record) => safeUuid(record?.recordingMbid)).filter(Boolean))];
+    if (recordingMbids.length !== 1) return null;
+    return { recordingMbid: recordingMbids[0] };
+  }
+
+  function identityForRuntimeEvent(event, byId) {
+    const own = byId.get(sourceEventId(event));
+    if (providerIdentityRecord(own)) return own;
+    // Canonical siblings can safely contribute a single unambiguous recording
+    // identity, but never an album edition: the same recording may legitimately
+    // occur on a single, album, deluxe or regional release.
+    return canonicalFallbackIdentity(event, byId);
+  }
+
   async function applyDerivedIdentities(storage = root?.BandmarkrListeningDerivedStorage) {
     if (typeof listeningEvents === 'undefined' || !Array.isArray(listeningEvents)) return { applied: 0 };
     const identities = await listAllIdentities(storage);
     const byId = new Map(identities.map((record) => [clean(record.sourceEventId), record]));
     let applied = 0;
     listeningEvents = listeningEvents.map((event) => {
-      const ids = [sourceEventId(event), ...(Array.isArray(event?.canonicalSourceEventIds) ? event.canonicalSourceEventIds.map(clean).filter(Boolean) : [])];
-      const identity = ids.map((id) => byId.get(id)).find((record) => record?.recordingMbid || record?.releaseMbid || record?.releaseGroupMbid || record?.artistMbid || record?.artistMbids?.length);
+      const identity = identityForRuntimeEvent(event, byId);
       if (!identity) return event;
       applied += 1;
       return mergeIdentityIntoEvent(event, identity);
@@ -279,6 +300,7 @@
     let written = 0;
     let resolvedRecordings = 0;
     let resolvedReleaseGroups = 0;
+    let unresolvedSelected = 0;
     let lastMusicBrainzRequestAt = 0;
     for (let index = 0; index < selected.length; index += 1) {
       if (index > 0) await sleep(REQUEST_DELAY_MS);
@@ -288,15 +310,18 @@
         recordingMbid: item.recordingMbid,
         releaseGroupMbid: item.releaseGroupMbid,
       };
+      let gainedIdentity = false;
 
       if (!resolved.recordingMbid) {
         const mapping = await requestLookupOne(item, connection.token, fetchImpl);
         if (!mapping) {
+          unresolvedSelected += 1;
           onProgress({ checked: index + 1, total: selected.length, resolvedRecordings, resolvedReleaseGroups, written });
           continue;
         }
         resolved = { ...resolved, ...mapping };
         resolvedRecordings += 1;
+        gainedIdentity = true;
       }
 
       if (item.releaseMbid && !resolved.releaseGroupMbid) {
@@ -307,10 +332,13 @@
         if (context?.releaseGroupMbid) {
           resolved.releaseGroupMbid = context.releaseGroupMbid;
           resolvedReleaseGroups += 1;
+          gainedIdentity = true;
+        } else {
+          unresolvedSelected += 1;
         }
       }
 
-      written += await writeIdentityRecords(storage, buildIdentityRecords(item, resolved));
+      if (gainedIdentity) written += await writeIdentityRecords(storage, buildIdentityRecords(item, resolved));
       onProgress({ checked: index + 1, total: selected.length, resolvedRecordings, resolvedReleaseGroups, written });
     }
 
@@ -323,7 +351,7 @@
       resolvedRecordings,
       resolvedReleaseGroups,
       written,
-      remaining: Math.max(0, plan.items.length - selected.length),
+      remaining: Math.max(0, plan.items.length - selected.length + unresolvedSelected),
       alreadyResolved: plan.alreadyResolved,
       ineligible: plan.ineligible,
     };
@@ -388,6 +416,9 @@
     writeIdentityRecords,
     identityFields,
     mergeIdentityIntoEvent,
+    providerIdentityRecord,
+    canonicalFallbackIdentity,
+    identityForRuntimeEvent,
     applyDerivedIdentities,
     installHistoryIdentityHook,
     lookupUrl,
