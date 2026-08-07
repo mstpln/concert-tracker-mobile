@@ -9,6 +9,7 @@
   const PERSIST_EVERY = 25;
   const REQUEST_DELAY_MS = 150;
   const MARKET = 'SE';
+  const SETTINGS_HINT = 'Fetch exact Spotify track, album and artwork metadata for listening records that already contain a trusted Spotify track ID. No title search is used. Up to 500 tracks are processed per run with paced requests.';
 
   const sleep = (ms) => new Promise((resolve) => root.setTimeout ? root.setTimeout(resolve, ms) : setTimeout(resolve, ms));
   const validSpotifyId = (value) => /^[A-Za-z0-9]{1,64}$/.test(String(value || '').trim());
@@ -110,7 +111,7 @@
     const refreshHint = () => {
       const wrapper = document.querySelector('[data-v99-spotify-listening-metadata]');
       const hint = wrapper?.querySelector('.settings-hint');
-      if (hint) hint.textContent = 'Fetch exact Spotify track, album and artwork metadata for listening records that already contain a trusted Spotify track ID. No title search is used. Up to 500 tracks are processed per run with paced requests.';
+      if (hint && hint.textContent !== SETTINGS_HINT) hint.textContent = SETTINGS_HINT;
     };
 
     document.addEventListener('click', async (event) => {
