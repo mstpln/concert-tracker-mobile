@@ -108,6 +108,11 @@ test('maintenance can create track identities only through validated conditional
   badSpotifyKey.records[key].spotifyTrackId = 'DifferentSpotifyTrack';
   response = await worker.fetch(req('PUT', '/listening/track-identities.json', 'maintenance', JSON.stringify(badSpotifyKey), { 'Content-Type': 'application/json', 'If-Match': 'listening/track-identities.json-next' }), env);
   assert.equal(response.status, 400);
+
+  const badTypes = structuredClone(good);
+  badTypes.records[key].localBandId = 123;
+  response = await worker.fetch(req('PUT', '/listening/track-identities.json', 'maintenance', JSON.stringify(badTypes), { 'Content-Type': 'application/json', 'If-Match': 'listening/track-identities.json-next' }), env);
+  assert.equal(response.status, 400);
 });
 
 test('spotify metadata contract accepts additive artist ids and ISRC but rejects malformed provider fields', async () => {
@@ -137,6 +142,11 @@ test('spotify metadata contract accepts additive artist ids and ISRC but rejects
   const bad = structuredClone(good);
   bad.records[id].spotifyArtistIds = ['not valid!'];
   response = await worker.fetch(req('PUT', '/listening/spotify-metadata.json', 'maintenance', JSON.stringify(bad), { 'Content-Type': 'application/json', 'If-Match': 'listening/spotify-metadata.json-next' }), env);
+  assert.equal(response.status, 400);
+
+  const badType = structuredClone(good);
+  badType.records[id].spotifyArtistIds = [123];
+  response = await worker.fetch(req('PUT', '/listening/spotify-metadata.json', 'maintenance', JSON.stringify(badType), { 'Content-Type': 'application/json', 'If-Match': 'listening/spotify-metadata.json-next' }), env);
   assert.equal(response.status, 400);
 });
 
