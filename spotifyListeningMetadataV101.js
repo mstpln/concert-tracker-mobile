@@ -35,6 +35,10 @@
     return new Error('Spotify is temporarily rate-limiting artwork requests. BANDMARKR stopped safely and kept the artwork already fetched. Wait a little while, then try again.');
   }
 
+  function foregroundInterruptionError() {
+    return new Error('Artwork fetching paused because BANDMARKR left the foreground. Progress already completed is saved.');
+  }
+
   async function requestTrack(spotifyTrackId, {
     fetchImpl = root.fetch,
     spotifyUser = root.SpotifyUser,
@@ -134,9 +138,16 @@
     const ids = metadata.unresolvedTrackIds(document).slice(0, limit);
     let added = 0;
     let processed = 0;
+    let interrupted = false;
+    const visibilityDocument = root.document;
+    const onVisibilityChange = () => {
+      if (visibilityDocument?.visibilityState === 'hidden') interrupted = true;
+    };
+    visibilityDocument?.addEventListener?.('visibilitychange', onVisibilityChange);
 
     try {
       for (let index = 0; index < ids.length; index += 1) {
+        if (interrupted) throw foregroundInterruptionError();
         const requestedId = ids[index];
         const track = await requestTrack(requestedId, { fetchImpl, spotifyUser, requestDelayMs });
         if (track) {
@@ -149,11 +160,14 @@
 
         processed = index + 1;
         document = await persistProgress(metadata, document, processed, ids.length, added, onProgress);
+        if (interrupted) throw foregroundInterruptionError();
         if (processed < ids.length && requestDelayMs > 0) await sleep(requestDelayMs);
       }
     } catch (error) {
       error.liveVaultProgress = { processed, total: ids.length, added };
       throw error;
+    } finally {
+      visibilityDocument?.removeEventListener?.('visibilitychange', onVisibilityChange);
     }
 
     const remoteChanged = !metadata.documentsEqual(document, remoteState.document);
