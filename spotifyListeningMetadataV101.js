@@ -40,6 +40,10 @@
     return new Error('Artwork fetching paused because BANDMARKR left the foreground. Progress already completed is saved.');
   }
 
+  function runStatePersistenceError() {
+    return new Error('BANDMARKR could not safely save the artwork fetch checkpoint on this device. No new Spotify request was started. Refresh BANDMARKR and try again.');
+  }
+
   function defaultRunStateStore() {
     try { return root.localStorage || null; } catch (_) { return null; }
   }
@@ -59,20 +63,44 @@
     };
   }
 
+  function assertRunStateStore(store) {
+    if (!store?.getItem || !store?.setItem || !store?.removeItem) throw runStatePersistenceError();
+    return store;
+  }
+
   function readRunState(store = defaultRunStateStore()) {
-    if (!store?.getItem) return null;
-    try { return normalizeRunState(JSON.parse(store.getItem(RUN_STATE_KEY) || 'null')); } catch (_) { return null; }
+    if (!store) return null;
+    try {
+      const raw = store.getItem(RUN_STATE_KEY);
+      if (!raw) return null;
+      const normalized = normalizeRunState(JSON.parse(raw));
+      if (!normalized) throw runStatePersistenceError();
+      return normalized;
+    } catch (error) {
+      if (error?.message?.includes('artwork fetch checkpoint')) throw error;
+      throw runStatePersistenceError();
+    }
   }
 
   function writeRunState(state, store = defaultRunStateStore()) {
     const normalized = normalizeRunState(state);
-    if (!normalized || !store?.setItem) return normalized;
-    store.setItem(RUN_STATE_KEY, JSON.stringify(normalized));
-    return normalized;
+    if (!normalized) throw runStatePersistenceError();
+    if (!store) return normalized;
+    try {
+      assertRunStateStore(store).setItem(RUN_STATE_KEY, JSON.stringify(normalized));
+      return normalized;
+    } catch (error) {
+      if (error?.message?.includes('artwork fetch checkpoint')) throw error;
+      throw runStatePersistenceError();
+    }
   }
 
   function clearRunState(store = defaultRunStateStore()) {
-    try { store?.removeItem?.(RUN_STATE_KEY); } catch (_) {}
+    if (!store) return;
+    try { assertRunStateStore(store).removeItem(RUN_STATE_KEY); } catch (error) {
+      if (error?.message?.includes('artwork fetch checkpoint')) throw error;
+      throw runStatePersistenceError();
+    }
   }
 
   function prepareRunState(unresolvedIds, limit, store = defaultRunStateStore()) {
@@ -86,8 +114,7 @@
     }
     const ids = unresolved.slice(0, limit);
     if (!ids.length) return null;
-    return writeRunState({ schemaVersion: 1, ids, remainingIds: [...ids], createdAt: new Date().toISOString() }, store)
-      || { schemaVersion: 1, ids, remainingIds: [...ids], createdAt: new Date().toISOString() };
+    return writeRunState({ schemaVersion: 1, ids, remainingIds: [...ids], createdAt: new Date().toISOString() }, store);
   }
 
   function completeRunItem(runState, id, store = defaultRunStateStore()) {
@@ -198,6 +225,7 @@
     if (!metadata?.readRemote || !metadata?.loadLocal || !metadata?.recordFromSpotifyTrack) {
       throw new Error('Spotify listening artwork support is unavailable. Refresh BANDMARKR and try again.');
     }
+    if (root.document) assertRunStateStore(runStateStore);
     const remoteState = await metadata.readRemote(fetchImpl);
     let document = metadata.mergeDocuments(await metadata.loadLocal().catch(() => metadata.emptyDocument()), remoteState.document);
     const limit = Math.max(1, Math.min(MAX_TRACKS_PER_RUN, Number(cap) || MAX_TRACKS_PER_RUN));
@@ -247,7 +275,15 @@
 
     if (runState && runState.remainingIds.length === 0) clearRunState(runStateStore);
     const remoteChanged = !metadata.documentsEqual(document, remoteState.document);
-    if (remoteChanged) await metadata.writeRemote(document, remoteState.etag, remoteState.missing, fetchImpl);
+    if (remoteChanged) {
+      try {
+        await metadata.writeRemote(document, remoteState.etag, remoteState.missing, fetchImpl);
+      } catch (_) {
+        const error = new Error('Artwork progress is saved on this device, but BANDMARKR could not sync it to your private data store. Try Fetch listening artwork again later to retry the sync; completed Spotify tracks will not be requested again.');
+        error.liveVaultLocalOnly = true;
+        throw error;
+      }
+    }
     metadata.applyToEvents(document);
     return { requested: ids.length, added, total: Object.keys(document.records).length, synced: remoteChanged, batchTotal: total, batchProcessed: processed };
   }
@@ -288,7 +324,10 @@
         const prefix = progress?.total > 0
           ? `Progress saved through ${progress.processed.toLocaleString()} of ${progress.total.toLocaleString()} checked in this run. `
           : '';
-        status.textContent = `${prefix}${error?.message || 'Spotify artwork could not be fetched. Please try again later.'} Tap Fetch listening artwork again to continue the same run; completed tracks will not be requested again.`;
+        const resume = error?.liveVaultLocalOnly
+          ? ''
+          : ' Tap Fetch listening artwork again to continue the same run; completed tracks will not be requested again.';
+        status.textContent = `${prefix}${error?.message || 'Spotify artwork could not be fetched. Please try again later.'}${resume}`;
       } finally {
         button.disabled = false;
       }
