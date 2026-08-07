@@ -1,30 +1,15 @@
 'use strict';
 
-const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const zlib = require('node:zlib');
 const core = require('./spotify-artwork-backfill-core');
 
 const DEFAULT_MARKET = 'SE';
 const DEFAULT_DELAY_MS = 1000;
 const DEFAULT_CHECKPOINT = path.join('.livevault-maintenance', 'spotify-artwork-backfill.json');
-const EXECUTION_CONFIRMATION = 'I_UNDERSTAND_THIS_CALLS_SPOTIFY_AND_CAN_WRITE_PRIVATE_LISTENING_METADATA';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function normalizeEndpoint(value) {
-  const endpoint = String(value || '').trim().replace(/\/+$/, '');
-  if (!/^https:\/\//i.test(endpoint)) throw new Error('CF_WORKER_ENDPOINT must be an HTTPS URL.');
-  return endpoint;
-}
-
-function requiredEnv(env, name) {
-  const value = String(env?.[name] || '').trim();
-  if (!value) throw new Error(`Missing required environment variable: ${name}`);
-  return value;
 }
 
 function parseArgs(argv = []) {
@@ -59,12 +44,10 @@ function usageText() {
   return [
     'Spotify listening artwork maintenance backfill',
     '',
-    'This command is intentionally inert unless --execute is supplied.',
-    'A production metadata write additionally requires --write.',
-    '',
-    'Usage:',
-    '  node scripts/spotify-artwork-backfill.js --execute --cap 25',
-    '  node scripts/spotify-artwork-backfill.js --execute --write --cap 25',
+    'This module contains the tested backfill engine and is not a production CLI.',
+    'For any explicitly authorized real execution use:',
+    '  node scripts/spotify-artwork-backfill-production.js --execute --cap 25',
+    'A production metadata write additionally requires --write and its separate write authorization.',
     '',
     `Default checkpoint: ${DEFAULT_CHECKPOINT}`,
     `Minimum pacing: ${DEFAULT_DELAY_MS} ms between Spotify track requests.`,
@@ -87,10 +70,6 @@ async function writeCheckpoint(checkpointPath, checkpoint) {
   await fs.writeFile(tempPath, `${JSON.stringify(checkpoint, null, 2)}\n`, { mode: 0o600 });
   await fs.rename(tempPath, checkpointPath);
   try { await fs.chmod(checkpointPath, 0o600); } catch (_) { /* best effort on non-POSIX filesystems */ }
-}
-
-function sha256Hex(value) {
-  return crypto.createHash('sha256').update(value).digest('hex');
 }
 
 async function workerGet({ endpoint, token, pathname, fetchImpl = fetch }) {
@@ -141,31 +120,6 @@ function validateMetadata(value) {
   return value;
 }
 
-async function readSourceEventsFromWorker({ endpoint, token, fetchImpl = fetch }) {
-  const manifestResult = await workerGetJson({ endpoint, token, pathname: 'listening/manifest.json', fetchImpl });
-  const manifest = manifestResult.value;
-  if (!manifest || manifest.kind !== 'livevault-listening-vault' || Number(manifest.schemaVersion) !== 1 || !manifest.archive?.path || !manifest.archive?.sha256) {
-    throw new Error('Private listening manifest is missing or unsupported.');
-  }
-  const archiveResult = await workerGet({ endpoint, token, pathname: manifest.archive.path, fetchImpl });
-  if (archiveResult.missing) throw new Error('Private Spotify listening archive is missing.');
-  const compressed = Buffer.from(await archiveResult.response.arrayBuffer());
-  let text;
-  try { text = zlib.gunzipSync(compressed).toString('utf8'); }
-  catch (_) { throw new Error('Private Spotify listening archive could not be decompressed.'); }
-  if (sha256Hex(text) !== manifest.archive.sha256) throw new Error('Private Spotify listening archive failed its SHA-256 integrity check.');
-  let payload;
-  try { payload = JSON.parse(text); }
-  catch (_) { throw new Error('Private Spotify listening archive is invalid JSON.'); }
-  if (!payload || payload.kind !== 'livevault-listening-history' || Number(payload.schemaVersion) !== 1 || !Array.isArray(payload.events)) {
-    throw new Error('Private Spotify listening archive has an unsupported shape.');
-  }
-  if (Number.isInteger(manifest.archive.eventCount) && payload.events.length !== manifest.archive.eventCount) {
-    throw new Error('Private Spotify listening archive count does not match its manifest.');
-  }
-  return payload.events;
-}
-
 async function readRemoteMetadata({ endpoint, token, fetchImpl = fetch }) {
   const result = await workerGetJson({ endpoint, token, pathname: 'listening/spotify-metadata.json', fetchImpl });
   return {
@@ -189,7 +143,9 @@ async function getSpotifyToken({ clientId, clientSecret, fetchImpl = fetch }) {
     body: 'grant_type=client_credentials',
   });
   if (!response.ok) throw new Error(`Spotify application authorization failed (HTTP ${response.status}).`);
-  const payload = await response.json();
+  let payload;
+  try { payload = await response.json(); }
+  catch (_) { throw new Error('Spotify application authorization returned an invalid response.'); }
   const accessToken = String(payload?.access_token || '');
   if (!accessToken) throw new Error('Spotify application authorization returned no access token.');
   return accessToken;
@@ -363,41 +319,13 @@ async function runBackfill({
   return summary;
 }
 
-async function runCli({ argv = process.argv.slice(2), env = process.env, fetchImpl = fetch, log = console.log } = {}) {
+async function runCli({ argv = process.argv.slice(2), log = console.log } = {}) {
   const options = parseArgs(argv);
-  if (options.help) { log(usageText()); return { help: true }; }
-  if (!options.execute) {
-    throw new Error('Refusing to run: add --execute only after reviewing the maintenance plan.');
+  if (options.help) {
+    log(usageText());
+    return { help: true };
   }
-  if (env.LIVEVAULT_BACKFILL_CONFIRM !== EXECUTION_CONFIRMATION) {
-    throw new Error('Refusing to run: LIVEVAULT_BACKFILL_CONFIRM does not contain the required explicit maintenance confirmation value.');
-  }
-
-  const endpoint = normalizeEndpoint(requiredEnv(env, 'CF_WORKER_ENDPOINT'));
-  const workerToken = requiredEnv(env, 'CF_WORKER_BROWSER_TOKEN');
-  const clientId = requiredEnv(env, 'SPOTIFY_CLIENT_ID');
-  const clientSecret = requiredEnv(env, 'SPOTIFY_CLIENT_SECRET');
-  const checkpointPath = options.checkpointPath;
-
-  const summary = await runBackfill({
-    cap: options.cap,
-    delayMs: options.delayMs,
-    market: options.market,
-    writeEnabled: options.write,
-    loadEvents: () => readSourceEventsFromWorker({ endpoint, token: workerToken, fetchImpl }),
-    readMetadata: () => readRemoteMetadata({ endpoint, token: workerToken, fetchImpl }),
-    writeMetadata: ({ value, etag, missing }) => workerPutJson({ endpoint, token: workerToken, pathname: 'listening/spotify-metadata.json', value, etag, missing, fetchImpl }),
-    loadCheckpoint: () => readCheckpoint(checkpointPath),
-    saveCheckpoint: (checkpoint) => writeCheckpoint(checkpointPath, checkpoint),
-    getToken: () => getSpotifyToken({ clientId, clientSecret, fetchImpl }),
-    fetchTrack: ({ id, token, market }) => fetchSpotifyTrack({ id, token, market, fetchImpl }),
-  });
-
-  log(JSON.stringify(summary, null, 2));
-  if (!options.write && summary.staged > 0) {
-    log('Provider metadata is staged only in the private local checkpoint. No production metadata write was requested.');
-  }
-  return summary;
+  throw new Error('This engine is not a production entrypoint. Use scripts/spotify-artwork-backfill-production.js after the required production authorization.');
 }
 
 if (require.main === module) {
@@ -411,19 +339,20 @@ module.exports = {
   DEFAULT_MARKET,
   DEFAULT_DELAY_MS,
   DEFAULT_CHECKPOINT,
-  EXECUTION_CONFIRMATION,
   parseArgs,
   usageText,
   readCheckpoint,
   writeCheckpoint,
-  sha256Hex,
+  workerGet,
+  workerGetJson,
   validateMetadata,
-  readSourceEventsFromWorker,
   readRemoteMetadata,
   workerPutJson,
   getSpotifyToken,
   fetchSpotifyTrack,
   stopReasonForResult,
+  aggregateSummary,
+  synchronizeStages,
   runBackfill,
   runCli,
 };
