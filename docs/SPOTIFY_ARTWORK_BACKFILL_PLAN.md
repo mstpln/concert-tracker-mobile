@@ -4,195 +4,172 @@
 
 Backfill missing Spotify track, album and artwork metadata for listening records that already contain a trusted Spotify track ID.
 
-This is a one-time maintenance operation outside the BANDMARKR product UI. It must not search by title or artist, alter source listening history, replace trusted Spotify identity, or run automatically.
-
-The live execution remains separately gated because it calls Spotify and writes private production listening metadata.
+This is one-time maintenance outside the BANDMARKR product UI. It never searches by title or artist, never alters source listening history, never replaces trusted Spotify identity, and never runs automatically.
 
 ## Current constraints
 
-- Spotify Development Mode has already returned `429` with `reason: QUOTA_EXCEEDED` during the physical v103 test.
-- Spotify no longer supports the Development Mode batch `GET /tracks?ids=...` endpoint. Track metadata must be fetched one ID at a time with `GET /tracks/{id}`.
-- The exact Development Mode quota size and reset time are not published, so the backfill must be resumable across multiple quota windows.
-- Spotify track relinking may return a different provider track ID. The original trusted Spotify track ID remains BANDMARKR's identity and metadata key.
-- The Worker intentionally allows listening-object access only to browser/legacy roles. The existing GitHub automation token must not be broadened simply to make this maintenance task convenient.
-- Production listening history and metadata remain private and must never be committed to GitHub or included in QA fixtures.
+- Spotify Development Mode returned `429` with `reason: QUOTA_EXCEEDED` during the physical v103 test.
+- The removed Development Mode batch track endpoint is not used. Metadata is fetched one trusted ID at a time with `GET /tracks/{id}`.
+- The exact Development Mode quota size and reset time are not published, so progress must survive multiple manual quota windows.
+- Spotify track relinking may return a different provider ID. The requested trusted ID remains BANDMARKR's identity and metadata key.
+- The Worker intentionally allows listening-object access only to browser/legacy roles. The GitHub automation role remains barred from private listening objects.
+- Production listening history, metadata and maintenance checkpoints remain private and never enter GitHub or QA fixtures.
 
-## Execution architecture
+## Implemented architecture
 
-### 1. Private local maintenance runner
+### 1. Manual local production entrypoint
 
-The preferred production execution path is a manual Node maintenance runner launched from a trusted local environment. Repository code may contain the runner, validation and tests, but real credentials and private checkpoint files stay outside source control.
+Real execution is supported only through `scripts/spotify-artwork-backfill-production.js` from a trusted local environment. The lower-level engine refuses direct production execution so it cannot accidentally bypass the production authorization or `UsageTracker` wrapper.
 
-The runner will obtain credentials only from environment variables or an equivalent local secret store. No Spotify token, client secret, Worker token or private endpoint is accepted as a command-line argument or written to logs.
+GitHub Actions is not used for this maintenance operation and no Worker role is broadened.
 
-GitHub Actions is not the default production executor. The current Worker role boundary forbids the automation role from reading or writing listening objects, and that boundary should remain intact. A future dedicated maintenance credential would require a separate reviewed Worker/security change and explicit production authorization.
+### 2. Verified private source read
 
-### 2. Source discovery
+On an explicitly authorized production run the source reader:
 
-At the start of an authorized run, the runner will:
+1. reads `listening/manifest.json` through the authenticated Worker;
+2. accepts only the exact content-addressed Spotify-history and ListenBrainz path formats already used by the Worker;
+3. requires the content hash embedded in each path to equal the descriptor SHA-256;
+4. downloads and decompresses the immutable base Spotify archive and every ListenBrainz incremental object;
+5. verifies each decompressed object's SHA-256, supported payload kind/source and manifest event count;
+6. combines the source events only in process memory;
+7. extracts unique syntactically valid trusted `spotifyTrackId` values.
 
-1. Read the current private listening manifest and Spotify archive through the authenticated Worker.
-2. Verify the archive checksum/schema using the same integrity expectations as the existing listening vault.
-3. Read the current `listening/spotify-metadata.json` document and its ETag.
-4. Extract only unique valid `spotifyTrackId` values from immutable source events.
-5. Remove IDs that already have a valid metadata record.
-6. Remove IDs already marked terminal-not-found in the private maintenance checkpoint.
+Spotify receives only those exact trusted IDs. Titles, artists, timestamps, band IDs and source-event payloads are never sent to Spotify.
 
-The runner never sends listening timestamps, titles, artists, band IDs or source-event payloads to Spotify. Spotify receives only the exact trusted track ID already present in the source observation.
+### 3. Private local checkpoint
 
-### 3. Private checkpoint
+The checkpoint must remain inside ignored `.livevault-maintenance/`. The production entrypoint rejects any checkpoint path outside that directory.
 
-A private local checkpoint is created before the first provider request. It is stored under `.livevault-maintenance/`, which is excluded from Git.
+Its allowlisted schema contains only:
 
-The checkpoint contains only maintenance state needed to resume safely, for example:
+- schema version;
+- the current logical batch of planned trusted Spotify IDs;
+- remaining IDs;
+- terminal 404 IDs;
+- staged metadata records not yet synchronized;
+- aggregate request count;
+- stop reason.
 
-- schema/version
-- source archive fingerprint
-- metadata ETag observed at planning time
-- ordered pending trusted Spotify IDs
-- completed IDs
-- terminal 404 IDs
-- locally staged metadata records not yet synchronized to R2
-- request counters and timestamps
-- stop reason such as `quota_exceeded`, `rate_limited`, `manual_stop` or `completed`
+Checkpoint records are normalized before production use. Arbitrary top-level or record fields are dropped, and structurally invalid checkpoints fail closed before provider work starts. Credentials, listening timestamps, titles and other source-event payloads are never stored there.
 
-The checkpoint contains no OAuth token, client secret, Worker token, listening timestamps, track titles or user-entered data.
-
-After every successful Spotify response, the returned metadata record is written to the local checkpoint before another Spotify request is made. This prevents already-completed provider calls from being repeated if the process stops before the next R2 synchronization.
+Each successful provider result or terminal 404 is checkpointed before the next track request. A fully completed logical batch with unsynchronized staged records is not expanded into another provider batch until those records are synchronized.
 
 ### 4. Spotify authentication and requests
 
-The catalog lookup uses Spotify Client Credentials because Get Track is public catalog metadata and does not require user-specific Spotify data.
+The catalog lookup uses Spotify Client Credentials for public track metadata.
 
 Provider rules:
 
-- request one track at a time: `GET /v1/tracks/{trustedId}?market=SE`;
-- default pacing: at least 1,000 ms between track requests;
-- initial live-run cap: 25 provider track requests per invocation;
-- configurable cap may be raised later only after observing real quota behavior, with a hard maintenance ceiling of 100 per invocation;
-- one bounded `Retry-After` wait for an ordinary 429;
-- `QUOTA_EXCEEDED` stops the run immediately without consuming the current ID from the pending queue;
-- 401 may refresh/reacquire the app access token once;
-- 403 stops with a clear provider rejection;
-- 404 is recorded as terminal-not-found for this backfill so it is not repeatedly requested every quota window;
-- malformed successful responses fail closed;
+- request one exact track at a time: `GET /v1/tracks/{trustedId}?market=SE`;
+- default maximum: 25 track requests per manual invocation;
+- hard logical ceiling: 100;
+- minimum 1,000 ms between track requests;
+- every token/track provider operation is checked and recorded through the existing project `UsageTracker` before the request;
+- `QUOTA_EXCEEDED`: stop immediately and leave the current ID pending;
+- ordinary 429: stop and retain any `Retry-After` value for operator feedback; no hidden retry loop;
+- 401/403: stop conservatively;
+- 404: mark the trusted ID terminal-not-found so later quota windows do not spend another request on it;
+- malformed successful response: fail closed;
 - no title/artist fallback and no identity guessing.
 
-The request count is recorded in the private checkpoint. Before production execution, the runner must also integrate with the project's provider-usage accounting rather than bypassing existing quota-safety conventions.
+The maintenance 25/100 limits and 1,000 ms pacing are additional controls; they do not replace `UsageTracker`.
 
 ### 5. Track relinking and metadata identity
 
-For a request of trusted source ID `A`, Spotify may return provider track ID `B`.
-
-The stored record remains keyed by `A` and contains:
+If trusted requested ID `A` returns provider track ID `B`, the stored metadata remains keyed by `A`:
 
 - `spotifyTrackId: A`
-- `spotifyTrackUrl: https://open.spotify.com/track/A`
-- album ID, album URL and artwork from Spotify's returned Track object
-- returned provider ID `B` only as separate derived audit metadata when it differs from `A`
+- canonical track URL for `A`
+- album ID, album URL and artwork from the returned provider Track object when valid
+- `B` retained only as `spotifyProviderResolvedTrackId` plus `spotifyProviderRelinked: true`
 
-A relinked provider ID never creates a new listening identity and never replaces the source event's trusted Spotify ID.
+A relinked provider ID never creates or replaces listening identity.
 
-### 6. R2 synchronization
+### 6. Conditional metadata synchronization
 
-Provider acquisition and R2 synchronization are separate checkpointed steps.
+Successful provider records are staged locally before production metadata synchronization.
 
-- Successful Spotify records are staged locally first.
-- The runner rereads the latest production metadata before each R2 synchronization.
-- Staged records are merged by trusted Spotify ID while preserving unknown existing record fields and unrelated records.
-- Writes use the current ETag / conditional write semantics.
-- On an ETag conflict, the runner rereads, remerges and may attempt one bounded write retry. It never overwrites a newer document blindly.
-- A failed R2 synchronization does not discard locally staged provider results and does not cause those tracks to be fetched from Spotify again.
-- Source listening archives and the listening manifest are never modified by the artwork backfill.
+When `--write` has been separately authorized, the runner:
 
-R2 synchronization should normally occur after a small group of staged successes and at every controlled stop/end. The exact sync batch can be tuned independently of Spotify pacing because the private checkpoint protects provider work between R2 writes.
+1. rereads the latest `listening/spotify-metadata.json` and ETag;
+2. merges staged records by the trusted requested ID while preserving unrelated records, unknown future production fields and existing per-record fields;
+3. writes only with `If-Match` or create-only `If-None-Match: *`;
+4. stops on an ETag conflict without an automatic write retry;
+5. retains staged provider results in the private checkpoint when synchronization fails, so they do not need to be fetched from Spotify again.
 
-### 7. Quota-window resume behavior
+The source archives and listening manifest are never modified by the backfill.
 
-If a run starts with 25 pending IDs and Spotify allows only 12 before returning `QUOTA_EXCEEDED`:
+### 7. Separate production authorization gates
 
-1. metadata for the 12 completed requests is already in the private checkpoint;
-2. those records are synchronized to R2 if possible;
-3. the 13th ID remains pending;
-4. the runner exits successfully as a controlled quota stop rather than retrying in a loop;
-5. on a later manually authorized run, it rereads production metadata and resumes from the first still-unresolved pending ID.
+The supported production entrypoint has two explicit gates.
 
-There is no automatic polling for a Spotify quota reset and no scheduled background retry.
+The first gate covers all actions unavoidable in a provider-only invocation:
 
-## Validation phases
+- reading private production listening data;
+- making live Spotify backfill calls;
+- writing aggregate Spotify provider accounting to production `apiUsage.json` through `UsageTracker`.
 
-### Phase A — pure core and synthetic tests
+The second, additional gate is required only for `--write` and covers writes to `listening/spotify-metadata.json`.
 
-Build repository code that can:
+Merging the maintenance code authorizes neither gate.
 
-- derive a deterministic missing-ID plan from synthetic source events and metadata;
-- preserve a prior checkpoint across interruption;
-- store relinked provider metadata under the requested trusted ID;
-- mark 404 without removing unrelated data;
-- leave the current ID pending on quota/rate-limit stop;
-- merge staged records into a newer metadata document without losing unknown fields;
-- prove reruns do not repeat already-completed IDs.
+## Quota-window behavior
 
-No network access is part of this phase.
+For a 25-track logical batch, if Spotify permits 12 requests and then returns `QUOTA_EXCEEDED`:
 
-### Phase B — synthetic I/O runner
+1. the first 12 successful results have already been checkpointed;
+2. the 13th ID remains pending;
+3. no automatic polling or retry occurs;
+4. on a later manually authorized invocation, the same logical batch resumes from the first still-pending ID;
+5. already staged or synchronized IDs are not re-requested.
 
-Add a CLI shell around the tested core using only fictional local fixtures. Validate:
+Provider-only staging deliberately pauses after a full logical batch until those staged records are synchronized, preventing unbounded local accumulation and accidental extra quota use.
 
-- checkpoint creation and resume;
-- staged-record persistence before the next provider request;
-- bounded request count and pacing hooks;
-- simulated 401/403/404/429/500 responses;
-- conditional-write conflict handling against a fake Worker;
-- no credential values in output.
+## Validation
 
-No live Spotify, production Worker or production R2 access is permitted.
+Synthetic coverage verifies:
 
-### Phase C — production readiness review
+- deterministic missing-ID planning and 25/100 caps;
+- resumable logical batches with no repeated completed IDs;
+- provider-only staged batches do not silently expand;
+- relinked metadata remains keyed by the requested trusted ID;
+- terminal 404 behavior;
+- quota, ordinary 429, 401/403 and malformed-response stop paths;
+- per-track checkpoint persistence hooks and pacing;
+- strict content-addressed source path, SHA-256 and event-count validation;
+- checkpoint allowlisting and path confinement;
+- conditional `If-Match` / create-only metadata writes and ETag conflict failure;
+- preservation of unrelated and unknown production metadata fields;
+- UsageTracker accounting before provider calls;
+- separate provider/read/usage-write and listening-metadata-write authorization gates;
+- no credentials or trusted track IDs in aggregate command output.
 
-Before the first live run:
-
-- review the final diff and tests;
-- confirm Spotify Client Credentials are still suitable for Get Track;
-- confirm Worker listening-route role boundaries remain unchanged;
-- verify the production runner cannot exceed the approved per-invocation cap;
-- verify the checkpoint directory is ignored by Git;
-- verify dry-run mode performs zero Spotify calls and zero R2 writes;
-- define the exact production command without placing credentials in the command line;
-- separately obtain explicit authorization for live Spotify calls and production metadata writes.
-
-### Phase D — controlled production backfill
-
-Only after explicit production authorization:
-
-1. run dry-run inventory and report counts only;
-2. run a very small first provider window;
-3. inspect stop reason, request count and metadata writes;
-4. repeat manually across available quota windows;
-5. verify metadata coverage after each window;
-6. stop permanently once every obtainable trusted ID is either represented in metadata or recorded as terminal-not-found.
+All automated tests use synthetic data only. They do not call live Spotify or production storage.
 
 ## Completion criteria
 
 The backfill is complete when:
 
-- every unique trusted source Spotify track ID is classified as already present, successfully backfilled, or terminal 404;
+- every unique trusted source Spotify track ID is represented in metadata or classified terminal 404;
+- no staged metadata remains in the private checkpoint;
 - no source listening observation was modified;
-- no relinked provider ID replaced BANDMARKR's trusted identity;
-- no completed Spotify request was repeated because of an interruption or failed R2 write;
+- no relinked provider ID replaced the trusted identity;
+- no completed provider request was repeated because of interruption or synchronization failure;
 - final `listening/spotify-metadata.json` passes the existing Worker validator;
-- a fresh app restore can use the resulting artwork metadata;
-- the private maintenance checkpoint can be archived locally or deleted after final verification;
 - no real listening data or credentials were committed to GitHub.
+
+After final verification, the ignored private checkpoint may be archived or deleted locally.
 
 ## Authorization boundary
 
 Creating, reviewing and testing this machinery with synthetic data is approved development work.
 
-The following remain separate production actions and are not authorized by the existence or merge of the maintenance code:
+The following remain separate production actions and are **not** authorized by the existence or merge of this code:
 
-- calling Spotify with the real BANDMARKR application credentials for this historical backfill;
-- reading the private production listening archive for the backfill run;
-- writing `listening/spotify-metadata.json` in production;
-- changing Worker roles, secrets or bindings;
-- running a production GitHub workflow.
+- private production listening reads for the backfill;
+- live Spotify calls with the real BANDMARKR application credentials;
+- production `apiUsage.json` writes required for provider accounting;
+- production `listening/spotify-metadata.json` writes;
+- Worker role, secret or binding changes;
+- production GitHub workflow execution.
