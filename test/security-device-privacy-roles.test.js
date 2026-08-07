@@ -102,19 +102,21 @@ test('Worker separates browser and automation roles while retaining staged legac
   assert.equal((await get('/qa-smoke', 'smoke')).status, 200);
 });
 
-test('v76 shell and production workflow include the approved hardening', () => {
+test('shell and production workflow retain the approved security hardening', () => {
   const index = source('index.html');
   const sw = source('service-worker.js');
   const version = source('version.js');
   const workflow = source('.github/workflows/research.yml');
   const workerClient = source('scripts/lib/workerClient.js');
+  const cacheVersion = sw.match(/^const CACHE_NAME_LITERAL = '([^']+)';/m)?.[1] || null;
+  const appVersion = version.match(/^const APP_VERSION = '([^']+)';/m)?.[1] || null;
 
   assert.ok(index.indexOf('browserFetchPolicy.js') < index.indexOf('remoteStore.js'));
   assert.ok(index.indexOf('app.js') < index.indexOf('devicePrivacy.js'));
-  assert.match(sw, /CACHE_NAME_LITERAL = 'v76'/);
+  assert.ok(appVersion);
+  assert.equal(cacheVersion, appVersion);
   assert.match(sw, /browserFetchPolicy\.js/);
   assert.match(sw, /devicePrivacy\.js/);
-  assert.match(version, /APP_VERSION = 'v76'/);
   assert.match(workflow, /permissions:\n  contents: read/);
   assert.match(workflow, /actions\/checkout@[0-9a-f]{40}/);
   assert.match(workflow, /actions\/setup-node@[0-9a-f]{40}/);
