@@ -112,10 +112,22 @@
     try { return clean(progressStore.getItem(CURSOR_STORAGE_KEY)); } catch { return null; }
   }
 
-  function writeCursor(cursorKey, progressStore = defaultProgressStore()) {
-    if (!progressStore?.setItem) {
-      throw new Error('BANDMARKR cannot save listening identity progress on this device, so the provider run was not continued.');
+  function verifyProgressStore(progressStore = defaultProgressStore()) {
+    if (!progressStore?.getItem || !progressStore?.setItem || !progressStore?.removeItem) {
+      throw new Error('BANDMARKR cannot save listening identity progress on this device, so no provider request was started.');
     }
+    try {
+      const previous = progressStore.getItem(CURSOR_STORAGE_KEY);
+      progressStore.setItem(CURSOR_STORAGE_KEY, previous == null ? '__bandmarkr_probe__' : previous);
+      if (previous == null) progressStore.removeItem(CURSOR_STORAGE_KEY);
+      else progressStore.setItem(CURSOR_STORAGE_KEY, previous);
+      return true;
+    } catch {
+      throw new Error('BANDMARKR cannot save listening identity progress on this device, so no provider request was started.');
+    }
+  }
+
+  function writeCursor(cursorKey, progressStore = defaultProgressStore()) {
     try {
       progressStore.setItem(CURSOR_STORAGE_KEY, String(cursorKey));
       return true;
@@ -154,18 +166,38 @@
     if (!recordingMbid) return null;
     if (normalizeText(raw.artist_credit_name) !== normalizeText(request.artistName)) return null;
     if (normalizeText(raw.recording_name) !== normalizeText(request.recordingName)) return null;
+    const returnedArtistMbids = safeUuidList(raw.artist_mbids || raw.artistMbids);
+    const trustedArtistMbids = safeUuidList(request.artistMbids);
+    if (trustedArtistMbids.length && !returnedArtistMbids.some((id) => trustedArtistMbids.includes(id))) return null;
     return {
-      artistMbids: safeUuidList(raw.artist_mbids || raw.artistMbids),
+      artistMbids: trustedArtistMbids.length ? trustedArtistMbids : returnedArtistMbids,
       recordingMbid,
     };
   }
 
-  function buildIdentityRecords(group, resolved, now = new Date().toISOString()) {
+  function mergeEvidence(existingEvidence, newEvidence) {
+    const combined = [...(Array.isArray(existingEvidence) ? existingEvidence : []), ...(Array.isArray(newEvidence) ? newEvidence : [])];
+    const seen = new Set();
+    return combined.filter((item) => {
+      const key = JSON.stringify(item || null);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  function buildIdentityRecords(group, resolved, now = new Date().toISOString(), existingById = new Map()) {
     const recordingMbid = safeUuid(resolved?.recordingMbid || group?.recordingMbid);
     if (!group || !recordingMbid) return [];
     const artistMbids = safeUuidList(resolved?.artistMbids?.length ? resolved.artistMbids : group.artistMbids);
     const releaseMbid = safeUuid(group.releaseMbid);
     const releaseGroupMbid = releaseMbid ? safeUuid(resolved?.releaseGroupMbid || group.releaseGroupMbid) : null;
+    const newEvidence = [{
+      type: releaseGroupMbid
+        ? 'trusted_musicbrainz_release_context'
+        : (group.recordingMbid ? 'trusted_source_musicbrainz_recording' : 'listenbrainz_musicbrainz_recording_mapping'),
+      version: 1,
+    }];
     return (group.sourceEventIds || []).map((id) => ({
       sourceEventId: id,
       identityVersion: 1,
@@ -174,12 +206,7 @@
       recordingMbid,
       ...(releaseMbid ? { releaseMbid } : {}),
       ...(releaseGroupMbid ? { releaseGroupMbid } : {}),
-      evidence: [{
-        type: releaseGroupMbid
-          ? 'trusted_musicbrainz_release_context'
-          : (group.recordingMbid ? 'trusted_source_musicbrainz_recording' : 'listenbrainz_musicbrainz_recording_mapping'),
-        version: 1,
-      }],
+      evidence: mergeEvidence(existingById.get(id)?.evidence, newEvidence),
       updatedAt: now,
     }));
   }
@@ -294,7 +321,9 @@
     const response = await fetchImpl(lookupUrl(request), { headers: { Authorization: `Token ${token}` } });
     if (response.status === 429) throw new Error('ListenBrainz is rate limiting identity lookups. Try again later.');
     if (!response.ok) throw new Error(`ListenBrainz identity lookup returned HTTP ${response.status}.`);
-    return exactLookupResult(request, await response.json());
+    let payload;
+    try { payload = await response.json(); } catch { throw new Error('ListenBrainz returned invalid identity data.'); }
+    return exactLookupResult(request, payload);
   }
 
   function remoteConnection() {
@@ -313,7 +342,8 @@
     if (response.status === 404) return null;
     if (response.status === 503 || response.status === 429) throw new Error('MusicBrainz is rate limiting release identity lookups. Try again later.');
     if (!response.ok) throw new Error(`MusicBrainz release identity lookup returned HTTP ${response.status}.`);
-    const payload = await response.json();
+    let payload;
+    try { payload = await response.json(); } catch { throw new Error('MusicBrainz returned invalid release identity data.'); }
     if (safeUuid(payload?.releaseMbid) !== trustedReleaseMbid) throw new Error('MusicBrainz returned invalid release identity data.');
     const releaseGroupMbid = safeUuid(payload?.releaseGroupMbid);
     if (!releaseGroupMbid) throw new Error('MusicBrainz returned invalid release-group identity data.');
@@ -342,14 +372,13 @@
   } = {}) {
     const allEvents = await sourceEvents({ events });
     const existing = await listAllIdentities(storage);
+    const existingById = new Map(existing.map((record) => [clean(record.sourceEventId), record]));
     const plan = buildLookupPlan(allEvents, existing);
     if (!plan.items.length) {
       clearCursor(progressStore);
       return { checked: 0, resolvedRecordings: 0, resolvedReleaseGroups: 0, written: 0, remaining: 0, ...plan };
     }
-    if (!progressStore?.getItem || !progressStore?.setItem) {
-      throw new Error('BANDMARKR cannot save listening identity progress on this device, so no provider request was started.');
-    }
+    verifyProgressStore(progressStore);
     const cursorBefore = readCursor(progressStore);
     const selection = selectPlanItems(plan.items, cursorBefore, cap);
     const selected = selection.selected;
@@ -401,7 +430,7 @@
         }
       }
 
-      if (gainedIdentity) written += await writeIdentityRecords(storage, buildIdentityRecords(item, resolved));
+      if (gainedIdentity) written += await writeIdentityRecords(storage, buildIdentityRecords(item, resolved, new Date().toISOString(), existingById));
       writeCursor(item.cursorKey, progressStore);
       onProgress({ checked: index + 1, total: selected.length, resolvedRecordings, resolvedReleaseGroups, written });
     }
@@ -481,10 +510,12 @@
     buildLookupPlan,
     defaultProgressStore,
     readCursor,
+    verifyProgressStore,
     writeCursor,
     clearCursor,
     selectPlanItems,
     exactLookupResult,
+    mergeEvidence,
     buildIdentityRecords,
     writeIdentityRecords,
     identityFields,
