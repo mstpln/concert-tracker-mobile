@@ -32,6 +32,6 @@ test('Worker applies bounded JSON validation and private response headers', () =
   assert.match(source, /MAX_JSON_BYTES = 10 \* 1024 \* 1024/);
   assert.match(source, /contentType\s*!==\s*'application\/json'/);
   assert.match(source, /jsonRootIsValid/);
-  assert.match(source, /'Cache-Control': 'private, no-store'/);
-  assert.match(source, /'X-Content-Type-Options': 'nosniff'/);
+  assert.match(source, /'Cache-Control'\s*:\s*'private, no-store'/);
+  assert.match(source, /'X-Content-Type-Options'\s*:\s*'nosniff'/);
 });
