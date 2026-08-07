@@ -4,10 +4,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const spotifyMetadata = require('../spotifyListeningMetadataV101.js');
 
-function response(status, body = null) {
+function response(status, body = null, headers = {}) {
   return new Response(body == null ? '' : JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...headers },
   });
 }
 
@@ -113,5 +113,34 @@ test('v103 stops after the app leaves the foreground and manual retry skips ever
   } finally {
     if (previousDocument === undefined) delete global.document;
     else global.document = previousDocument;
+  }
+});
+
+test('v103 does not make a hidden automatic retry after Spotify asks it to wait', async () => {
+  let requests = 0;
+  let stopped = false;
+  const originalSetTimeout = global.setTimeout;
+  global.setTimeout = (callback) => {
+    stopped = true;
+    callback();
+    return 0;
+  };
+
+  try {
+    await assert.rejects(
+      () => spotifyMetadata.requestTrack('TrackRetry123', {
+        spotifyUser: spotifyUser(),
+        requestDelayMs: 1,
+        shouldStop: () => stopped,
+        fetchImpl: async () => {
+          requests += 1;
+          return response(429, { error: { status: 429, message: 'Too many requests' } }, { 'Retry-After': '1' });
+        },
+      }),
+      /left the foreground/i,
+    );
+    assert.equal(requests, 1);
+  } finally {
+    global.setTimeout = originalSetTimeout;
   }
 });
