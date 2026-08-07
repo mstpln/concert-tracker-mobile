@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const completion = require('../listeningIdentityCompletionV104.js');
-const v106 = require('../listeningIdentityPacingV105.js');
+const v106 = require('../listeningIdentityRecordingV106.js');
 
 const ARTIST = 'fedcbafe-dcba-4fed-8cba-fedcbafedcba';
 const RECORDING = '11111111-2222-4333-8444-555555555555';
