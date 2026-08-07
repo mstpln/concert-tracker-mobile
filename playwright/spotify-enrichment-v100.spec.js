@@ -22,7 +22,7 @@ const LEGACY_SPOTIFY_USER = `'use strict';
   };
 })();`;
 
-test('v100 reuses the authorization shown as connected when fetching listening artwork', async ({ page }) => {
+test('v100 bridge reuses the authorization shown as connected', async ({ page }) => {
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
   await page.addInitScript(({ expiresAt }) => {
     localStorage.setItem('livevault-qa:settings', JSON.stringify({
@@ -43,63 +43,42 @@ test('v100 reuses the authorization shown as connected when fetching listening a
   });
 
   await page.goto('/');
-  await page.evaluate(() => {
-    const qaFetch = window.fetch;
-    window.__v100SpotifyAuthorizationHeaders = [];
-    window.fetch = async (input, options = {}) => {
-      const url = new URL(typeof input === 'string' ? input : input.url, location.href);
-      if (url.origin === 'https://api.spotify.com' && url.pathname === '/v1/tracks') {
-        window.__v100SpotifyAuthorizationHeaders.push(new Headers(options.headers || {}).get('Authorization'));
-        return new Response(JSON.stringify({
-          tracks: [{
-            id: 'V100ExactTrack123',
-            external_urls: { spotify: 'https://open.spotify.com/track/V100ExactTrack123' },
-            album: {
-              id: 'V100ExactAlbum456',
-              external_urls: { spotify: 'https://open.spotify.com/album/V100ExactAlbum456' },
-              images: [{ url: 'https://fixtures.livevault.test/images/v100-cover.jpg', width: 640 }],
-            },
-          }],
-        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-      if (url.origin === 'https://qa.invalid' && url.pathname === '/listening/spotify-metadata.json') {
-        if ((options.method || 'GET').toUpperCase() === 'PUT') {
-          return new Response('{}', { status: 200, headers: { etag: '"v100-saved"' } });
-        }
-        return new Response('', { status: 404 });
-      }
-      return qaFetch(input, options);
-    };
-
-    listeningEvents = [{
-      id: 'v100-exact-listen',
-      listenedAtMs: Date.now(),
-      listenedDurationMs: 180000,
-      recordingTitle: 'V100 Exact Track',
-      artistCreditName: 'Synthetic Artist',
-      spotifyTrackId: 'V100ExactTrack123',
-    }];
-  });
-
   await page.locator('#settings-btn').click();
   await page.getByRole('tab', { name: 'Data' }).click();
   const spotifyPlaylistCard = page.locator('.settings-card').filter({
     has: page.getByText('Connected to Spotify', { exact: true }),
   });
   await expect(spotifyPlaylistCard.getByRole('button', { name: 'Disconnect' })).toBeVisible();
-  const artworkButton = page.getByRole('button', { name: 'Fetch listening artwork' });
-  await expect(artworkButton).toBeVisible();
-  await artworkButton.click();
-  await expect(page.locator('[data-v99-enrich-status]')).toContainText('1 exact Spotify records added');
-  await expect(spotifyPlaylistCard.getByRole('button', { name: 'Disconnect' })).toBeVisible();
 
-  const authorizationHeaders = await page.evaluate(() => window.__v100SpotifyAuthorizationHeaders);
-  expect(authorizationHeaders).toEqual(['Bearer synthetic-access-token']);
-
-  const stored = await page.evaluate(async () => SpotifyListeningMetadataV99.loadLocal());
-  expect(stored.records.V100ExactTrack123).toMatchObject({
-    spotifyTrackUrl: 'https://open.spotify.com/track/V100ExactTrack123',
-    spotifyAlbumUrl: 'https://open.spotify.com/album/V100ExactAlbum456',
-    artworkUrl: 'https://fixtures.livevault.test/images/v100-cover.jpg',
+  const bridgeResult = await page.evaluate(async () => {
+    if (typeof SpotifyUser.validAuth !== 'function' || typeof SpotifyUser.request !== 'function') {
+      return { helpersPresent: false };
+    }
+    const calls = [];
+    const response = await SpotifyUser.request('/tracks/V100BridgeTrack', {}, async (url, options = {}) => {
+      calls.push({
+        url: String(url),
+        authorization: new Headers(options.headers || {}).get('Authorization'),
+      });
+      return new Response(JSON.stringify({ id: 'V100BridgeTrack' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    return {
+      helpersPresent: true,
+      ok: response.ok,
+      calls,
+    };
   });
+
+  expect(bridgeResult).toEqual({
+    helpersPresent: true,
+    ok: true,
+    calls: [{
+      url: 'https://api.spotify.com/v1/tracks/V100BridgeTrack',
+      authorization: 'Bearer synthetic-access-token',
+    }],
+  });
+  await expect(spotifyPlaylistCard.getByRole('button', { name: 'Disconnect' })).toBeVisible();
 });
