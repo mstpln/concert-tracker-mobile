@@ -10,6 +10,7 @@
   const MAX_SIGNATURES_PER_RUN = 25;
   const MAX_WRITE_BATCH = 500;
   const REQUEST_DELAY_MS = 1000;
+  const MUSICBRAINZ_REQUEST_DELAY_MS = 1500;
   const CURSOR_STORAGE_KEY = 'bandmarkrListeningIdentityV104Cursor';
 
   const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value));
@@ -276,7 +277,7 @@
     if ((!Array.isArray(output.musicbrainzArtistIds) || !output.musicbrainzArtistIds.length) && fields.musicbrainzArtistIds.length) output.musicbrainzArtistIds = fields.musicbrainzArtistIds;
     if (!output.musicbrainzRecordingId && fields.musicbrainzRecordingId) output.musicbrainzRecordingId = fields.musicbrainzRecordingId;
     if (!output.musicbrainzReleaseId && fields.musicbrainzReleaseId) output.musicbrainzReleaseId = fields.musicbrainzReleaseId;
-    if (!output.musicbrainzReleaseGroupId && fields.musicbrainzReleaseGroupId) output.musicbrainzReleaseGroupId = fields.musicbrainzReleaseGroupId;
+    if (!output.musicbrainzReleaseGroupId && fields.musicbrainzReleaseGroupMbid) output.musicbrainzReleaseGroupId = fields.musicbrainzReleaseGroupMbid;
     return output;
   }
 
@@ -379,6 +380,11 @@
     return new Promise((resolve) => (root?.setTimeout || setTimeout)(resolve, ms));
   }
 
+  function remainingMusicBrainzDelay(lastRequestAt, now = Date.now()) {
+    if (!lastRequestAt) return 0;
+    return Math.max(0, MUSICBRAINZ_REQUEST_DELAY_MS - (now - lastRequestAt));
+  }
+
   async function sourceEvents(options = {}) {
     if (Array.isArray(options.events)) return clone(options.events);
     const history = options.history || root?.LiveVaultSpotifyHistory;
@@ -444,8 +450,8 @@
       }
 
       if (item.releaseMbid && !resolved.releaseGroupMbid) {
-        const elapsed = Date.now() - lastMusicBrainzRequestAt;
-        if (lastMusicBrainzRequestAt && elapsed < REQUEST_DELAY_MS) await sleep(REQUEST_DELAY_MS - elapsed);
+        const musicBrainzDelay = remainingMusicBrainzDelay(lastMusicBrainzRequestAt);
+        if (musicBrainzDelay) await sleep(musicBrainzDelay);
         const context = await requestReleaseContext(item.releaseMbid, remoteConnection(), fetchImpl);
         lastMusicBrainzRequestAt = Date.now();
         if (context?.releaseGroupMbid) {
@@ -527,6 +533,7 @@
     MAX_SIGNATURES_PER_RUN,
     MAX_WRITE_BATCH,
     REQUEST_DELAY_MS,
+    MUSICBRAINZ_REQUEST_DELAY_MS,
     CURSOR_STORAGE_KEY,
     safeUuid,
     safeUuidList,
@@ -559,6 +566,7 @@
     requestLookupOne,
     remoteConnection,
     requestReleaseContext,
+    remainingMusicBrainzDelay,
     complete,
     injectSettingsUi,
     install,
