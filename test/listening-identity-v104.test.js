@@ -25,6 +25,15 @@ function listen(overrides = {}) {
   };
 }
 
+function progressStore() {
+  const values = new Map();
+  return {
+    getItem(key) { return values.has(key) ? values.get(key) : null; },
+    setItem(key, value) { values.set(key, String(value)); },
+    removeItem(key) { values.delete(key); },
+  };
+}
+
 test('lookup plan groups repeated unresolved listens conservatively and separates trusted releases', () => {
   const plan = identity.buildLookupPlan([
     listen({ stableListenId: 'listen:1' }),
@@ -35,6 +44,7 @@ test('lookup plan groups repeated unresolved listens conservatively and separate
   assert.equal(plan.items.length, 3);
   const unresolved = plan.items.find((item) => !item.releaseMbid);
   assert.deepEqual(unresolved.sourceEventIds, ['listen:1', 'listen:2']);
+  assert.equal(unresolved.cursorKey, 'listen:1');
 });
 
 test('lookup plan treats recording-only identity as complete when no trusted release exists', () => {
@@ -195,12 +205,58 @@ test('identity completion reports unresolved selected work as remaining and avoi
   const result = await identity.complete({
     events: [listen()],
     storage,
+    progressStore: progressStore(),
     listenbrainz: { connection: () => ({ token: 'synthetic-token' }) },
     fetchImpl: async () => ({ status: 200, ok: true, json: async () => ({ artist_credit_name: 'Different Artist', recording_name: 'Synthetic Song', recording_mbid: REC_A }) }),
   });
   assert.equal(result.remaining, 1);
   assert.equal(result.written, 0);
   assert.equal(writes, 0);
+});
+
+test('resumable cursor advances past unresolved work before later retry', async () => {
+  const progress = progressStore();
+  const storage = {
+    async listIdentities() { return { items: [], nextAfterSourceEventId: null }; },
+    async putIdentities() {},
+  };
+  const events = [
+    listen({ stableListenId: 'a', recordingTitle: 'Song A' }),
+    listen({ stableListenId: 'b', recordingTitle: 'Song B' }),
+    listen({ stableListenId: 'c', recordingTitle: 'Song C' }),
+  ];
+  const requested = [];
+  const fetchImpl = async (url) => {
+    requested.push(new URL(url).searchParams.get('recording_name'));
+    return { status: 200, ok: true, json: async () => ({ artist_credit_name: 'Wrong Artist', recording_name: 'No match', recording_mbid: REC_A }) };
+  };
+  const common = {
+    events,
+    storage,
+    progressStore: progress,
+    cap: 1,
+    listenbrainz: { connection: () => ({ token: 'synthetic-token' }) },
+    fetchImpl,
+  };
+  await identity.complete(common);
+  await identity.complete(common);
+  await identity.complete(common);
+  assert.deepEqual(requested, ['Song A', 'Song B', 'Song C']);
+  const fourth = await identity.complete(common);
+  assert.equal(fourth.wrapped, true);
+  assert.deepEqual(requested, ['Song A', 'Song B', 'Song C', 'Song A']);
+});
+
+test('identity completion refuses provider calls when progress cannot be saved', async () => {
+  let providerCalls = 0;
+  await assert.rejects(identity.complete({
+    events: [listen()],
+    storage: { async listIdentities() { return { items: [], nextAfterSourceEventId: null }; } },
+    progressStore: null,
+    listenbrainz: { connection: () => ({ token: 'synthetic-token' }) },
+    fetchImpl: async () => { providerCalls += 1; return { status: 500, ok: false }; },
+  }), /cannot save listening identity progress/i);
+  assert.equal(providerCalls, 0);
 });
 
 test('identity completion stops clearly on ListenBrainz rate limiting', async () => {
