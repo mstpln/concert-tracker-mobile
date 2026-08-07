@@ -25,7 +25,7 @@ const LEGACY_SPOTIFY_USER = `'use strict';
 test('v100 reuses the authorization shown as connected when fetching listening artwork', async ({ page }) => {
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
   await page.addInitScript(({ expiresAt }) => {
-    localStorage.setItem('concertTrackerSettings', JSON.stringify({
+    localStorage.setItem('livevault-qa:settings', JSON.stringify({
       spotifyUserClientId: 'synthetic-public-client-id',
       spotifyUserAuthorization: {
         clientId: 'synthetic-public-client-id',
@@ -81,12 +81,15 @@ test('v100 reuses the authorization shown as connected when fetching listening a
 
   await page.locator('#settings-btn').click();
   await page.getByRole('tab', { name: 'Data' }).click();
-  await expect(page.getByRole('button', { name: 'Disconnect' })).toBeVisible();
+  const spotifyPlaylistCard = page.locator('.settings-card').filter({
+    has: page.getByText('Connected to Spotify', { exact: true }),
+  });
+  await expect(spotifyPlaylistCard.getByRole('button', { name: 'Disconnect' })).toBeVisible();
   const artworkButton = page.getByRole('button', { name: 'Fetch listening artwork' });
   await expect(artworkButton).toBeVisible();
   await artworkButton.click();
   await expect(page.locator('[data-v99-enrich-status]')).toContainText('1 exact Spotify records added');
-  await expect(page.getByRole('button', { name: 'Disconnect' })).toBeVisible();
+  await expect(spotifyPlaylistCard.getByRole('button', { name: 'Disconnect' })).toBeVisible();
 
   const stored = await page.evaluate(async () => SpotifyListeningMetadataV99.loadLocal());
   expect(stored.records.V100ExactTrack123).toMatchObject({
