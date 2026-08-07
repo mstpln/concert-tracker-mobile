@@ -152,6 +152,12 @@ test('spotify metadata contract accepts additive artist ids and ISRC but rejects
   badType.records[id].spotifyArtistIds = [123];
   response = await worker.fetch(req('PUT', '/listening/spotify-metadata.json', 'maintenance', JSON.stringify(badType), { 'Content-Type': 'application/json', 'If-Match': 'listening/spotify-metadata.json-next' }), env);
   assert.equal(response.status, 400);
+
+  const badAlbumType = structuredClone(good);
+  badAlbumType.records[id].spotifyAlbumId = 123;
+  badAlbumType.records[id].spotifyAlbumUrl = 'https://open.spotify.com/album/123';
+  response = await worker.fetch(req('PUT', '/listening/spotify-metadata.json', 'maintenance', JSON.stringify(badAlbumType), { 'Content-Type': 'application/json', 'If-Match': 'listening/spotify-metadata.json-next' }), env);
+  assert.equal(response.status, 400);
 });
 
 test('v107 remains synchronized across app and service-worker cache', () => {
