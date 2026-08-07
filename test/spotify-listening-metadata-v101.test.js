@@ -31,6 +31,74 @@ test('v101 uses Spotify single-track endpoint instead of removed batch endpoint'
   assert.doesNotMatch(urls[0], /\/v1\/tracks\?/);
 });
 
+test('v102 accepts a valid Spotify relinked track response', async () => {
+  const track = await v101.requestTrack('OriginalTrack123', {
+    fetchImpl: async () => response(200, {
+      id: 'RelinkedTrack456',
+      album: { id: 'Album123', external_urls: { spotify: 'https://open.spotify.com/album/Album123' }, images: [] },
+      external_urls: { spotify: 'https://open.spotify.com/track/RelinkedTrack456' },
+    }),
+    spotifyUser: spotifyUser(),
+    requestDelayMs: 0,
+  });
+  assert.equal(track.id, 'RelinkedTrack456');
+});
+
+test('v102 preserves the requested trusted track identity when Spotify relinks metadata', async () => {
+  const saved = [];
+  const metadata = {
+    emptyDocument: () => ({ kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} }),
+    readRemote: async () => ({ document: { kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} }, etag: null, missing: true }),
+    loadLocal: async () => ({ kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} }),
+    mergeDocuments: (left) => ({ ...left, records: { ...(left.records || {}) } }),
+    unresolvedTrackIds: () => ['OriginalTrack123'],
+    recordFromSpotifyTrack: (track) => ({
+      spotifyTrackId: track.id,
+      spotifyTrackUrl: track.external_urls.spotify,
+      spotifyAlbumId: track.album?.id || null,
+      spotifyAlbumUrl: track.album?.external_urls?.spotify || null,
+      artworkUrl: track.album?.images?.[0]?.url || null,
+      fetchedAt: new Date().toISOString(),
+      source: 'spotify_exact_track_id',
+    }),
+    saveLocal: async (document) => { saved.push(JSON.parse(JSON.stringify(document))); return document; },
+    applyToEvents: () => {},
+    documentsEqual: () => false,
+    writeRemote: async () => {},
+  };
+  const fetchImpl = async () => response(200, {
+    id: 'RelinkedTrack456',
+    album: {
+      id: 'Album123',
+      external_urls: { spotify: 'https://open.spotify.com/album/Album123' },
+      images: [{ url: 'https://i.scdn.co/image/synthetic', width: 640, height: 640 }],
+    },
+    external_urls: { spotify: 'https://open.spotify.com/track/RelinkedTrack456' },
+  });
+
+  const result = await v101.enrich({ metadata, spotifyUser: spotifyUser(), fetchImpl, requestDelayMs: 0 });
+  assert.equal(result.added, 1);
+  const record = saved.at(-1).records.OriginalTrack123;
+  assert.ok(record);
+  assert.equal(record.spotifyTrackId, 'OriginalTrack123');
+  assert.equal(record.spotifyTrackUrl, 'https://open.spotify.com/track/OriginalTrack123');
+  assert.equal(record.spotifyAlbumId, 'Album123');
+  assert.equal(record.spotifyProviderResolvedTrackId, 'RelinkedTrack456');
+  assert.equal(record.spotifyProviderRelinked, true);
+  assert.equal(saved.at(-1).records.RelinkedTrack456, undefined);
+});
+
+test('v102 still rejects malformed successful Spotify track responses', async () => {
+  await assert.rejects(
+    () => v101.requestTrack('TrackABC123', {
+      fetchImpl: async () => response(200, { id: '', album: {}, external_urls: {} }),
+      spotifyUser: spotifyUser(),
+      requestDelayMs: 0,
+    }),
+    /invalid track metadata response/,
+  );
+});
+
 test('v101 refreshes once after 401 and uses the refreshed bearer token', async () => {
   let requestCount = 0;
   let refreshCount = 0;
