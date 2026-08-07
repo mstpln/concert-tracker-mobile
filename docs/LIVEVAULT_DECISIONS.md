@@ -394,7 +394,7 @@
 
 ## 2026-08-05 — Canonical listening totals require explicit local activation
 
-**Decision:** Preparing canonical listening data and using it for visible statistics are two separate local actions. Preparation writes and verifies derived identity, canonical and review records but leaves visible statistics unchanged. Visible statistics switch only after the user selects **Use cleaned totals**. Only trusted automatic or completed user-reviewed duplicate relationships are excluded; probable and ambiguous groups remain counted separately.
+**Decision:** Preparing canonical listening data and using it for visible statistics are two separate local actions. Preparation writes and verifies derived identity, canonical and review records but leaves visible statistics unchanged. Visible statistics switch only after the user selects **Use cleaned totals**. Only trusted automatic or completed user-reviewed duplicate relationships are excluded; probable and ambiguous groups remain counted separately until reviewed.
 
 **Reason:** The real listening archive is private and large, and derived matching can become stale when new listens arrive. A two-step flow lets the user see aggregate results before changing the app while preserving a clear fallback to the original source observations.
 
@@ -407,3 +407,11 @@
 **Reason:** Mobile browsers may suspend or terminate PWAs unpredictably, and a resumed request loop must not repeat completed Spotify calls or accidentally turn a partially completed 100-track run into another full 100-track allowance.
 
 **Consequence:** The local run checkpoint is required before provider calls and fails closed if it cannot be persisted. A 50-of-100 interruption resumes only the remaining 50 IDs; completed IDs are skipped. Spotify HTTP 429 handling remains bounded and quota-aware, source listening observations remain immutable, and the separate historical backfill remains an explicitly authorized maintenance operation outside the app.
+
+## 2026-08-07 — Historical Spotify artwork backfill is local, resumable maintenance
+
+**Decision:** The historical listening-artwork backfill stays outside the BANDMARKR app and outside GitHub Actions. The supported production path is a manually invoked local Node maintenance runner. It verifies the private Spotify archive and ListenBrainz incrementals before planning work, sends only exact trusted Spotify track IDs to Spotify, uses a private ignored checkpoint, defaults to 25 track requests per invocation with at least 1,000 ms pacing and a hard logical ceiling of 100, and routes every real Spotify provider operation through the existing `UsageTracker`.
+
+**Reason:** Spotify Development Mode quota size and reset timing are not reliable enough for an all-at-once backfill, while the existing GitHub automation role is intentionally barred from private listening objects. A local resumable runner preserves that role boundary and prevents completed provider work from being repeated across quota stops, process interruption or metadata synchronization failures.
+
+**Consequence:** `QUOTA_EXCEEDED`, ordinary 429, 401/403, malformed responses and ETag conflicts stop conservatively without hidden loops. Completed provider results are checkpointed before more track work and a fully staged logical batch is not expanded until it is synchronized. Relinked provider IDs never replace the requested trusted identity. Private production reads/live Spotify calls and production metadata writes use separate explicit authorization gates; the write gate is additionally required for `--write`. Real checkpoint files must remain inside ignored `.livevault-maintenance/`, and no production backfill operation is authorized merely by merging the maintenance code.
