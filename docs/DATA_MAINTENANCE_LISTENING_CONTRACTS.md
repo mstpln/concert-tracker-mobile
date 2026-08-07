@@ -37,7 +37,7 @@ The new document contract is `listening/track-identities.json`:
 
 Accepted work keys are `spotify:<trustedTrackId>` or `text:<sha256>`. Each record repeats its exact `workKey` and may add a stable local band ID, Spotify track/artist IDs, ISRC, MusicBrainz recording/artist IDs, status, retry timing, evidence, and unknown future fields. Known IDs and dates are validated. The Worker does not infer or guess identity.
 
-The initial status vocabulary is `unresolved`, `resolved`, `no_match`, `needs_review`, `retry`, and `error`.
+The initial status vocabulary is `unresolved`, `resolved`, `no_match`, `needs_review`, `retry`, and `error`. Track-identity writes are maintenance-owned: the ordinary browser role may not create or update this shared derived document. The staged legacy role remains available only for compatibility while the dedicated maintenance credential is not configured.
 
 ## Concurrency and preservation
 
