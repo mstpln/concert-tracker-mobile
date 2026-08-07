@@ -58,6 +58,7 @@ const SHELL_FILES = [
   './listeningSpotifyIdentityReviewUi.js',
   './listeningIdentityPacingV105.js',
   './listeningIdentityCompletionV104.js',
+  './listeningIdentityRecordingV106.js',
   './listeningIdentityGroupingV104.js',
   './devicePrivacy.js',
   './browserFetchPolicy.js',
