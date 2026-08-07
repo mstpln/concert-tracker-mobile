@@ -58,13 +58,17 @@ test('existing source recording MBID completes a track with zero provider work',
   assert.equal(result.items[0].reason, 'source_recording_mbid');
 });
 
-test('existing cross-provider track identity is reused before any provider planning', () => {
+test('existing v107 track identity is reused before any provider planning', () => {
   const base = inventory.buildListeningInventory({ bands: [band()], events: [event()] });
   const key = base.items[0].trackKey;
   const result = inventory.buildListeningInventory({
     bands: [band()],
     events: [event()],
-    trackIdentities: { records: { [key]: { trackKey: key, musicbrainzRecordingMbid: MB_RECORDING } } },
+    trackIdentities: {
+      kind: 'livevault-track-identities',
+      schemaVersion: 1,
+      records: { [key]: { workKey: key, musicbrainzRecordingId: MB_RECORDING, futureField: { keep: true } } },
+    },
   });
   assert.equal(result.items[0].status, 'complete');
   assert.equal(result.items[0].reason, 'existing_track_identity');
@@ -91,7 +95,7 @@ test('text fallback is deterministic and requires trusted MusicBrainz artist ide
   const noSpotify = event({ source: 'listenbrainz', spotifyTrackId: null });
   const first = inventory.buildListeningInventory({ bands: [band()], events: [noSpotify] });
   const second = inventory.buildListeningInventory({ bands: [band()], events: [structuredClone(noSpotify)] });
-  assert.match(first.items[0].trackKey, /^listenbrainz:[a-f0-9]{64}$/);
+  assert.match(first.items[0].trackKey, /^text:[a-f0-9]{64}$/);
   assert.equal(first.items[0].trackKey, second.items[0].trackKey);
   assert.equal(first.items[0].status, 'needs_listenbrainz_fallback');
 
@@ -137,7 +141,7 @@ test('inventory never mutates source observations or metadata documents', () => 
   const bands = [band({ unknownBandField: { keep: true } })];
   const events = [event({ unknownSourceField: { keep: true } })];
   const spotifyMetadata = { kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, futureRoot: { keep: true }, records: {} };
-  const trackIdentities = { kind: 'bandmarkr-listening-track-identities', schemaVersion: 1, futureRoot: { keep: true }, records: {} };
+  const trackIdentities = { kind: 'livevault-track-identities', schemaVersion: 1, futureRoot: { keep: true }, records: {} };
   const before = structuredClone({ bands, events, spotifyMetadata, trackIdentities });
   inventory.buildListeningInventory({ bands, events, spotifyMetadata, trackIdentities });
   assert.deepEqual({ bands, events, spotifyMetadata, trackIdentities }, before);
