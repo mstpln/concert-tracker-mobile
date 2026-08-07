@@ -32,6 +32,13 @@ test('usage guard stops before a provider operation when project accounting disa
   assert.equal(called, false);
 });
 
+test('production checkpoint path is restricted to the ignored maintenance directory', () => {
+  const accepted = production.assertPrivateCheckpointPath('.livevault-maintenance/spotify-artwork-backfill.json');
+  assert.match(accepted, /\.livevault-maintenance/);
+  assert.throws(() => production.assertPrivateCheckpointPath('spotify-artwork-backfill.json'), /must stay inside/);
+  assert.throws(() => production.assertPrivateCheckpointPath('.livevault-maintenance/../checkpoint.json'), /must stay inside/);
+});
+
 test('production CLI is inert without --execute or the explicit confirmation value', async () => {
   let usageLoaded = false;
   const usageFactory = async () => { usageLoaded = true; throw new Error('must not load'); };
