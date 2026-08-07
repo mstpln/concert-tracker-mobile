@@ -95,8 +95,11 @@
       groups.set(signature.key, group);
     }
     const items = [...groups.values()]
-      .map((group) => ({ ...group, sourceEventIds: [...new Set(group.sourceEventIds)].sort() }))
-      .sort((a, b) => a.key.localeCompare(b.key));
+      .map((group) => {
+        const sourceEventIds = [...new Set(group.sourceEventIds)].sort();
+        return { ...group, sourceEventIds, cursorKey: sourceEventIds[0] };
+      })
+      .sort((a, b) => a.cursorKey.localeCompare(b.cursorKey));
     return { items, alreadyResolved, ineligible };
   }
 
@@ -109,10 +112,12 @@
     try { return clean(progressStore.getItem(CURSOR_STORAGE_KEY)); } catch { return null; }
   }
 
-  function writeCursor(key, progressStore = defaultProgressStore()) {
-    if (!progressStore?.setItem) return false;
+  function writeCursor(cursorKey, progressStore = defaultProgressStore()) {
+    if (!progressStore?.setItem) {
+      throw new Error('BANDMARKR cannot save listening identity progress on this device, so the provider run was not continued.');
+    }
     try {
-      progressStore.setItem(CURSOR_STORAGE_KEY, String(key));
+      progressStore.setItem(CURSOR_STORAGE_KEY, String(cursorKey));
       return true;
     } catch {
       throw new Error('BANDMARKR could not save listening identity progress, so the provider run stopped safely.');
@@ -136,7 +141,7 @@
     let startIndex = 0;
     let wrapped = false;
     if (cursor) {
-      const nextIndex = items.findIndex((item) => item.key > cursor);
+      const nextIndex = items.findIndex((item) => item.cursorKey > cursor);
       if (nextIndex >= 0) startIndex = nextIndex;
       else wrapped = true;
     }
@@ -240,9 +245,6 @@
   function identityForRuntimeEvent(event, byId) {
     const own = byId.get(sourceEventId(event));
     if (providerIdentityRecord(own)) return own;
-    // Canonical siblings can safely contribute a single unambiguous recording
-    // identity, but never an album edition: the same recording may legitimately
-    // occur on a single, album, deluxe or regional release.
     return canonicalFallbackIdentity(event, byId);
   }
 
@@ -345,6 +347,9 @@
       clearCursor(progressStore);
       return { checked: 0, resolvedRecordings: 0, resolvedReleaseGroups: 0, written: 0, remaining: 0, ...plan };
     }
+    if (!progressStore?.getItem || !progressStore?.setItem) {
+      throw new Error('BANDMARKR cannot save listening identity progress on this device, so no provider request was started.');
+    }
     const cursorBefore = readCursor(progressStore);
     const selection = selectPlanItems(plan.items, cursorBefore, cap);
     const selected = selection.selected;
@@ -373,7 +378,7 @@
         const mapping = await requestLookupOne(item, connection.token, fetchImpl);
         if (!mapping) {
           unresolvedSelected += 1;
-          writeCursor(item.key, progressStore);
+          writeCursor(item.cursorKey, progressStore);
           onProgress({ checked: index + 1, total: selected.length, resolvedRecordings, resolvedReleaseGroups, written });
           continue;
         }
@@ -397,7 +402,7 @@
       }
 
       if (gainedIdentity) written += await writeIdentityRecords(storage, buildIdentityRecords(item, resolved));
-      writeCursor(item.key, progressStore);
+      writeCursor(item.cursorKey, progressStore);
       onProgress({ checked: index + 1, total: selected.length, resolvedRecordings, resolvedReleaseGroups, written });
     }
 
@@ -415,7 +420,7 @@
       ineligible: plan.ineligible,
       wrapped: selection.wrapped,
       cursorBefore,
-      cursorAfter: selected[selected.length - 1]?.key || cursorBefore,
+      cursorAfter: selected[selected.length - 1]?.cursorKey || cursorBefore,
     };
   }
 
