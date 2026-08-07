@@ -27,7 +27,7 @@ test('v105 keeps non-MusicBrainz fetches untouched', async () => {
   assert.match(calls[0], /listenbrainz/);
 });
 
-test('v105 spaces distinct MusicBrainz release-context requests by at least 1500 ms', async () => {
+test('v105 spaces distinct MusicBrainz release-context requests by at least 2000 ms', async () => {
   let current = 10000;
   const sleeps = [];
   const calls = [];
@@ -45,9 +45,9 @@ test('v105 spaces distinct MusicBrainz release-context requests by at least 1500
   current += 100;
   await pacedFetch(`https://worker.example.test/musicbrainz/release-context?release_mbid=${REL_B}`);
 
-  assert.equal(pacing.MUSICBRAINZ_MIN_INTERVAL_MS, 1500);
-  assert.deepEqual(sleeps, [1400]);
-  assert.equal(calls[1].at - calls[0].at, 1500);
+  assert.equal(pacing.MUSICBRAINZ_MIN_INTERVAL_MS, 2000);
+  assert.deepEqual(sleeps, [1900]);
+  assert.equal(calls[1].at - calls[0].at, 2000);
 });
 
 test('v105 reuses an exact release-context result during the same run', async () => {
