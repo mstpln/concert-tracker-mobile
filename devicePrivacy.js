@@ -8,6 +8,7 @@
   const SETTINGS_KEY = 'concertTrackerSettings';
   const LISTENBRAINZ_SETTINGS_KEY = 'livevault-listenbrainz-v1';
   const LISTENING_ACTIVATION_KEY = 'bandmarkr-listening-canonical-activation-v1';
+  const LISTENING_IDENTITY_CURSOR_KEY = 'bandmarkrListeningIdentityV104Cursor';
   const SHELL_CACHE_PREFIX = 'concert-tracker-shell-';
   const TICKET_DB_NAME = 'live-vault-owned-tickets';
   const DERIVED_LISTENING_DB_NAME = 'bandmarkr-listening-derived-v1';
@@ -60,6 +61,7 @@
     storage?.removeItem?.(SETTINGS_KEY);
     storage?.removeItem?.(LISTENBRAINZ_SETTINGS_KEY);
     storage?.removeItem?.(LISTENING_ACTIVATION_KEY);
+    storage?.removeItem?.(LISTENING_IDENTITY_CURSOR_KEY);
     await removeShellCaches(cacheStorage);
     reload?.();
   }
@@ -122,6 +124,7 @@
     SETTINGS_KEY,
     LISTENBRAINZ_SETTINGS_KEY,
     LISTENING_ACTIVATION_KEY,
+    LISTENING_IDENTITY_CURSOR_KEY,
     SHELL_CACHE_PREFIX,
     TICKET_DB_NAME,
     DERIVED_LISTENING_DB_NAME,
