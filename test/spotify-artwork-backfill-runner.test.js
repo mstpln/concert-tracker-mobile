@@ -79,6 +79,21 @@ test('runner checkpoints each completed track and resumes without repeating prov
   assert.ok(second.checkpoint.stagedRecords.Track3);
 });
 
+test('provider-only staging does not expand into a fresh logical batch before staged records are synchronized', async () => {
+  const events = [event('Track1'), event('Track2'), event('Track3'), event('Track4')];
+  const first = harness({ events, cap: 2 });
+  await first.run();
+  assert.deepEqual(first.requested, ['Track1', 'Track2']);
+  assert.deepEqual(first.checkpoint.remainingIds, []);
+  assert.deepEqual(Object.keys(first.checkpoint.stagedRecords).sort(), ['Track1', 'Track2']);
+
+  const second = harness({ events, cap: 2, checkpoint: first.checkpoint });
+  const summary = await second.run();
+  assert.deepEqual(second.requested, []);
+  assert.equal(summary.staged, 2);
+  assert.deepEqual(second.checkpoint.plannedIds, ['Track1', 'Track2']);
+});
+
 test('runner treats 404 as terminal and does not request that ID on a later invocation', async () => {
   const first = harness({
     events: [event('MissingTrack'), event('OtherTrack')],
