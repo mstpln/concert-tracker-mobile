@@ -6,10 +6,10 @@
   if (root) root.SpotifyListeningMetadataV101 = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   const MAX_TRACKS_PER_RUN = 100;
-  const PERSIST_EVERY = 10;
+  const PERSIST_EVERY = 1;
   const REQUEST_DELAY_MS = 1000;
   const MARKET = 'SE';
-  const SETTINGS_HINT = 'Fetch exact Spotify track, album and artwork metadata for listening records that already contain a trusted Spotify track ID. No title search is used. Up to 100 tracks are processed per run with slow, quota-friendly requests.';
+  const SETTINGS_HINT = 'Fetch exact Spotify track, album and artwork metadata for listening records that already contain a trusted Spotify track ID. No title search is used. Up to 100 tracks are processed per run with slow, quota-friendly requests. Progress is saved after every track; if the app is interrupted, tap Fetch listening artwork again and already saved tracks will be skipped.';
 
   const sleep = (ms) => new Promise((resolve) => root.setTimeout ? root.setTimeout(resolve, ms) : setTimeout(resolve, ms));
   const validSpotifyId = (value) => /^[A-Za-z0-9]{1,64}$/.test(String(value || '').trim());
@@ -148,15 +148,10 @@
         }
 
         processed = index + 1;
-        if (processed % PERSIST_EVERY === 0 || processed === ids.length) {
-          document = await persistProgress(metadata, document, processed, ids.length, added, onProgress);
-        }
+        document = await persistProgress(metadata, document, processed, ids.length, added, onProgress);
         if (processed < ids.length && requestDelayMs > 0) await sleep(requestDelayMs);
       }
     } catch (error) {
-      if (added > 0 && processed % PERSIST_EVERY !== 0) {
-        document = await persistProgress(metadata, document, processed, ids.length, added, onProgress);
-      }
       error.liveVaultProgress = { processed, total: ids.length, added };
       throw error;
     }
@@ -191,7 +186,7 @@
       status.textContent = 'Checking which trusted Spotify tracks still need artwork…';
       try {
         const result = await enrich({ onProgress: ({ processed, total, added }) => {
-          status.textContent = `Fetching artwork: ${processed.toLocaleString()} of ${total.toLocaleString()} checked · ${added.toLocaleString()} added`;
+          status.textContent = `Fetching artwork: ${processed.toLocaleString()} of ${total.toLocaleString()} checked · ${added.toLocaleString()} added · progress saved`;
         } });
         status.textContent = result.requested
           ? `Done. ${result.added.toLocaleString()} artwork records added · ${result.total.toLocaleString()} cached in total.`
@@ -200,10 +195,10 @@
             : 'Done. Artwork is already complete for the trusted Spotify track IDs on this device.';
       } catch (error) {
         const progress = error?.liveVaultProgress;
-        const prefix = progress?.added > 0
-          ? `${progress.added.toLocaleString()} new artwork records were saved before the fetch stopped. `
+        const prefix = progress?.processed > 0
+          ? `Progress saved through ${progress.processed.toLocaleString()} of ${progress.total.toLocaleString()} checked in this run. `
           : '';
-        status.textContent = `${prefix}${error?.message || 'Spotify artwork could not be fetched. Please try again later.'}`;
+        status.textContent = `${prefix}${error?.message || 'Spotify artwork could not be fetched. Please try again later.'} Tap Fetch listening artwork again to continue; already saved tracks will be skipped.`;
       } finally {
         button.disabled = false;
       }
