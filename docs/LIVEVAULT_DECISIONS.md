@@ -439,3 +439,11 @@
 **Reason:** Controlled physical runs on both v104 and v105 stopped on MusicBrainz rate limiting, including after v105 doubled browser-side pacing. Release-group identity is optional context and is not an album grouping key, so Worker-egress or MusicBrainz availability must not block conservative recording identity work that ListenBrainz can complete.
 
 **Consequence:** v106 prefers completing recording identity and deferring release-group enrichment. The 25-combination cap, resumable local cursor, trusted-artist requirement, exact normalized artist/recording matching, source immutability, no guessed release edition, additive derived identity writes and no hidden retry remain unchanged.
+
+## 2026-08-07 — Listening maintenance uses a dedicated least-privilege role and derived identity document
+
+**Decision:** Historical and scheduled listening maintenance uses a distinct `DATA_MAINTENANCE_TOKEN` role rather than widening the existing research automation credential. Cross-provider track mapping and retry state live in the separate derived document `listening/track-identities.json`. Spotify-owned exact-track metadata remains in `listening/spotify-metadata.json`, extended additively with provider-returned Spotify artist IDs and ISRC when available.
+
+**Reason:** Listening maintenance needs read access to private immutable listening objects and narrowly scoped derived writes that the research workflow does not need. Separating credentials and documents preserves provider ownership, keeps source observations immutable, and lets track identity/retry state evolve without contaminating Spotify-owned metadata or user-owned records.
+
+**Consequence:** The maintenance role may read bands, concerts, api usage and listening objects, but it may write only `apiUsage.json`, Spotify listening metadata and track identities in the listening-only foundation. It cannot access tickets, read news, mutate bands/concerts, rewrite manifests or immutable archives, or use the browser-only MusicBrainz release-context route. Known provider IDs, ISRCs, statuses and retry dates are validated while unknown future fields remain additive. The role and new document remain inert until separately authorized production secret/configuration and data creation; merging code does not authorize provider calls, R2 writes, workflow runs or backfill activation.
