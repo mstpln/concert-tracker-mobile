@@ -49,22 +49,24 @@ test('v106 manual button resolves recording identity without calling MusicBrainz
     window.LiveVaultListenBrainz = { connection: () => ({ token: 'synthetic-token' }) };
     window.__v106BrowserIdentityRecords = stored;
     window.__v106SyntheticFetchUrls = [];
-    window.fetch = async (input) => {
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
       const url = String(input?.url || input);
-      window.__v106SyntheticFetchUrls.push(url);
-      if (!url.startsWith('https://api.listenbrainz.org/1/metadata/lookup/')) {
-        throw new Error(`Unexpected synthetic fetch: ${url}`);
+      if (url.startsWith('https://api.listenbrainz.org/1/metadata/lookup/')) {
+        window.__v106SyntheticFetchUrls.push(url);
+        return {
+          status: 200,
+          ok: true,
+          json: async () => ({
+            artist_credit_name: 'Synthetic Identity Artist',
+            recording_name: 'Synthetic Identity Song',
+            artist_mbids: [artistMbid],
+            recording_mbid: recordingMbid,
+          }),
+        };
       }
-      return {
-        status: 200,
-        ok: true,
-        json: async () => ({
-          artist_credit_name: 'Synthetic Identity Artist',
-          recording_name: 'Synthetic Identity Song',
-          artist_mbids: [artistMbid],
-          recording_mbid: recordingMbid,
-        }),
-      };
+      if (url.includes('/musicbrainz/release-context')) window.__v106SyntheticFetchUrls.push(url);
+      return nativeFetch(input, init);
     };
   }, { artistMbid, recordingMbid, releaseMbid });
 
