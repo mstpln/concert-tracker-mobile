@@ -2,7 +2,6 @@
 const fs = require('node:fs');
 const version = fs.readFileSync('version.js', 'utf8').match(/APP_VERSION = '([^']+)'/)?.[1];
 const cache = fs.readFileSync('service-worker.js', 'utf8').match(/CACHE_NAME_LITERAL = '([^']+)'/)?.[1];
-const workerText = fs.readFileSync('worker.js', 'utf8');
 const state = {
   schemaVersion: 1,
   generatorVersion: 1,
@@ -26,8 +25,6 @@ const state = {
     listenbrainzSyncEnabled: fs.existsSync('listenbrainzSync.js') && fs.existsSync('listeningIncrementalVault.js'),
     listeningIdentityCompletionEnabled: fs.existsSync('listeningIdentityCompletionV104.js')
       && fs.existsSync('listeningIdentityRecordingV106.js')
-      && fs.existsSync('listeningIdentityPacingV105.js')
-      && workerText.includes("const MUSICBRAINZ_RELEASE_CONTEXT_PATH = '/musicbrainz/release-context'")
   }
 };
 const output = JSON.stringify(state, null, 2) + '\n';
