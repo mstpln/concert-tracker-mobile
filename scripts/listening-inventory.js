@@ -91,7 +91,7 @@ function sourceArtistMbids(event) {
 function textTrackKey(event, bandId) {
   const title = normalizeText(event?.recordingTitle);
   if (!bandId || !title) return null;
-  return `listenbrainz:${stableHash(`${bandId}\n${title}`)}`;
+  return `text:${stableHash(`${bandId}\n${title}`)}`;
 }
 
 function workKey(event, bandId) {
@@ -184,7 +184,11 @@ function buildListeningInventory({ bands = [], events = [], spotifyMetadata = nu
     if (item.reason === 'band_conflict') continue;
 
     const existingIdentity = identityRecords[item.trackKey];
-    const existingRecordingMbid = validMbid(existingIdentity?.musicbrainzRecordingMbid || existingIdentity?.recordingMbid);
+    const existingRecordingMbid = validMbid(
+      existingIdentity?.musicbrainzRecordingId
+      || existingIdentity?.musicbrainzRecordingMbid
+      || existingIdentity?.recordingMbid,
+    );
     if (existingRecordingMbid) {
       item.status = 'complete';
       item.reason = 'existing_track_identity';
