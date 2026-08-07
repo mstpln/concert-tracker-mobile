@@ -9,7 +9,7 @@ test('v104 exposes manual bounded listening identity completion without automati
 
   await page.goto('/');
   await page.locator('#settings-btn').click();
-  await page.getByRole('tab', { name: 'Data' }).click();
+  await page.getByRole('tab', { name: 'Review', exact: true }).click();
 
   const card = page.locator('[data-v104-listening-identity]');
   await expect(card).toBeVisible();
