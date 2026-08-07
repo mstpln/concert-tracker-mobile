@@ -120,6 +120,17 @@ test('a run that resolves recording and release group retains both evidence step
   ]);
 });
 
+test('derived release-group identity is applied to runtime listening events', () => {
+  const merged = identity.mergeIdentityIntoEvent({}, { releaseGroupMbid: RG_A });
+  assert.equal(merged.musicbrainzReleaseGroupId, RG_A);
+});
+
+test('MusicBrainz pacing keeps a safety margin below the one-request-per-second average', () => {
+  assert.equal(identity.MUSICBRAINZ_REQUEST_DELAY_MS, 1500);
+  assert.equal(identity.remainingMusicBrainzDelay(1000, 2000), 500);
+  assert.equal(identity.remainingMusicBrainzDelay(1000, 2500), 0);
+});
+
 test('malformed ListenBrainz JSON fails closed with clear provider feedback', async () => {
   await assert.rejects(identity.requestLookupOne(
     identity.lookupSignature(listen()),
