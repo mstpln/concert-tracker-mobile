@@ -25,39 +25,42 @@ function listen(overrides = {}) {
   };
 }
 
-test('lookup plan groups repeated listens by one artist/track signature', () => {
+test('lookup plan groups repeated listens only when artist track and release signature agree', () => {
   const plan = identity.buildLookupPlan([
-    listen({ stableListenId: 'listen:1', releaseTitle: 'Edition A' }),
-    listen({ stableListenId: 'listen:2', releaseTitle: 'Edition B' }),
+    listen({ stableListenId: 'listen:1' }),
+    listen({ stableListenId: 'listen:2' }),
+    listen({ stableListenId: 'listen:3', releaseTitle: 'Synthetic Album Deluxe' }),
   ]);
-  assert.equal(plan.items.length, 1);
-  assert.deepEqual(plan.items[0].sourceEventIds, ['listen:1', 'listen:2']);
+  assert.equal(plan.items.length, 2);
+  assert.deepEqual(plan.items.find((item) => item.releaseName === 'Synthetic Album').sourceEventIds, ['listen:1', 'listen:2']);
 });
 
-test('lookup plan skips existing recording MBIDs and allows missing release titles', () => {
+test('lookup plan skips only identities that already have recording release and release-group MBIDs', () => {
   const plan = identity.buildLookupPlan([
-    listen({ stableListenId: 'resolved', musicbrainzRecordingId: REC_A, musicbrainzReleaseId: REL_A }),
-    listen({ stableListenId: 'missing-release', releaseTitle: null }),
+    listen({ stableListenId: 'complete', musicbrainzRecordingId: REC_A, musicbrainzReleaseId: REL_A, musicbrainzReleaseGroupId: RG_A }),
+    listen({ stableListenId: 'release-group-missing', musicbrainzRecordingId: REC_A, musicbrainzReleaseId: REL_A }),
+    listen({ stableListenId: 'missing-release-title', releaseTitle: null }),
   ]);
-  assert.equal(plan.items.length, 1);
+  assert.equal(plan.items.length, 2);
   assert.equal(plan.alreadyResolved, 1);
   assert.equal(plan.ineligible, 0);
-  assert.equal(plan.releaseIdentityPresent, 1);
 });
 
-test('exact lookup accepts only exact normalized artist and recording text', () => {
+test('exact lookup resolves recording identity without accepting a mismatched release', () => {
   const request = identity.lookupSignature(listen());
   const accepted = identity.exactLookupResult(request, {
     artist_credit_name: ' Synthetic Artist ',
     recording_name: 'Synthetic Song',
-    release_name: 'A provider-selected release that is not trusted here',
+    release_name: 'Other Edition',
     artist_mbids: [ART_A],
     recording_mbid: REC_A,
     release_mbid: REL_A,
+    metadata: { release: { mbid: REL_A, name: 'Other Edition', release_group_mbid: RG_A } },
   });
   assert.equal(accepted.recordingMbid, REC_A);
   assert.deepEqual(accepted.artistMbids, [ART_A]);
-  assert.equal(Object.hasOwn(accepted, 'releaseMbid'), false);
+  assert.equal(accepted.releaseMbid, null);
+  assert.equal(accepted.releaseGroupMbid, null);
 
   assert.equal(identity.exactLookupResult(request, {
     artist_credit_name: 'Synthetic Artist',
@@ -66,21 +69,31 @@ test('exact lookup accepts only exact normalized artist and recording text', () 
   }), null);
 });
 
-test('reordered lookup responses cannot attach the wrong recording MBID', () => {
-  const requests = [
-    identity.lookupSignature(listen()),
-    identity.lookupSignature(listen({ recordingTitle: 'Other Song' })),
-  ];
-  const response = [
-    { artist_credit_name: 'Synthetic Artist', recording_name: 'Other Song', recording_mbid: REC_B, release_mbid: REL_B },
-    { artist_credit_name: 'Synthetic Artist', recording_name: 'Synthetic Song', recording_mbid: REC_A, release_mbid: REL_A },
-  ];
-  const resolved = identity.normalizeLookupResponse(response, requests);
-  assert.equal(resolved[0].recordingMbid, REC_A);
-  assert.equal(resolved[1].recordingMbid, REC_B);
+test('exact release identity requires matching returned and metadata release IDs plus exact release title', () => {
+  const request = identity.lookupSignature(listen());
+  const accepted = identity.exactLookupResult(request, {
+    artist_credit_name: 'Synthetic Artist',
+    recording_name: 'Synthetic Song',
+    release_name: 'Synthetic Album',
+    recording_mbid: REC_A,
+    release_mbid: REL_A,
+    metadata: { release: { mbid: REL_A, name: 'Synthetic Album', release_group_mbid: RG_A } },
+  });
+  assert.equal(accepted.releaseMbid, REL_A);
+  assert.equal(accepted.releaseGroupMbid, RG_A);
+
+  const conflicting = identity.exactLookupResult(request, {
+    artist_credit_name: 'Synthetic Artist',
+    recording_name: 'Synthetic Song',
+    release_name: 'Synthetic Album',
+    recording_mbid: REC_A,
+    release_mbid: REL_A,
+    metadata: { release: { mbid: REL_B, name: 'Synthetic Album', release_group_mbid: RG_A } },
+  });
+  assert.equal(conflicting.releaseMbid, null);
 });
 
-test('derived mapping writes recording identity only and never invents a release identity', () => {
+test('derived mapping stores exact release identity only when safely resolved', () => {
   const records = identity.buildIdentityRecords(
     { sourceEventIds: ['listen:1', 'listen:2'] },
     { artistMbids: [ART_A], recordingMbid: REC_A, releaseMbid: REL_A, releaseGroupMbid: RG_A },
@@ -88,8 +101,8 @@ test('derived mapping writes recording identity only and never invents a release
   );
   assert.equal(records.length, 2);
   assert.equal(records[0].recordingMbid, REC_A);
-  assert.equal(Object.hasOwn(records[0], 'releaseMbid'), false);
-  assert.equal(Object.hasOwn(records[0], 'releaseGroupMbid'), false);
+  assert.equal(records[0].releaseMbid, REL_A);
+  assert.equal(records[0].releaseGroupMbid, RG_A);
   assert.equal(Object.hasOwn(records[0], 'listenedAt'), false);
   assert.equal(Object.hasOwn(records[0], 'recordingTitle'), false);
 });
@@ -109,21 +122,32 @@ test('derived identity fills missing runtime fields but never overwrites trusted
   assert.equal(preserved.musicbrainzReleaseId, REL_B);
 });
 
-test('lookup request sends identity text only and no listening timestamp or event ID', async () => {
-  let body;
-  await identity.requestLookupBatch([
-    identity.lookupSignature(listen()),
-  ], 'synthetic-token', async (_url, options) => {
-    body = JSON.parse(options.body);
-    return { status: 200, ok: true, json: async () => [] };
+test('lookup request sends identity text in the URL only and requests release metadata', async () => {
+  let requestedUrl;
+  let authorization;
+  const request = identity.lookupSignature(listen());
+  await identity.requestLookupOne(request, 'synthetic-token', async (url, options) => {
+    requestedUrl = url;
+    authorization = options.headers.Authorization;
+    return {
+      status: 200,
+      ok: true,
+      json: async () => ({ artist_credit_name: 'Synthetic Artist', recording_name: 'Synthetic Song', recording_mbid: REC_A }),
+    };
   });
-  assert.deepEqual(Object.keys(body.recordings[0]).sort(), ['artist_name', 'recording_name', 'release_name']);
-  assert.doesNotMatch(JSON.stringify(body), /2026-08-01|listen:1|synthetic-token/);
+  const url = new URL(requestedUrl);
+  assert.equal(url.searchParams.get('artist_name'), 'Synthetic Artist');
+  assert.equal(url.searchParams.get('recording_name'), 'Synthetic Song');
+  assert.equal(url.searchParams.get('release_name'), 'Synthetic Album');
+  assert.equal(url.searchParams.get('metadata'), 'true');
+  assert.equal(url.searchParams.get('inc'), 'release');
+  assert.equal(authorization, 'Token synthetic-token');
+  assert.doesNotMatch(requestedUrl, /2026-08-01|listen:1|synthetic-token/);
 });
 
 test('identity completion stops clearly on lookup rate limiting', async () => {
   await assert.rejects(
-    identity.requestLookupBatch([identity.lookupSignature(listen())], 'synthetic-token', async () => ({ status: 429, ok: false })),
+    identity.requestLookupOne(identity.lookupSignature(listen()), 'synthetic-token', async () => ({ status: 429, ok: false })),
     /rate limiting/i,
   );
 });
