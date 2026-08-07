@@ -88,14 +88,14 @@ test('structurally invalid private checkpoint fails closed before provider work 
   );
 });
 
-test('production authorization separates private reads/provider calls from metadata writes', () => {
+test('production authorization separates provider usage accounting from listening metadata writes', () => {
   assert.throws(
     () => production.assertProductionAuthorization({ execute: false, write: false }, {}),
     /add --execute/
   );
   assert.throws(
     () => production.assertProductionAuthorization({ execute: true, write: false }, {}),
-    /private-read\/provider authorization/
+    /private-read\/provider\/usage-write authorization/
   );
   assert.doesNotThrow(() => production.assertProductionAuthorization(
     { execute: true, write: false },
