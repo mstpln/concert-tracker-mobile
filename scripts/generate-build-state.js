@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const version = fs.readFileSync('version.js', 'utf8').match(/APP_VERSION = '([^']+)'/)?.[1];
 const cache = fs.readFileSync('service-worker.js', 'utf8').match(/CACHE_NAME_LITERAL = '([^']+)'/)?.[1];
+const wrangler = JSON.parse(fs.readFileSync('wrangler.jsonc', 'utf8'));
 const state = {
   schemaVersion: 1,
   generatorVersion: 1,
@@ -11,6 +12,7 @@ const state = {
   runtime: 'plain-html-css-javascript-pwa',
   expectedNodeMajor: 20,
   qaOutputDirectory: 'dist',
+  workerEntryPoint: String(wrangler.main || '').replace(/^\.\//, ''),
   playwrightProjects: ['desktop-chromium','mobile-chromium'],
   workflows: ['pr-qa.yml','full-pwa-qa.yml','production-smoke.yml'],
   shellFiles: [
