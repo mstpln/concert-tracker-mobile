@@ -12,6 +12,8 @@ function listen(overrides = {}) {
   return {
     stableListenId: 'listen:1',
     source: 'spotify_import',
+    localBandId: 'band-1',
+    musicbrainzArtistIds: [ART_A],
     listenedAt: '2026-08-01T10:00:00.000Z',
     listenedDurationMs: 180000,
     artistCreditName: 'Synthetic Artist',
@@ -30,17 +32,33 @@ function progressStore() {
   };
 }
 
+test('provider completion scope excludes listening events not mapped to a followed band', () => {
+  const scoped = identity.trackedListeningEvents([
+    listen({ stableListenId: 'tracked' }),
+    listen({ stableListenId: 'untracked', localBandId: null, bandId: null }),
+  ]);
+  assert.deepEqual(scoped.map((event) => event.stableListenId), ['tracked']);
+});
+
+test('recording lookup is ineligible without a trusted artist MBID', () => {
+  const plan = identity.buildLookupPlan([
+    listen({ stableListenId: 'no-artist-id', musicbrainzArtistIds: [] }),
+  ]);
+  assert.equal(plan.items.length, 0);
+  assert.equal(plan.ineligible, 1);
+});
+
 test('trusted band artist identity is reused only from confirmed MusicBrainz bands', () => {
   const events = [
-    listen({ stableListenId: 'a', localBandId: 'band-a' }),
-    listen({ stableListenId: 'b', localBandId: 'band-b' }),
+    listen({ stableListenId: 'a', localBandId: 'band-a', musicbrainzArtistIds: [] }),
+    listen({ stableListenId: 'b', localBandId: 'band-b', musicbrainzArtistIds: [] }),
   ];
   const enriched = identity.addTrustedBandArtistIdentity(events, [
     { id: 'band-a', musicbrainz: { mbid: ART_A, status: 'manual_confirmed' } },
     { id: 'band-b', musicbrainz: { mbid: ART_B, status: 'needs_review' } },
   ]);
   assert.deepEqual(enriched[0].musicbrainzArtistIds, [ART_A]);
-  assert.equal(enriched[1].musicbrainzArtistIds, undefined);
+  assert.deepEqual(enriched[1].musicbrainzArtistIds, []);
 });
 
 test('lookup plan never groups conflicting trusted artist identities together', () => {
@@ -144,7 +162,7 @@ test('resumable cursor advances past unresolved rows before wrapping for retry',
       return {
         status: 200,
         ok: true,
-        json: async () => ({ artist_credit_name: 'Wrong Artist', recording_name: 'No match', recording_mbid: REC_A }),
+        json: async () => ({ artist_credit_name: 'Wrong Artist', recording_name: 'No match', artist_mbids: [ART_A], recording_mbid: REC_A }),
       };
     },
   };
