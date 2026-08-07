@@ -14,10 +14,11 @@ test('v104 exposes manual bounded listening identity completion without automati
   const card = page.locator('[data-v104-listening-identity]');
   await expect(card).toBeVisible();
   await expect(card).toContainText('Listening identity');
-  await expect(card).toContainText('at most 25 unique track/release combinations per run');
-  await expect(card).toContainText('never listening timestamps or the full history');
+  await expect(card).toContainText('at most 25 unique artist/track combinations per run');
+  await expect(card).toContainText('preserves existing trusted release IDs');
+  await expect(card).toContainText('Release groups never combine editions automatically');
   await expect(card.getByRole('button', { name: 'Complete listening identities' })).toBeVisible();
-  await expect(card.locator('[data-v104-identity-status]')).toHaveText('Only runs when you press the button.');
+  await expect(card.locator('[data-v104-identity-status]')).toContainText('No listening timestamps or full-history payload is sent');
   expect(externalMetadataRequests).toEqual([]);
 });
 
