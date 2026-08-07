@@ -6,6 +6,9 @@ const runner = require('./spotify-artwork-backfill');
 const source = require('./spotify-artwork-backfill-source');
 const { UsageTracker } = require('./lib/usageTracker');
 
+const PRODUCTION_EXECUTION_CONFIRMATION = 'I_AUTHORIZE_PRIVATE_LISTENING_READS_AND_LIVE_SPOTIFY_BACKFILL_CALLS';
+const PRODUCTION_WRITE_CONFIRMATION = 'I_AUTHORIZE_PRODUCTION_SPOTIFY_METADATA_WRITES';
+
 function requiredEnv(env, name) {
   const value = String(env?.[name] || '').trim();
   if (!value) throw new Error(`Missing required environment variable: ${name}`);
@@ -56,6 +59,18 @@ async function trackedSpotifyCall(usage, operation) {
   return operation();
 }
 
+function assertProductionAuthorization(options, env) {
+  if (!options.execute) {
+    throw new Error('Refusing production maintenance: add --execute only after private listening reads and live Spotify backfill calls are explicitly authorized.');
+  }
+  if (env.LIVEVAULT_BACKFILL_CONFIRM !== PRODUCTION_EXECUTION_CONFIRMATION) {
+    throw new Error('Refusing production maintenance: LIVEVAULT_BACKFILL_CONFIRM does not contain the required private-read/provider authorization value.');
+  }
+  if (options.write && env.LIVEVAULT_BACKFILL_WRITE_CONFIRM !== PRODUCTION_WRITE_CONFIRMATION) {
+    throw new Error('Refusing production metadata write: --write additionally requires LIVEVAULT_BACKFILL_WRITE_CONFIRM with the explicit production-write authorization value.');
+  }
+}
+
 async function runProductionCli({
   argv = process.argv.slice(2),
   env = process.env,
@@ -69,10 +84,7 @@ async function runProductionCli({
     log(runner.usageText());
     return { help: true };
   }
-  if (!options.execute) throw new Error('Refusing production maintenance: add --execute only after the reviewed production authorization is in place.');
-  if (env.LIVEVAULT_BACKFILL_CONFIRM !== runner.EXECUTION_CONFIRMATION) {
-    throw new Error('Refusing production maintenance: LIVEVAULT_BACKFILL_CONFIRM does not contain the required confirmation value.');
-  }
+  assertProductionAuthorization(options, env);
 
   const endpoint = normalizeEndpoint(requiredEnv(env, 'CF_WORKER_ENDPOINT'));
   const workerToken = requiredEnv(env, 'CF_WORKER_BROWSER_TOKEN');
@@ -137,12 +149,15 @@ if (require.main === module) {
 }
 
 module.exports = {
+  PRODUCTION_EXECUTION_CONFIRMATION,
+  PRODUCTION_WRITE_CONFIRMATION,
   requiredEnv,
   normalizeEndpoint,
   assertPrivateCheckpointPath,
   loadValidatedCheckpoint,
   configureUsageEnvironment,
   trackedSpotifyCall,
+  assertProductionAuthorization,
   runProductionCli,
   MAX_IDS_PER_INVOCATION: core.MAX_IDS_PER_INVOCATION,
 };
