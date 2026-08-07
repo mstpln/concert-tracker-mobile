@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v105",
-  "serviceWorkerCacheVersion": "v105",
+  "appVersion": "v106",
+  "serviceWorkerCacheVersion": "v106",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 20,
@@ -40,6 +40,7 @@
     "listeningSpotifyIdentityReviewUi.js",
     "listeningIdentityPacingV105.js",
     "listeningIdentityCompletionV104.js",
+    "listeningIdentityRecordingV106.js",
     "listeningIdentityGroupingV104.js",
     "devicePrivacy.js",
     "browserFetchPolicy.js",

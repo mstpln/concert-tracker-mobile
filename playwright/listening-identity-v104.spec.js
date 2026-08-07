@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('v104 exposes manual bounded listening identity completion without automatic provider calls', async ({ page }) => {
+test('v106 exposes recording-only manual identity completion without automatic provider calls', async ({ page }) => {
   const externalMetadataRequests = [];
   await page.route('https://api.listenbrainz.org/1/metadata/**', async (route) => {
     externalMetadataRequests.push(route.request().url());
@@ -14,13 +14,78 @@ test('v104 exposes manual bounded listening identity completion without automati
   const card = page.locator('[data-v104-listening-identity]');
   await expect(card).toBeVisible();
   await expect(card).toContainText('Listening identity');
-  await expect(card).toContainText('at most 25 unique combinations per run');
-  await expect(card).toContainText('release-group context only when a listen already has a trusted MusicBrainz release ID');
-  await expect(card).toContainText('Missing release editions are never guessed from text');
-  await expect(card).toContainText('release groups never combine editions automatically');
+  await expect(card).toContainText('at most 25 unique recording combinations per run');
+  await expect(card).toContainText('Release-group enrichment is deferred and does not block recording identity completion');
   await expect(card.getByRole('button', { name: 'Complete listening identities' })).toBeVisible();
-  await expect(card.locator('[data-v104-identity-status]')).toContainText('No listening timestamps, event IDs or full-history payload is sent to either provider');
+  await expect(card.locator('[data-v104-identity-status]')).toContainText('uses ListenBrainz for recording identity only');
+  await expect(card.locator('[data-v104-identity-status]')).toContainText('does not call MusicBrainz release context');
+  await expect(card.locator('[data-v104-identity-status]')).toContainText('does not call MusicBrainz release context or send listening timestamps, event IDs, or full-history payloads');
   expect(externalMetadataRequests).toEqual([]);
+});
+
+test('v106 manual button resolves recording identity without calling MusicBrainz release context', async ({ page }) => {
+  const artistMbid = 'fedcbafe-dcba-4fed-8cba-fedcbafedcba';
+  const recordingMbid = '11111111-2222-4333-8444-555555555555';
+  const releaseMbid = '12345678-1234-4234-8234-123456789abc';
+
+  await page.goto('/');
+  await page.evaluate(({ artistMbid, recordingMbid, releaseMbid }) => {
+    window.LiveVaultSpotifyHistory = {
+      loadEvents: async () => [{
+        stableListenId: 'v106-browser-identity-1',
+        localBandId: 'band-a',
+        musicbrainzArtistIds: [artistMbid],
+        musicbrainzReleaseId: releaseMbid,
+        artistCreditName: 'Synthetic Identity Artist',
+        recordingTitle: 'Synthetic Identity Song',
+        releaseTitle: 'Synthetic Identity Album',
+      }],
+    };
+    const stored = new Map();
+    window.BandmarkrListeningDerivedStorage = {
+      listIdentities: async () => ({ items: [...stored.values()], nextAfterSourceEventId: null }),
+      putIdentities: async (records) => records.forEach((record) => stored.set(record.sourceEventId, record)),
+    };
+    window.LiveVaultListenBrainz = { connection: () => ({ token: 'synthetic-token' }) };
+    window.__v106BrowserIdentityRecords = stored;
+    window.__v106SyntheticFetchUrls = [];
+    window.fetch = async (input) => {
+      const url = String(input?.url || input);
+      window.__v106SyntheticFetchUrls.push(url);
+      if (!url.startsWith('https://api.listenbrainz.org/1/metadata/lookup/')) {
+        throw new Error(`Unexpected synthetic fetch: ${url}`);
+      }
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({
+          artist_credit_name: 'Synthetic Identity Artist',
+          recording_name: 'Synthetic Identity Song',
+          artist_mbids: [artistMbid],
+          recording_mbid: recordingMbid,
+        }),
+      };
+    };
+  }, { artistMbid, recordingMbid, releaseMbid });
+
+  await page.locator('#settings-btn').click();
+  await page.getByRole('tab', { name: 'Review', exact: true }).click();
+  const card = page.locator('[data-v104-listening-identity]');
+  await card.getByRole('button', { name: 'Complete listening identities' }).click();
+  await expect(card.locator('[data-v104-identity-status]')).toContainText('Done. Checked 1 recording combinations');
+  await expect(card.locator('[data-v104-identity-status]')).toContainText('1 recording IDs added');
+  await expect(card.locator('[data-v104-identity-status]')).toContainText('Release-group enrichment is deferred and did not run');
+
+  const result = await page.evaluate(() => ({
+    urls: [...window.__v106SyntheticFetchUrls],
+    record: [...window.__v106BrowserIdentityRecords.values()][0],
+  }));
+  expect(result.urls).toHaveLength(1);
+  expect(result.urls[0]).toContain('api.listenbrainz.org/1/metadata/lookup/');
+  expect(result.urls.some((url) => url.includes('/musicbrainz/release-context'))).toBe(false);
+  expect(result.record.recordingMbid).toBe(recordingMbid);
+  expect(result.record.releaseMbid).toBe(releaseMbid);
+  expect(result.record.releaseGroupMbid).toBeUndefined();
 });
 
 test('v104 keeps two MusicBrainz releases separate even when they share one release group', async ({ page }) => {

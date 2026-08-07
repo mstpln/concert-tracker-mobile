@@ -2,7 +2,6 @@
 const fs = require('node:fs');
 const version = fs.readFileSync('version.js', 'utf8').match(/APP_VERSION = '([^']+)'/)?.[1];
 const cache = fs.readFileSync('service-worker.js', 'utf8').match(/CACHE_NAME_LITERAL = '([^']+)'/)?.[1];
-const workerText = fs.readFileSync('worker.js', 'utf8');
 const state = {
   schemaVersion: 1,
   generatorVersion: 1,
@@ -15,7 +14,7 @@ const state = {
   playwrightProjects: ['desktop-chromium','mobile-chromium'],
   workflows: ['pr-qa.yml','full-pwa-qa.yml','production-smoke.yml'],
   shellFiles: [
-    'index.html','app.css','listeningV81.css','concertCardsV86.css','bandmarkrV87.css','listeningReviewRollout.css','toplistV96.css','trustedListeningV99.css','icons/bandmarkr-wordmark.svg','app.js','toplistStatsV96.js','toplistV96.js','spotifyListeningMetadataV99.js','spotifyListeningMetadataV101.js','trustedListeningV99.js','listeningReviewRollout.js','listeningReviewReconcile.js','listeningCanonicalActivation.js','listeningPreparationRecovery.js','listeningSpotifyIdentityReview.js','listeningSpotifyIdentityReviewUi.js','listeningIdentityPacingV105.js','listeningIdentityCompletionV104.js','listeningIdentityGroupingV104.js','devicePrivacy.js','browserFetchPolicy.js','securityHardening.js',
+    'index.html','app.css','listeningV81.css','concertCardsV86.css','bandmarkrV87.css','listeningReviewRollout.css','toplistV96.css','trustedListeningV99.css','icons/bandmarkr-wordmark.svg','app.js','toplistStatsV96.js','toplistV96.js','spotifyListeningMetadataV99.js','spotifyListeningMetadataV101.js','trustedListeningV99.js','listeningReviewRollout.js','listeningReviewReconcile.js','listeningCanonicalActivation.js','listeningPreparationRecovery.js','listeningSpotifyIdentityReview.js','listeningSpotifyIdentityReviewUi.js','listeningIdentityPacingV105.js','listeningIdentityCompletionV104.js','listeningIdentityRecordingV106.js','listeningIdentityGroupingV104.js','devicePrivacy.js','browserFetchPolicy.js','securityHardening.js',
     'listeningInsightsV81.js','listeningV81BootFix.js','listeningV81ReviewFix.js','listeningV82Corrections.js','listeningV82GenreFix.js','listeningV82FailSafe.js','listeningV83ChartFix.js','listeningV83WindowFix.js','listeningV84ChartRenderFix.js','listeningV85RankingAndStatsUnits.js','dataLib.js','listeningStats.js','listeningStatsV81.js','listeningFixtures.js','listeningFixturesV99.js','listeningIdentityContracts.js','listeningDerivedStorage.js','listeningDerivedMigration.js','spotifyHistoryImport.js','listeningVaultBridge.js',
     'listeningVault.js','listeningHistoryV2.js','listeningIncrementalVault.js','listenbrainzSync.js',
     'spotifyHistoryBootstrap.js','conflictMerge.js','remoteStore.js','ownedTickets.js','spotifyUserV100.js','service-worker.js'
@@ -25,8 +24,7 @@ const state = {
     musicbrainzEnabled: /MUSICBRAINZ:\s*\{[^}]*enabled:\s*true/s.test(fs.readFileSync('scripts/lib/config.js','utf8')),
     listenbrainzSyncEnabled: fs.existsSync('listenbrainzSync.js') && fs.existsSync('listeningIncrementalVault.js'),
     listeningIdentityCompletionEnabled: fs.existsSync('listeningIdentityCompletionV104.js')
-      && fs.existsSync('listeningIdentityPacingV105.js')
-      && workerText.includes("const MUSICBRAINZ_RELEASE_CONTEXT_PATH = '/musicbrainz/release-context'")
+      && fs.existsSync('listeningIdentityRecordingV106.js')
   }
 };
 const output = JSON.stringify(state, null, 2) + '\n';
