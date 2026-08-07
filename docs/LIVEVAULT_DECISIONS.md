@@ -439,3 +439,11 @@
 **Reason:** Controlled physical runs on both v104 and v105 stopped on MusicBrainz rate limiting, including after v105 doubled browser-side pacing. Release-group identity is optional context and is not an album grouping key, so Worker-egress or MusicBrainz availability must not block conservative recording identity work that ListenBrainz can complete.
 
 **Consequence:** v106 prefers completing recording identity and deferring release-group enrichment. The 25-combination cap, resumable local cursor, trusted-artist requirement, exact normalized artist/recording matching, source immutability, no guessed release edition, additive derived identity writes and no hidden retry remain unchanged.
+
+## 2026-08-07 — Data maintenance has a separate least-privilege role and derived ownership layer
+
+**Decision:** Scheduled/private data maintenance uses a separate `DATA_MAINTENANCE_TOKEN` role. Original Spotify and ListenBrainz archives remain immutable source observations. Spotify-owned catalog fields stay in `listening/spotify-metadata.json`; cross-provider recording identity and retry/evidence state live in `listening/track-identities.json`; volatile forecast data lives in `weather.json`. Existing exact Spotify track IDs and trusted provider IDs are always reused before any text lookup.
+
+**Reason:** Listening ingestion/enrichment and weather need private data access that the existing research automation role intentionally does not have, but broadening that role or creating a general R2 file API would weaken established safety boundaries. Separate derived documents also allow enrichment to be rebuilt without touching user history or user-owned concert fields.
+
+**Consequence:** The maintenance role may read bands, concerts, aggregate API usage and recognized private listening objects, while writes are limited to aggregate API usage, Spotify listening metadata, track identities and weather with validators and conditional ETag semantics. It has no ticket access, no arbitrary-key access and no authority to rewrite listening manifests/archives, bands or concerts. Ambiguous identity remains unresolved/reviewable, unknown future fields remain tolerated by additive contracts, and production secrets, production reads/writes, provider calls and scheduled workflow activation still require separate explicit authorization.
