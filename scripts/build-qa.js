@@ -16,7 +16,7 @@ const shell = [
   'spotifyHistoryImport.js', 'listeningVaultBridge.js', 'listeningVault.js', 'listeningHistoryV2.js',
   'listeningIncrementalVault.js', 'listenbrainzSync.js', 'spotifyHistoryBootstrap.js', 'icons.js',
   'conflictMerge.js', 'remoteStore.js', 'ownedTickets.js', 'musicbrainzState.js',
-  'providerIdentityState.js', 'weather.js', 'spotifyUser.js', 'version.js',
+  'providerIdentityState.js', 'weather.js', 'spotifyUser.js', 'spotifyUserV100.js', 'version.js',
   'manifest.json',
 ];
 

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v99",
-  "serviceWorkerCacheVersion": "v99",
+  "appVersion": "v100",
+  "serviceWorkerCacheVersion": "v100",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 20,
@@ -68,6 +68,7 @@
     "conflictMerge.js",
     "remoteStore.js",
     "ownedTickets.js",
+    "spotifyUserV100.js",
     "service-worker.js"
   ],
   "flags": {
