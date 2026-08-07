@@ -61,6 +61,16 @@ test('data maintenance role is least privilege', async () => {
   assert.equal((await worker.fetch(req('GET', '/listening/manifest.json', 'automation'), env)).status, 403);
 });
 
+test('credential collisions fail closed instead of inheriting a broader role', async () => {
+  const worker = workerUnderTest();
+  const sharedRoleEnv = { BROWSER_TOKEN: 'shared', DATA_MAINTENANCE_TOKEN: 'shared', BUCKET: bucket() };
+  assert.equal((await worker.fetch(req('GET', '/bands.json', 'shared'), sharedRoleEnv)).status, 401);
+  assert.equal((await worker.fetch(req('GET', '/listening/manifest.json', 'shared'), sharedRoleEnv)).status, 401);
+
+  const sharedSmokeEnv = { DATA_MAINTENANCE_TOKEN: 'shared-smoke', READ_ONLY_TOKEN: 'shared-smoke', BUCKET: bucket() };
+  assert.equal((await worker.fetch(req('GET', '/qa-smoke', 'shared-smoke'), sharedSmokeEnv)).status, 401);
+});
+
 test('maintenance can create track identities only through validated conditional JSON writes', async () => {
   const worker = workerUnderTest();
   const env = { BROWSER_TOKEN: 'browser', DATA_MAINTENANCE_TOKEN: 'maintenance', BUCKET: bucket() };
@@ -110,7 +120,7 @@ test('spotify metadata contract accepts additive artist ids and ISRC but rejects
         spotifyTrackId: id,
         spotifyTrackUrl: `https://open.spotify.com/track/${id}`,
         spotifyAlbumId: '6JWc4iAiJ9FjyK0B59ABb4',
-        spotifyAlbumUrl: 'https://open.spotify.com/album/6JWc4iAiJ9FjyK0B59ABb4',
+        spotifyAlbumUrl: 'https://open.spotify.com/album/${id}`,
         artworkUrl: 'https://i.scdn.co/image/example',
         spotifyArtistIds: ['0du5cEVh5yTK9QJze8zA0C'],
         isrc: 'USAT29900609',
