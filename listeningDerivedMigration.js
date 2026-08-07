@@ -10,6 +10,10 @@
   const CHECKPOINT_KEY = 'bandmarkr-listening-derived-migration-v1';
   const MIGRATION_VERSION = 1;
   const MAX_CHUNK_SIZE = 500;
+  const OPTIONAL_IDENTITY_FIELDS = new Set([
+    'artistMbid', 'artistMbids', 'recordingMbid', 'releaseMbid', 'releaseGroupMbid',
+    'spotifyArtistId', 'spotifyTrackId', 'spotifyAlbumId', 'evidence',
+  ]);
 
   function clean(value) {
     const text = String(value == null ? '' : value).trim();
@@ -103,6 +107,15 @@
     return byName;
   }
 
+  function compactIdentityEnvelope(value = {}) {
+    const output = { ...value };
+    for (const field of OPTIONAL_IDENTITY_FIELDS) {
+      const item = output[field];
+      if (item == null || item === '' || (Array.isArray(item) && item.length === 0)) delete output[field];
+    }
+    return output;
+  }
+
   function deriveRecords(events, bands = [], contracts = root?.BandmarkrListeningIdentityContracts) {
     if (!contracts?.identityEnvelope || !contracts?.canonicalEnvelope) throw new Error('Listening identity contracts are unavailable.');
     const byName = bandLookup(bands);
@@ -112,11 +125,11 @@
       const sourceEventId = clean(event?.stableListenId);
       if (!sourceEventId) throw new Error('Source listening event is missing stableListenId.');
       const localBandId = clean(event.bandId || event.localBandId) || byName.get(normalizeText(event.artistCreditName)) || null;
-      identities.push({
+      identities.push(compactIdentityEnvelope({
         ...contracts.identityEnvelope({ ...event, sourceEventId, localBandId }),
         sourceEventId,
         status: localBandId ? 'resolved' : 'unresolved',
-      });
+      }));
       canonical.push({
         ...contracts.canonicalEnvelope({ ...event, sourceEventId, canonicalListenId: sourceEventId, dedupeStatus: 'unique' }),
         sourceEventId,
@@ -176,6 +189,7 @@
     CHECKPOINT_KEY,
     MIGRATION_VERSION,
     MAX_CHUNK_SIZE,
+    OPTIONAL_IDENTITY_FIELDS,
     boundedChunkSize,
     defaultCheckpoint,
     checkpointStore,
@@ -183,6 +197,7 @@
     sourceCount,
     readSourcePage,
     bandLookup,
+    compactIdentityEnvelope,
     deriveRecords,
     runChunk,
     runToCompletion,

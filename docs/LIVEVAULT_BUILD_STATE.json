@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v103",
-  "serviceWorkerCacheVersion": "v103",
+  "appVersion": "v104",
+  "serviceWorkerCacheVersion": "v104",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 20,
@@ -38,6 +38,8 @@
     "listeningPreparationRecovery.js",
     "listeningSpotifyIdentityReview.js",
     "listeningSpotifyIdentityReviewUi.js",
+    "listeningIdentityCompletionV104.js",
+    "listeningIdentityGroupingV104.js",
     "devicePrivacy.js",
     "browserFetchPolicy.js",
     "securityHardening.js",
@@ -75,6 +77,7 @@
   "flags": {
     "structuredResearchEnabled": true,
     "musicbrainzEnabled": false,
-    "listenbrainzSyncEnabled": true
+    "listenbrainzSyncEnabled": true,
+    "listeningIdentityCompletionEnabled": true
   }
 }

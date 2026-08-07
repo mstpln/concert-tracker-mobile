@@ -6,7 +6,8 @@ function assert(condition, message) {
   if (!condition) throw new Error(`Cloudflare Builds validation failed: ${message}`);
 }
 
-const config = JSON.parse(fs.readFileSync('wrangler.jsonc', 'utf8'));
+const configText = fs.readFileSync('wrangler.jsonc', 'utf8');
+const config = JSON.parse(configText);
 assert(config.name === 'concert-tracker-api', 'Worker name must match the existing production Worker');
 assert(config.main === './worker.js', 'Worker entry point must remain worker.js');
 assert(/^\d{4}-\d{2}-\d{2}$/.test(config.compatibility_date), 'compatibility_date must be explicit');
@@ -15,7 +16,14 @@ assert(config.preview_urls === true, 'preview URLs must remain enabled for safe 
 assert(Array.isArray(config.r2_buckets) && config.r2_buckets.length === 1, 'exactly one R2 binding is expected');
 assert(config.r2_buckets[0].binding === 'BUCKET', 'R2 binding name must remain BUCKET');
 assert(config.r2_buckets[0].bucket_name === 'concert-tracker-data', 'R2 bucket must remain concert-tracker-data');
-assert(!fs.readFileSync('wrangler.jsonc', 'utf8').match(/BROWSER_TOKEN|AUTOMATION_TOKEN|READ_ONLY_TOKEN|API_TOKEN/), 'runtime secrets must not be committed');
+assert(!configText.match(/BROWSER_TOKEN|AUTOMATION_TOKEN|READ_ONLY_TOKEN|API_TOKEN/), 'runtime secrets must not be committed');
+
+const worker = fs.readFileSync('worker.js', 'utf8');
+assert(worker.includes("const MUSICBRAINZ_RELEASE_CONTEXT_PATH = '/musicbrainz/release-context'"), 'reviewed MusicBrainz context route must live in the watched Worker');
+assert(worker.includes("upstream.searchParams.set('inc','release-groups')"), 'MusicBrainz lookup must request release-group context from an exact release');
+assert(worker.includes("'User-Agent':MUSICBRAINZ_USER_AGENT"), 'MusicBrainz requests must carry the reviewed meaningful User-Agent');
+assert(worker.includes("if(role!=='browser')return response('Forbidden',{status:403})"), 'MusicBrainz context route must remain browser-role only');
+assert(worker.includes('MUSICBRAINZ_TIMEOUT_MS = 10000'), 'MusicBrainz provider request must remain timeout-bounded');
 
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 assert(packageJson.scripts['qa:cloudflare-builds'] === 'node scripts/qa-cloudflare-builds.js', 'package script must run the Cloudflare Builds guard');
