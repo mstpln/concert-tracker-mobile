@@ -423,3 +423,11 @@
 **Reason:** Recording identity can safely improve track-level grouping, but edition identity is materially stricter. Treating a provider-selected or sibling release as exact evidence could merge deluxe, remaster, regional, or otherwise distinct releases and would violate the existing conservative identity model.
 
 **Consequence:** Release-group identity remains context only and is never an album grouping key. Partially enriched same-title historical listens stay together unless contradictory trusted same-provider IDs prove distinct editions. Identity enrichment remains additive and local, immutable source observations remain unchanged, and all live provider use remains explicit and bounded.
+
+## 2026-08-07 — MusicBrainz release-context lookups keep a two-second safety margin
+
+**Decision:** Browser requests to the authenticated `/musicbrainz/release-context` route start at least 2,000 ms apart. The pacing guard applies only to that route; ListenBrainz and unrelated browser requests keep their existing behavior. MusicBrainz 429/503 responses still stop the manual identity run and are never retried automatically. The existing 25-combination manual run cap remains unchanged.
+
+**Reason:** The first controlled physical v104 identity-completion run reached the MusicBrainz route and was rate-limited after roughly three processed combinations while using the previous 1,000 ms boundary. MusicBrainz documents approximately one request per second as the normal client limit, so operating exactly at that boundary left too little margin for real network timing and service pressure.
+
+**Consequence:** Release-context enrichment is intentionally slower but more conservative. A MusicBrainz-heavy 25-combination run may spend roughly 50 seconds or more on provider pacing, while source listening events, R2 data, identity evidence rules and album-edition boundaries remain unchanged. Automated QA remains synthetic and does not call the live provider.
