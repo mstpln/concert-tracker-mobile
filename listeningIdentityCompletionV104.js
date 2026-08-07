@@ -10,6 +10,7 @@
   const MAX_SIGNATURES_PER_RUN = 25;
   const MAX_WRITE_BATCH = 500;
   const REQUEST_DELAY_MS = 1000;
+  const CURSOR_STORAGE_KEY = 'bandmarkrListeningIdentityV104Cursor';
 
   const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value));
   const clean = (value) => String(value == null ? '' : value).trim() || null;
@@ -97,6 +98,49 @@
       .map((group) => ({ ...group, sourceEventIds: [...new Set(group.sourceEventIds)].sort() }))
       .sort((a, b) => a.key.localeCompare(b.key));
     return { items, alreadyResolved, ineligible };
+  }
+
+  function defaultProgressStore() {
+    try { return root?.localStorage || null; } catch { return null; }
+  }
+
+  function readCursor(progressStore = defaultProgressStore()) {
+    if (!progressStore?.getItem) return null;
+    try { return clean(progressStore.getItem(CURSOR_STORAGE_KEY)); } catch { return null; }
+  }
+
+  function writeCursor(key, progressStore = defaultProgressStore()) {
+    if (!progressStore?.setItem) return false;
+    try {
+      progressStore.setItem(CURSOR_STORAGE_KEY, String(key));
+      return true;
+    } catch {
+      throw new Error('BANDMARKR could not save listening identity progress, so the provider run stopped safely.');
+    }
+  }
+
+  function clearCursor(progressStore = defaultProgressStore()) {
+    if (!progressStore?.removeItem) return false;
+    try {
+      progressStore.removeItem(CURSOR_STORAGE_KEY);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function selectPlanItems(items = [], cursorKey = null, cap = MAX_SIGNATURES_PER_RUN) {
+    const limit = Math.max(1, Math.min(MAX_SIGNATURES_PER_RUN, Number(cap) || MAX_SIGNATURES_PER_RUN));
+    if (!items.length) return { selected: [], wrapped: false };
+    const cursor = clean(cursorKey);
+    let startIndex = 0;
+    let wrapped = false;
+    if (cursor) {
+      const nextIndex = items.findIndex((item) => item.key > cursor);
+      if (nextIndex >= 0) startIndex = nextIndex;
+      else wrapped = true;
+    }
+    return { selected: items.slice(startIndex, startIndex + limit), wrapped };
   }
 
   function exactLookupResult(request, raw) {
@@ -285,12 +329,25 @@
     return history.loadEvents(options.bands || (typeof bands === 'undefined' ? [] : bands));
   }
 
-  async function complete({ cap = MAX_SIGNATURES_PER_RUN, fetchImpl = root?.fetch, storage = root?.BandmarkrListeningDerivedStorage, listenbrainz = root?.LiveVaultListenBrainz, events, onProgress = () => {} } = {}) {
+  async function complete({
+    cap = MAX_SIGNATURES_PER_RUN,
+    fetchImpl = root?.fetch,
+    storage = root?.BandmarkrListeningDerivedStorage,
+    listenbrainz = root?.LiveVaultListenBrainz,
+    events,
+    progressStore = defaultProgressStore(),
+    onProgress = () => {},
+  } = {}) {
     const allEvents = await sourceEvents({ events });
     const existing = await listAllIdentities(storage);
     const plan = buildLookupPlan(allEvents, existing);
-    const selected = plan.items.slice(0, Math.max(1, Math.min(MAX_SIGNATURES_PER_RUN, Number(cap) || MAX_SIGNATURES_PER_RUN)));
-    if (!selected.length) return { checked: 0, resolvedRecordings: 0, resolvedReleaseGroups: 0, written: 0, remaining: 0, ...plan };
+    if (!plan.items.length) {
+      clearCursor(progressStore);
+      return { checked: 0, resolvedRecordings: 0, resolvedReleaseGroups: 0, written: 0, remaining: 0, ...plan };
+    }
+    const cursorBefore = readCursor(progressStore);
+    const selection = selectPlanItems(plan.items, cursorBefore, cap);
+    const selected = selection.selected;
 
     const connection = listenbrainz?.connection?.();
     if (selected.some((item) => !item.recordingMbid) && !connection?.token) {
@@ -316,6 +373,7 @@
         const mapping = await requestLookupOne(item, connection.token, fetchImpl);
         if (!mapping) {
           unresolvedSelected += 1;
+          writeCursor(item.key, progressStore);
           onProgress({ checked: index + 1, total: selected.length, resolvedRecordings, resolvedReleaseGroups, written });
           continue;
         }
@@ -339,6 +397,7 @@
       }
 
       if (gainedIdentity) written += await writeIdentityRecords(storage, buildIdentityRecords(item, resolved));
+      writeCursor(item.key, progressStore);
       onProgress({ checked: index + 1, total: selected.length, resolvedRecordings, resolvedReleaseGroups, written });
     }
 
@@ -354,6 +413,9 @@
       remaining: Math.max(0, plan.items.length - selected.length + unresolvedSelected),
       alreadyResolved: plan.alreadyResolved,
       ineligible: plan.ineligible,
+      wrapped: selection.wrapped,
+      cursorBefore,
+      cursorAfter: selected[selected.length - 1]?.key || cursorBefore,
     };
   }
 
@@ -365,7 +427,7 @@
     const wrapper = root.document.createElement('div');
     wrapper.dataset.v104ListeningIdentity = 'true';
     wrapper.className = 'settings-card';
-    wrapper.innerHTML = `<p class="section-label" style="margin-top:0">Listening identity</p><p class="settings-hint">Fill missing MusicBrainz recording IDs through your existing ListenBrainz connection and add release-group context only when a listen already has a trusted MusicBrainz release ID. BANDMARKR checks at most ${MAX_SIGNATURES_PER_RUN} unique combinations per run, one at a time. Missing release editions are never guessed from text, and release groups never combine editions automatically.</p><button type="button" class="btn-secondary" data-v104-complete-identities>Complete listening identities</button><p class="settings-hint" data-v104-identity-status aria-live="polite">Only runs when you press the button. No listening timestamps, event IDs or full-history payload is sent to either provider.</p>`;
+    wrapper.innerHTML = `<p class="section-label" style="margin-top:0">Listening identity</p><p class="settings-hint">Fill missing MusicBrainz recording IDs through your existing ListenBrainz connection and add release-group context only when a listen already has a trusted MusicBrainz release ID. BANDMARKR checks at most ${MAX_SIGNATURES_PER_RUN} unique combinations per run, one at a time. Progress is saved locally so unresolved items do not block later combinations. Missing release editions are never guessed from text, and release groups never combine editions automatically.</p><button type="button" class="btn-secondary" data-v104-complete-identities>Complete listening identities</button><p class="settings-hint" data-v104-identity-status aria-live="polite">Only runs when you press the button. No listening timestamps, event IDs or full-history payload is sent to either provider.</p>`;
     anchor.after(wrapper);
     const button = wrapper.querySelector('[data-v104-complete-identities]');
     const status = wrapper.querySelector('[data-v104-identity-status]');
@@ -377,7 +439,7 @@
           status.textContent = `Checking ${checked} of ${total} · ${resolvedRecordings} recording IDs added · ${resolvedReleaseGroups} release groups added`;
         } });
         status.textContent = result.checked
-          ? `Done. Checked ${result.checked} identity combinations · ${result.resolvedRecordings} recording IDs added · ${result.resolvedReleaseGroups} release groups added · ${result.written.toLocaleString()} local identity records updated${result.remaining ? ` · ${result.remaining.toLocaleString()} combinations remain for another manual run` : ''}.`
+          ? `Done. Checked ${result.checked} identity combinations · ${result.resolvedRecordings} recording IDs added · ${result.resolvedReleaseGroups} release groups added · ${result.written.toLocaleString()} local identity records updated${result.remaining ? ` · ${result.remaining.toLocaleString()} unresolved combinations remain in the catalogue` : ''}.`
           : 'No safely resolvable listening identities need a lookup on this device.';
       } catch (error) {
         status.textContent = error?.message || 'Listening identity completion stopped safely.';
@@ -404,6 +466,7 @@
     MAX_SIGNATURES_PER_RUN,
     MAX_WRITE_BATCH,
     REQUEST_DELAY_MS,
+    CURSOR_STORAGE_KEY,
     safeUuid,
     safeUuidList,
     sourceIdentity,
@@ -411,6 +474,11 @@
     needsCompletion,
     lookupSignature,
     buildLookupPlan,
+    defaultProgressStore,
+    readCursor,
+    writeCursor,
+    clearCursor,
+    selectPlanItems,
     exactLookupResult,
     buildIdentityRecords,
     writeIdentityRecords,
