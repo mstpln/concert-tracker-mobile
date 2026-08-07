@@ -56,14 +56,7 @@
     }
     if (!response.ok) throw new Error(`Spotify track metadata request failed (${response.status}).`);
     const track = await response.json();
-    const returnedId = String(track?.id || '').trim();
-    if (!track || !validSpotifyId(returnedId)) throw new Error('Spotify returned an invalid track metadata response.');
-    if (returnedId !== id) {
-      const linkedFromId = String(track?.linked_from?.id || '').trim();
-      if (!validSpotifyId(linkedFromId) || linkedFromId !== id) {
-        throw new Error('Spotify returned an invalid relinked track metadata response.');
-      }
-    }
+    if (!track || !validSpotifyId(track.id)) throw new Error('Spotify returned an invalid track metadata response.');
     return track;
   }
 
