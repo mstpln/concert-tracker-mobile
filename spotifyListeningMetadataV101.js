@@ -108,7 +108,7 @@
       const button = event.target?.closest?.('[data-v99-enrich-listening]');
       if (!button) return;
       event.preventDefault();
-      event.stopImmediatePropagation();
+      event.stopPropagation();
       const wrapper = button.closest('[data-v99-spotify-listening-metadata]');
       const status = wrapper?.querySelector('[data-v99-enrich-status]');
       if (!status) return;
