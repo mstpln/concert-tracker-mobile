@@ -140,7 +140,7 @@ function recordFromSpotifyTrack(requestedId, track, now = new Date().toISOString
   const album = track?.album || {};
   const albumId = validSpotifyId(album.id) ? String(album.id) : null;
   const artwork = Array.isArray(album.images)
-    ? album.images.find((image) => typeof image?.url === 'string' && /^https:\/\//i.test(image.url))?.url || null
+    ? album.images.find((image) => validHttpsUrl(image?.url))?.url || null
     : null;
   const fetchedAt = new Date(now).toISOString();
   const record = {
