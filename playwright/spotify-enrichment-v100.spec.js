@@ -80,6 +80,7 @@ test('v100 reuses the authorization shown as connected when fetching listening a
   });
 
   await page.locator('#settings-btn').click();
+  await page.getByRole('tab', { name: 'Data' }).click();
   await expect(page.getByRole('button', { name: 'Disconnect' })).toBeVisible();
   const artworkButton = page.getByRole('button', { name: 'Fetch listening artwork' });
   await expect(artworkButton).toBeVisible();
