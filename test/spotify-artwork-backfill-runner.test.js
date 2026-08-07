@@ -153,14 +153,14 @@ test('provider error stops before consuming the current ID', async () => {
   assert.equal(run.checkpoint.requestCount, 1);
 });
 
-test('CLI remains inert without --execute and requires an explicit maintenance confirmation', async () => {
+test('internal engine CLI can show help but cannot execute production work directly', async () => {
+  const output = [];
+  const help = await runner.runCli({ argv: ['--help'], log: (line) => output.push(String(line)) });
+  assert.equal(help.help, true);
+  assert.match(output.join('\n'), /spotify-artwork-backfill-production\.js/);
   await assert.rejects(
-    () => runner.runCli({ argv: [], env: {}, fetchImpl: async () => { throw new Error('network must not run'); }, log: () => {} }),
-    /add --execute/
-  );
-  await assert.rejects(
-    () => runner.runCli({ argv: ['--execute'], env: {}, fetchImpl: async () => { throw new Error('network must not run'); }, log: () => {} }),
-    /LIVEVAULT_BACKFILL_CONFIRM/
+    () => runner.runCli({ argv: ['--execute'], log: () => {} }),
+    /not a production entrypoint/
   );
 });
 
