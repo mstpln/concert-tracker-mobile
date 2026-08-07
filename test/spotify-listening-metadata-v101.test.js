@@ -31,6 +31,53 @@ test('v101 uses Spotify single-track endpoint instead of removed batch endpoint'
   assert.doesNotMatch(urls[0], /\/v1\/tracks\?/);
 });
 
+test('v101 refreshes once after 401 and uses the refreshed bearer token', async () => {
+  let requestCount = 0;
+  let refreshCount = 0;
+  const authorizations = [];
+  const user = {
+    validAuth: async () => ({ accessToken: 'expired-token', refreshToken: 'synthetic-refresh', clientId: 'synthetic-client' }),
+    refresh: async (auth) => {
+      refreshCount += 1;
+      return { ...auth, accessToken: 'refreshed-token' };
+    },
+    clearAuth: async () => {},
+  };
+  const fetchImpl = async (_url, options) => {
+    requestCount += 1;
+    authorizations.push(new Headers(options.headers).get('Authorization'));
+    if (requestCount === 1) return response(401);
+    return response(200, { id: 'TrackABC123', album: {}, external_urls: { spotify: 'https://open.spotify.com/track/TrackABC123' } });
+  };
+  const track = await v101.requestTrack('TrackABC123', { fetchImpl, spotifyUser: user, requestDelayMs: 0 });
+  assert.equal(track.id, 'TrackABC123');
+  assert.equal(refreshCount, 1);
+  assert.deepEqual(authorizations, ['Bearer expired-token', 'Bearer refreshed-token']);
+});
+
+test('v101 honors one 429 retry and does not create an unbounded retry loop', async () => {
+  let requestCount = 0;
+  const fetchImpl = async () => {
+    requestCount += 1;
+    if (requestCount === 1) return response(429, null, { 'retry-after': '0' });
+    return response(200, { id: 'TrackABC123', album: {}, external_urls: { spotify: 'https://open.spotify.com/track/TrackABC123' } });
+  };
+  const track = await v101.requestTrack('TrackABC123', { fetchImpl, spotifyUser: spotifyUser(), requestDelayMs: 0 });
+  assert.equal(track.id, 'TrackABC123');
+  assert.equal(requestCount, 2);
+
+  requestCount = 0;
+  await assert.rejects(
+    () => v101.requestTrack('TrackABC123', {
+      fetchImpl: async () => { requestCount += 1; return response(429, null, { 'retry-after': '0' }); },
+      spotifyUser: spotifyUser(),
+      requestDelayMs: 0,
+    }),
+    /failed \(429\)/,
+  );
+  assert.equal(requestCount, 2);
+});
+
 test('v101 403 does not falsely tell a connected user to reconnect', async () => {
   await assert.rejects(
     () => v101.requestTrack('TrackABC123', { fetchImpl: async () => response(403), spotifyUser: spotifyUser(), requestDelayMs: 0 }),
