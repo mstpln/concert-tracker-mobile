@@ -120,7 +120,7 @@ test('spotify metadata contract accepts additive artist ids and ISRC but rejects
         spotifyTrackId: id,
         spotifyTrackUrl: `https://open.spotify.com/track/${id}`,
         spotifyAlbumId: '6JWc4iAiJ9FjyK0B59ABb4',
-        spotifyAlbumUrl: 'https://open.spotify.com/album/${id}`,
+        spotifyAlbumUrl: 'https://open.spotify.com/album/6JWc4iAiJ9FjyK0B59ABb4',
         artworkUrl: 'https://i.scdn.co/image/example',
         spotifyArtistIds: ['0du5cEVh5yTK9QJze8zA0C'],
         isrc: 'USAT29900609',
