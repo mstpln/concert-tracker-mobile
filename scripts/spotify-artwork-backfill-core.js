@@ -12,6 +12,23 @@ function validSpotifyId(value) {
   return VALID_SPOTIFY_ID.test(String(value || '').trim());
 }
 
+function validHttpsUrl(value) {
+  if (value == null) return true;
+  if (typeof value !== 'string' || !value) return false;
+  try { return new URL(value).protocol === 'https:'; }
+  catch (_) { return false; }
+}
+
+function validSpotifyUrl(value, kind, id) {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'open.spotify.com' && url.pathname === `/${kind}/${id}`;
+  } catch (_) {
+    return false;
+  }
+}
+
 function trustedTrackIds(events) {
   return [...new Set((events || [])
     .map((event) => String(event?.spotifyTrackId || '').trim())
@@ -25,6 +42,37 @@ function existingRecordIds(metadata) {
     .map(([key]) => key));
 }
 
+function normalizeStagedRecord(key, value) {
+  const id = String(key || '').trim();
+  if (!validSpotifyId(id) || !value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (value.spotifyTrackId !== id || !validSpotifyUrl(value.spotifyTrackUrl, 'track', id)) return null;
+
+  const albumId = value.spotifyAlbumId == null ? null : String(value.spotifyAlbumId).trim();
+  if (albumId != null && !validSpotifyId(albumId)) return null;
+  if (albumId == null ? value.spotifyAlbumUrl != null : !validSpotifyUrl(value.spotifyAlbumUrl, 'album', albumId)) return null;
+  if (!validHttpsUrl(value.artworkUrl)) return null;
+  if (typeof value.fetchedAt !== 'string' || !Number.isFinite(Date.parse(value.fetchedAt))) return null;
+  if (value.source !== 'spotify_exact_track_id') return null;
+
+  const normalized = {
+    spotifyTrackId: id,
+    spotifyTrackUrl: `https://open.spotify.com/track/${id}`,
+    spotifyAlbumId: albumId,
+    spotifyAlbumUrl: albumId ? `https://open.spotify.com/album/${albumId}` : null,
+    artworkUrl: value.artworkUrl == null ? null : String(value.artworkUrl),
+    fetchedAt: new Date(value.fetchedAt).toISOString(),
+    source: 'spotify_exact_track_id',
+  };
+
+  if (value.spotifyProviderResolvedTrackId != null || value.spotifyProviderRelinked != null) {
+    const resolvedId = String(value.spotifyProviderResolvedTrackId || '').trim();
+    if (!validSpotifyId(resolvedId) || resolvedId === id || value.spotifyProviderRelinked !== true) return null;
+    normalized.spotifyProviderResolvedTrackId = resolvedId;
+    normalized.spotifyProviderRelinked = true;
+  }
+  return normalized;
+}
+
 function normalizeCheckpoint(value) {
   if (!value || Number(value.schemaVersion) !== 1) return null;
   const plannedIds = Array.isArray(value.plannedIds) ? value.plannedIds.map(String) : [];
@@ -32,17 +80,28 @@ function normalizeCheckpoint(value) {
   const terminalNotFoundIds = Array.isArray(value.terminalNotFoundIds) ? value.terminalNotFoundIds.map(String) : [];
   if (!plannedIds.length || plannedIds.length > MAX_IDS_PER_INVOCATION) return null;
   if ([...plannedIds, ...remainingIds, ...terminalNotFoundIds].some((id) => !validSpotifyId(id))) return null;
-  const planned = new Set(plannedIds);
-  if (remainingIds.some((id) => !planned.has(id))) return null;
+  const uniquePlanned = [...new Set(plannedIds)];
+  const uniqueRemaining = [...new Set(remainingIds)];
+  const planned = new Set(uniquePlanned);
+  if (uniqueRemaining.some((id) => !planned.has(id))) return null;
+
+  if (value.stagedRecords != null && (!value.stagedRecords || typeof value.stagedRecords !== 'object' || Array.isArray(value.stagedRecords))) return null;
+  const stagedRecords = {};
+  for (const [id, rawRecord] of Object.entries(value.stagedRecords || {})) {
+    if (!planned.has(id) || uniqueRemaining.includes(id)) return null;
+    const record = normalizeStagedRecord(id, rawRecord);
+    if (!record) return null;
+    stagedRecords[id] = record;
+  }
+
   return {
-    ...clone(value),
     schemaVersion: 1,
-    plannedIds: [...new Set(plannedIds)],
-    remainingIds: [...new Set(remainingIds)],
+    plannedIds: uniquePlanned,
+    remainingIds: uniqueRemaining,
     terminalNotFoundIds: [...new Set(terminalNotFoundIds)],
-    stagedRecords: clone(value.stagedRecords || {}),
-    requestCount: Math.max(0, Number(value.requestCount) || 0),
-    stopReason: value.stopReason || null,
+    stagedRecords,
+    requestCount: Math.max(0, Math.floor(Number(value.requestCount) || 0)),
+    stopReason: value.stopReason == null ? null : String(value.stopReason),
   };
 }
 
@@ -51,10 +110,11 @@ function createOrResumePlan({ events = [], metadata = {}, checkpoint = null, cap
   const existing = existingRecordIds(metadata);
   const sourceIds = trustedTrackIds(events);
   const prior = normalizeCheckpoint(checkpoint);
+  if (checkpoint && !prior) throw new Error('Invalid private backfill checkpoint.');
   if (prior) {
     const notFound = new Set(prior.terminalNotFoundIds);
     const remainingIds = prior.remainingIds.filter((id) => sourceIds.includes(id) && !existing.has(id) && !notFound.has(id));
-    if (remainingIds.length || Object.keys(prior.stagedRecords || {}).length) {
+    if (remainingIds.length || Object.keys(prior.stagedRecords).length) {
       return { ...prior, remainingIds, stopReason: null };
     }
   }
@@ -82,13 +142,14 @@ function recordFromSpotifyTrack(requestedId, track, now = new Date().toISOString
   const artwork = Array.isArray(album.images)
     ? album.images.find((image) => typeof image?.url === 'string' && /^https:\/\//i.test(image.url))?.url || null
     : null;
+  const fetchedAt = new Date(now).toISOString();
   const record = {
     spotifyTrackId: requested,
     spotifyTrackUrl: `https://open.spotify.com/track/${requested}`,
     spotifyAlbumId: albumId,
     spotifyAlbumUrl: albumId ? `https://open.spotify.com/album/${albumId}` : null,
     artworkUrl: artwork,
-    fetchedAt: now,
+    fetchedAt,
     source: 'spotify_exact_track_id',
   };
   if (resolved !== requested) {
@@ -148,8 +209,7 @@ function mergeStagedRecords(metadata, checkpoint) {
     records: { ...(base.records || {}) },
   };
   if (!state) return output;
-  for (const [id, staged] of Object.entries(state.stagedRecords || {})) {
-    if (!validSpotifyId(id) || staged?.spotifyTrackId !== id) continue;
+  for (const [id, staged] of Object.entries(state.stagedRecords)) {
     output.records[id] = { ...(output.records[id] || {}), ...clone(staged), spotifyTrackId: id };
   }
   return output;
@@ -159,7 +219,7 @@ function clearSynchronizedStages(checkpoint, metadata) {
   const state = normalizeCheckpoint(checkpoint);
   if (!state) return null;
   const records = metadata?.records || {};
-  const stagedRecords = Object.fromEntries(Object.entries(state.stagedRecords || {})
+  const stagedRecords = Object.fromEntries(Object.entries(state.stagedRecords)
     .filter(([id]) => !records[id]));
   return { ...state, stagedRecords };
 }
@@ -168,7 +228,10 @@ module.exports = {
   MAX_IDS_PER_INVOCATION,
   DEFAULT_IDS_PER_INVOCATION,
   validSpotifyId,
+  validHttpsUrl,
+  validSpotifyUrl,
   trustedTrackIds,
+  normalizeStagedRecord,
   normalizeCheckpoint,
   createOrResumePlan,
   recordFromSpotifyTrack,
