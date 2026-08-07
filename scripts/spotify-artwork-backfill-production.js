@@ -56,6 +56,13 @@ async function trackedSpotifyCall(usage, operation) {
     throw error;
   }
   await usage.recordSpotifyCall();
+  try {
+    await usage.save();
+  } catch (error) {
+    const wrapped = new Error(`BANDMARKR could not persist Spotify provider-usage accounting, so the provider request was not started: ${error.message}`);
+    wrapped.code = 'SPOTIFY_USAGE_SAVE_FAILED';
+    throw wrapped;
+  }
   return operation();
 }
 
