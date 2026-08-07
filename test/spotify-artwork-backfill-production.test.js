@@ -3,7 +3,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const production = require('../scripts/spotify-artwork-backfill-production.js');
-const runner = require('../scripts/spotify-artwork-backfill.js');
 
 test('tracked Spotify call records usage before the provider operation', async () => {
   const order = [];
@@ -89,7 +88,36 @@ test('structurally invalid private checkpoint fails closed before provider work 
   );
 });
 
-test('production CLI is inert without --execute or the explicit confirmation value', async () => {
+test('production authorization separates private reads/provider calls from metadata writes', () => {
+  assert.throws(
+    () => production.assertProductionAuthorization({ execute: false, write: false }, {}),
+    /add --execute/
+  );
+  assert.throws(
+    () => production.assertProductionAuthorization({ execute: true, write: false }, {}),
+    /private-read\/provider authorization/
+  );
+  assert.doesNotThrow(() => production.assertProductionAuthorization(
+    { execute: true, write: false },
+    { LIVEVAULT_BACKFILL_CONFIRM: production.PRODUCTION_EXECUTION_CONFIRMATION }
+  ));
+  assert.throws(
+    () => production.assertProductionAuthorization(
+      { execute: true, write: true },
+      { LIVEVAULT_BACKFILL_CONFIRM: production.PRODUCTION_EXECUTION_CONFIRMATION }
+    ),
+    /production-write authorization/
+  );
+  assert.doesNotThrow(() => production.assertProductionAuthorization(
+    { execute: true, write: true },
+    {
+      LIVEVAULT_BACKFILL_CONFIRM: production.PRODUCTION_EXECUTION_CONFIRMATION,
+      LIVEVAULT_BACKFILL_WRITE_CONFIRM: production.PRODUCTION_WRITE_CONFIRMATION,
+    }
+  ));
+});
+
+test('production CLI is inert without --execute or the explicit provider authorization value', async () => {
   let usageLoaded = false;
   const usageFactory = async () => { usageLoaded = true; throw new Error('must not load'); };
   await assert.rejects(
@@ -115,7 +143,7 @@ test('production wrapper wires source, checkpoint and usage accounting without e
   };
   let captured = null;
   const env = {
-    LIVEVAULT_BACKFILL_CONFIRM: runner.EXECUTION_CONFIRMATION,
+    LIVEVAULT_BACKFILL_CONFIRM: production.PRODUCTION_EXECUTION_CONFIRMATION,
     CF_WORKER_ENDPOINT: 'https://worker.invalid',
     CF_WORKER_BROWSER_TOKEN: 'private-worker-token',
     SPOTIFY_CLIENT_ID: 'private-client-id',
