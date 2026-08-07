@@ -19,6 +19,34 @@ function spotifyUser() {
   };
 }
 
+function metadataFixture(ids, saved, initial = null) {
+  let local = initial || { kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} };
+  return {
+    emptyDocument: () => ({ kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} }),
+    readRemote: async () => ({ document: { kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} }, etag: null, missing: true }),
+    loadLocal: async () => JSON.parse(JSON.stringify(local)),
+    mergeDocuments: (left) => ({ ...left, records: { ...(left.records || {}) } }),
+    unresolvedTrackIds: (document) => ids.filter((id) => !document.records[id]),
+    recordFromSpotifyTrack: (track) => ({
+      spotifyTrackId: track.id,
+      spotifyTrackUrl: track.external_urls.spotify,
+      spotifyAlbumId: track.album?.id || null,
+      spotifyAlbumUrl: track.album?.external_urls?.spotify || null,
+      artworkUrl: track.album?.images?.[0]?.url || null,
+      fetchedAt: new Date().toISOString(),
+      source: 'spotify_exact_track_id',
+    }),
+    saveLocal: async (document) => {
+      local = JSON.parse(JSON.stringify(document));
+      saved.push(local);
+      return local;
+    },
+    applyToEvents: () => {},
+    documentsEqual: () => false,
+    writeRemote: async () => {},
+  };
+}
+
 test('v101 uses Spotify single-track endpoint instead of removed batch endpoint', async () => {
   const urls = [];
   const fetchImpl = async (url) => {
@@ -173,7 +201,7 @@ test('v101 treats a missing exact track as unresolved instead of corrupting meta
   assert.equal(result, null);
 });
 
-test('v103 enrichment uses a smaller 100-track cap and persists every 10 tracks', async () => {
+test('v103 enrichment uses a 100-track cap, 1-second pacing and saves after every processed track', async () => {
   const ids = Array.from({ length: 150 }, (_, index) => `Track${index}`);
   const saved = [];
   const paths = [];
@@ -185,16 +213,16 @@ test('v103 enrichment uses a smaller 100-track cap and persists every 10 tracks'
   };
   const result = await v101.enrich({ metadata, spotifyUser: spotifyUser(), fetchImpl, requestDelayMs: 0 });
   assert.equal(v101.MAX_TRACKS_PER_RUN, 100);
-  assert.equal(v101.PERSIST_EVERY, 10);
+  assert.equal(v101.PERSIST_EVERY, 1);
   assert.equal(v101.REQUEST_DELAY_MS, 1000);
   assert.equal(result.requested, 100);
   assert.equal(result.added, 100);
   assert.equal(paths.length, 100);
-  assert.equal(saved.length, 10);
+  assert.equal(saved.length, 100);
   assert.equal(Object.keys(saved.at(-1).records).length, 100);
 });
 
-test('v103 preserves completed local progress when Spotify stops a run with 429', async () => {
+test('v103 preserves every completed track when Spotify stops a run with 429', async () => {
   const ids = Array.from({ length: 20 }, (_, index) => `Track${index}`);
   const saved = [];
   const metadata = metadataFixture(ids, saved);
@@ -217,28 +245,46 @@ test('v103 preserves completed local progress when Spotify stops a run with 429'
       return true;
     },
   );
+  assert.equal(saved.length, 12);
   assert.equal(Object.keys(saved.at(-1).records).length, 12);
 });
 
-function metadataFixture(ids, saved) {
-  return {
-    emptyDocument: () => ({ kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} }),
-    readRemote: async () => ({ document: { kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} }, etag: null, missing: true }),
-    loadLocal: async () => ({ kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} }),
-    mergeDocuments: (left) => ({ ...left, records: { ...(left.records || {}) } }),
-    unresolvedTrackIds: () => ids,
-    recordFromSpotifyTrack: (track) => ({
-      spotifyTrackId: track.id,
-      spotifyTrackUrl: track.external_urls.spotify,
-      spotifyAlbumId: track.album?.id || null,
-      spotifyAlbumUrl: track.album?.external_urls?.spotify || null,
-      artworkUrl: track.album?.images?.[0]?.url || null,
-      fetchedAt: new Date().toISOString(),
-      source: 'spotify_exact_track_id',
+test('v103 manual retry resumes from the first unresolved track and never repeats saved Spotify requests', async () => {
+  const ids = Array.from({ length: 6 }, (_, index) => `Track${index}`);
+  const saved = [];
+  const metadata = metadataFixture(ids, saved);
+  const firstRunRequests = [];
+  let calls = 0;
+  await assert.rejects(
+    () => v101.enrich({
+      metadata,
+      spotifyUser: spotifyUser(),
+      requestDelayMs: 0,
+      fetchImpl: async (url) => {
+        const id = new URL(url).pathname.split('/').pop();
+        firstRunRequests.push(id);
+        calls += 1;
+        if (calls === 4) return response(429, { error: { status: 429, reason: 'QUOTA_EXCEEDED' } });
+        return response(200, { id, album: {}, external_urls: { spotify: `https://open.spotify.com/track/${id}` } });
+      },
     }),
-    saveLocal: async (document) => { const copy = JSON.parse(JSON.stringify(document)); saved.push(copy); return copy; },
-    applyToEvents: () => {},
-    documentsEqual: () => false,
-    writeRemote: async () => {},
-  };
-}
+    /Development Mode quota/i,
+  );
+  assert.deepEqual(firstRunRequests, ['Track0', 'Track1', 'Track2', 'Track3']);
+  assert.equal(Object.keys(saved.at(-1).records).length, 3);
+
+  const retryRequests = [];
+  const result = await v101.enrich({
+    metadata,
+    spotifyUser: spotifyUser(),
+    requestDelayMs: 0,
+    fetchImpl: async (url) => {
+      const id = new URL(url).pathname.split('/').pop();
+      retryRequests.push(id);
+      return response(200, { id, album: {}, external_urls: { spotify: `https://open.spotify.com/track/${id}` } });
+    },
+  });
+  assert.deepEqual(retryRequests, ['Track3', 'Track4', 'Track5']);
+  assert.equal(result.requested, 3);
+  assert.equal(Object.keys(saved.at(-1).records).length, 6);
+});
