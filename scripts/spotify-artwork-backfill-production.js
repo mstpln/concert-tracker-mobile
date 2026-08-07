@@ -6,7 +6,7 @@ const runner = require('./spotify-artwork-backfill');
 const source = require('./spotify-artwork-backfill-source');
 const { UsageTracker } = require('./lib/usageTracker');
 
-const PRODUCTION_EXECUTION_CONFIRMATION = 'I_AUTHORIZE_PRIVATE_LISTENING_READS_AND_LIVE_SPOTIFY_BACKFILL_CALLS';
+const PRODUCTION_EXECUTION_CONFIRMATION = 'I_AUTHORIZE_PRIVATE_LISTENING_READS_LIVE_SPOTIFY_CALLS_AND_PROVIDER_USAGE_WRITES';
 const PRODUCTION_WRITE_CONFIRMATION = 'I_AUTHORIZE_PRODUCTION_SPOTIFY_METADATA_WRITES';
 
 function requiredEnv(env, name) {
@@ -61,10 +61,10 @@ async function trackedSpotifyCall(usage, operation) {
 
 function assertProductionAuthorization(options, env) {
   if (!options.execute) {
-    throw new Error('Refusing production maintenance: add --execute only after private listening reads and live Spotify backfill calls are explicitly authorized.');
+    throw new Error('Refusing production maintenance: add --execute only after private listening reads, live Spotify calls and the provider-usage accounting write are explicitly authorized.');
   }
   if (env.LIVEVAULT_BACKFILL_CONFIRM !== PRODUCTION_EXECUTION_CONFIRMATION) {
-    throw new Error('Refusing production maintenance: LIVEVAULT_BACKFILL_CONFIRM does not contain the required private-read/provider authorization value.');
+    throw new Error('Refusing production maintenance: LIVEVAULT_BACKFILL_CONFIRM does not contain the required private-read/provider/usage-write authorization value.');
   }
   if (options.write && env.LIVEVAULT_BACKFILL_WRITE_CONFIRM !== PRODUCTION_WRITE_CONFIRMATION) {
     throw new Error('Refusing production metadata write: --write additionally requires LIVEVAULT_BACKFILL_WRITE_CONFIRM with the explicit production-write authorization value.');
