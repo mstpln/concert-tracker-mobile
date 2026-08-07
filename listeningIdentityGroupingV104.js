@@ -11,26 +11,65 @@
     .normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en');
   const clean = (value) => String(value == null ? '' : value).trim() || null;
 
-  function albumIdentityKey(listen, index = 0) {
-    const releaseMbid = clean(listen?.musicbrainzReleaseId || listen?.releaseMbid);
-    const stableReleaseId = clean(listen?.stableReleaseId);
-    const spotifyAlbumId = clean(listen?.spotifyAlbumId || listen?.spotify?.albumId);
-    if (releaseMbid) return `mb-release:${releaseMbid}`;
-    if (stableReleaseId) return `stable-release:${stableReleaseId}`;
-    if (spotifyAlbumId) return `spotify-album:${spotifyAlbumId}`;
+  function fallbackAlbumKey(listen, index = 0) {
     const title = normalize(listen?.releaseTitle);
     const artist = normalize(listen?.artistCreditName);
     return title ? `fallback:${artist}|${title}` : `event:${clean(listen?.stableListenId || listen?.sourceEventId) || index}`;
   }
 
+  function stableAlbumIdentity(listen) {
+    const releaseMbid = clean(listen?.musicbrainzReleaseId || listen?.releaseMbid);
+    const stableReleaseId = clean(listen?.stableReleaseId);
+    const spotifyAlbumId = clean(listen?.spotifyAlbumId || listen?.spotify?.albumId);
+    if (releaseMbid) return { namespace: 'mb-release', id: releaseMbid, key: `mb-release:${releaseMbid}` };
+    if (stableReleaseId) return { namespace: 'stable-release', id: stableReleaseId, key: `stable-release:${stableReleaseId}` };
+    if (spotifyAlbumId) return { namespace: 'spotify-album', id: spotifyAlbumId, key: `spotify-album:${spotifyAlbumId}` };
+    return null;
+  }
+
+  function albumIdentityKey(listen, index = 0, splitSignatures = null) {
+    const fallback = fallbackAlbumKey(listen, index);
+    const stable = stableAlbumIdentity(listen);
+    if (!stable) return fallback;
+    // A provider ID is used to split a text group only when that same provider
+    // proves that more than one specific edition exists under the same artist +
+    // release title. A single partial enrichment must not split historical album
+    // counts away from otherwise identical unresolved listens.
+    const namespaces = splitSignatures?.get(fallback);
+    return namespaces?.has(stable.namespace) ? stable.key : fallback;
+  }
+
+  function splitSignaturesFor(listens = [], stats = root?.ListeningStats) {
+    const identities = new Map();
+    (listens || []).forEach((listen, index) => {
+      if (stats?.isValidListen && !stats.isValidListen(listen)) return;
+      const fallback = fallbackAlbumKey(listen, index);
+      if (!fallback.startsWith('fallback:')) return;
+      const stable = stableAlbumIdentity(listen);
+      if (!stable) return;
+      const namespaces = identities.get(fallback) || new Map();
+      const ids = namespaces.get(stable.namespace) || new Set();
+      ids.add(stable.id);
+      namespaces.set(stable.namespace, ids);
+      identities.set(fallback, namespaces);
+    });
+    const output = new Map();
+    for (const [fallback, namespaces] of identities) {
+      const split = new Set([...namespaces.entries()].filter(([, ids]) => ids.size > 1).map(([namespace]) => namespace));
+      if (split.size) output.set(fallback, split);
+    }
+    return output;
+  }
+
   function aggregateAlbums(listens = [], limit = 10, stats = root?.ListeningStats) {
     if (!stats?.isValidListen || !stats?.validDurationMs || !stats?.listenTimeMs) return [];
+    const splitSignatures = splitSignaturesFor(listens, stats);
     const grouped = new Map();
     (listens || []).forEach((listen, index) => {
       if (!stats.isValidListen(listen)) return;
       const releaseTitle = String(listen?.releaseTitle || '').trim().replace(/\s+/g, ' ');
       if (!releaseTitle) return;
-      const key = albumIdentityKey(listen, index);
+      const key = albumIdentityKey(listen, index, splitSignatures);
       const item = grouped.get(key) || {
         releaseKey: key,
         releaseTitle,
@@ -50,6 +89,9 @@
       item.listenCount += 1;
       if (Number.isFinite(listenedAtMs)) item.lastListenedMs = Math.max(item.lastListenedMs, listenedAtMs);
       if (!item.artworkPath && listen.artworkPath) item.artworkPath = listen.artworkPath;
+      if (!item.musicbrainzReleaseId) item.musicbrainzReleaseId = clean(listen.musicbrainzReleaseId || listen.releaseMbid);
+      if (!item.musicbrainzReleaseGroupId) item.musicbrainzReleaseGroupId = clean(listen.musicbrainzReleaseGroupId || listen.releaseGroupMbid);
+      if (!item.spotifyAlbumId) item.spotifyAlbumId = clean(listen.spotifyAlbumId || listen.spotify?.albumId);
       grouped.set(key, item);
     });
     return [...grouped.values()]
@@ -81,5 +123,5 @@
     root.setTimeout?.(install, 0);
   }
 
-  return { ALBUM_EDITION_POLICY, albumIdentityKey, aggregateAlbums, install };
+  return { ALBUM_EDITION_POLICY, fallbackAlbumKey, stableAlbumIdentity, splitSignaturesFor, albumIdentityKey, aggregateAlbums, install };
 });
