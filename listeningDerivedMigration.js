@@ -12,7 +12,7 @@
   const MAX_CHUNK_SIZE = 500;
   const OPTIONAL_IDENTITY_FIELDS = new Set([
     'artistMbid', 'artistMbids', 'recordingMbid', 'releaseMbid', 'releaseGroupMbid',
-    'spotifyArtistId', 'spotifyTrackId', 'spotifyAlbumId',
+    'spotifyArtistId', 'spotifyTrackId', 'spotifyAlbumId', 'evidence',
   ]);
 
   function clean(value) {
