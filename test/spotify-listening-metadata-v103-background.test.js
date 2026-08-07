@@ -63,10 +63,20 @@ function visibilityDocument() {
   };
 }
 
+function memoryStore() {
+  const values = new Map();
+  return {
+    getItem(key) { return values.has(key) ? values.get(key) : null; },
+    setItem(key, value) { values.set(key, String(value)); },
+    removeItem(key) { values.delete(key); },
+  };
+}
+
 test('v103 stops after the app leaves the foreground and manual retry skips every saved Spotify track', async () => {
   const ids = ['Track0', 'Track1', 'Track2'];
   const metadata = metadataFixture(ids);
   const fakeDocument = visibilityDocument();
+  const store = memoryStore();
   const previousDocument = global.document;
   global.document = fakeDocument;
 
@@ -77,6 +87,7 @@ test('v103 stops after the app leaves the foreground and manual retry skips ever
         metadata,
         spotifyUser: spotifyUser(),
         requestDelayMs: 0,
+        runStateStore: store,
         fetchImpl: async (url) => {
           const id = new URL(url).pathname.split('/').pop();
           firstRunRequests.push(id);
@@ -100,6 +111,7 @@ test('v103 stops after the app leaves the foreground and manual retry skips ever
       metadata,
       spotifyUser: spotifyUser(),
       requestDelayMs: 0,
+      runStateStore: store,
       fetchImpl: async (url) => {
         const id = new URL(url).pathname.split('/').pop();
         retryRequests.push(id);
@@ -109,7 +121,67 @@ test('v103 stops after the app leaves the foreground and manual retry skips ever
 
     assert.deepEqual(retryRequests, ['Track1', 'Track2']);
     assert.equal(result.requested, 2);
+    assert.equal(result.batchTotal, 3);
+    assert.equal(result.batchProcessed, 3);
     assert.equal(result.added, 2);
+  } finally {
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
+
+test('v103 retry finishes only the remainder of the original 100-track run instead of starting another 100', async () => {
+  const ids = Array.from({ length: 150 }, (_, index) => `Track${index}`);
+  const metadata = metadataFixture(ids);
+  const fakeDocument = visibilityDocument();
+  const store = memoryStore();
+  const previousDocument = global.document;
+  global.document = fakeDocument;
+
+  try {
+    const firstRunRequests = [];
+    await assert.rejects(
+      () => spotifyMetadata.enrich({
+        metadata,
+        spotifyUser: spotifyUser(),
+        requestDelayMs: 0,
+        runStateStore: store,
+        fetchImpl: async (url) => {
+          const id = new URL(url).pathname.split('/').pop();
+          firstRunRequests.push(id);
+          return response(200, { id, album: {}, external_urls: { spotify: `https://open.spotify.com/track/${id}` } });
+        },
+        onProgress: ({ processed }) => {
+          if (processed === 50) fakeDocument.setVisibility('hidden');
+        },
+      }),
+      (error) => {
+        assert.deepEqual(error.liveVaultProgress, { processed: 50, total: 100, added: 50 });
+        return true;
+      },
+    );
+    assert.equal(firstRunRequests.length, 50);
+
+    fakeDocument.setVisibility('visible');
+    const retryRequests = [];
+    const result = await spotifyMetadata.enrich({
+      metadata,
+      spotifyUser: spotifyUser(),
+      requestDelayMs: 0,
+      runStateStore: store,
+      fetchImpl: async (url) => {
+        const id = new URL(url).pathname.split('/').pop();
+        retryRequests.push(id);
+        return response(200, { id, album: {}, external_urls: { spotify: `https://open.spotify.com/track/${id}` } });
+      },
+    });
+
+    assert.equal(retryRequests.length, 50);
+    assert.deepEqual(retryRequests, ids.slice(50, 100));
+    assert.equal(result.requested, 50);
+    assert.equal(result.batchTotal, 100);
+    assert.equal(result.batchProcessed, 100);
+    assert.equal(metadata.unresolvedTrackIds(await metadata.loadLocal()).length, 50);
   } finally {
     if (previousDocument === undefined) delete global.document;
     else global.document = previousDocument;
