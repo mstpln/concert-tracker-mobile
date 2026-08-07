@@ -24,7 +24,9 @@ const state = {
     musicbrainzEnabled: /MUSICBRAINZ:\s*\{[^}]*enabled:\s*true/s.test(fs.readFileSync('scripts/lib/config.js','utf8')),
     listenbrainzSyncEnabled: fs.existsSync('listenbrainzSync.js') && fs.existsSync('listeningIncrementalVault.js'),
     listeningIdentityCompletionEnabled: fs.existsSync('listeningIdentityCompletionV104.js')
-      && fs.existsSync('listeningIdentityRecordingV106.js')
+      && fs.existsSync('listeningIdentityRecordingV106.js'),
+    dataAutomationFoundationEnabled: fs.existsSync('scripts/lib/dataMaintenanceContracts.js')
+      && fs.existsSync('scripts/lib/dataMaintenanceUsage.js')
   }
 };
 const output = JSON.stringify(state, null, 2) + '\n';

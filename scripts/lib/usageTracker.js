@@ -11,6 +11,7 @@
 
 const config = require('./config');
 const worker = require('./workerClient');
+const dataMaintenanceUsage = require('./dataMaintenanceUsage');
 const { todayIso, thisMonthIso, sleep } = require('./util');
 
 function freshState() {
@@ -66,6 +67,9 @@ function freshState() {
     // These are summaries only; existing provider counters remain the quota
     // enforcement source and old apiUsage.json files need no migration.
     structuredResearch: { tavilyByReason: {}, groqByCategory: {}, skips: {}, providerFailures: {} },
+    // Data-maintenance diagnostics are aggregate-only and additive. Provider
+    // quota enforcement continues to use the provider counters above.
+    dataMaintenance: dataMaintenanceUsage.freshDataMaintenanceUsage(),
     // Which band index the news-research loop should start from this run.
     // Since the Groq daily token budget can run out partway through the
     // band list (it did, on the very first live run — 149,959/150,000
@@ -117,6 +121,7 @@ function ensureStructuredResearchState(state) {
 class UsageTracker {
   constructor(state) {
     this.state = state;
+    dataMaintenanceUsage.ensureDataMaintenanceUsage(this.state);
     this._groqWindow = []; // { at: epochMs, tokens } for the trailing 60s TPM check
     this._notes = [];
     this._lastTicketmasterCallAt = 0;
@@ -150,6 +155,7 @@ class UsageTracker {
     ensureMusicbrainzState(state);
     if (!('lastProviderIdentityRun' in state)) state.lastProviderIdentityRun = null;
     ensureStructuredResearchState(state);
+    dataMaintenanceUsage.ensureDataMaintenanceUsage(state);
     if (!state.rotation || typeof state.rotation.nextBandIndex !== 'number') {
       state.rotation = { nextBandIndex: 0 };
     }
@@ -233,6 +239,28 @@ class UsageTracker {
     const bucket = this.state.structuredResearch?.[kind];
     if (!bucket || !value) return;
     bucket[value] = (bucket[value] || 0) + 1;
+  }
+
+  // ---------------- Data maintenance aggregate diagnostics ----------------
+
+  recordDataMaintenanceInventory() {
+    return dataMaintenanceUsage.recordInventory(this.state);
+  }
+
+  recordDataMaintenanceAttempt(provider) {
+    return dataMaintenanceUsage.recordProviderAttempt(this.state, provider);
+  }
+
+  recordDataMaintenanceCompleted(provider) {
+    return dataMaintenanceUsage.recordCompleted(this.state, provider);
+  }
+
+  recordDataMaintenanceStop(reason) {
+    return dataMaintenanceUsage.recordStop(this.state, reason);
+  }
+
+  finishDataMaintenanceRun(summary) {
+    return dataMaintenanceUsage.finishDataMaintenanceRun(this.state, summary);
   }
 
   // ---------------- Ticketmaster ----------------
