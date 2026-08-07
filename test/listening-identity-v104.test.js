@@ -110,6 +110,28 @@ test('derived identity fills missing runtime fields but never overwrites trusted
   assert.equal(preserved.musicbrainzReleaseId, REL_B);
 });
 
+test('canonical sibling identity can contribute only one unambiguous recording and never an album edition', () => {
+  const event = listen({ stableListenId: 'canonical', canonicalSourceEventIds: ['canonical', 'sibling-a', 'sibling-b'] });
+  const byId = new Map([
+    ['sibling-a', { sourceEventId: 'sibling-a', recordingMbid: REC_A, releaseMbid: REL_A, releaseGroupMbid: RG_A }],
+    ['sibling-b', { sourceEventId: 'sibling-b', recordingMbid: REC_A, releaseMbid: REL_B, releaseGroupMbid: RG_A }],
+  ]);
+  assert.deepEqual(identity.identityForRuntimeEvent(event, byId), { recordingMbid: REC_A });
+
+  byId.set('sibling-b', { sourceEventId: 'sibling-b', recordingMbid: REC_B, releaseMbid: REL_B });
+  assert.equal(identity.identityForRuntimeEvent(event, byId), null);
+});
+
+test('own derived identity remains authoritative over canonical sibling context', () => {
+  const event = listen({ stableListenId: 'canonical', canonicalSourceEventIds: ['canonical', 'sibling'] });
+  const own = { sourceEventId: 'canonical', recordingMbid: REC_A, releaseMbid: REL_A, releaseGroupMbid: RG_A };
+  const byId = new Map([
+    ['canonical', own],
+    ['sibling', { sourceEventId: 'sibling', recordingMbid: REC_B, releaseMbid: REL_B }],
+  ]);
+  assert.equal(identity.identityForRuntimeEvent(event, byId), own);
+});
+
 test('ListenBrainz lookup sends identity text only and does not request release metadata as trusted identity', async () => {
   let requestedUrl;
   let authorization;
@@ -162,6 +184,23 @@ test('release context fails closed on mismatched provider identity', async () =>
     ),
     /invalid release identity/i,
   );
+});
+
+test('identity completion reports unresolved selected work as remaining and avoids no-op derived writes', async () => {
+  let writes = 0;
+  const storage = {
+    async listIdentities() { return { items: [], nextAfterSourceEventId: null }; },
+    async putIdentities() { writes += 1; },
+  };
+  const result = await identity.complete({
+    events: [listen()],
+    storage,
+    listenbrainz: { connection: () => ({ token: 'synthetic-token' }) },
+    fetchImpl: async () => ({ status: 200, ok: true, json: async () => ({ artist_credit_name: 'Different Artist', recording_name: 'Synthetic Song', recording_mbid: REC_A }) }),
+  });
+  assert.equal(result.remaining, 1);
+  assert.equal(result.written, 0);
+  assert.equal(writes, 0);
 });
 
 test('identity completion stops clearly on ListenBrainz rate limiting', async () => {
