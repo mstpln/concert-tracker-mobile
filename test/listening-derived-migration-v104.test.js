@@ -9,7 +9,7 @@ const storage = require('../listeningDerivedStorage.js');
 const REC = '11111111-2222-4333-8444-555555555555';
 const REL = '12345678-1234-4234-8234-123456789abc';
 
-test('baseline preparation omits absent provider identity fields instead of clearing enrichment', () => {
+test('baseline preparation omits absent provider identity fields and evidence instead of clearing enrichment', () => {
   const event = {
     stableListenId: 'synthetic:baseline',
     source: 'spotify_import',
@@ -25,9 +25,10 @@ test('baseline preparation omits absent provider identity fields instead of clea
   assert.equal(Object.hasOwn(identity, 'releaseMbid'), false);
   assert.equal(Object.hasOwn(identity, 'releaseGroupMbid'), false);
   assert.equal(Object.hasOwn(identity, 'spotifyTrackId'), false);
+  assert.equal(Object.hasOwn(identity, 'evidence'), false);
 });
 
-test('later baseline merge preserves previously enriched provider identity', () => {
+test('later baseline merge preserves previously enriched provider identity and evidence', () => {
   const enriched = {
     sourceEventId: 'synthetic:baseline',
     identityVersion: 1,
@@ -35,6 +36,7 @@ test('later baseline merge preserves previously enriched provider identity', () 
     bandId: 'band-synthetic',
     recordingMbid: REC,
     releaseMbid: REL,
+    evidence: [{ type: 'listenbrainz_musicbrainz_recording_mapping', version: 1 }],
   };
   const baseline = migration.compactIdentityEnvelope({
     sourceEventId: 'synthetic:baseline',
@@ -44,8 +46,10 @@ test('later baseline merge preserves previously enriched provider identity', () 
     recordingMbid: null,
     releaseMbid: null,
     artistMbids: [],
+    evidence: [],
   });
   const merged = storage.mergeDerivedRecord(enriched, baseline);
   assert.equal(merged.recordingMbid, REC);
   assert.equal(merged.releaseMbid, REL);
+  assert.deepEqual(merged.evidence, [{ type: 'listenbrainz_musicbrainz_recording_mapping', version: 1 }]);
 });
