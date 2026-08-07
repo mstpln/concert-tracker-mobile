@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('v104 exposes manual bounded listening identity completion without automatic provider calls', async ({ page }) => {
+test('v106 exposes recording-only manual identity completion without automatic provider calls', async ({ page }) => {
   const externalMetadataRequests = [];
   await page.route('https://api.listenbrainz.org/1/metadata/**', async (route) => {
     externalMetadataRequests.push(route.request().url());
@@ -14,12 +14,11 @@ test('v104 exposes manual bounded listening identity completion without automati
   const card = page.locator('[data-v104-listening-identity]');
   await expect(card).toBeVisible();
   await expect(card).toContainText('Listening identity');
-  await expect(card).toContainText('at most 25 unique combinations per run');
-  await expect(card).toContainText('release-group context only when a listen already has a trusted MusicBrainz release ID');
-  await expect(card).toContainText('Missing release editions are never guessed from text');
-  await expect(card).toContainText('release groups never combine editions automatically');
+  await expect(card).toContainText('at most 25 unique recording combinations per run');
+  await expect(card).toContainText('Release-group enrichment is deferred and does not block recording identity completion');
   await expect(card.getByRole('button', { name: 'Complete listening identities' })).toBeVisible();
-  await expect(card.locator('[data-v104-identity-status]')).toContainText('No listening timestamps, event IDs or full-history payload is sent to either provider');
+  await expect(card.locator('[data-v104-identity-status]')).toContainText('uses ListenBrainz for recording identity only');
+  await expect(card.locator('[data-v104-identity-status]')).toContainText('does not call MusicBrainz release context');
   expect(externalMetadataRequests).toEqual([]);
 });
 
