@@ -62,7 +62,7 @@ test('data maintenance role is least privilege', async () => {
 
 test('maintenance can create track identities only through validated conditional JSON writes', async () => {
   const worker = workerUnderTest();
-  const env = { DATA_MAINTENANCE_TOKEN: 'maintenance', BUCKET: bucket() };
+  const env = { BROWSER_TOKEN: 'browser', DATA_MAINTENANCE_TOKEN: 'maintenance', BUCKET: bucket() };
   const key = 'spotify:4uLU6hMCjMI75M1A2tKUQC';
   const good = {
     kind: 'livevault-track-identities', schemaVersion: 1, updatedAt: '2026-08-07T18:00:00.000Z', records: {
@@ -81,7 +81,9 @@ test('maintenance can create track identities only through validated conditional
     },
   };
 
-  let response = await worker.fetch(req('PUT', '/listening/track-identities.json', 'maintenance', JSON.stringify(good), { 'Content-Type': 'application/json', 'If-None-Match': '*' }), env);
+  let response = await worker.fetch(req('PUT', '/listening/track-identities.json', 'browser', JSON.stringify(good), { 'Content-Type': 'application/json', 'If-None-Match': '*' }), env);
+  assert.equal(response.status, 403);
+  response = await worker.fetch(req('PUT', '/listening/track-identities.json', 'maintenance', JSON.stringify(good), { 'Content-Type': 'application/json', 'If-None-Match': '*' }), env);
   assert.equal(response.status, 200);
   response = await worker.fetch(req('GET', '/listening/track-identities.json', 'maintenance'), env);
   assert.equal(response.status, 200);
