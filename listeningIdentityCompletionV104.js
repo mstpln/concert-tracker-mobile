@@ -73,9 +73,8 @@
       if (identityComplete(effective)) { alreadyResolved += 1; continue; }
       const signature = lookupSignature(event);
       if (!signature) { ineligible += 1; continue; }
-      const group = groups.get(signature.key) || { ...signature, sourceEventIds: [], sourceIdentities: [] };
+      const group = groups.get(signature.key) || { ...signature, sourceEventIds: [] };
       group.sourceEventIds.push(id);
-      group.sourceIdentities.push(source);
       groups.set(signature.key, group);
     }
     const items = [...groups.values()]
@@ -104,7 +103,13 @@
     const rows = Array.isArray(payload) ? payload
       : Array.isArray(payload?.recordings) ? payload.recordings
         : Array.isArray(payload?.results) ? payload.results : [];
-    return (requests || []).map((request, index) => exactLookupResult(request, rows[index]));
+    const unused = rows.map((row, index) => ({ row, index }));
+    return (requests || []).map((request) => {
+      const matchIndex = unused.findIndex(({ row }) => Boolean(exactLookupResult(request, row)));
+      if (matchIndex < 0) return null;
+      const [{ row }] = unused.splice(matchIndex, 1);
+      return exactLookupResult(request, row);
+    });
   }
 
   function releaseGroupFromRecordingMetadata(payload, recordingMbid, releaseMbid) {
@@ -116,12 +121,13 @@
 
   function buildIdentityRecords(group, resolved, now = new Date().toISOString()) {
     if (!group || !resolved?.recordingMbid || !resolved?.releaseMbid) return [];
+    const artistMbids = safeUuidList(resolved.artistMbids);
     return (group.sourceEventIds || []).map((id) => ({
       sourceEventId: id,
       identityVersion: 1,
       status: 'resolved',
-      artistMbids: safeUuidList(resolved.artistMbids),
-      artistMbid: safeUuidList(resolved.artistMbids)[0] || null,
+      artistMbids,
+      artistMbid: artistMbids[0] || null,
       recordingMbid: safeUuid(resolved.recordingMbid),
       releaseMbid: safeUuid(resolved.releaseMbid),
       releaseGroupMbid: safeUuid(resolved.releaseGroupMbid),
@@ -151,6 +157,65 @@
       afterSourceEventId = clean(page.nextAfterSourceEventId);
     } while (afterSourceEventId);
     return output;
+  }
+
+  function identityFields(record = {}) {
+    const artistMbids = safeUuidList(record.artistMbids || record.musicbrainzArtistIds);
+    return {
+      musicbrainzArtistIds: artistMbids,
+      musicbrainzRecordingId: safeUuid(record.recordingMbid || record.musicbrainzRecordingId),
+      musicbrainzReleaseId: safeUuid(record.releaseMbid || record.musicbrainzReleaseId),
+      musicbrainzReleaseGroupId: safeUuid(record.releaseGroupMbid || record.musicbrainzReleaseGroupId),
+    };
+  }
+
+  function mergeIdentityIntoEvent(event, identity) {
+    if (!identity) return event;
+    const fields = identityFields(identity);
+    const output = { ...event };
+    if ((!Array.isArray(output.musicbrainzArtistIds) || !output.musicbrainzArtistIds.length) && fields.musicbrainzArtistIds.length) output.musicbrainzArtistIds = fields.musicbrainzArtistIds;
+    if (!output.musicbrainzRecordingId && fields.musicbrainzRecordingId) output.musicbrainzRecordingId = fields.musicbrainzRecordingId;
+    if (!output.musicbrainzReleaseId && fields.musicbrainzReleaseId) output.musicbrainzReleaseId = fields.musicbrainzReleaseId;
+    if (!output.musicbrainzReleaseGroupId && fields.musicbrainzReleaseGroupId) output.musicbrainzReleaseGroupId = fields.musicbrainzReleaseGroupId;
+    return output;
+  }
+
+  async function applyDerivedIdentities(storage = root?.BandmarkrListeningDerivedStorage) {
+    if (typeof listeningEvents === 'undefined' || !Array.isArray(listeningEvents)) return { applied: 0 };
+    const identities = await listAllIdentities(storage);
+    const byId = new Map(identities.map((record) => [clean(record.sourceEventId), record]));
+    let applied = 0;
+    listeningEvents = listeningEvents.map((event) => {
+      const ids = [
+        sourceEventId(event),
+        ...(Array.isArray(event?.canonicalSourceEventIds) ? event.canonicalSourceEventIds.map(clean).filter(Boolean) : []),
+      ];
+      const identity = ids.map((id) => byId.get(id)).find((record) => record?.recordingMbid || record?.releaseMbid || record?.releaseGroupMbid || record?.artistMbid || record?.artistMbids?.length);
+      if (!identity) return event;
+      applied += 1;
+      return mergeIdentityIntoEvent(event, identity);
+    });
+    return { applied };
+  }
+
+  function rerenderListening() {
+    if (typeof currentScreen === 'undefined') return;
+    if (currentScreen === 'stats' && typeof renderStatsScreen === 'function') renderStatsScreen();
+    else if (currentScreen === 'top-bands' && typeof renderTopBandsScreen === 'function') renderTopBandsScreen();
+    else if (currentScreen === 'profile' && typeof renderProfileScreen === 'function') renderProfileScreen(activeProfileBandId);
+  }
+
+  function installHistoryIdentityHook() {
+    const history = root?.LiveVaultSpotifyHistory;
+    if (!history?.applyToApp || history.__v104IdentityCompletionWrapped) return;
+    const previous = history.applyToApp.bind(history);
+    history.applyToApp = async (...args) => {
+      const result = await previous(...args);
+      await applyDerivedIdentities().catch(() => {});
+      rerenderListening();
+      return result;
+    };
+    history.__v104IdentityCompletionWrapped = true;
   }
 
   async function requestLookupBatch(requests, token, fetchImpl = root?.fetch) {
@@ -234,6 +299,8 @@
     const remaining = Math.max(0, plan.items.length - selected.length);
     const activation = root?.BandmarkrListeningCanonicalActivation;
     if (activation?.applyToApp) await activation.applyToApp().catch(() => {});
+    await applyDerivedIdentities(storage);
+    rerenderListening();
     return { checked: selected.length, resolvedSignatures, written, remaining, alreadyResolved: plan.alreadyResolved, ineligible: plan.ineligible };
   }
 
@@ -266,6 +333,8 @@
   }
 
   function install() {
+    installHistoryIdentityHook();
+    applyDerivedIdentities().then(rerenderListening).catch(() => {});
     injectSettingsUi();
   }
 
@@ -292,6 +361,10 @@
     releaseGroupFromRecordingMetadata,
     buildIdentityRecords,
     writeIdentityRecords,
+    identityFields,
+    mergeIdentityIntoEvent,
+    applyDerivedIdentities,
+    installHistoryIdentityHook,
     requestLookupBatch,
     requestRecordingMetadata,
     complete,
