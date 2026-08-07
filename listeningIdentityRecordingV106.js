@@ -132,7 +132,7 @@
 
     card.dataset.v106RecordingOnly = 'true';
     if (hints[0]) hints[0].textContent = 'Fill missing MusicBrainz recording IDs for followed bands only when BANDMARKR already has a trusted MusicBrainz artist identity. BANDMARKR checks at most 25 unique recording combinations per run, one at a time. Progress is saved locally so unresolved items do not block later combinations. Release-group enrichment is deferred and does not block recording identity completion.';
-    status.textContent = 'Only runs when you press the button. This action uses ListenBrainz for recording identity only; it does not call MusicBrainz release context.';
+    status.textContent = 'Only runs when you press the button. This action uses ListenBrainz for recording identity only; it does not call MusicBrainz release context or send listening timestamps, event IDs, or full-history payloads.';
 
     const replacement = button.cloneNode(true);
     button.replaceWith(replacement);
