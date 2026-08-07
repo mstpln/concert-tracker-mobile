@@ -25,21 +25,30 @@
     let auth = await spotifyUser.validAuth(fetchImpl);
     const url = `https://api.spotify.com/v1/tracks/${encodeURIComponent(id)}?market=${MARKET}`;
     const run = () => fetchImpl(url, { headers: { Authorization: `Bearer ${auth.accessToken}` } });
+    let refreshed = false;
+    let rateLimitRetried = false;
+    let response;
 
-    let response = await run();
-    if (response.status === 401) {
-      auth = await spotifyUser.refresh(auth, fetchImpl);
+    while (true) {
       response = await run();
       if (response.status === 401) {
-        await spotifyUser.clearAuth?.();
-        throw new Error('Spotify connection expired. Connect again.');
+        if (refreshed) {
+          await spotifyUser.clearAuth?.();
+          throw new Error('Spotify connection expired. Connect again.');
+        }
+        auth = await spotifyUser.refresh(auth, fetchImpl);
+        refreshed = true;
+        continue;
       }
+      if (response.status === 429 && !rateLimitRetried) {
+        const retryAfterMs = Math.max(Number(response.headers?.get?.('retry-after')) * 1000 || 0, requestDelayMs);
+        await sleep(retryAfterMs);
+        rateLimitRetried = true;
+        continue;
+      }
+      break;
     }
-    if (response.status === 429) {
-      const retryAfterMs = Math.max(Number(response.headers?.get?.('retry-after')) * 1000 || 0, requestDelayMs);
-      await sleep(retryAfterMs);
-      response = await run();
-    }
+
     if (response.status === 404) return null;
     if (response.status === 403) {
       throw new Error('Spotify rejected the track metadata request. Your saved Spotify connection is still present; reconnecting is not expected to fix this.');
