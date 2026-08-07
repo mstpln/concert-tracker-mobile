@@ -277,7 +277,7 @@
     if ((!Array.isArray(output.musicbrainzArtistIds) || !output.musicbrainzArtistIds.length) && fields.musicbrainzArtistIds.length) output.musicbrainzArtistIds = fields.musicbrainzArtistIds;
     if (!output.musicbrainzRecordingId && fields.musicbrainzRecordingId) output.musicbrainzRecordingId = fields.musicbrainzRecordingId;
     if (!output.musicbrainzReleaseId && fields.musicbrainzReleaseId) output.musicbrainzReleaseId = fields.musicbrainzReleaseId;
-    if (!output.musicbrainzReleaseGroupId && fields.musicbrainzReleaseGroupMbid) output.musicbrainzReleaseGroupId = fields.musicbrainzReleaseGroupMbid;
+    if (!output.musicbrainzReleaseGroupId && fields.musicbrainzReleaseGroupId) output.musicbrainzReleaseGroupId = fields.musicbrainzReleaseGroupId;
     return output;
   }
 
