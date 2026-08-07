@@ -22,7 +22,7 @@ const LEGACY_SPOTIFY_USER = `'use strict';
   };
 })();`;
 
-test('v101 fetches artwork through the supported single-track endpoint while connection stays connected', async ({ page }) => {
+test('v102 accepts relinked artwork metadata through the supported single-track endpoint while preserving trusted identity', async ({ page }) => {
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
   await page.addInitScript(({ expiresAt }) => {
     localStorage.setItem('livevault-qa:settings', JSON.stringify({
@@ -45,31 +45,31 @@ test('v101 fetches artwork through the supported single-track endpoint while con
   await page.goto('/');
   await page.evaluate(() => {
     const qaFetch = window.fetch;
-    window.__v101SpotifyRequests = [];
+    window.__v102SpotifyRequests = [];
     window.fetch = async (input, options = {}) => {
       const url = new URL(typeof input === 'string' ? input : input.url, location.href);
       if (url.origin === 'https://api.spotify.com' && url.pathname === '/v1/tracks') {
         throw new Error('Removed Spotify batch endpoint must not be called');
       }
-      if (url.origin === 'https://api.spotify.com' && url.pathname === '/v1/tracks/V101ExactTrack123') {
-        window.__v101SpotifyRequests.push({
+      if (url.origin === 'https://api.spotify.com' && url.pathname === '/v1/tracks/V102TrustedTrack123') {
+        window.__v102SpotifyRequests.push({
           path: url.pathname,
           market: url.searchParams.get('market'),
           authorization: new Headers(options.headers || {}).get('Authorization'),
         });
         return new Response(JSON.stringify({
-          id: 'V101ExactTrack123',
-          external_urls: { spotify: 'https://open.spotify.com/track/V101ExactTrack123' },
+          id: 'V102RelinkedTrack789',
+          external_urls: { spotify: 'https://open.spotify.com/track/V102RelinkedTrack789' },
           album: {
-            id: 'V101ExactAlbum456',
-            external_urls: { spotify: 'https://open.spotify.com/album/V101ExactAlbum456' },
-            images: [{ url: 'https://fixtures.livevault.test/images/v101-cover.jpg', width: 640 }],
+            id: 'V102ExactAlbum456',
+            external_urls: { spotify: 'https://open.spotify.com/album/V102ExactAlbum456' },
+            images: [{ url: 'https://fixtures.livevault.test/images/v102-cover.jpg', width: 640 }],
           },
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       if (url.origin === 'https://qa.invalid' && url.pathname === '/listening/spotify-metadata.json') {
         if ((options.method || 'GET').toUpperCase() === 'PUT') {
-          return new Response('{}', { status: 200, headers: { etag: '"v101-saved"' } });
+          return new Response('{}', { status: 200, headers: { etag: '"v102-saved"' } });
         }
         return new Response('', { status: 404 });
       }
@@ -77,12 +77,12 @@ test('v101 fetches artwork through the supported single-track endpoint while con
     };
 
     listeningEvents = [{
-      id: 'v101-exact-listen',
+      id: 'v102-relinked-listen',
       listenedAtMs: Date.now(),
       listenedDurationMs: 180000,
-      recordingTitle: 'V101 Exact Track',
+      recordingTitle: 'V102 Relinked Track',
       artistCreditName: 'Synthetic Artist',
-      spotifyTrackId: 'V101ExactTrack123',
+      spotifyTrackId: 'V102TrustedTrack123',
     }];
   });
 
@@ -99,17 +99,21 @@ test('v101 fetches artwork through the supported single-track endpoint while con
   await expect(page.locator('[data-v99-enrich-status]')).toContainText('1 exact Spotify records added');
   await expect(spotifyPlaylistCard.getByRole('button', { name: 'Disconnect' })).toBeVisible();
 
-  const requests = await page.evaluate(() => window.__v101SpotifyRequests);
+  const requests = await page.evaluate(() => window.__v102SpotifyRequests);
   expect(requests).toEqual([{
-    path: '/v1/tracks/V101ExactTrack123',
+    path: '/v1/tracks/V102TrustedTrack123',
     market: 'SE',
     authorization: 'Bearer synthetic-access-token',
   }]);
 
   const stored = await page.evaluate(async () => SpotifyListeningMetadataV99.loadLocal());
-  expect(stored.records.V101ExactTrack123).toMatchObject({
-    spotifyTrackUrl: 'https://open.spotify.com/track/V101ExactTrack123',
-    spotifyAlbumUrl: 'https://open.spotify.com/album/V101ExactAlbum456',
-    artworkUrl: 'https://fixtures.livevault.test/images/v101-cover.jpg',
+  expect(stored.records.V102TrustedTrack123).toMatchObject({
+    spotifyTrackId: 'V102TrustedTrack123',
+    spotifyTrackUrl: 'https://open.spotify.com/track/V102TrustedTrack123',
+    spotifyAlbumUrl: 'https://open.spotify.com/album/V102ExactAlbum456',
+    artworkUrl: 'https://fixtures.livevault.test/images/v102-cover.jpg',
+    spotifyProviderResolvedTrackId: 'V102RelinkedTrack789',
+    spotifyProviderRelinked: true,
   });
+  expect(stored.records.V102RelinkedTrack789).toBeUndefined();
 });
