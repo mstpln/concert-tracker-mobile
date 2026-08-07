@@ -1,5 +1,6 @@
 'use strict';
 
+const path = require('node:path');
 const core = require('./spotify-artwork-backfill-core');
 const runner = require('./spotify-artwork-backfill');
 const source = require('./spotify-artwork-backfill-source');
@@ -15,6 +16,15 @@ function normalizeEndpoint(value) {
   const endpoint = String(value || '').trim().replace(/\/+$/, '');
   if (!/^https:\/\//i.test(endpoint)) throw new Error('CF_WORKER_ENDPOINT must be an HTTPS URL.');
   return endpoint;
+}
+
+function assertPrivateCheckpointPath(value) {
+  const maintenanceRoot = path.resolve('.livevault-maintenance');
+  const checkpoint = path.resolve(String(value || ''));
+  if (checkpoint === maintenanceRoot || !checkpoint.startsWith(`${maintenanceRoot}${path.sep}`)) {
+    throw new Error('Production backfill checkpoints must stay inside the ignored .livevault-maintenance directory.');
+  }
+  return checkpoint;
 }
 
 function configureUsageEnvironment(env, { endpoint, workerToken }) {
@@ -58,6 +68,7 @@ async function runProductionCli({
   const workerToken = requiredEnv(env, 'CF_WORKER_BROWSER_TOKEN');
   const clientId = requiredEnv(env, 'SPOTIFY_CLIENT_ID');
   const clientSecret = requiredEnv(env, 'SPOTIFY_CLIENT_SECRET');
+  const checkpointPath = assertPrivateCheckpointPath(options.checkpointPath);
   configureUsageEnvironment(env, { endpoint, workerToken });
 
   const usage = await usageFactory();
@@ -83,8 +94,8 @@ async function runProductionCli({
         missing,
         fetchImpl,
       }),
-      loadCheckpoint: () => runner.readCheckpoint(options.checkpointPath),
-      saveCheckpoint: (checkpoint) => runner.writeCheckpoint(options.checkpointPath, checkpoint),
+      loadCheckpoint: () => runner.readCheckpoint(checkpointPath),
+      saveCheckpoint: (checkpoint) => runner.writeCheckpoint(checkpointPath, checkpoint),
       getToken: () => trackedSpotifyCall(usage, () => runner.getSpotifyToken({ clientId, clientSecret, fetchImpl })),
       fetchTrack: ({ id, token, market }) => trackedSpotifyCall(usage, () => runner.fetchSpotifyTrack({ id, token, market, fetchImpl })),
     });
@@ -118,6 +129,7 @@ if (require.main === module) {
 module.exports = {
   requiredEnv,
   normalizeEndpoint,
+  assertPrivateCheckpointPath,
   configureUsageEnvironment,
   trackedSpotifyCall,
   runProductionCli,
