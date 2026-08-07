@@ -99,7 +99,10 @@ test('v103 accepts relinked artwork metadata while preserving trusted identity a
 
   const artworkButton = page.getByRole('button', { name: 'Fetch listening artwork' });
   await artworkButton.click();
-  await expect(page.locator('[data-v99-enrich-status]')).toContainText('Done. 1 artwork records added');
+  const status = page.locator('[data-v99-enrich-status]');
+  await expect(status).toContainText('Done. 1 of 1 checked in this run');
+  await expect(status).toContainText('1 artwork records added this time');
+  await expect(status).toContainText('1 cached in total');
   await expect(spotifyPlaylistCard.getByRole('button', { name: 'Disconnect' })).toBeVisible();
 
   const requests = await page.evaluate(() => window.__v103SpotifyRequests);
