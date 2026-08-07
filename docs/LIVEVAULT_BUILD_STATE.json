@@ -7,6 +7,7 @@
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 20,
   "qaOutputDirectory": "dist",
+  "workerEntryPoint": "workerV104.js",
   "playwrightProjects": [
     "desktop-chromium",
     "mobile-chromium"
