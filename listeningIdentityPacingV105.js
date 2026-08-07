@@ -6,7 +6,7 @@
   if (root) root.BandmarkrListeningIdentityPacingV105 = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   const RELEASE_CONTEXT_PATH = '/musicbrainz/release-context';
-  const MUSICBRAINZ_MIN_INTERVAL_MS = 1500;
+  const MUSICBRAINZ_MIN_INTERVAL_MS = 2000;
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
   function cleanUuid(value) {
