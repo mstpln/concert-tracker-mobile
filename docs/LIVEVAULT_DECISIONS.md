@@ -399,3 +399,11 @@
 **Reason:** The real listening archive is private and large, and derived matching can become stale when new listens arrive. A two-step flow lets the user see aggregate results before changing the app while preserving a clear fallback to the original source observations.
 
 **Consequence:** Activation fails closed when canonical coverage is incomplete or the source event count differs from the prepared count. A later history change marks activation stale and restores source-event totals until preparation is run again. Source observations, R2 objects and provider records are never rewritten, and development/QA use synthetic fixtures only.
+
+## 2026-08-07 — Spotify artwork runs are foreground-only, bounded and manually resumed
+
+**Decision:** A manual Spotify listening-artwork fetch owns a persisted logical batch of at most 100 trusted unresolved track IDs. BANDMARKR saves each completed track locally, stops that logical run when the PWA leaves the foreground, and requires another explicit **Fetch listening artwork** tap to continue the same remaining batch. Foregrounding the PWA never silently restarts provider calls.
+
+**Reason:** Mobile browsers may suspend or terminate PWAs unpredictably, and a resumed request loop must not repeat completed Spotify calls or accidentally turn a partially completed 100-track run into another full 100-track allowance.
+
+**Consequence:** The local run checkpoint is required before provider calls and fails closed if it cannot be persisted. A 50-of-100 interruption resumes only the remaining 50 IDs; completed IDs are skipped. Spotify HTTP 429 handling remains bounded and quota-aware, source listening observations remain immutable, and the separate historical backfill remains an explicitly authorized maintenance operation outside the app.
