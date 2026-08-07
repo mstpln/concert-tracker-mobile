@@ -21,8 +21,8 @@ Inventory the historical listening archive for bands that currently exist in BAN
 2. If no stable band ID exists, exact normalized artist-name fallback is allowed only when that name belongs to one current band.
 3. A stale explicit band ID never falls back to text. Ambiguous duplicate names remain unmapped.
 4. Use `spotify:<spotifyTrackId>` as the unique work key when an exact Spotify ID exists.
-5. Otherwise use a deterministic SHA-256 ListenBrainz fallback key derived from stable BANDMARKR band identity plus the exact normalized recording title.
-6. Reuse an existing cross-provider recording identity first.
+5. Otherwise use the provider-neutral `text:<sha256>` work key derived from stable BANDMARKR band identity plus the exact normalized recording title.
+6. Reuse an existing cross-provider recording identity first, including the v107 `musicbrainzRecordingId` field while retaining compatibility with earlier local derived-field names.
 7. Reuse one unambiguous source MusicBrainz recording MBID next.
 8. Reuse existing Spotify metadata next. If that record already contains an ISRC, the track is ready for later ISRC→MusicBrainz work without another Spotify request.
 9. Only unresolved exact Spotify IDs are marked as future Spotify work.
