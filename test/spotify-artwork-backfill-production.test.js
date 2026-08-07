@@ -4,18 +4,33 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const production = require('../scripts/spotify-artwork-backfill-production.js');
 
-test('tracked Spotify call records usage before the provider operation', async () => {
+test('tracked Spotify call persists usage before the provider operation', async () => {
   const order = [];
   const usage = {
     canCallSpotify: () => true,
-    recordSpotifyCall: async () => { order.push('usage'); },
+    recordSpotifyCall: async () => { order.push('record'); },
+    save: async () => { order.push('save'); },
   };
   const result = await production.trackedSpotifyCall(usage, async () => {
     order.push('provider');
     return 'ok';
   });
   assert.equal(result, 'ok');
-  assert.deepEqual(order, ['usage', 'provider']);
+  assert.deepEqual(order, ['record', 'save', 'provider']);
+});
+
+test('tracked Spotify call fails closed before provider work if usage persistence fails', async () => {
+  let called = false;
+  const usage = {
+    canCallSpotify: () => true,
+    recordSpotifyCall: async () => {},
+    save: async () => { throw new Error('synthetic save failure'); },
+  };
+  await assert.rejects(
+    () => production.trackedSpotifyCall(usage, async () => { called = true; }),
+    (error) => error?.code === 'SPOTIFY_USAGE_SAVE_FAILED' && /provider request was not started/.test(error.message)
+  );
+  assert.equal(called, false);
 });
 
 test('usage guard stops before a provider operation when project accounting disallows another call', async () => {
@@ -23,6 +38,7 @@ test('usage guard stops before a provider operation when project accounting disa
   const usage = {
     canCallSpotify: () => false,
     recordSpotifyCall: async () => { throw new Error('must not record'); },
+    save: async () => { throw new Error('must not save'); },
   };
   await assert.rejects(
     () => production.trackedSpotifyCall(usage, async () => { called = true; }),
