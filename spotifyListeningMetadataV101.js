@@ -9,7 +9,8 @@
   const PERSIST_EVERY = 1;
   const REQUEST_DELAY_MS = 1000;
   const MARKET = 'SE';
-  const SETTINGS_HINT = 'Fetch exact Spotify track, album and artwork metadata for listening records that already contain a trusted Spotify track ID. No title search is used. Up to 100 tracks are processed per run with slow, quota-friendly requests. Progress is saved after every track; if the app is interrupted, tap Fetch listening artwork again and already saved tracks will be skipped.';
+  const RUN_STATE_KEY = 'bandmarkr-spotify-artwork-run-v103';
+  const SETTINGS_HINT = 'Fetch exact Spotify track, album and artwork metadata for listening records that already contain a trusted Spotify track ID. No title search is used. Up to 100 tracks are processed per run with slow, quota-friendly requests. Progress is saved after every track; if the app is interrupted, tap Fetch listening artwork again and the same run continues without repeating saved tracks.';
 
   const sleep = (ms) => new Promise((resolve) => root.setTimeout ? root.setTimeout(resolve, ms) : setTimeout(resolve, ms));
   const validSpotifyId = (value) => /^[A-Za-z0-9]{1,64}$/.test(String(value || '').trim());
@@ -37,6 +38,65 @@
 
   function foregroundInterruptionError() {
     return new Error('Artwork fetching paused because BANDMARKR left the foreground. Progress already completed is saved.');
+  }
+
+  function defaultRunStateStore() {
+    try { return root.localStorage || null; } catch (_) { return null; }
+  }
+
+  function normalizeRunState(value) {
+    if (!value || Number(value.schemaVersion) !== 1) return null;
+    const ids = Array.isArray(value.ids) ? value.ids.map((id) => String(id || '').trim()) : [];
+    const remainingIds = Array.isArray(value.remainingIds) ? value.remainingIds.map((id) => String(id || '').trim()) : [];
+    if (!ids.length || ids.length > MAX_TRACKS_PER_RUN || ids.some((id) => !validSpotifyId(id))) return null;
+    const allowed = new Set(ids);
+    if (remainingIds.some((id) => !allowed.has(id))) return null;
+    return {
+      schemaVersion: 1,
+      ids,
+      remainingIds,
+      createdAt: Number.isFinite(Date.parse(value.createdAt)) ? new Date(value.createdAt).toISOString() : new Date().toISOString(),
+    };
+  }
+
+  function readRunState(store = defaultRunStateStore()) {
+    if (!store?.getItem) return null;
+    try { return normalizeRunState(JSON.parse(store.getItem(RUN_STATE_KEY) || 'null')); } catch (_) { return null; }
+  }
+
+  function writeRunState(state, store = defaultRunStateStore()) {
+    const normalized = normalizeRunState(state);
+    if (!normalized || !store?.setItem) return normalized;
+    store.setItem(RUN_STATE_KEY, JSON.stringify(normalized));
+    return normalized;
+  }
+
+  function clearRunState(store = defaultRunStateStore()) {
+    try { store?.removeItem?.(RUN_STATE_KEY); } catch (_) {}
+  }
+
+  function prepareRunState(unresolvedIds, limit, store = defaultRunStateStore()) {
+    const unresolved = unresolvedIds.filter(validSpotifyId);
+    const unresolvedSet = new Set(unresolved);
+    const existing = readRunState(store);
+    if (existing) {
+      const remainingIds = existing.remainingIds.filter((id) => unresolvedSet.has(id));
+      if (remainingIds.length) return writeRunState({ ...existing, remainingIds }, store);
+      clearRunState(store);
+    }
+    const ids = unresolved.slice(0, limit);
+    if (!ids.length) return null;
+    return writeRunState({ schemaVersion: 1, ids, remainingIds: [...ids], createdAt: new Date().toISOString() }, store)
+      || { schemaVersion: 1, ids, remainingIds: [...ids], createdAt: new Date().toISOString() };
+  }
+
+  function completeRunItem(runState, id, store = defaultRunStateStore()) {
+    const next = {
+      ...runState,
+      remainingIds: runState.remainingIds.filter((candidate) => candidate !== id),
+    };
+    writeRunState(next, store);
+    return next;
   }
 
   async function requestTrack(spotifyTrackId, {
@@ -133,6 +193,7 @@
     metadata = root.SpotifyListeningMetadataV99,
     spotifyUser = root.SpotifyUser,
     requestDelayMs = REQUEST_DELAY_MS,
+    runStateStore = defaultRunStateStore(),
   } = {}) {
     if (!metadata?.readRemote || !metadata?.loadLocal || !metadata?.recordFromSpotifyTrack) {
       throw new Error('Spotify listening artwork support is unavailable. Refresh BANDMARKR and try again.');
@@ -140,9 +201,12 @@
     const remoteState = await metadata.readRemote(fetchImpl);
     let document = metadata.mergeDocuments(await metadata.loadLocal().catch(() => metadata.emptyDocument()), remoteState.document);
     const limit = Math.max(1, Math.min(MAX_TRACKS_PER_RUN, Number(cap) || MAX_TRACKS_PER_RUN));
-    const ids = metadata.unresolvedTrackIds(document).slice(0, limit);
+    const unresolved = metadata.unresolvedTrackIds(document);
+    let runState = prepareRunState(unresolved, limit, runStateStore);
+    const ids = runState?.remainingIds ? [...runState.remainingIds] : [];
+    const total = runState?.ids?.length || 0;
     let added = 0;
-    let processed = 0;
+    let processed = total - ids.length;
     let interrupted = false;
     const visibilityDocument = root.document;
     const onVisibilityChange = () => {
@@ -168,22 +232,24 @@
           }
         }
 
-        processed = index + 1;
-        document = await persistProgress(metadata, document, processed, ids.length, added, onProgress);
+        processed += 1;
+        document = await persistProgress(metadata, document, processed, total, added, onProgress);
+        runState = completeRunItem(runState, requestedId, runStateStore);
         if (interrupted) throw foregroundInterruptionError();
-        if (processed < ids.length && requestDelayMs > 0) await sleep(requestDelayMs);
+        if (index + 1 < ids.length && requestDelayMs > 0) await sleep(requestDelayMs);
       }
     } catch (error) {
-      error.liveVaultProgress = { processed, total: ids.length, added };
+      error.liveVaultProgress = { processed, total, added };
       throw error;
     } finally {
       visibilityDocument?.removeEventListener?.('visibilitychange', onVisibilityChange);
     }
 
+    if (runState && runState.remainingIds.length === 0) clearRunState(runStateStore);
     const remoteChanged = !metadata.documentsEqual(document, remoteState.document);
     if (remoteChanged) await metadata.writeRemote(document, remoteState.etag, remoteState.missing, fetchImpl);
     metadata.applyToEvents(document);
-    return { requested: ids.length, added, total: Object.keys(document.records).length, synced: remoteChanged };
+    return { requested: ids.length, added, total: Object.keys(document.records).length, synced: remoteChanged, batchTotal: total, batchProcessed: processed };
   }
 
   function install() {
@@ -210,19 +276,19 @@
       status.textContent = 'Checking which trusted Spotify tracks still need artwork…';
       try {
         const result = await enrich({ onProgress: ({ processed, total, added }) => {
-          status.textContent = `Fetching artwork: ${processed.toLocaleString()} of ${total.toLocaleString()} checked · ${added.toLocaleString()} added · progress saved`;
+          status.textContent = `Fetching artwork: ${processed.toLocaleString()} of ${total.toLocaleString()} checked · ${added.toLocaleString()} added this time · progress saved`;
         } });
         status.textContent = result.requested
-          ? `Done. ${result.added.toLocaleString()} artwork records added · ${result.total.toLocaleString()} cached in total.`
+          ? `Done. ${result.batchProcessed.toLocaleString()} of ${result.batchTotal.toLocaleString()} checked in this run · ${result.added.toLocaleString()} artwork records added this time · ${result.total.toLocaleString()} cached in total.`
           : result.synced
             ? `Done. Saved artwork metadata was synchronized · ${result.total.toLocaleString()} cached in total.`
             : 'Done. Artwork is already complete for the trusted Spotify track IDs on this device.';
       } catch (error) {
         const progress = error?.liveVaultProgress;
-        const prefix = progress?.processed > 0
+        const prefix = progress?.total > 0
           ? `Progress saved through ${progress.processed.toLocaleString()} of ${progress.total.toLocaleString()} checked in this run. `
           : '';
-        status.textContent = `${prefix}${error?.message || 'Spotify artwork could not be fetched. Please try again later.'} Tap Fetch listening artwork again to continue; already saved tracks will be skipped.`;
+        status.textContent = `${prefix}${error?.message || 'Spotify artwork could not be fetched. Please try again later.'} Tap Fetch listening artwork again to continue the same run; completed tracks will not be requested again.`;
       } finally {
         button.disabled = false;
       }
@@ -240,5 +306,16 @@
     root.setTimeout?.(install, 0);
   }
 
-  return { MAX_TRACKS_PER_RUN, PERSIST_EVERY, REQUEST_DELAY_MS, requestTrack, recordForRequestedTrack, enrich, install };
+  return {
+    MAX_TRACKS_PER_RUN,
+    PERSIST_EVERY,
+    REQUEST_DELAY_MS,
+    RUN_STATE_KEY,
+    requestTrack,
+    recordForRequestedTrack,
+    readRunState,
+    prepareRunState,
+    enrich,
+    install,
+  };
 });
