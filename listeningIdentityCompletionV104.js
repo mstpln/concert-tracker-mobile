@@ -219,12 +219,10 @@
     const artistMbids = safeUuidList(resolved?.artistMbids?.length ? resolved.artistMbids : group.artistMbids);
     const releaseMbid = safeUuid(group.releaseMbid);
     const releaseGroupMbid = releaseMbid ? safeUuid(resolved?.releaseGroupMbid || group.releaseGroupMbid) : null;
-    const newEvidence = [{
-      type: releaseGroupMbid
-        ? 'trusted_musicbrainz_release_context'
-        : (group.recordingMbid ? 'trusted_source_musicbrainz_recording' : 'listenbrainz_musicbrainz_recording_mapping'),
-      version: 1,
-    }];
+    const newEvidence = [];
+    if (!group.recordingMbid && recordingMbid) newEvidence.push({ type: 'listenbrainz_musicbrainz_recording_mapping', version: 1 });
+    else if (group.recordingMbid) newEvidence.push({ type: 'trusted_source_musicbrainz_recording', version: 1 });
+    if (releaseGroupMbid && !group.releaseGroupMbid) newEvidence.push({ type: 'trusted_musicbrainz_release_context', version: 1 });
     return (group.sourceEventIds || []).map((id) => ({
       sourceEventId: id,
       identityVersion: 1,
