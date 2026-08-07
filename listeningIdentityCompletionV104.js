@@ -40,6 +40,10 @@
     };
   }
 
+  function trackedListeningEvents(events = []) {
+    return (events || []).filter((event) => Boolean(clean(event?.bandId || event?.localBandId)));
+  }
+
   function trustedBandArtistMap(bandRecords = []) {
     const map = new Map();
     for (const band of Array.isArray(bandRecords) ? bandRecords : []) {
@@ -80,8 +84,8 @@
     const artistName = clean(event.artistCreditName);
     const recordingName = clean(event.recordingTitle);
     const releaseName = clean(event.releaseTitle);
-    if (!identity.recordingMbid && (!artistName || !recordingName)) return null;
     const artistMbids = safeUuidList(identity.artistMbids).sort();
+    if (!identity.recordingMbid && (!artistName || !recordingName || !artistMbids.length)) return null;
     return {
       key: [
         normalizeText(artistName),
@@ -191,9 +195,9 @@
     if (normalizeText(raw.recording_name) !== normalizeText(request.recordingName)) return null;
     const returnedArtistMbids = safeUuidList(raw.artist_mbids || raw.artistMbids);
     const trustedArtistMbids = safeUuidList(request.artistMbids);
-    if (trustedArtistMbids.length && !returnedArtistMbids.some((id) => trustedArtistMbids.includes(id))) return null;
+    if (!trustedArtistMbids.length || !returnedArtistMbids.some((id) => trustedArtistMbids.includes(id))) return null;
     return {
-      artistMbids: trustedArtistMbids.length ? trustedArtistMbids : returnedArtistMbids,
+      artistMbids: trustedArtistMbids,
       recordingMbid,
     };
   }
@@ -395,7 +399,7 @@
     onProgress = () => {},
   } = {}) {
     const loadedEvents = await sourceEvents({ events, bands: bandRecords });
-    const allEvents = addTrustedBandArtistIdentity(loadedEvents, bandRecords);
+    const allEvents = addTrustedBandArtistIdentity(trackedListeningEvents(loadedEvents), bandRecords);
     const existing = await listAllIdentities(storage);
     const existingById = new Map(existing.map((record) => [clean(record.sourceEventId), record]));
     const plan = buildLookupPlan(allEvents, existing);
@@ -486,7 +490,7 @@
     const wrapper = root.document.createElement('div');
     wrapper.dataset.v104ListeningIdentity = 'true';
     wrapper.className = 'settings-card';
-    wrapper.innerHTML = `<p class="section-label" style="margin-top:0">Listening identity</p><p class="settings-hint">Fill missing MusicBrainz recording IDs through your existing ListenBrainz connection and add release-group context only when a listen already has a trusted MusicBrainz release ID. BANDMARKR checks at most ${MAX_SIGNATURES_PER_RUN} unique combinations per run, one at a time. Progress is saved locally so unresolved items do not block later combinations. Missing release editions are never guessed from text, and release groups never combine editions automatically.</p><button type="button" class="btn-secondary" data-v104-complete-identities>Complete listening identities</button><p class="settings-hint" data-v104-identity-status aria-live="polite">Only runs when you press the button. No listening timestamps, event IDs or full-history payload is sent to either provider.</p>`;
+    wrapper.innerHTML = `<p class="section-label" style="margin-top:0">Listening identity</p><p class="settings-hint">Fill missing MusicBrainz recording IDs for followed bands only when BANDMARKR already has a trusted MusicBrainz artist identity, and add release-group context only when a listen already has a trusted MusicBrainz release ID. BANDMARKR checks at most ${MAX_SIGNATURES_PER_RUN} unique combinations per run, one at a time. Progress is saved locally so unresolved items do not block later combinations. Missing release editions are never guessed from text, and release groups never combine editions automatically.</p><button type="button" class="btn-secondary" data-v104-complete-identities>Complete listening identities</button><p class="settings-hint" data-v104-identity-status aria-live="polite">Only runs when you press the button. No listening timestamps, event IDs or full-history payload is sent to either provider.</p>`;
     anchor.after(wrapper);
     const button = wrapper.querySelector('[data-v104-complete-identities]');
     const status = wrapper.querySelector('[data-v104-identity-status]');
@@ -529,6 +533,7 @@
     safeUuid,
     safeUuidList,
     sourceIdentity,
+    trackedListeningEvents,
     trustedBandArtistMap,
     addTrustedBandArtistIdentity,
     effectiveIdentity,
