@@ -7,7 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 function workerUnderTest() {
-  const code = fs.readFileSync(path.join(__dirname, '..', 'worker.js'), 'utf8').replace('export default{', 'globalThis.worker = {');
+  const code = fs.readFileSync(path.join(__dirname, '..', 'worker.js'), 'utf8').replace('export default {', 'globalThis.worker = {');
   const context = { Response, Request, URL, TextDecoder, AbortController, setTimeout, clearTimeout, globalThis: {} };
   vm.runInNewContext(code, context);
   return context.globalThis.worker;
