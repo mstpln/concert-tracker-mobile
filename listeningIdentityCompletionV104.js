@@ -6,10 +6,8 @@
   if (root) root.BandmarkrListeningIdentityCompletionV104 = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   const LOOKUP_URL = 'https://api.listenbrainz.org/1/metadata/lookup/';
-  const RECORDING_METADATA_URL = 'https://api.listenbrainz.org/1/metadata/recording/';
   const MAX_SIGNATURES_PER_RUN = 25;
   const MAX_WRITE_BATCH = 500;
-  const REQUEST_DELAY_MS = 1000;
 
   const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value));
   const clean = (value) => String(value == null ? '' : value).trim() || null;
@@ -39,20 +37,15 @@
     };
   }
 
-  function identityComplete(identity = {}) {
-    return Boolean(identity.recordingMbid && identity.releaseMbid);
-  }
-
   function lookupSignature(event = {}) {
     const artistName = clean(event.artistCreditName);
     const recordingName = clean(event.recordingTitle);
-    const releaseName = clean(event.releaseTitle);
-    if (!artistName || !recordingName || !releaseName) return null;
+    if (!artistName || !recordingName) return null;
     return {
-      key: `${normalizeText(artistName)}|${normalizeText(recordingName)}|${normalizeText(releaseName)}`,
+      key: `${normalizeText(artistName)}|${normalizeText(recordingName)}`,
       artistName,
       recordingName,
-      releaseName,
+      releaseName: clean(event.releaseTitle),
     };
   }
 
@@ -61,41 +54,36 @@
     const groups = new Map();
     let alreadyResolved = 0;
     let ineligible = 0;
+    let releaseIdentityPresent = 0;
     for (const event of events || []) {
       const id = sourceEventId(event);
       if (!id) continue;
       const source = sourceIdentity(event);
       const existing = existingById.get(id) || {};
-      const effective = {
-        recordingMbid: safeUuid(existing.recordingMbid) || source.recordingMbid,
-        releaseMbid: safeUuid(existing.releaseMbid) || source.releaseMbid,
-      };
-      if (identityComplete(effective)) { alreadyResolved += 1; continue; }
+      if (safeUuid(existing.releaseMbid) || source.releaseMbid) releaseIdentityPresent += 1;
+      if (safeUuid(existing.recordingMbid) || source.recordingMbid) { alreadyResolved += 1; continue; }
       const signature = lookupSignature(event);
       if (!signature) { ineligible += 1; continue; }
       const group = groups.get(signature.key) || { ...signature, sourceEventIds: [] };
       group.sourceEventIds.push(id);
+      if (!group.releaseName && signature.releaseName) group.releaseName = signature.releaseName;
       groups.set(signature.key, group);
     }
     const items = [...groups.values()]
       .map((group) => ({ ...group, sourceEventIds: [...new Set(group.sourceEventIds)].sort() }))
       .sort((a, b) => a.key.localeCompare(b.key));
-    return { items, alreadyResolved, ineligible };
+    return { items, alreadyResolved, ineligible, releaseIdentityPresent };
   }
 
   function exactLookupResult(request, raw) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
     const recordingMbid = safeUuid(raw.recording_mbid || raw.recordingMbid);
-    const releaseMbid = safeUuid(raw.release_mbid || raw.releaseMbid);
-    if (!recordingMbid || !releaseMbid) return null;
+    if (!recordingMbid) return null;
     if (normalizeText(raw.artist_credit_name) !== normalizeText(request.artistName)) return null;
     if (normalizeText(raw.recording_name) !== normalizeText(request.recordingName)) return null;
-    if (normalizeText(raw.release_name) !== normalizeText(request.releaseName)) return null;
     return {
       artistMbids: safeUuidList(raw.artist_mbids || raw.artistMbids),
       recordingMbid,
-      releaseMbid,
-      releaseGroupMbid: safeUuid(raw.release_group_mbid || raw.releaseGroupMbid),
     };
   }
 
@@ -103,35 +91,25 @@
     const rows = Array.isArray(payload) ? payload
       : Array.isArray(payload?.recordings) ? payload.recordings
         : Array.isArray(payload?.results) ? payload.results : [];
-    const unused = rows.map((row, index) => ({ row, index }));
+    const unused = rows.map((row) => row);
     return (requests || []).map((request) => {
-      const matchIndex = unused.findIndex(({ row }) => Boolean(exactLookupResult(request, row)));
+      const matchIndex = unused.findIndex((row) => Boolean(exactLookupResult(request, row)));
       if (matchIndex < 0) return null;
-      const [{ row }] = unused.splice(matchIndex, 1);
+      const [row] = unused.splice(matchIndex, 1);
       return exactLookupResult(request, row);
     });
   }
 
-  function releaseGroupFromRecordingMetadata(payload, recordingMbid, releaseMbid) {
-    const record = payload?.[recordingMbid];
-    const release = record?.release;
-    if (!release || safeUuid(release.mbid || release.release_mbid) !== safeUuid(releaseMbid)) return null;
-    return safeUuid(release.release_group_mbid || release.releaseGroupMbid);
-  }
-
   function buildIdentityRecords(group, resolved, now = new Date().toISOString()) {
-    if (!group || !resolved?.recordingMbid || !resolved?.releaseMbid) return [];
+    if (!group || !resolved?.recordingMbid) return [];
     const artistMbids = safeUuidList(resolved.artistMbids);
     return (group.sourceEventIds || []).map((id) => ({
       sourceEventId: id,
       identityVersion: 1,
       status: 'resolved',
-      artistMbids,
-      artistMbid: artistMbids[0] || null,
+      ...(artistMbids.length ? { artistMbids, artistMbid: artistMbids[0] } : {}),
       recordingMbid: safeUuid(resolved.recordingMbid),
-      releaseMbid: safeUuid(resolved.releaseMbid),
-      releaseGroupMbid: safeUuid(resolved.releaseGroupMbid),
-      evidence: [{ type: 'listenbrainz_musicbrainz_mapping', version: 1 }],
+      evidence: [{ type: 'listenbrainz_musicbrainz_recording_mapping', version: 1 }],
       updatedAt: now,
     }));
   }
@@ -186,10 +164,7 @@
     const byId = new Map(identities.map((record) => [clean(record.sourceEventId), record]));
     let applied = 0;
     listeningEvents = listeningEvents.map((event) => {
-      const ids = [
-        sourceEventId(event),
-        ...(Array.isArray(event?.canonicalSourceEventIds) ? event.canonicalSourceEventIds.map(clean).filter(Boolean) : []),
-      ];
+      const ids = [sourceEventId(event), ...(Array.isArray(event?.canonicalSourceEventIds) ? event.canonicalSourceEventIds.map(clean).filter(Boolean) : [])];
       const identity = ids.map((id) => byId.get(id)).find((record) => record?.recordingMbid || record?.releaseMbid || record?.releaseGroupMbid || record?.artistMbid || record?.artistMbids?.length);
       if (!identity) return event;
       applied += 1;
@@ -225,28 +200,13 @@
       body: JSON.stringify({ recordings: requests.map((item) => ({
         artist_name: item.artistName,
         recording_name: item.recordingName,
-        release_name: item.releaseName,
+        ...(item.releaseName ? { release_name: item.releaseName } : {}),
       })) }),
     });
     if (response.status === 429) throw new Error('ListenBrainz is rate limiting identity lookups. Try again later.');
     if (!response.ok) throw new Error(`ListenBrainz identity lookup returned HTTP ${response.status}.`);
     return response.json();
   }
-
-  async function requestRecordingMetadata(recordingMbids, token, fetchImpl = root?.fetch) {
-    if (!recordingMbids.length) return {};
-    const response = await fetchImpl(RECORDING_METADATA_URL, {
-      method: 'POST',
-      headers: { Authorization: `Token ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recording_mbids: recordingMbids, inc: 'release' }),
-    });
-    if (response.status === 429) return {};
-    if (!response.ok) return {};
-    const payload = await response.json();
-    return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
-  }
-
-  function sleep(ms) { return new Promise((resolve) => root?.setTimeout ? root.setTimeout(resolve, ms) : setTimeout(resolve, ms)); }
 
   async function sourceEvents(options = {}) {
     if (Array.isArray(options.events)) return clone(options.events);
@@ -255,53 +215,32 @@
     return history.loadEvents(options.bands || (typeof bands === 'undefined' ? [] : bands));
   }
 
-  async function complete({
-    cap = MAX_SIGNATURES_PER_RUN,
-    fetchImpl = root?.fetch,
-    storage = root?.BandmarkrListeningDerivedStorage,
-    listenbrainz = root?.LiveVaultListenBrainz,
-    events,
-    onProgress = () => {},
-  } = {}) {
+  async function complete({ cap = MAX_SIGNATURES_PER_RUN, fetchImpl = root?.fetch, storage = root?.BandmarkrListeningDerivedStorage, listenbrainz = root?.LiveVaultListenBrainz, events, onProgress = () => {} } = {}) {
     const connection = listenbrainz?.connection?.();
     if (!connection?.token) throw new Error('Connect ListenBrainz on this device before completing listening identities.');
     const allEvents = await sourceEvents({ events });
     const existing = await listAllIdentities(storage);
     const plan = buildLookupPlan(allEvents, existing);
     const selected = plan.items.slice(0, Math.max(1, Math.min(MAX_SIGNATURES_PER_RUN, Number(cap) || MAX_SIGNATURES_PER_RUN)));
-    if (!selected.length) return { checked: 0, resolvedSignatures: 0, written: 0, remaining: 0, alreadyResolved: plan.alreadyResolved, ineligible: plan.ineligible };
+    if (!selected.length) return { checked: 0, resolvedSignatures: 0, written: 0, remaining: 0, ...plan };
 
     const payload = await requestLookupBatch(selected, connection.token, fetchImpl);
     const resolved = normalizeLookupResponse(payload, selected);
-    const recordingMbids = [...new Set(resolved.map((item) => item?.recordingMbid).filter(Boolean))];
-    let recordingMetadata = {};
-    if (recordingMbids.length) {
-      await sleep(REQUEST_DELAY_MS);
-      recordingMetadata = await requestRecordingMetadata(recordingMbids, connection.token, fetchImpl);
-    }
-
     let written = 0;
     let resolvedSignatures = 0;
     for (let index = 0; index < selected.length; index += 1) {
       const mapping = resolved[index];
-      if (!mapping) {
-        onProgress({ checked: index + 1, total: selected.length, resolvedSignatures, written });
-        continue;
+      if (mapping) {
+        written += await writeIdentityRecords(storage, buildIdentityRecords(selected[index], mapping));
+        resolvedSignatures += 1;
       }
-      mapping.releaseGroupMbid = mapping.releaseGroupMbid
-        || releaseGroupFromRecordingMetadata(recordingMetadata, mapping.recordingMbid, mapping.releaseMbid);
-      const records = buildIdentityRecords(selected[index], mapping);
-      written += await writeIdentityRecords(storage, records);
-      resolvedSignatures += 1;
       onProgress({ checked: index + 1, total: selected.length, resolvedSignatures, written });
     }
-
-    const remaining = Math.max(0, plan.items.length - selected.length);
     const activation = root?.BandmarkrListeningCanonicalActivation;
     if (activation?.applyToApp) await activation.applyToApp().catch(() => {});
     await applyDerivedIdentities(storage);
     rerenderListening();
-    return { checked: selected.length, resolvedSignatures, written, remaining, alreadyResolved: plan.alreadyResolved, ineligible: plan.ineligible };
+    return { checked: selected.length, resolvedSignatures, written, remaining: Math.max(0, plan.items.length - selected.length), alreadyResolved: plan.alreadyResolved, ineligible: plan.ineligible, releaseIdentityPresent: plan.releaseIdentityPresent };
   }
 
   function injectSettingsUi() {
@@ -312,20 +251,20 @@
     const wrapper = root.document.createElement('div');
     wrapper.dataset.v104ListeningIdentity = 'true';
     wrapper.className = 'settings-card';
-    wrapper.innerHTML = `<p class="section-label" style="margin-top:0">Listening identity</p><p class="settings-hint">Fill missing MusicBrainz recording and release IDs through your existing ListenBrainz connection. BANDMARKR checks at most ${MAX_SIGNATURES_PER_RUN} unique track/release combinations per run. It sends artist, track and release names only — never listening timestamps or the full history.</p><button type="button" class="btn-secondary" data-v104-complete-identities>Complete listening identities</button><p class="settings-hint" data-v104-identity-status aria-live="polite">Only runs when you press the button.</p>`;
+    wrapper.innerHTML = `<p class="section-label" style="margin-top:0">Listening identity</p><p class="settings-hint">Fill missing MusicBrainz recording IDs through your existing ListenBrainz connection. BANDMARKR checks at most ${MAX_SIGNATURES_PER_RUN} unique artist/track combinations per run and preserves existing trusted release IDs. Release groups never combine editions automatically.</p><button type="button" class="btn-secondary" data-v104-complete-identities>Complete listening identities</button><p class="settings-hint" data-v104-identity-status aria-live="polite">Only runs when you press the button. No listening timestamps or full-history payload is sent.</p>`;
     anchor.after(wrapper);
     const button = wrapper.querySelector('[data-v104-complete-identities]');
     const status = wrapper.querySelector('[data-v104-identity-status]');
     button.addEventListener('click', async () => {
       button.disabled = true;
-      status.textContent = 'Checking unresolved listening identities…';
+      status.textContent = 'Checking unresolved recording identities…';
       try {
         const result = await complete({ onProgress: ({ checked, total, resolvedSignatures }) => {
-          status.textContent = `Checking ${checked} of ${total} · ${resolvedSignatures} exact mappings found`;
+          status.textContent = `Checking ${checked} of ${total} · ${resolvedSignatures} exact recording mappings found`;
         } });
         status.textContent = result.checked
-          ? `Done. ${result.resolvedSignatures} of ${result.checked} checked track/release combinations received exact MusicBrainz mappings · ${result.written.toLocaleString()} local listen identity records updated${result.remaining ? ` · ${result.remaining.toLocaleString()} combinations remain for another manual run` : ''}.`
-          : 'No eligible unresolved track/release combinations need a MusicBrainz lookup on this device.';
+          ? `Done. ${result.resolvedSignatures} of ${result.checked} artist/track combinations received exact recording mappings · ${result.written.toLocaleString()} local identity records updated${result.remaining ? ` · ${result.remaining.toLocaleString()} combinations remain for another manual run` : ''}.`
+          : 'No unresolved recording identities need a lookup on this device.';
       } catch (error) {
         status.textContent = error?.message || 'Listening identity completion stopped safely.';
       } finally { button.disabled = false; }
@@ -345,30 +284,5 @@
     root.setTimeout?.(install, 0);
   }
 
-  return {
-    LOOKUP_URL,
-    RECORDING_METADATA_URL,
-    MAX_SIGNATURES_PER_RUN,
-    MAX_WRITE_BATCH,
-    REQUEST_DELAY_MS,
-    safeUuid,
-    safeUuidList,
-    sourceIdentity,
-    lookupSignature,
-    buildLookupPlan,
-    exactLookupResult,
-    normalizeLookupResponse,
-    releaseGroupFromRecordingMetadata,
-    buildIdentityRecords,
-    writeIdentityRecords,
-    identityFields,
-    mergeIdentityIntoEvent,
-    applyDerivedIdentities,
-    installHistoryIdentityHook,
-    requestLookupBatch,
-    requestRecordingMetadata,
-    complete,
-    injectSettingsUi,
-    install,
-  };
+  return { LOOKUP_URL, MAX_SIGNATURES_PER_RUN, MAX_WRITE_BATCH, safeUuid, safeUuidList, sourceIdentity, lookupSignature, buildLookupPlan, exactLookupResult, normalizeLookupResponse, buildIdentityRecords, writeIdentityRecords, identityFields, mergeIdentityIntoEvent, applyDerivedIdentities, installHistoryIdentityHook, requestLookupBatch, complete, injectSettingsUi, install };
 });
