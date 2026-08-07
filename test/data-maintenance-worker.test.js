@@ -8,7 +8,7 @@ const vm = require('node:vm');
 
 function workerUnderTest() {
   const code = fs.readFileSync(path.join(__dirname, '..', 'worker.js'), 'utf8').replace('export default {', 'globalThis.worker = {');
-  const context = { Response, Request, URL, TextDecoder, AbortController, setTimeout, clearTimeout, globalThis: {} };
+  const context = { Response, URL, TextDecoder, AbortController, setTimeout, clearTimeout, globalThis: {} };
   vm.runInNewContext(code, context);
   return context.globalThis.worker;
 }
@@ -33,14 +33,22 @@ function bucket() {
 }
 
 function request(pathname, token, method = 'GET', value = null) {
-  const headers = { Authorization: `Bearer ${token}` };
-  const init = { method, headers };
+  const entries = new Map([['authorization', `Bearer ${token}`]]);
+  let body = '';
   if (value != null) {
-    headers['Content-Type'] = 'application/json';
-    headers['If-None-Match'] = '*';
-    init.body = JSON.stringify(value);
+    entries.set('content-type', 'application/json');
+    entries.set('if-none-match', '*');
+    body = JSON.stringify(value);
   }
-  return new Request(`https://worker.test/${pathname.replace(/^\//, '')}`, init);
+  return {
+    method,
+    url: `https://worker.test/${pathname.replace(/^\//, '')}`,
+    headers: {
+      get(name) { return entries.get(String(name || '').toLowerCase()) || null; },
+    },
+    async text() { return body; },
+    async arrayBuffer() { return new TextEncoder().encode(body).buffer; },
+  };
 }
 
 const now = '2026-08-07T12:00:00.000Z';
