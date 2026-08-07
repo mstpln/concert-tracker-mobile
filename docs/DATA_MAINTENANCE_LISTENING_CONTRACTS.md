@@ -13,7 +13,7 @@ This v107 foundation adds only the least-privilege Worker and storage contracts 
 - write `apiUsage.json`;
 - conditionally write `listening/spotify-metadata.json` and `listening/track-identities.json`.
 
-It may not read or write `news.json`, mutate `bands.json` or `concerts.json`, write listening manifests or immutable archives, access ticket routes, or call the browser-only MusicBrainz release-context route. Existing browser, automation, smoke, and legacy boundaries remain unchanged.
+It may not read or write `news.json`, call `/qa-smoke` (which includes aggregate `news.json` health), mutate `bands.json` or `concerts.json`, write listening manifests or immutable archives, access ticket routes, or call the browser-only MusicBrainz release-context route. Existing browser, automation, read-only smoke, and legacy boundaries remain unchanged.
 
 No secret is added or rotated by this build. The role is inert until a production secret is separately authorized and configured.
 
@@ -35,7 +35,7 @@ The new document contract is `listening/track-identities.json`:
 - optional document `updatedAt`;
 - `records`: object keyed by the inventory work key.
 
-Accepted work keys are `spotify:<trustedTrackId>` or `text:<sha256>`. Each record repeats its exact `workKey` and may add a stable local band ID, Spotify track/artist IDs, ISRC, MusicBrainz recording/artist IDs, status, retry timing, evidence, and unknown future fields. Known IDs and dates are validated. The Worker does not infer or guess identity.
+Accepted work keys are `spotify:<trustedTrackId>` or `text:<sha256>`. Each record repeats its exact `workKey` and may add a stable local band ID, Spotify track/artist IDs, ISRC, MusicBrainz recording/artist IDs, status, retry timing, evidence, and unknown future fields. For `spotify:<trustedTrackId>` records, `spotifyTrackId` is required to match the key exactly. Known IDs and dates are validated. The Worker does not infer or guess identity.
 
 The initial status vocabulary is `unresolved`, `resolved`, `no_match`, `needs_review`, `retry`, and `error`. Track-identity writes are maintenance-owned: the ordinary browser role may not create or update this shared derived document. The staged legacy role remains available only for compatibility while the dedicated maintenance credential is not configured.
 
