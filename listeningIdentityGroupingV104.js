@@ -31,11 +31,12 @@
     const fallback = fallbackAlbumKey(listen, index);
     const stable = stableAlbumIdentity(listen);
     if (!stable) return fallback;
-    // A provider ID is used to split a text group only when that same provider
-    // proves that more than one specific edition exists under the same artist +
-    // release title. A single partial enrichment must not split historical album
-    // counts away from otherwise identical unresolved listens.
-    const namespaces = splitSignatures?.get(fallback);
+    if (splitSignatures == null) return stable.key;
+    // During aggregation, a provider ID splits a text group only when that same
+    // provider proves that more than one specific edition exists under the same
+    // artist + release title. One partially enriched listen must not split away
+    // from otherwise identical unresolved historical listens.
+    const namespaces = splitSignatures.get(fallback);
     return namespaces?.has(stable.namespace) ? stable.key : fallback;
   }
 
