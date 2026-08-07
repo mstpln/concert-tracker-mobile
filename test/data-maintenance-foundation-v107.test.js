@@ -52,6 +52,7 @@ test('data maintenance role is least privilege', async () => {
   assert.equal((await worker.fetch(req('GET', '/concerts.json', 'maintenance'), env)).status, 200);
   assert.equal((await worker.fetch(req('GET', '/apiUsage.json', 'maintenance'), env)).status, 200);
   assert.equal((await worker.fetch(req('GET', '/news.json', 'maintenance'), env)).status, 403);
+  assert.equal((await worker.fetch(req('GET', '/qa-smoke', 'maintenance'), env)).status, 403);
   assert.equal((await worker.fetch(req('PUT', '/bands.json', 'maintenance', '[]', { 'Content-Type': 'application/json', 'If-Match': 'bands-1' }), env)).status, 403);
   assert.equal((await worker.fetch(req('PUT', '/concerts.json', 'maintenance', '[]', { 'Content-Type': 'application/json', 'If-Match': 'concerts-1' }), env)).status, 403);
   assert.equal((await worker.fetch(req('GET', '/ticket-files/show-1/ticket-1.pdf', 'maintenance'), env)).status, 403);
@@ -88,9 +89,14 @@ test('maintenance can create track identities only through validated conditional
   response = await worker.fetch(req('GET', '/listening/track-identities.json', 'maintenance'), env);
   assert.equal(response.status, 200);
 
-  const bad = structuredClone(good);
-  bad.records[key].isrc = 'bad';
-  response = await worker.fetch(req('PUT', '/listening/track-identities.json', 'maintenance', JSON.stringify(bad), { 'Content-Type': 'application/json', 'If-Match': 'listening/track-identities.json-next' }), env);
+  const badIsrc = structuredClone(good);
+  badIsrc.records[key].isrc = 'bad';
+  response = await worker.fetch(req('PUT', '/listening/track-identities.json', 'maintenance', JSON.stringify(badIsrc), { 'Content-Type': 'application/json', 'If-Match': 'listening/track-identities.json-next' }), env);
+  assert.equal(response.status, 400);
+
+  const badSpotifyKey = structuredClone(good);
+  badSpotifyKey.records[key].spotifyTrackId = 'DifferentSpotifyTrack';
+  response = await worker.fetch(req('PUT', '/listening/track-identities.json', 'maintenance', JSON.stringify(badSpotifyKey), { 'Content-Type': 'application/json', 'If-Match': 'listening/track-identities.json-next' }), env);
   assert.equal(response.status, 400);
 });
 
