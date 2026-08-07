@@ -40,6 +40,27 @@
     };
   }
 
+  function trustedBandArtistMap(bandRecords = []) {
+    const map = new Map();
+    for (const band of Array.isArray(bandRecords) ? bandRecords : []) {
+      const status = clean(band?.musicbrainz?.status);
+      const mbid = safeUuid(band?.musicbrainz?.mbid);
+      const id = clean(band?.id);
+      if (id && mbid && (status === 'manual_confirmed' || status === 'auto_confirmed')) map.set(id, [mbid]);
+    }
+    return map;
+  }
+
+  function addTrustedBandArtistIdentity(events = [], bandRecords = []) {
+    const byBandId = trustedBandArtistMap(bandRecords);
+    return (events || []).map((event) => {
+      if (sourceIdentity(event).artistMbids.length) return event;
+      const bandId = clean(event?.bandId || event?.localBandId);
+      const artistMbids = byBandId.get(bandId);
+      return artistMbids ? { ...event, musicbrainzArtistIds: artistMbids } : event;
+    });
+  }
+
   function effectiveIdentity(event, existing = {}) {
     const source = sourceIdentity(event);
     const artistMbids = safeUuidList(existing.artistMbids || existing.musicbrainzArtistIds);
@@ -60,18 +81,20 @@
     const recordingName = clean(event.recordingTitle);
     const releaseName = clean(event.releaseTitle);
     if (!identity.recordingMbid && (!artistName || !recordingName)) return null;
+    const artistMbids = safeUuidList(identity.artistMbids).sort();
     return {
       key: [
         normalizeText(artistName),
         normalizeText(recordingName),
         normalizeText(releaseName),
+        artistMbids.join(',') || 'no-artist-mbid',
         identity.recordingMbid || 'no-recording-mbid',
         identity.releaseMbid || 'no-release-mbid',
       ].join('|'),
       artistName,
       recordingName,
       releaseName,
-      artistMbids: safeUuidList(identity.artistMbids),
+      artistMbids,
       recordingMbid: safeUuid(identity.recordingMbid),
       releaseMbid: safeUuid(identity.releaseMbid),
       releaseGroupMbid: safeUuid(identity.releaseGroupMbid),
@@ -367,10 +390,12 @@
     storage = root?.BandmarkrListeningDerivedStorage,
     listenbrainz = root?.LiveVaultListenBrainz,
     events,
+    bandRecords = (typeof bands === 'undefined' ? [] : bands),
     progressStore = defaultProgressStore(),
     onProgress = () => {},
   } = {}) {
-    const allEvents = await sourceEvents({ events });
+    const loadedEvents = await sourceEvents({ events, bands: bandRecords });
+    const allEvents = addTrustedBandArtistIdentity(loadedEvents, bandRecords);
     const existing = await listAllIdentities(storage);
     const existingById = new Map(existing.map((record) => [clean(record.sourceEventId), record]));
     const plan = buildLookupPlan(allEvents, existing);
@@ -504,6 +529,8 @@
     safeUuid,
     safeUuidList,
     sourceIdentity,
+    trustedBandArtistMap,
+    addTrustedBandArtistIdentity,
     effectiveIdentity,
     needsCompletion,
     lookupSignature,
