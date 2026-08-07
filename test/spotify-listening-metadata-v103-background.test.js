@@ -216,3 +216,35 @@ test('v103 does not make a hidden automatic retry after Spotify asks it to wait'
     global.setTimeout = originalSetTimeout;
   }
 });
+
+test('v103 fails closed before calling Spotify when the browser cannot persist the run checkpoint', async () => {
+  const metadata = metadataFixture(['TrackSafe123']);
+  const fakeDocument = visibilityDocument();
+  const previousDocument = global.document;
+  global.document = fakeDocument;
+  let requests = 0;
+
+  try {
+    await assert.rejects(
+      () => spotifyMetadata.enrich({
+        metadata,
+        spotifyUser: spotifyUser(),
+        requestDelayMs: 0,
+        runStateStore: null,
+        fetchImpl: async () => {
+          requests += 1;
+          return response(200, { id: 'TrackSafe123', album: {}, external_urls: { spotify: 'https://open.spotify.com/track/TrackSafe123' } });
+        },
+      }),
+      (error) => {
+        assert.match(error.message, /could not safely save the artwork fetch checkpoint/i);
+        assert.match(error.message, /No new Spotify request was started/i);
+        return true;
+      },
+    );
+    assert.equal(requests, 0);
+  } finally {
+    if (previousDocument === undefined) delete global.document;
+    else global.document = previousDocument;
+  }
+});
