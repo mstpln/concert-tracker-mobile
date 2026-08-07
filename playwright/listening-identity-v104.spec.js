@@ -24,30 +24,12 @@ test('v106 exposes recording-only manual identity completion without automatic p
 });
 
 test('v106 manual button resolves recording identity without calling MusicBrainz release context', async ({ page }) => {
-  const providerRequests = [];
   const artistMbid = 'fedcbafe-dcba-4fed-8cba-fedcbafedcba';
   const recordingMbid = '11111111-2222-4333-8444-555555555555';
   const releaseMbid = '12345678-1234-4234-8234-123456789abc';
 
-  page.on('request', (request) => {
-    const url = request.url();
-    if (/api\.listenbrainz\.org|musicbrainz\/release-context/.test(url)) providerRequests.push(url);
-  });
-  await page.route('https://api.listenbrainz.org/1/metadata/**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        artist_credit_name: 'Synthetic Identity Artist',
-        recording_name: 'Synthetic Identity Song',
-        artist_mbids: [artistMbid],
-        recording_mbid: recordingMbid,
-      }),
-    });
-  });
-
   await page.goto('/');
-  await page.evaluate(({ artistMbid, releaseMbid }) => {
+  await page.evaluate(({ artistMbid, recordingMbid, releaseMbid }) => {
     window.LiveVaultSpotifyHistory = {
       loadEvents: async () => [{
         stableListenId: 'v106-browser-identity-1',
@@ -66,7 +48,25 @@ test('v106 manual button resolves recording identity without calling MusicBrainz
     };
     window.LiveVaultListenBrainz = { connection: () => ({ token: 'synthetic-token' }) };
     window.__v106BrowserIdentityRecords = stored;
-  }, { artistMbid, releaseMbid });
+    window.__v106SyntheticFetchUrls = [];
+    window.fetch = async (input) => {
+      const url = String(input?.url || input);
+      window.__v106SyntheticFetchUrls.push(url);
+      if (!url.startsWith('https://api.listenbrainz.org/1/metadata/lookup/')) {
+        throw new Error(`Unexpected synthetic fetch: ${url}`);
+      }
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({
+          artist_credit_name: 'Synthetic Identity Artist',
+          recording_name: 'Synthetic Identity Song',
+          artist_mbids: [artistMbid],
+          recording_mbid: recordingMbid,
+        }),
+      };
+    };
+  }, { artistMbid, recordingMbid, releaseMbid });
 
   await page.locator('#settings-btn').click();
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
@@ -76,13 +76,16 @@ test('v106 manual button resolves recording identity without calling MusicBrainz
   await expect(card.locator('[data-v104-identity-status]')).toContainText('1 recording IDs added');
   await expect(card.locator('[data-v104-identity-status]')).toContainText('Release-group enrichment is deferred and did not run');
 
-  expect(providerRequests).toHaveLength(1);
-  expect(providerRequests[0]).toContain('api.listenbrainz.org');
-  expect(providerRequests.some((url) => url.includes('/musicbrainz/release-context'))).toBe(false);
-  const record = await page.evaluate(() => [...window.__v106BrowserIdentityRecords.values()][0]);
-  expect(record.recordingMbid).toBe(recordingMbid);
-  expect(record.releaseMbid).toBe(releaseMbid);
-  expect(record.releaseGroupMbid).toBeUndefined();
+  const result = await page.evaluate(() => ({
+    urls: [...window.__v106SyntheticFetchUrls],
+    record: [...window.__v106BrowserIdentityRecords.values()][0],
+  }));
+  expect(result.urls).toHaveLength(1);
+  expect(result.urls[0]).toContain('api.listenbrainz.org/1/metadata/lookup/');
+  expect(result.urls.some((url) => url.includes('/musicbrainz/release-context'))).toBe(false);
+  expect(result.record.recordingMbid).toBe(recordingMbid);
+  expect(result.record.releaseMbid).toBe(releaseMbid);
+  expect(result.record.releaseGroupMbid).toBeUndefined();
 });
 
 test('v104 keeps two MusicBrainz releases separate even when they share one release group', async ({ page }) => {
