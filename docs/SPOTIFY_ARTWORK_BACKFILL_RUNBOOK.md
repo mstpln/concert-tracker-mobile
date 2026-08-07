@@ -6,7 +6,7 @@ This runbook is for the one-time private listening-artwork maintenance operation
 
 Use `scripts/spotify-artwork-backfill-production.js` for any real execution. It wraps the tested backfill engine with the project's `UsageTracker`, reads the verified private listening archive plus all verified ListenBrainz incrementals, and uses conditional writes for `listening/spotify-metadata.json`.
 
-Do not create a GitHub Actions workflow for this maintenance operation. The existing automation role is intentionally forbidden from private listening objects.
+Do not create a GitHub Actions workflow for this maintenance operation. The existing automation role is intentionally forbidden from private listening objects. The lower-level `scripts/spotify-artwork-backfill.js` module is not a production CLI and refuses direct execution; this prevents accidentally bypassing the production authorization and UsageTracker wrapper.
 
 ## Secret handling
 
@@ -23,11 +23,11 @@ The production entrypoint reads these environment variables:
 
 The runner maps the already-authorized local Worker credential to the existing `UsageTracker` client only inside the process. It does not commit or print the credential.
 
-Private production reads and live Spotify backfill calls require this confirmation value:
+Private production listening reads, live Spotify backfill calls, and the required provider-usage accounting write to `apiUsage.json` require this confirmation value:
 
-`I_AUTHORIZE_PRIVATE_LISTENING_READS_AND_LIVE_SPOTIFY_BACKFILL_CALLS`
+`I_AUTHORIZE_PRIVATE_LISTENING_READS_LIVE_SPOTIFY_CALLS_AND_PROVIDER_USAGE_WRITES`
 
-A production metadata write is a separate authorization and additionally requires:
+A production write to `listening/spotify-metadata.json` is a separate authorization and additionally requires:
 
 `I_AUTHORIZE_PRODUCTION_SPOTIFY_METADATA_WRITES`
 
@@ -50,11 +50,11 @@ The separate network-free dry-run tool remains the safest first check because it
 node scripts/spotify-artwork-backfill-dry-run.js --events <synthetic-events.json> --metadata <synthetic-metadata.json>
 ```
 
-Production inventory requires reading private production listening data and therefore remains a production action even when no Spotify call or R2 write is made.
+Production inventory requires reading private production listening data and therefore remains a production action even when no Spotify call or listening-metadata write is made.
 
 ## Provider-only controlled invocation
 
-After explicit authorization for private production reads plus live Spotify calls, but without production metadata-write authorization, set the required values in the trusted local environment and use the production entrypoint without `--write`:
+After explicit authorization for private production listening reads, live Spotify calls, and the required `apiUsage.json` accounting write, but without production listening-metadata-write authorization, set the required values in the trusted local environment and use the production entrypoint without `--write`:
 
 ```text
 node scripts/spotify-artwork-backfill-production.js --execute --cap 25
@@ -85,7 +85,7 @@ The runner rereads the latest metadata and uses ETag/create-only conditions. An 
 
 ## Source and identity rules
 
-The production source reader verifies SHA-256 and manifest counts for the immutable Spotify archive and every ListenBrainz incremental object before planning work.
+The production source reader verifies exact content-addressed path shape, SHA-256 and manifest counts for the immutable Spotify archive and every ListenBrainz incremental object before planning work. A manifest path that does not match its declared content hash fails closed.
 
 Only valid trusted `spotifyTrackId` values are sent to Spotify. No titles, artist names, timestamps or listening payloads are sent to the provider.
 
@@ -95,7 +95,7 @@ When Spotify relinks requested ID `A` to returned ID `B`, metadata stays keyed b
 
 Every real Spotify token/track provider operation in the supported production entrypoint is guarded through the existing project `UsageTracker` before the request is made. The maintenance cap of 25/100 and 1,000 ms track pacing are additional limits; they do not replace the project-level provider accounting.
 
-The usage state is saved on both successful and failed invocations. No track IDs or credentials are added to `apiUsage.json`.
+The usage state is saved on both successful and failed invocations, so a provider-only backfill invocation necessarily writes the aggregate provider counters in production `apiUsage.json`. No track IDs or credentials are added to that file.
 
 ## Completion
 
