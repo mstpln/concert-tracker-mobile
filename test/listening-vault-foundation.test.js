@@ -54,7 +54,8 @@ test('worker exposes only bounded explicit listening-vault routes', () => {
   assert.match(worker, /listening\/manifest\.json/);
   assert.match(worker, /spotify-history/);
   assert.match(worker, /MAX_LISTENING_ARCHIVE_BYTES = 100 \* 1024 \* 1024/);
-  assert.match(worker, /role !== 'browser' && role !== 'legacy'/);
+  assert.match(worker, /maintenanceListeningAllowed/);
+  assert.match(worker, /role==='data-maintenance'/);
   assert.match(worker, /If-None-Match/);
   assert.doesNotMatch(worker, /listening\/\.\*/);
 });
