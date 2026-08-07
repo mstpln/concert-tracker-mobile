@@ -15,6 +15,8 @@ This v107 foundation adds only the least-privilege Worker and storage contracts 
 
 It may not read or write `news.json`, call `/qa-smoke` (which includes aggregate `news.json` health), mutate `bands.json` or `concerts.json`, write listening manifests or immutable archives, access ticket routes, or call the browser-only MusicBrainz release-context route. Existing browser, automation, read-only smoke, and legacy boundaries remain unchanged.
 
+All configured Worker credentials must remain distinct. If one bearer value matches more than one configured privileged or read-only credential, authentication fails closed rather than inheriting whichever role is checked first.
+
 No secret is added or rotated by this build. The role is inert until a production secret is separately authorized and configured.
 
 ## Spotify listening metadata additions
