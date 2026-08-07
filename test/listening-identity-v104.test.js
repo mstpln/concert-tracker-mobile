@@ -16,6 +16,8 @@ function listen(overrides = {}) {
   return {
     stableListenId: 'listen:1',
     source: 'spotify_import',
+    localBandId: 'band-1',
+    musicbrainzArtistIds: [ART_A],
     listenedAt: '2026-08-01T10:00:00.000Z',
     listenedDurationMs: 180000,
     artistCreditName: 'Synthetic Artist',
@@ -77,6 +79,7 @@ test('ListenBrainz lookup accepts only exact normalized artist and recording and
   assert.equal(identity.exactLookupResult(request, {
     artist_credit_name: 'Synthetic Artist',
     recording_name: 'Synthetic Song (Live)',
+    artist_mbids: [ART_A],
     recording_mbid: REC_A,
   }), null);
 });
@@ -152,7 +155,7 @@ test('ListenBrainz lookup sends identity text only and does not request release 
     return {
       status: 200,
       ok: true,
-      json: async () => ({ artist_credit_name: 'Synthetic Artist', recording_name: 'Synthetic Song', recording_mbid: REC_A }),
+      json: async () => ({ artist_credit_name: 'Synthetic Artist', recording_name: 'Synthetic Song', artist_mbids: [ART_A], recording_mbid: REC_A }),
     };
   });
   const url = new URL(requestedUrl);
@@ -207,7 +210,7 @@ test('identity completion reports unresolved selected work as remaining and avoi
     storage,
     progressStore: progressStore(),
     listenbrainz: { connection: () => ({ token: 'synthetic-token' }) },
-    fetchImpl: async () => ({ status: 200, ok: true, json: async () => ({ artist_credit_name: 'Different Artist', recording_name: 'Synthetic Song', recording_mbid: REC_A }) }),
+    fetchImpl: async () => ({ status: 200, ok: true, json: async () => ({ artist_credit_name: 'Different Artist', recording_name: 'Synthetic Song', artist_mbids: [ART_A], recording_mbid: REC_A }) }),
   });
   assert.equal(result.remaining, 1);
   assert.equal(result.written, 0);
@@ -228,7 +231,7 @@ test('resumable cursor advances past unresolved work before later retry', async 
   const requested = [];
   const fetchImpl = async (url) => {
     requested.push(new URL(url).searchParams.get('recording_name'));
-    return { status: 200, ok: true, json: async () => ({ artist_credit_name: 'Wrong Artist', recording_name: 'No match', recording_mbid: REC_A }) };
+    return { status: 200, ok: true, json: async () => ({ artist_credit_name: 'Wrong Artist', recording_name: 'No match', artist_mbids: [ART_A], recording_mbid: REC_A }) };
   };
   const common = {
     events,
