@@ -157,10 +157,25 @@
     topListTrackRowsHtml = render;
   }
 
+  function albumListenMatchesSpecificItem(item, listen) {
+    const key = String(item?.releaseKey || '');
+    if (key.startsWith('mb-release:')) {
+      return String(listen?.musicbrainzReleaseId || listen?.releaseMbid || '') === key.slice('mb-release:'.length);
+    }
+    if (key.startsWith('spotify-album:')) {
+      return String(trustedAlbumMeta(listen)?.spotifyAlbumId || '') === key.slice('spotify-album:'.length);
+    }
+    if (key.startsWith('stable-release:')) {
+      return String(listen?.stableReleaseId || '') === key.slice('stable-release:'.length);
+    }
+    return true;
+  }
+
   function exactMetadataForItem(item, albumMode, sourceListens) {
     const itemArtist = normalize(item.artistCreditName);
     const matching = albumMode
-      ? (sourceListens || []).filter((listen) => normalize(listen.releaseTitle) === normalize(item.releaseTitle))
+      ? (sourceListens || []).filter((listen) => normalize(listen.releaseTitle) === normalize(item.releaseTitle)
+        && albumListenMatchesSpecificItem(item, listen))
       : (sourceListens || []).filter((listen) => normalize(listen.recordingTitle) === normalize(item.recordingTitle)
         && (!itemArtist || normalize(listen.artistCreditName) === itemArtist));
     const trusted = matching.map(albumMode ? trustedAlbumMeta : trustedTrackMeta).filter(Boolean);
@@ -250,7 +265,7 @@
 
   globalThis.TrustedListeningV99 = {
     aggregate, trustedTrackMeta, trustedAlbumMeta, spotifyUrl, trustedTitleHtml, trustedArtworkHtml,
-    bandRankedItems, sourceListensForStats, listenBandId, install, enhanceBandDetail,
+    albumListenMatchesSpecificItem, exactMetadataForItem, bandRankedItems, sourceListensForStats, listenBandId, install, enhanceBandDetail,
   };
 })();
 
