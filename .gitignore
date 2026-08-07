@@ -3,4 +3,5 @@ dist/
 playwright-report/
 test-results/
 qa-artifacts/
+.livevault-maintenance/
 *.trace
