@@ -7,6 +7,8 @@ const identity = require('../listeningIdentityCompletionV104.js');
 const REC_A = '11111111-2222-4333-8444-555555555555';
 const ART_A = 'fedcbafe-dcba-4fed-8cba-fedcbafedcba';
 const ART_B = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+const REL_A = '12345678-1234-4234-8234-123456789abc';
+const RG_A = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
 
 function listen(overrides = {}) {
   return {
@@ -106,6 +108,18 @@ test('identity evidence is appended instead of replacing existing provenance', (
   ]);
 });
 
+test('a run that resolves recording and release group retains both evidence steps', () => {
+  const records = identity.buildIdentityRecords(
+    { sourceEventIds: ['listen:1'], releaseMbid: REL_A },
+    { recordingMbid: REC_A, releaseGroupMbid: RG_A },
+    '2026-08-07T10:00:00.000Z',
+  );
+  assert.deepEqual(records[0].evidence, [
+    { type: 'listenbrainz_musicbrainz_recording_mapping', version: 1 },
+    { type: 'trusted_musicbrainz_release_context', version: 1 },
+  ]);
+});
+
 test('malformed ListenBrainz JSON fails closed with clear provider feedback', async () => {
   await assert.rejects(identity.requestLookupOne(
     identity.lookupSignature(listen()),
@@ -116,7 +130,7 @@ test('malformed ListenBrainz JSON fails closed with clear provider feedback', as
 
 test('malformed MusicBrainz JSON fails closed with clear provider feedback', async () => {
   await assert.rejects(identity.requestReleaseContext(
-    '12345678-1234-4234-8234-123456789abc',
+    REL_A,
     { endpoint: 'https://worker.example.test', token: 'synthetic-browser-token' },
     async () => ({ status: 200, ok: true, json: async () => { throw new SyntaxError('bad json'); } }),
   ), /invalid release identity data/i);
