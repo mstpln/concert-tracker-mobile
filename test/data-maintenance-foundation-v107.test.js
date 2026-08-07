@@ -92,7 +92,9 @@ test('maintenance can create track identities only through validated conditional
     },
   };
 
-  let response = await worker.fetch(req('PUT', '/listening/track-identities.json', 'browser', JSON.stringify(good), { 'Content-Type': 'application/json', 'If-None-Match': '*' }), env);
+  let response = await worker.fetch(req('PUT', '/listening/track-identities.json', 'maintenance', JSON.stringify(good), { 'Content-Type': 'application/json' }), env);
+  assert.equal(response.status, 428);
+  response = await worker.fetch(req('PUT', '/listening/track-identities.json', 'browser', JSON.stringify(good), { 'Content-Type': 'application/json', 'If-None-Match': '*' }), env);
   assert.equal(response.status, 403);
   response = await worker.fetch(req('PUT', '/listening/track-identities.json', 'legacy', JSON.stringify(good), { 'Content-Type': 'application/json', 'If-None-Match': '*' }), env);
   assert.equal(response.status, 403);
