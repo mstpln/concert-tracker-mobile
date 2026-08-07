@@ -27,6 +27,14 @@ function assertPrivateCheckpointPath(value) {
   return checkpoint;
 }
 
+async function loadValidatedCheckpoint(checkpointPath, readCheckpoint = runner.readCheckpoint) {
+  const raw = await readCheckpoint(checkpointPath);
+  if (raw && !core.normalizeCheckpoint(raw)) {
+    throw new Error('The private Spotify artwork backfill checkpoint is invalid. No provider request was started.');
+  }
+  return raw;
+}
+
 function configureUsageEnvironment(env, { endpoint, workerToken }) {
   process.env.CF_WORKER_ENDPOINT = endpoint;
   process.env.CF_WORKER_TOKEN = workerToken;
@@ -94,7 +102,7 @@ async function runProductionCli({
         missing,
         fetchImpl,
       }),
-      loadCheckpoint: () => runner.readCheckpoint(checkpointPath),
+      loadCheckpoint: () => loadValidatedCheckpoint(checkpointPath),
       saveCheckpoint: (checkpoint) => runner.writeCheckpoint(checkpointPath, checkpoint),
       getToken: () => trackedSpotifyCall(usage, () => runner.getSpotifyToken({ clientId, clientSecret, fetchImpl })),
       fetchTrack: ({ id, token, market }) => trackedSpotifyCall(usage, () => runner.fetchSpotifyTrack({ id, token, market, fetchImpl })),
@@ -130,6 +138,7 @@ module.exports = {
   requiredEnv,
   normalizeEndpoint,
   assertPrivateCheckpointPath,
+  loadValidatedCheckpoint,
   configureUsageEnvironment,
   trackedSpotifyCall,
   runProductionCli,
