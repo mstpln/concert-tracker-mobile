@@ -29,10 +29,12 @@ function assertPrivateCheckpointPath(value) {
 
 async function loadValidatedCheckpoint(checkpointPath, readCheckpoint = runner.readCheckpoint) {
   const raw = await readCheckpoint(checkpointPath);
-  if (raw && !core.normalizeCheckpoint(raw)) {
+  if (!raw) return null;
+  const normalized = core.normalizeCheckpoint(raw);
+  if (!normalized) {
     throw new Error('The private Spotify artwork backfill checkpoint is invalid. No provider request was started.');
   }
-  return raw;
+  return normalized;
 }
 
 function configureUsageEnvironment(env, { endpoint, workerToken }) {
