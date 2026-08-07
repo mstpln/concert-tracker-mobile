@@ -43,10 +43,12 @@
     fetchImpl = root.fetch,
     spotifyUser = root.SpotifyUser,
     requestDelayMs = REQUEST_DELAY_MS,
+    shouldStop = () => false,
   } = {}) {
     const id = String(spotifyTrackId || '').trim();
     if (!validSpotifyId(id)) throw new Error('Spotify track identity is invalid.');
     if (!spotifyUser?.validAuth || !spotifyUser?.refresh) throw new Error('Spotify connection support is unavailable.');
+    if (shouldStop()) throw foregroundInterruptionError();
 
     let auth = await spotifyUser.validAuth(fetchImpl);
     const url = `https://api.spotify.com/v1/tracks/${encodeURIComponent(id)}?market=${MARKET}`;
@@ -56,12 +58,14 @@
     let response;
 
     while (true) {
+      if (shouldStop()) throw foregroundInterruptionError();
       response = await run();
       if (response.status === 401) {
         if (refreshed) {
           await spotifyUser.clearAuth?.();
           throw new Error('Spotify connection expired. Connect Spotify again, then retry the artwork fetch.');
         }
+        if (shouldStop()) throw foregroundInterruptionError();
         auth = await spotifyUser.refresh(auth, fetchImpl);
         refreshed = true;
         continue;
@@ -73,6 +77,7 @@
         if (!rateLimitRetried) {
           await sleep(Math.max(retryAfter * 1000, requestDelayMs));
           rateLimitRetried = true;
+          if (shouldStop()) throw foregroundInterruptionError();
           continue;
         }
         throw rateLimitError({ retryAfter });
@@ -149,7 +154,12 @@
       for (let index = 0; index < ids.length; index += 1) {
         if (interrupted) throw foregroundInterruptionError();
         const requestedId = ids[index];
-        const track = await requestTrack(requestedId, { fetchImpl, spotifyUser, requestDelayMs });
+        const track = await requestTrack(requestedId, {
+          fetchImpl,
+          spotifyUser,
+          requestDelayMs,
+          shouldStop: () => interrupted,
+        });
         if (track) {
           const record = recordForRequestedTrack(metadata, requestedId, track);
           if (record) {
