@@ -30,6 +30,28 @@ function progressStore() {
   };
 }
 
+test('trusted band artist identity is reused only from confirmed MusicBrainz bands', () => {
+  const events = [
+    listen({ stableListenId: 'a', localBandId: 'band-a' }),
+    listen({ stableListenId: 'b', localBandId: 'band-b' }),
+  ];
+  const enriched = identity.addTrustedBandArtistIdentity(events, [
+    { id: 'band-a', musicbrainz: { mbid: ART_A, status: 'manual_confirmed' } },
+    { id: 'band-b', musicbrainz: { mbid: ART_B, status: 'needs_review' } },
+  ]);
+  assert.deepEqual(enriched[0].musicbrainzArtistIds, [ART_A]);
+  assert.equal(enriched[1].musicbrainzArtistIds, undefined);
+});
+
+test('lookup plan never groups conflicting trusted artist identities together', () => {
+  const plan = identity.buildLookupPlan([
+    listen({ stableListenId: 'a', musicbrainzArtistIds: [ART_A] }),
+    listen({ stableListenId: 'b', musicbrainzArtistIds: [ART_B] }),
+  ]);
+  assert.equal(plan.items.length, 2);
+  assert.deepEqual(new Set(plan.items.map((item) => item.artistMbids[0])), new Set([ART_A, ART_B]));
+});
+
 test('trusted artist MBID must agree with ListenBrainz recording mapping', () => {
   const request = identity.lookupSignature(listen(), { artistMbids: [ART_A] });
   assert.equal(identity.exactLookupResult(request, {
