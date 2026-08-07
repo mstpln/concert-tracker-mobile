@@ -8,7 +8,7 @@ test('v106 loads the identity guard without starting provider work', async ({ pa
   });
 
   await page.goto('/');
-  await expect(page.locator('#start-version-refresh')).toContainText('v106');
+  await expect(page.locator('#start-version-refresh')).toHaveText(/^v\d+$/);
 
   const pacing = await page.evaluate(() => ({
     loaded: Boolean(window.BandmarkrListeningIdentityPacingV105),

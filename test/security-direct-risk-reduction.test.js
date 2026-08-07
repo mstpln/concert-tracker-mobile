@@ -30,8 +30,8 @@ test('production service worker only deletes obsolete Live Vault shell caches', 
 test('Worker applies bounded JSON validation and private response headers', () => {
   const source = fs.readFileSync('worker.js', 'utf8');
   assert.match(source, /MAX_JSON_BYTES = 10 \* 1024 \* 1024/);
-  assert.match(source, /contentType !== 'application\/json'/);
+  assert.match(source, /contentType\s*!==\s*'application\/json'/);
   assert.match(source, /jsonRootIsValid/);
-  assert.match(source, /'Cache-Control': 'private, no-store'/);
-  assert.match(source, /'X-Content-Type-Options': 'nosniff'/);
+  assert.match(source, /'Cache-Control'\s*:\s*'private, no-store'/);
+  assert.match(source, /'X-Content-Type-Options'\s*:\s*'nosniff'/);
 });
