@@ -173,11 +173,16 @@ function storedIdentityState(item, identity) {
     if (!storedTrackId || (item.spotifyTrackId && storedTrackId !== item.spotifyTrackId)) return { recordingMbid: null, conflict: true };
   }
   if (identity.isrc != null && (typeof identity.isrc !== 'string' || !ISRC.test(identity.isrc))) return { recordingMbid: null, conflict: true };
-  const recordingMbids = [...new Set([
-    validMbid(identity.musicbrainzRecordingId),
-    validMbid(identity.musicbrainzRecordingMbid),
-    validMbid(identity.recordingMbid),
-  ].filter(Boolean))];
+  if (identity.providers != null && (!identity.providers || typeof identity.providers !== 'object' || Array.isArray(identity.providers))) {
+    return { recordingMbid: null, conflict: true };
+  }
+
+  const recordingFields = ['musicbrainzRecordingId', 'musicbrainzRecordingMbid', 'recordingMbid'];
+  if (!recordingFields.every((field) => identity[field] == null
+    || (typeof identity[field] === 'string' && Boolean(validMbid(identity[field]))))) {
+    return { recordingMbid: null, conflict: true };
+  }
+  const recordingMbids = [...new Set(recordingFields.map((field) => validMbid(identity[field])).filter(Boolean))];
   if (recordingMbids.length > 1) return { recordingMbid: null, conflict: true };
 
   if (identity.spotifyArtistIds != null) {
