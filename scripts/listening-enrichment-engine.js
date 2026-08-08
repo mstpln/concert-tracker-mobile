@@ -49,6 +49,11 @@ function recordingMbidCandidates(record) {
   ].filter(Boolean))];
 }
 
+function recordingMbidFieldsValid(record) {
+  return ['musicbrainzRecordingId', 'musicbrainzRecordingMbid', 'recordingMbid']
+    .every((field) => record?.[field] == null || (typeof record[field] === 'string' && Boolean(validMbid(record[field]))));
+}
+
 function recordingMbidFromIdentity(record) {
   const candidates = recordingMbidCandidates(record);
   return candidates.length === 1 ? candidates[0] : null;
@@ -97,9 +102,10 @@ function identityCompatible(item, record) {
   if (record.spotifyTrackId != null && !validSpotifyId(record.spotifyTrackId)) return false;
   const storedSpotifyTrackId = validSpotifyId(record.spotifyTrackId);
   if (storedSpotifyTrackId && item.spotifyTrackId && storedSpotifyTrackId !== item.spotifyTrackId) return false;
-  if (recordingMbidCandidates(record).length > 1) return false;
+  if (!recordingMbidFieldsValid(record) || recordingMbidCandidates(record).length > 1) return false;
   if (record.isrc != null && !validIsrc(record.isrc)) return false;
   if (record.status != null && !TRACK_IDENTITY_STATUSES.has(record.status)) return false;
+  if (record.providers != null && (!record.providers || typeof record.providers !== 'object' || Array.isArray(record.providers))) return false;
 
   if (record.spotifyArtistIds != null && (!Array.isArray(record.spotifyArtistIds) || record.spotifyArtistIds.length > MAX_PROVIDER_IDS)) return false;
   const trustedSpotifyArtistId = validSpotifyId(item.trustedSpotifyArtistId);
@@ -469,6 +475,7 @@ module.exports = {
   validIsrc,
   validHttpsUrl,
   recordingMbidCandidates,
+  recordingMbidFieldsValid,
   recordingMbidFromIdentity,
   providerEntryPresent,
   providerState,
