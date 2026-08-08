@@ -6,6 +6,7 @@ const ISRC = /^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$/;
 const PROVIDERS = new Set(['spotify', 'musicbrainz', 'listenbrainz']);
 const PROVIDER_RESULTS = new Set(['resolved', 'metadata', 'no_match', 'needs_review', 'retry', 'error']);
 const TRACK_IDENTITY_STATUSES = new Set(['unresolved', 'resolved', 'no_match', 'needs_review', 'retry', 'error']);
+const MAX_PROVIDER_IDS = 32;
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -90,7 +91,7 @@ function identityCompatible(item, record) {
   if (record.workKey != null && typeof record.workKey !== 'string') return false;
   const storedWorkKey = clean(record.workKey);
   if (storedWorkKey && storedWorkKey !== item.trackKey) return false;
-  if (record.localBandId != null && typeof record.localBandId !== 'string') return false;
+  if (record.localBandId != null && (typeof record.localBandId !== 'string' || !inventoryLib.SAFE_ID.test(record.localBandId))) return false;
   const storedBandId = clean(record.localBandId);
   if (storedBandId && item.bandId && storedBandId !== item.bandId) return false;
   if (record.spotifyTrackId != null && !validSpotifyId(record.spotifyTrackId)) return false;
@@ -100,13 +101,13 @@ function identityCompatible(item, record) {
   if (record.isrc != null && !validIsrc(record.isrc)) return false;
   if (record.status != null && !TRACK_IDENTITY_STATUSES.has(record.status)) return false;
 
-  if (record.spotifyArtistIds != null && !Array.isArray(record.spotifyArtistIds)) return false;
+  if (record.spotifyArtistIds != null && (!Array.isArray(record.spotifyArtistIds) || record.spotifyArtistIds.length > MAX_PROVIDER_IDS)) return false;
   const trustedSpotifyArtistId = validSpotifyId(item.trustedSpotifyArtistId);
   const storedSpotifyArtistIds = cleanStringList(record.spotifyArtistIds, (id) => Boolean(validSpotifyId(id)));
   if (Array.isArray(record.spotifyArtistIds) && !record.spotifyArtistIds.every((id) => typeof id === 'string' && Boolean(validSpotifyId(id)))) return false;
   if (trustedSpotifyArtistId && storedSpotifyArtistIds.length && !storedSpotifyArtistIds.includes(trustedSpotifyArtistId)) return false;
 
-  if (record.musicbrainzArtistIds != null && !Array.isArray(record.musicbrainzArtistIds)) return false;
+  if (record.musicbrainzArtistIds != null && (!Array.isArray(record.musicbrainzArtistIds) || record.musicbrainzArtistIds.length > MAX_PROVIDER_IDS)) return false;
   const trustedMusicbrainzArtistMbid = validMbid(item.trustedMusicbrainzArtistMbid);
   const storedMusicbrainzArtistIds = cleanStringList(record.musicbrainzArtistIds, (id) => Boolean(validMbid(id))).map((id) => id.toLowerCase());
   if (Array.isArray(record.musicbrainzArtistIds) && !record.musicbrainzArtistIds.every((id) => typeof id === 'string' && Boolean(validMbid(id)))) return false;
@@ -160,13 +161,20 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
     const spotify = providerState(identity, 'spotify');
     const musicbrainz = providerState(identity, 'musicbrainz');
     const listenbrainz = providerState(identity, 'listenbrainz');
-    if (identity?.status === 'retry') {
-      const retryStates = [spotify, musicbrainz, listenbrainz].filter((state) => state?.status === 'retry');
-      if (retryStates.length !== 1) {
-        skipped.no_route += 1;
-        continue;
-      }
+    const retryProviders = [
+      ['spotify', spotify],
+      ['musicbrainz', musicbrainz],
+      ['listenbrainz', listenbrainz],
+    ].filter(([, state]) => state?.status === 'retry').map(([provider]) => provider);
+    if (identity?.status === 'retry' && retryProviders.length !== 1) {
+      skipped.no_route += 1;
+      continue;
     }
+    if (identity?.status !== 'retry' && retryProviders.length) {
+      skipped.no_route += 1;
+      continue;
+    }
+    const retryProvider = retryProviders[0] || null;
 
     const storedIsrc = validIsrc(identity?.isrc);
     const metadataIsrc = validIsrc(item.spotifyMetadataIsrc);
@@ -187,7 +195,8 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
     const trustedMusicbrainzArtistMbid = validMbid(item.trustedMusicbrainzArtistMbid);
     const musicbrainzRouteUsable = Boolean(isrc && trustedMusicbrainzArtistMbid);
 
-    if (musicbrainzRouteUsable && providerAttemptAllowed(musicbrainz, identity, now, hasMusicbrainzState)) {
+    if ((!retryProvider || retryProvider === 'musicbrainz') && musicbrainzRouteUsable
+      && providerAttemptAllowed(musicbrainz, identity, now, hasMusicbrainzState)) {
       steps.push(step(item.trackKey, 'musicbrainz', 'isrc_lookup', {
         isrc,
         trustedMusicbrainzArtistMbid,
@@ -195,7 +204,7 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
       continue;
     }
 
-    if (item.spotifyTrackId && item.status === 'needs_spotify'
+    if ((!retryProvider || retryProvider === 'spotify') && item.spotifyTrackId && item.status === 'needs_spotify'
       && (!isrc || !trustedMusicbrainzArtistMbid)
       && providerAttemptAllowed(spotify, identity, now, hasSpotifyState)) {
       steps.push(step(item.trackKey, 'spotify', 'exact_track', { spotifyTrackId: item.spotifyTrackId }));
@@ -208,7 +217,7 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
       || spotify?.status === 'no_match'
       || spotify?.status === 'metadata';
     const musicbrainzRouteExhausted = !musicbrainzRouteUsable || musicbrainz?.status === 'no_match';
-    if (spotifyRouteExhausted && musicbrainzRouteExhausted
+    if ((!retryProvider || retryProvider === 'listenbrainz') && spotifyRouteExhausted && musicbrainzRouteExhausted
       && providerAttemptAllowed(listenbrainz, identity, now, hasListenbrainzState)
       && trustedMusicbrainzArtistMbid && clean(item.artistLookupName) && clean(item.recordingLookupName)) {
       steps.push(step(item.trackKey, 'listenbrainz', 'metadata_lookup', {
@@ -238,7 +247,7 @@ function spotifyOutcome({ requestedTrackId, payload, trustedSpotifyArtistId = nu
   }
   const artists = Array.isArray(payload.artists) ? payload.artists : [];
   const artistIds = cleanStringList(artists.map((artist) => artist?.id), (id) => Boolean(validSpotifyId(id)));
-  if (!artistIds.length) return { status: 'error', reason: 'missing_spotify_artist_ids' };
+  if (!artistIds.length || artistIds.length > MAX_PROVIDER_IDS) return { status: 'error', reason: 'missing_spotify_artist_ids' };
   const trustedArtist = validSpotifyId(trustedSpotifyArtistId);
   if (trustedArtist && !artistIds.includes(trustedArtist)) {
     return { status: 'needs_review', reason: 'spotify_artist_mismatch' };
@@ -265,7 +274,7 @@ function spotifyOutcome({ requestedTrackId, payload, trustedSpotifyArtistId = nu
 
 function musicbrainzArtistIds(recording) {
   const credits = Array.isArray(recording?.['artist-credit']) ? recording['artist-credit'] : [];
-  return cleanStringList(credits.map((credit) => credit?.artist?.id), (id) => Boolean(validMbid(id))).map((id) => id.toLowerCase());
+  return cleanStringList(credits.map((credit) => credit?.artist?.id), (id) => Boolean(validMbid(id))).slice(0, MAX_PROVIDER_IDS).map((id) => id.toLowerCase());
 }
 
 function musicbrainzIsrcOutcome({ payload, trustedMusicbrainzArtistMbid = null } = {}) {
@@ -292,6 +301,9 @@ function listenbrainzOutcome({ payload, artistName, recordingName, trustedMusicb
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return { status: 'error', reason: 'malformed_listenbrainz_response' };
   const recordingMbid = validMbid(payload.recording_mbid);
   if (!recordingMbid) return { status: 'no_match', reason: 'listenbrainz_no_recording_mbid' };
+  if (payload.artist_mbids != null && (!Array.isArray(payload.artist_mbids) || payload.artist_mbids.length > MAX_PROVIDER_IDS)) {
+    return { status: 'error', reason: 'malformed_listenbrainz_artist_ids' };
+  }
   const artistMbids = cleanStringList(payload.artist_mbids, (id) => Boolean(validMbid(id))).map((id) => id.toLowerCase());
   const artistMatches = inventoryLib.normalizeText(payload.artist_credit_name) === inventoryLib.normalizeText(artistName);
   const recordingMatches = inventoryLib.normalizeText(payload.recording_name) === inventoryLib.normalizeText(recordingName);
@@ -315,14 +327,14 @@ function providerObservation(provider, outcome, now) {
 
 function validatedOutcomeArtistIds(item, outcome) {
   if (outcome.spotifyArtistIds != null) {
-    if (!Array.isArray(outcome.spotifyArtistIds)) throw new Error('Invalid Spotify artist identity outcome.');
+    if (!Array.isArray(outcome.spotifyArtistIds) || outcome.spotifyArtistIds.length > MAX_PROVIDER_IDS) throw new Error('Invalid Spotify artist identity outcome.');
     const spotifyIds = cleanStringList(outcome.spotifyArtistIds, (id) => Boolean(validSpotifyId(id)));
     if (!outcome.spotifyArtistIds.every((id) => typeof id === 'string' && Boolean(validSpotifyId(id)))) throw new Error('Invalid Spotify artist identity outcome.');
     const trusted = validSpotifyId(item.trustedSpotifyArtistId);
     if (trusted && spotifyIds.length && !spotifyIds.includes(trusted)) throw new Error('Spotify artist identity conflicts with the planned work item.');
   }
   if (outcome.artistMbids != null) {
-    if (!Array.isArray(outcome.artistMbids)) throw new Error('Invalid MusicBrainz artist identity outcome.');
+    if (!Array.isArray(outcome.artistMbids) || outcome.artistMbids.length > MAX_PROVIDER_IDS) throw new Error('Invalid MusicBrainz artist identity outcome.');
     const musicbrainzIds = cleanStringList(outcome.artistMbids, (id) => Boolean(validMbid(id))).map((id) => id.toLowerCase());
     if (!outcome.artistMbids.every((id) => typeof id === 'string' && Boolean(validMbid(id)))) throw new Error('Invalid MusicBrainz artist identity outcome.');
     const trusted = validMbid(item.trustedMusicbrainzArtistMbid);
@@ -399,13 +411,14 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
   const outcomeAlbumId = validSpotifyId(outcome.spotifyAlbumId);
   if (outcome.spotifyAlbumId != null && !outcomeAlbumId) return null;
   if (outcome.artworkUrl != null && !validHttpsUrl(outcome.artworkUrl)) return null;
+  if (base.artworkUrl != null && !validHttpsUrl(base.artworkUrl)) return null;
   const existingAlbumId = validSpotifyId(base.spotifyAlbumId);
   const albumId = outcomeAlbumId || existingAlbumId || null;
   const sameAlbum = !outcomeAlbumId || outcomeAlbumId === existingAlbumId;
   const incomingSpotifyArtistIds = Array.isArray(outcome.spotifyArtistIds) && outcome.spotifyArtistIds.length
     ? clone(outcome.spotifyArtistIds)
     : null;
-  const existingSpotifyArtistIds = Array.isArray(base.spotifyArtistIds)
+  const existingSpotifyArtistIds = Array.isArray(base.spotifyArtistIds) && base.spotifyArtistIds.length <= MAX_PROVIDER_IDS
     && base.spotifyArtistIds.every((id) => typeof id === 'string' && Boolean(validSpotifyId(id)))
     ? clone(base.spotifyArtistIds)
     : null;
@@ -421,7 +434,7 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
     spotifyAlbumId: albumId,
     spotifyAlbumUrl: outcomeAlbumId
       ? `https://open.spotify.com/album/${outcomeAlbumId}`
-      : existingAlbumId ? (base.spotifyAlbumUrl || `https://open.spotify.com/album/${existingAlbumId}`) : null,
+      : existingAlbumId ? `https://open.spotify.com/album/${existingAlbumId}` : null,
     artworkUrl: outcome.artworkUrl || (sameAlbum ? base.artworkUrl : null) || null,
     spotifyArtistIds: effectiveSpotifyArtistIds,
     isrc: incomingIsrc || existingIsrc || null,
@@ -452,6 +465,7 @@ function safePlanSummary(plan) {
 module.exports = {
   ISRC,
   TRACK_IDENTITY_STATUSES,
+  MAX_PROVIDER_IDS,
   validIsrc,
   validHttpsUrl,
   recordingMbidCandidates,
