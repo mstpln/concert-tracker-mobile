@@ -28,6 +28,7 @@ function syntheticInventory() {
 
 async function main() {
   const writes = [];
+  let preflightCalls = 0;
   const usage = {
     calls: [],
     async reserve(provider) {
@@ -66,13 +67,15 @@ async function main() {
     usage,
     maxSteps: 2,
     now: '2026-08-08T09:00:00.000Z',
+    async preflight() { preflightCalls += 1; },
     async persist(snapshot) {
       writes.push({ provider: snapshot.lastStep.provider, status: snapshot.lastOutcome.status });
     },
   });
 
   const safe = {
-    ok: result.plan.complete === 1 && result.summary.persisted === 2,
+    ok: preflightCalls === 1 && result.plan.complete === 1 && result.summary.persisted === 2,
+    preflightCalls,
     attempted: result.summary.attempted,
     persisted: result.summary.persisted,
     providerCalls: usage.calls.length,
