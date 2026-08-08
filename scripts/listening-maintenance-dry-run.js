@@ -77,7 +77,7 @@ async function main() {
   });
 
   const safe = {
-    ok: preflightCalls === 1 && result.plan.complete === 1 && result.summary.persisted === 2,
+    ok: preflightCalls === 2 && result.plan.complete === 1 && result.summary.persisted === 2,
     preflightCalls,
     attempted: result.summary.attempted,
     persisted: result.summary.persisted,
