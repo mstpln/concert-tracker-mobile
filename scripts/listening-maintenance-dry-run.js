@@ -67,7 +67,10 @@ async function main() {
     usage,
     maxSteps: 2,
     now: '2026-08-08T09:00:00.000Z',
-    async preflight() { preflightCalls += 1; },
+    async preflight() {
+      preflightCalls += 1;
+      return true;
+    },
     async persist(snapshot) {
       writes.push({ provider: snapshot.lastStep.provider, status: snapshot.lastOutcome.status });
     },
