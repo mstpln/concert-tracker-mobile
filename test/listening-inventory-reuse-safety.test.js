@@ -109,3 +109,43 @@ test('malformed stored providers container blocks inventory reuse', () => {
   assert.equal(result.items[0].status, 'blocked');
   assert.equal(result.items[0].reason, 'stored_track_identity_conflict');
 });
+
+test('malformed known provider entry blocks even otherwise resolved inventory reuse', () => {
+  for (const spotify of ['bad-state', [], 17, null]) {
+    const result = inventory.buildListeningInventory({
+      bands: [band()],
+      events: [event()],
+      trackIdentities: { records: {
+        'spotify:SpotifyTrack123': {
+          workKey: 'spotify:SpotifyTrack123',
+          spotifyTrackId: 'SpotifyTrack123',
+          musicbrainzRecordingId: MB_RECORDING,
+          providers: { spotify },
+        },
+      } },
+    });
+    assert.equal(result.items[0].status, 'blocked');
+    assert.equal(result.items[0].reason, 'stored_track_identity_conflict');
+    assert.equal(result.counts.completeTracks, 0);
+  }
+});
+
+test('unknown future provider keys and statuses do not invalidate resolved identity reuse', () => {
+  const result = inventory.buildListeningInventory({
+    bands: [band()],
+    events: [event()],
+    trackIdentities: { records: {
+      'spotify:SpotifyTrack123': {
+        workKey: 'spotify:SpotifyTrack123',
+        spotifyTrackId: 'SpotifyTrack123',
+        musicbrainzRecordingId: MB_RECORDING,
+        providers: {
+          spotify: { status: 'future_status', futureField: true },
+          futureProvider: { value: 1 },
+        },
+      },
+    } },
+  });
+  assert.equal(result.items[0].status, 'complete');
+  assert.equal(result.items[0].reason, 'existing_track_identity');
+});
