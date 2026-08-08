@@ -266,7 +266,11 @@ function buildListeningInventory({ bands = [], events = [], spotifyMetadata = nu
       : 'blocked';
     item.reason = item.status === 'needs_listenbrainz_fallback'
       ? 'exact_id_routes_exhausted'
-      : item.lookupTextConflict ? 'conflicting_lookup_text' : 'missing_trusted_musicbrainz_artist_or_lookup_text';
+      : item.lookupTextConflict
+        ? 'conflicting_lookup_text'
+        : !item.trustedMusicbrainzArtistMbid
+          ? 'missing_trusted_musicbrainz_artist'
+          : 'missing_lookup_text';
   }
 
   const counts = {
