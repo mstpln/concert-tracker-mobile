@@ -12,7 +12,7 @@ const MB_RECORDING = '22222222-2222-4222-8222-222222222222';
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 
-function fakeClient() {
+function fakeClient(operations = []) {
   const values = new Map([
     [persistence.TRACK_IDENTITIES_PATH, persistence.defaultIdentities()],
     [persistence.SPOTIFY_METADATA_PATH, persistence.defaultSpotifyMetadata()],
@@ -21,7 +21,11 @@ function fakeClient() {
   return {
     values,
     async readJson(path, fallback) { return clone(values.has(path) ? values.get(path) : fallback); },
-    async writeJsonStrict(path, value) { values.set(path, clone(value)); return value; },
+    async writeJsonStrict(path, value) {
+      operations.push(`write:${path}`);
+      values.set(path, clone(value));
+      return value;
+    },
   };
 }
 
@@ -32,8 +36,9 @@ function inventory() {
   });
 }
 
-test('runner advances through maintenance context only after each durable synthetic step', async () => {
-  const client = fakeClient();
+test('runner durably records usage before each provider and persists each synthetic result before continuing', async () => {
+  const operations = [];
+  const client = fakeClient(operations);
   const context = await persistence.loadListeningMaintenanceContext(client, { today: '2026-08-08' });
   const result = await runner.runMaintenanceBatch({
     inventory: inventory(),
@@ -46,13 +51,30 @@ test('runner advances through maintenance context only after each durable synthe
     maxSteps: 2,
     now: '2026-08-08T09:00:00.000Z',
     providers: {
-      spotify: { exact_track: async () => ({ kind: 'ok', data: { id: 'SyntheticTrack1', artists: [{ id: 'SyntheticArtist1' }], external_ids: { isrc: 'USABC1234567' } } }) },
-      musicbrainz: { isrc_lookup: async () => ({ kind: 'ok', data: { recordings: [{ id: MB_RECORDING, 'artist-credit': [{ artist: { id: MB_ARTIST } }] }] } }) },
+      spotify: {
+        exact_track: async () => {
+          operations.push('provider:spotify');
+          return { kind: 'ok', data: { id: 'SyntheticTrack1', artists: [{ id: 'SyntheticArtist1' }], external_ids: { isrc: 'USABC1234567' } } };
+        },
+      },
+      musicbrainz: {
+        isrc_lookup: async () => {
+          operations.push('provider:musicbrainz');
+          return { kind: 'ok', data: { recordings: [{ id: MB_RECORDING, 'artist-credit': [{ artist: { id: MB_ARTIST } }] }] } };
+        },
+      },
     },
   });
 
   assert.equal(result.plan.complete, 1);
   assert.equal(result.summary.persisted, 2);
+  const spotifyProviderIndex = operations.indexOf('provider:spotify');
+  const musicbrainzProviderIndex = operations.indexOf('provider:musicbrainz');
+  const usageWrites = operations.map((value, index) => ({ value, index })).filter((item) => item.value === `write:${persistence.API_USAGE_PATH}`);
+  assert.ok(usageWrites[0].index < spotifyProviderIndex);
+  assert.ok(usageWrites.some((item) => item.index > spotifyProviderIndex && item.index < musicbrainzProviderIndex));
+  assert.ok(usageWrites.some((item) => item.index < musicbrainzProviderIndex));
+
   const savedUsage = client.values.get(persistence.API_USAGE_PATH);
   assert.equal(savedUsage.listeningMaintenance.spotifyCallsThisRun, 1);
   assert.equal(savedUsage.listeningMaintenance.musicbrainzCallsThisRun, 1);
