@@ -7,6 +7,7 @@ const SPOTIFY_ID = /^[A-Za-z0-9]{1,64}$/;
 const MBID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ISRC = /^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$/;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+const KNOWN_PROVIDERS = ['spotify', 'musicbrainz', 'listenbrainz'];
 
 function clean(value) {
   const text = String(value == null ? '' : value).trim();
@@ -162,6 +163,15 @@ function spotifyMetadataArtistConflict(item, metadata) {
     && !metadata.spotifyArtistIds.includes(item.trustedSpotifyArtistId));
 }
 
+function storedProviderEntriesValid(identity) {
+  if (!identity?.providers || typeof identity.providers !== 'object' || Array.isArray(identity.providers)) return true;
+  return KNOWN_PROVIDERS.every((provider) => {
+    if (!Object.prototype.hasOwnProperty.call(identity.providers, provider)) return true;
+    const entry = identity.providers[provider];
+    return Boolean(entry && typeof entry === 'object' && !Array.isArray(entry));
+  });
+}
+
 function storedIdentityState(item, identity) {
   if (!identity) return { recordingMbid: null, conflict: false };
   if (!identity || typeof identity !== 'object' || Array.isArray(identity)) return { recordingMbid: null, conflict: true };
@@ -176,6 +186,7 @@ function storedIdentityState(item, identity) {
   if (identity.providers != null && (!identity.providers || typeof identity.providers !== 'object' || Array.isArray(identity.providers))) {
     return { recordingMbid: null, conflict: true };
   }
+  if (!storedProviderEntriesValid(identity)) return { recordingMbid: null, conflict: true };
 
   const recordingFields = ['musicbrainzRecordingId', 'musicbrainzRecordingMbid', 'recordingMbid'];
   if (!recordingFields.every((field) => identity[field] == null
@@ -378,6 +389,7 @@ module.exports = {
   MBID,
   ISRC,
   SAFE_ID,
+  KNOWN_PROVIDERS,
   clean,
   cleanList,
   normalizeText,
@@ -394,6 +406,7 @@ module.exports = {
   lookupPair,
   addLookupEvidence,
   spotifyMetadataArtistConflict,
+  storedProviderEntriesValid,
   storedIdentityState,
   normalizeIdentityDocument,
   normalizeSpotifyMetadata,
