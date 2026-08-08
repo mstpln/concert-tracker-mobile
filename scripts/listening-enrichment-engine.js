@@ -105,14 +105,13 @@ function knownProviderEntriesValid(record) {
 
 function identityCompatible(item, record) {
   if (record == null || typeof record !== 'object' || Array.isArray(record)) return false;
-  if (record.workKey != null && typeof record.workKey !== 'string') return false;
-  const storedWorkKey = clean(record.workKey);
-  if (storedWorkKey && storedWorkKey !== item.trackKey) return false;
+  if (record.workKey !== item.trackKey) return false;
   if (record.localBandId != null && (typeof record.localBandId !== 'string' || !inventoryLib.SAFE_ID.test(record.localBandId))) return false;
   const storedBandId = clean(record.localBandId);
   if (storedBandId && item.bandId && storedBandId !== item.bandId) return false;
   if (record.spotifyTrackId != null && !validSpotifyId(record.spotifyTrackId)) return false;
   const storedSpotifyTrackId = validSpotifyId(record.spotifyTrackId);
+  if (item.trackKey.startsWith('spotify:') && storedSpotifyTrackId !== item.spotifyTrackId) return false;
   if (storedSpotifyTrackId && item.spotifyTrackId && storedSpotifyTrackId !== item.spotifyTrackId) return false;
   if (!recordingMbidFieldsValid(record) || recordingMbidCandidates(record).length > 1) return false;
   if (record.isrc != null && !validIsrc(record.isrc)) return false;
@@ -142,6 +141,8 @@ function identityRecords(document) {
     || !document.records || typeof document.records !== 'object' || Array.isArray(document.records)) {
     throw new Error('Invalid track identity document.');
   }
+  if (document.kind != null && document.kind !== 'livevault-track-identities') throw new Error('Invalid track identity document.');
+  if (document.schemaVersion != null && document.schemaVersion !== 1) throw new Error('Invalid track identity document.');
   return document.records;
 }
 
@@ -283,7 +284,8 @@ function spotifyOutcome({ requestedTrackId, payload, trustedSpotifyArtistId = nu
   const album = payload.album || {};
   if (album.id != null && !validSpotifyId(album.id)) return { status: 'error', reason: 'malformed_spotify_album_id' };
   if (album.images != null && !Array.isArray(album.images)) return { status: 'error', reason: 'malformed_spotify_images' };
-  if (Array.isArray(album.images) && album.images.some((image) => image?.url != null && !validHttpsUrl(image.url))) {
+  if (Array.isArray(album.images) && album.images.some((image) => !image || typeof image !== 'object' || Array.isArray(image)
+    || (image.url != null && !validHttpsUrl(image.url)))) {
     return { status: 'error', reason: 'malformed_spotify_artwork_url' };
   }
   if (payload.external_ids != null && (!payload.external_ids || typeof payload.external_ids !== 'object' || Array.isArray(payload.external_ids))) {
@@ -370,7 +372,9 @@ function providerObservation(provider, outcome, now) {
   if (!outcome || !PROVIDER_RESULTS.has(outcome.status)) throw new Error('Invalid enrichment provider outcome.');
   if (provider === 'spotify' && outcome.status === 'resolved') throw new Error('Invalid Spotify enrichment outcome status.');
   if (provider !== 'spotify' && outcome.status === 'metadata') throw new Error('Invalid enrichment provider outcome status.');
+  if (outcome.reason != null && typeof outcome.reason !== 'string') throw new Error('Invalid enrichment provider outcome reason.');
   if (outcome.status === 'retry' && dateMs(outcome.nextEligibleCheckAt) == null) throw new Error('Retry outcome requires nextEligibleCheckAt.');
+  if (dateMs(now) == null) throw new Error('Invalid enrichment observation time.');
   return {
     status: outcome.status,
     reason: outcome.reason,
@@ -396,8 +400,11 @@ function validatedOutcomeArtistIds(item, outcome) {
 }
 
 function mergeIdentityRecord(existing, item, provider, outcome, now = new Date().toISOString()) {
-  const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? clone(existing) : {};
-  if (!identityCompatible(item, base)) throw new Error('Stored track identity conflicts with the planned work item.');
+  if (existing != null && (typeof existing !== 'object' || Array.isArray(existing))) {
+    throw new Error('Stored track identity conflicts with the planned work item.');
+  }
+  const base = existing ? clone(existing) : {};
+  if (Object.keys(base).length && !identityCompatible(item, base)) throw new Error('Stored track identity conflicts with the planned work item.');
   validatedOutcomeArtistIds(item, outcome || {});
   const existingRecordingMbid = recordingMbidFromIdentity(base);
   const incomingRecordingMbid = validMbid(outcome?.recordingMbid);
@@ -443,7 +450,8 @@ function mergeIdentityRecord(existing, item, provider, outcome, now = new Date()
 }
 
 function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOString()) {
-  if (outcome.status !== 'metadata') return null;
+  if (outcome.status !== 'metadata' || dateMs(now) == null) return null;
+  if (existing != null && (typeof existing !== 'object' || Array.isArray(existing))) return null;
   const requested = validSpotifyId(item.spotifyTrackId);
   if (!requested || outcome.requestedTrackId !== requested) return null;
   try { validatedOutcomeArtistIds(item, outcome); } catch (_) { return null; }
@@ -453,7 +461,7 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
   if (outcome.relinked === true && !expectedRelinked) return null;
   if (outcome.relinked === false && resolvedTrackId && expectedRelinked) return null;
 
-  const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? clone(existing) : {};
+  const base = existing ? clone(existing) : {};
   if (base.spotifyTrackId != null && base.spotifyTrackId !== requested) return null;
   const existingIsrc = validIsrc(base.isrc);
   const incomingIsrc = validIsrc(outcome.isrc);
