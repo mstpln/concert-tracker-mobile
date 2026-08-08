@@ -172,23 +172,21 @@ async function runMaintenanceBatch({
   const completed = new Set(state.completedStepKeys);
   const summary = { attempted: 0, persisted: 0, halted: false, haltReason: null };
 
-  const initialPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
-  if (initialPlan.steps.length) {
-    const preflightResult = await preflight({
-      trackIdentities: clone(identities),
-      spotifyMetadata: clone(metadata),
-      checkpoint: clone(state),
-      plan: enrichment.safePlanSummary(initialPlan),
-    });
-    if (preflightResult !== true) throw new Error('Listening maintenance persistence preflight was not approved.');
-  }
-
   while (summary.attempted < limit) {
     const plan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
     const next = plan.steps[0] || null;
     if (!next) break;
     const key = stepKey(next);
     const operation = providerForStep(providers, next);
+
+    const preflightResult = await preflight({
+      trackIdentities: clone(identities),
+      spotifyMetadata: clone(metadata),
+      checkpoint: clone(state),
+      plan: enrichment.safePlanSummary(plan),
+      nextStep: clone(next),
+    });
+    if (preflightResult !== true) throw new Error('Listening maintenance persistence preflight was not approved.');
 
     if (!(await reserveProviderCall(usage, next.provider))) {
       summary.halted = true;
