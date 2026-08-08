@@ -263,9 +263,13 @@ function providerObservation(provider, outcome, now) {
 function mergeIdentityRecord(existing, item, provider, outcome, now = new Date().toISOString()) {
   const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? clone(existing) : {};
   if (!identityCompatible(item, base)) throw new Error('Stored track identity conflicts with the planned work item.');
+  const existingRecordingMbid = recordingMbidFromIdentity(base);
+  const incomingRecordingMbid = validMbid(outcome?.recordingMbid);
+  if (existingRecordingMbid && incomingRecordingMbid && existingRecordingMbid !== incomingRecordingMbid) {
+    throw new Error('Resolved recording identity conflicts with the provider outcome.');
+  }
   const providers = base.providers && typeof base.providers === 'object' && !Array.isArray(base.providers) ? clone(base.providers) : {};
   providers[provider] = { ...(providers[provider] || {}), ...providerObservation(provider, outcome, now) };
-  const existingRecordingMbid = recordingMbidFromIdentity(base);
   const resolved = outcome.status === 'resolved' || Boolean(existingRecordingMbid);
   const status = resolved ? 'resolved'
     : outcome.status === 'needs_review' ? 'needs_review'
@@ -285,7 +289,7 @@ function mergeIdentityRecord(existing, item, provider, outcome, now = new Date()
   };
   if (Array.isArray(outcome.spotifyArtistIds) && outcome.spotifyArtistIds.length) record.spotifyArtistIds = clone(outcome.spotifyArtistIds);
   if (validIsrc(outcome.isrc)) record.isrc = outcome.isrc;
-  if (validMbid(outcome.recordingMbid)) record.musicbrainzRecordingId = validMbid(outcome.recordingMbid);
+  if (incomingRecordingMbid) record.musicbrainzRecordingId = incomingRecordingMbid;
   if (Array.isArray(outcome.artistMbids) && outcome.artistMbids.length) record.musicbrainzArtistIds = clone(outcome.artistMbids);
   return record;
 }
@@ -299,6 +303,7 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
   const outcomeAlbumId = validSpotifyId(outcome.spotifyAlbumId);
   const existingAlbumId = validSpotifyId(base.spotifyAlbumId);
   const albumId = outcomeAlbumId || existingAlbumId || null;
+  const sameAlbum = !outcomeAlbumId || outcomeAlbumId === existingAlbumId;
   const record = {
     ...base,
     spotifyTrackId: requested,
@@ -307,7 +312,7 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
     spotifyAlbumUrl: outcomeAlbumId
       ? `https://open.spotify.com/album/${outcomeAlbumId}`
       : existingAlbumId ? (base.spotifyAlbumUrl || `https://open.spotify.com/album/${existingAlbumId}`) : null,
-    artworkUrl: outcome.artworkUrl || base.artworkUrl || null,
+    artworkUrl: outcome.artworkUrl || (sameAlbum ? base.artworkUrl : null) || null,
     spotifyArtistIds: clone(outcome.spotifyArtistIds),
     isrc: outcome.isrc || base.isrc || null,
     fetchedAt: now,
