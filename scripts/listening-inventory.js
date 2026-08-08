@@ -67,6 +67,7 @@ function trustedBandIdentity(band) {
   const spotify = identities.providerRecord(band, 'spotify');
   return {
     bandId: clean(band?.id),
+    bandName: clean(band?.name),
     musicbrainzArtistMbid: identities.isConfirmed(musicbrainz, 'musicbrainz') ? validMbid(musicbrainz?.mbid) : null,
     spotifyArtistId: identities.isConfirmed(spotify, 'spotify') ? validSpotifyId(spotify?.id) : null,
   };
@@ -108,6 +109,9 @@ function newWorkItem({ trackKey, bandId, event, bandIdentity }) {
     spotifyTrackId: validSpotifyId(event?.spotifyTrackId),
     trustedSpotifyArtistId: bandIdentity?.spotifyArtistId || null,
     trustedMusicbrainzArtistMbid: bandIdentity?.musicbrainzArtistMbid || null,
+    artistLookupName: bandIdentity?.bandName || clean(event?.artistCreditName),
+    recordingLookupName: clean(event?.recordingTitle),
+    spotifyMetadataIsrc: null,
     sourceMusicbrainzRecordingMbids: [],
     sourceMusicbrainzArtistMbids: [],
     sourceListenbrainzRecordingMsids: [],
@@ -169,6 +173,7 @@ function buildListeningInventory({ bands = [], events = [], spotifyMetadata = nu
       item.reason = 'band_conflict';
       item.trustedSpotifyArtistId = null;
       item.trustedMusicbrainzArtistMbid = null;
+      item.artistLookupName = null;
     }
     item.sourceEventCount += 1;
     item.sourceMusicbrainzRecordingMbids = addUnique(item.sourceMusicbrainzRecordingMbids, sourceRecordingMbids(event));
@@ -210,6 +215,7 @@ function buildListeningInventory({ bands = [], events = [], spotifyMetadata = nu
       const metadata = metadataRecords[item.spotifyTrackId];
       if (metadata?.spotifyTrackId === item.spotifyTrackId) {
         const isrc = clean(metadata.isrc);
+        item.spotifyMetadataIsrc = isrc;
         item.status = isrc ? 'needs_musicbrainz' : 'spotify_metadata_present';
         item.reason = isrc ? 'spotify_metadata_with_isrc' : 'spotify_metadata_without_isrc';
       } else {
