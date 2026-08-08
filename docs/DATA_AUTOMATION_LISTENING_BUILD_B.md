@@ -29,19 +29,21 @@ Spotify's current Web API documentation continues to expose track `external_ids.
 
 ## MusicBrainz ISRC resolution
 
-MusicBrainz supports ISRC lookups that may return multiple recordings. Build B accepts a recording automatically only when exactly one returned recording belongs to the already-trusted MusicBrainz artist MBID for the BANDMARKR band. Zero trusted-artist recordings is `no_match`; more than one is `needs_review`.
+MusicBrainz supports `/ws/2/isrc/<isrc>` lookups that can return multiple recordings. The future runner must request `artist-credits` so Build B can verify provider recording identity against the band's already-trusted MusicBrainz artist MBID. Build B accepts a recording automatically only when exactly one returned recording belongs to that trusted artist. Zero trusted-artist recordings is `no_match`; more than one is `needs_review`.
 
 This keeps ISRC useful as recording evidence without assuming that every database ISRC maps uniquely in practice.
 
 ## ListenBrainz fallback
 
-ListenBrainz metadata lookup is the final text fallback. Current ListenBrainz documentation requires authentication for this endpoint. Build B accepts its mapping automatically only when normalized artist text and recording text match the request and the returned `artist_mbids` include the already-trusted MusicBrainz artist MBID. A returned recording MBID with mismatched evidence is `needs_review`.
+ListenBrainz `GET /1/metadata/lookup/` is the final text fallback and currently requires a user token. Build B supplies artist and recording names only after exact-ID routes are exhausted. It accepts a mapping automatically only when normalized artist text and recording text match the request and returned `artist_mbids` include the already-trusted MusicBrainz artist MBID. A returned recording MBID with mismatched evidence is `needs_review`.
 
 No release or release-group value from this fallback is treated as exact edition evidence.
 
 ## Resumability and state
 
-`listening/track-identities.json` remains the derived cross-provider state document. Provider observations may be stored additively under a `providers` object with status, reason and checked time. Existing unknown fields are preserved. `nextEligibleCheckAt` blocks retry work until its time has passed.
+`listening/track-identities.json` remains the derived cross-provider state document. Provider observations may be stored additively under a `providers` object with status, reason and checked time. Existing unknown fields are preserved.
+
+Retries are explicit rather than implicit. A provider may be attempted again only when its saved status is `retry` and a valid `nextEligibleCheckAt` exists. A future date blocks work; once that date has passed, that same provider becomes eligible again. A `retry` without a date, an `error`, or a `needs_review` state never triggers a hidden provider call. Resolved recording identity is never downgraded by a later non-resolving observation.
 
 The engine does not mutate inventory, source observations, existing identity records or Spotify metadata inputs. Safe summaries expose counts only and exclude names, titles, provider IDs and timestamps.
 
