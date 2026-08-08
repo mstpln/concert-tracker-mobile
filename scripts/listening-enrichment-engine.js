@@ -96,13 +96,15 @@ function knownProviderEntriesValid(record) {
     if (!Object.prototype.hasOwnProperty.call(record.providers, provider)) continue;
     const entry = record.providers[provider];
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    if (entry.status != null && typeof entry.status !== 'string') return false;
+    if (entry.reason != null && typeof entry.reason !== 'string') return false;
+    if (entry.checkedAt != null && dateMs(entry.checkedAt) == null) return false;
   }
   return true;
 }
 
 function identityCompatible(item, record) {
-  if (!record) return true;
-  if (!record || typeof record !== 'object' || Array.isArray(record)) return false;
+  if (record == null || typeof record !== 'object' || Array.isArray(record)) return false;
   if (record.workKey != null && typeof record.workKey !== 'string') return false;
   const storedWorkKey = clean(record.workKey);
   if (storedWorkKey && storedWorkKey !== item.trackKey) return false;
@@ -115,6 +117,8 @@ function identityCompatible(item, record) {
   if (!recordingMbidFieldsValid(record) || recordingMbidCandidates(record).length > 1) return false;
   if (record.isrc != null && !validIsrc(record.isrc)) return false;
   if (record.status != null && !TRACK_IDENTITY_STATUSES.has(record.status)) return false;
+  if (record.updatedAt != null && dateMs(record.updatedAt) == null) return false;
+  if (record.nextEligibleCheckAt != null && dateMs(record.nextEligibleCheckAt) == null) return false;
   if (record.providers != null && (!record.providers || typeof record.providers !== 'object' || Array.isArray(record.providers))) return false;
   if (!knownProviderEntriesValid(record)) return false;
 
@@ -152,8 +156,9 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
   const skipped = { complete: 0, blocked: 0, retry_wait: 0, no_route: 0 };
 
   for (const item of items) {
-    const identity = records[item.trackKey] || null;
-    if (!identityCompatible(item, identity)) {
+    const hasIdentity = Object.prototype.hasOwnProperty.call(records, item.trackKey);
+    const identity = hasIdentity ? records[item.trackKey] : null;
+    if (hasIdentity && !identityCompatible(item, identity)) {
       skipped.blocked += 1;
       continue;
     }
