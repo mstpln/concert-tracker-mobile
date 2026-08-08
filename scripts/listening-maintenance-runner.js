@@ -156,7 +156,7 @@ async function runMaintenanceBatch({
 
   while (summary.attempted < limit) {
     const plan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
-    const next = plan.steps.find((candidate) => !completed.has(stepKey(candidate)));
+    const next = plan.steps[0] || null;
     if (!next) break;
     const key = stepKey(next);
     const operation = providerForStep(providers, next);
