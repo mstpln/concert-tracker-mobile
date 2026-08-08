@@ -1,5 +1,6 @@
 'use strict';
 
+const config = require('./config');
 const { sleep } = require('./util');
 
 const DEFAULT_LISTENBRAINZ_PER_RUN_CAP = 25;
@@ -8,6 +9,11 @@ const DEFAULT_LISTENBRAINZ_MIN_DELAY_MS = 1000;
 function safeCounter(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : 0;
+}
+
+function safeDateMs(value) {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function ensureMaintenanceState(usage) {
@@ -22,8 +28,16 @@ function ensureMaintenanceState(usage) {
   state.spotifyCallsThisRun = safeCounter(state.spotifyCallsThisRun);
   state.musicbrainzCallsThisRun = safeCounter(state.musicbrainzCallsThisRun);
   state.listenbrainzCallsThisRun = safeCounter(state.listenbrainzCallsThisRun);
+  if (!('listenbrainzLastCallAt' in state) || !safeDateMs(state.listenbrainzLastCallAt)) state.listenbrainzLastCallAt = null;
   if (!('lastRun' in state)) state.lastRun = null;
   return state;
+}
+
+async function waitForPersistedGap(lastCallAt, minDelayMs, now, sleepImpl) {
+  const previous = safeDateMs(lastCallAt);
+  if (!previous || minDelayMs <= 0) return;
+  const gap = now() - previous;
+  if (gap < minDelayMs) await sleepImpl(minDelayMs - gap);
 }
 
 function createListeningMaintenanceUsageGate(usage, {
@@ -42,7 +56,7 @@ function createListeningMaintenanceUsageGate(usage, {
   state.spotifyCallsThisRun = 0;
   state.musicbrainzCallsThisRun = 0;
   state.listenbrainzCallsThisRun = 0;
-  let lastListenbrainzCallAt = 0;
+  let lastListenbrainzCallAt = safeDateMs(state.listenbrainzLastCallAt);
   const startedAt = new Date(now()).toISOString();
 
   async function reserve(provider) {
@@ -56,7 +70,9 @@ function createListeningMaintenanceUsageGate(usage, {
     if (provider === 'musicbrainz') {
       if (typeof usage.canCallMusicbrainz !== 'function' || typeof usage.recordMusicbrainzAttempt !== 'function') return false;
       if (!usage.canCallMusicbrainz()) return false;
+      await waitForPersistedGap(usage.state.musicbrainz?.lastCallAt, config.MUSICBRAINZ.minDelayMs, now, sleepImpl);
       await usage.recordMusicbrainzAttempt();
+      usage.state.musicbrainz.lastCallAt = new Date(now()).toISOString();
       state.musicbrainzCallsThisRun += 1;
       return true;
     }
@@ -68,6 +84,7 @@ function createListeningMaintenanceUsageGate(usage, {
         await sleepImpl(listenbrainzMinDelayMs - gap);
       }
       lastListenbrainzCallAt = now();
+      state.listenbrainzLastCallAt = new Date(lastListenbrainzCallAt).toISOString();
       state.listenbrainzCallsThisRun += 1;
       return true;
     }
@@ -92,6 +109,8 @@ function createListeningMaintenanceUsageGate(usage, {
 module.exports = {
   DEFAULT_LISTENBRAINZ_PER_RUN_CAP,
   DEFAULT_LISTENBRAINZ_MIN_DELAY_MS,
+  safeDateMs,
   ensureMaintenanceState,
+  waitForPersistedGap,
   createListeningMaintenanceUsageGate,
 };
