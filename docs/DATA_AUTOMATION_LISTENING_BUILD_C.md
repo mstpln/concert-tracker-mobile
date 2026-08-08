@@ -65,13 +65,15 @@ Current provider documentation was rechecked during this build. Spotify Track re
 
 Before every provider step, it rereads the three writable documents and rejects any concurrent change rather than merging stale maintenance state.
 
-After a provider attempt, persistence is deliberately ordered:
+After that preflight, a successful provider usage reservation is itself written to `apiUsage.json` with a strict conditional write **before** the provider adapter is allowed to run. If that write fails or conflicts, the provider request never starts. This matches the existing production-maintenance rule that real quota usage must not depend on a later response write succeeding.
 
-1. `apiUsage.json` first, including the provider call counters and maintenance checkpoint;
+After the provider returns, persistence is deliberately ordered:
+
+1. `apiUsage.json` again, now attaching the maintenance checkpoint/halt state to the already-counted provider attempt;
 2. Spotify metadata only when that provider-owned document actually changed;
 3. track identities last.
 
-All writes are strict conditional writes. If a later derived write conflicts, the real provider call remains counted. That can conservatively over-count and require a reload/retry, but it cannot erase quota usage or silently overwrite concurrent data. Source listening observations are never written.
+All writes are strict conditional writes. If a later checkpoint or derived-document write conflicts, the real provider call remains counted. That can conservatively over-count and require a reload/retry, but it cannot erase quota usage or silently overwrite concurrent data. Source listening observations are never written.
 
 ## Gated aggregate production inventory
 
