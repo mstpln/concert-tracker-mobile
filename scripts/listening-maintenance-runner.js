@@ -72,11 +72,11 @@ async function reserveProviderCall(usage, provider) {
   return true;
 }
 
-function outcomeForStep(step, payload) {
+function outcomeForStep(step, payload, item) {
   if (step.provider === 'spotify') {
     return enrichment.spotifyOutcome({
       requestedTrackId: step.input.spotifyTrackId,
-      trustedSpotifyArtistId: payload?.trustedSpotifyArtistId || null,
+      trustedSpotifyArtistId: item.trustedSpotifyArtistId || null,
       payload: payload?.data,
     });
   }
@@ -119,7 +119,7 @@ function applyStepResult({ step, result, inventory, identities, metadata, now })
   const item = itemByKey(inventory, step.trackKey);
   if (!item) throw new Error('Planned maintenance step lost its inventory work item.');
   const existingIdentity = identities.records[step.trackKey];
-  const outcome = result?.kind === 'ok' ? outcomeForStep(step, result) : providerFailureOutcome(result);
+  const outcome = result?.kind === 'ok' ? outcomeForStep(step, result, item) : providerFailureOutcome(result);
 
   if (step.provider === 'spotify' && outcome.status === 'metadata') {
     const existingMetadata = metadata.records[item.spotifyTrackId];
@@ -152,7 +152,7 @@ async function runMaintenanceBatch({
   const metadata = spotifyMetadataDocument(spotifyMetadata);
   const state = checkpointState(checkpoint, now);
   const completed = new Set(state.completedStepKeys);
-  const summary = { attempted: 0, persisted: 0, skippedCheckpoint: 0, halted: false, haltReason: null };
+  const summary = { attempted: 0, persisted: 0, halted: false, haltReason: null };
 
   while (summary.attempted < limit) {
     const plan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
