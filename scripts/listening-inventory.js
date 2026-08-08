@@ -8,6 +8,7 @@ const MBID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const ISRC = /^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$/;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const KNOWN_PROVIDERS = ['spotify', 'musicbrainz', 'listenbrainz'];
+const TRACK_IDENTITY_STATUSES = new Set(['unresolved', 'resolved', 'no_match', 'needs_review', 'retry', 'error']);
 
 function clean(value) {
   const text = String(value == null ? '' : value).trim();
@@ -30,6 +31,10 @@ function validSpotifyId(value) {
 function validMbid(value) {
   const text = clean(value)?.toLowerCase() || null;
   return text && MBID.test(text) ? text : null;
+}
+
+function validDate(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
 
 function stableHash(value) {
@@ -168,12 +173,16 @@ function storedProviderEntriesValid(identity) {
   return KNOWN_PROVIDERS.every((provider) => {
     if (!Object.prototype.hasOwnProperty.call(identity.providers, provider)) return true;
     const entry = identity.providers[provider];
-    return Boolean(entry && typeof entry === 'object' && !Array.isArray(entry));
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    if (entry.status != null && typeof entry.status !== 'string') return false;
+    if (entry.reason != null && typeof entry.reason !== 'string') return false;
+    if (entry.checkedAt != null && !validDate(entry.checkedAt)) return false;
+    return true;
   });
 }
 
 function storedIdentityState(item, identity) {
-  if (!identity) return { recordingMbid: null, conflict: false };
+  if (identity === undefined) return { recordingMbid: null, conflict: false };
   if (!identity || typeof identity !== 'object' || Array.isArray(identity)) return { recordingMbid: null, conflict: true };
   if (identity.workKey != null && (typeof identity.workKey !== 'string' || identity.workKey !== item.trackKey)) return { recordingMbid: null, conflict: true };
   if (identity.localBandId != null && (typeof identity.localBandId !== 'string' || !SAFE_ID.test(identity.localBandId)
@@ -183,6 +192,9 @@ function storedIdentityState(item, identity) {
     if (!storedTrackId || (item.spotifyTrackId && storedTrackId !== item.spotifyTrackId)) return { recordingMbid: null, conflict: true };
   }
   if (identity.isrc != null && (typeof identity.isrc !== 'string' || !ISRC.test(identity.isrc))) return { recordingMbid: null, conflict: true };
+  if (identity.status != null && !TRACK_IDENTITY_STATUSES.has(identity.status)) return { recordingMbid: null, conflict: true };
+  if (identity.updatedAt != null && !validDate(identity.updatedAt)) return { recordingMbid: null, conflict: true };
+  if (identity.nextEligibleCheckAt != null && !validDate(identity.nextEligibleCheckAt)) return { recordingMbid: null, conflict: true };
   if (identity.providers != null && (!identity.providers || typeof identity.providers !== 'object' || Array.isArray(identity.providers))) {
     return { recordingMbid: null, conflict: true };
   }
@@ -390,11 +402,13 @@ module.exports = {
   ISRC,
   SAFE_ID,
   KNOWN_PROVIDERS,
+  TRACK_IDENTITY_STATUSES,
   clean,
   cleanList,
   normalizeText,
   validSpotifyId,
   validMbid,
+  validDate,
   stableHash,
   bandIndex,
   mappedBandId,
