@@ -154,3 +154,36 @@ test('Spotify metadata helper independently rejects contradictory artist identit
   });
   assert.equal(record, null);
 });
+
+test('malformed stored providers container blocks planning', () => {
+  const item = work();
+  for (const providers of ['spotify', [], 17]) {
+    const plan = engine.planEnrichment({
+      inventory: { items: [item] },
+      trackIdentities: { records: { [item.trackKey]: {
+        workKey: item.trackKey,
+        spotifyTrackId: item.spotifyTrackId,
+        providers,
+      } } },
+    });
+    assert.equal(plan.steps.length, 0);
+    assert.equal(plan.counts.blocked, 1);
+  }
+});
+
+test('malformed compatible recording identity field blocks even beside a valid field', () => {
+  const item = work();
+  for (const malformedValue of [17, 'not-a-mbid']) {
+    const plan = engine.planEnrichment({
+      inventory: { items: [item] },
+      trackIdentities: { records: { [item.trackKey]: {
+        workKey: item.trackKey,
+        spotifyTrackId: item.spotifyTrackId,
+        musicbrainzRecordingId: MB_RECORDING,
+        recordingMbid: malformedValue,
+      } } },
+    });
+    assert.equal(plan.steps.length, 0);
+    assert.equal(plan.counts.blocked, 1);
+  }
+});
