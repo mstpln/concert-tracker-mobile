@@ -37,6 +37,10 @@ function build(options = {}) {
   return inventoryLib.buildListeningInventory({ bands: [band()], events: [event()], ...options });
 }
 
+function stored(item, overrides = {}) {
+  return { workKey: item.trackKey, spotifyTrackId: item.spotifyTrackId, ...overrides };
+}
+
 test('planner follows Spotify then MusicBrainz then ListenBrainz without guessing', () => {
   const first = engine.planEnrichment({ inventory: build() });
   assert.equal(first.steps.length, 1);
@@ -50,15 +54,15 @@ test('planner follows Spotify then MusicBrainz then ListenBrainz without guessin
   assert.equal(second.steps[0].provider, 'musicbrainz');
   assert.equal(second.steps[0].input.isrc, 'USABC1234567');
 
+  const item = withIsrc.items[0];
   const afterNoMatch = engine.planEnrichment({
     inventory: withIsrc,
     trackIdentities: {
       records: {
-        'spotify:SpotifyTrack123': {
-          workKey: 'spotify:SpotifyTrack123',
+        [item.trackKey]: stored(item, {
           isrc: 'USABC1234567',
           providers: { musicbrainz: { status: 'no_match' } },
-        },
+        }),
       },
     },
   });
@@ -80,11 +84,11 @@ test('conflicting source text never becomes an automatic ListenBrainz fallback',
   assert.equal(inventory.items[0].artistLookupName, null);
   assert.equal(inventory.items[0].recordingLookupName, null);
 
-  const key = inventory.items[0].trackKey;
+  const item = inventory.items[0];
   const plan = engine.planEnrichment({
     inventory,
     trackIdentities: {
-      records: { [key]: { workKey: key, providers: { spotify: { status: 'no_match' } } } },
+      records: { [item.trackKey]: stored(item, { providers: { spotify: { status: 'no_match' } } }) },
     },
   });
   assert.equal(plan.steps.length, 0);
@@ -93,17 +97,16 @@ test('conflicting source text never becomes an automatic ListenBrainz fallback',
 
 test('planner retries only explicitly scheduled provider work after it is due', () => {
   const inventory = build();
-  const key = inventory.items[0].trackKey;
-  const futureRetry = {
-    workKey: key,
+  const item = inventory.items[0];
+  const futureRetry = stored(item, {
     status: 'retry',
     nextEligibleCheckAt: '2026-08-09T08:00:00.000Z',
     providers: { spotify: { status: 'retry' } },
-  };
+  });
   const waiting = engine.planEnrichment({
     inventory,
     now: '2026-08-08T08:00:00.000Z',
-    trackIdentities: { records: { [key]: futureRetry } },
+    trackIdentities: { records: { [item.trackKey]: futureRetry } },
   });
   assert.equal(waiting.steps.length, 0);
   assert.equal(waiting.counts.retry_wait, 1);
@@ -111,7 +114,7 @@ test('planner retries only explicitly scheduled provider work after it is due', 
   const due = engine.planEnrichment({
     inventory,
     now: '2026-08-10T08:00:00.000Z',
-    trackIdentities: { records: { [key]: futureRetry } },
+    trackIdentities: { records: { [item.trackKey]: futureRetry } },
   });
   assert.equal(due.steps.length, 1);
   assert.equal(due.steps[0].provider, 'spotify');
@@ -119,14 +122,14 @@ test('planner retries only explicitly scheduled provider work after it is due', 
   const unscheduledRetry = engine.planEnrichment({
     inventory,
     now: '2026-08-10T08:00:00.000Z',
-    trackIdentities: { records: { [key]: { workKey: key, providers: { spotify: { status: 'retry' } } } } },
+    trackIdentities: { records: { [item.trackKey]: stored(item, { providers: { spotify: { status: 'retry' } } }) } },
   });
   assert.equal(unscheduledRetry.steps.length, 0);
   assert.equal(unscheduledRetry.counts.no_route, 1);
 
   const priorError = engine.planEnrichment({
     inventory,
-    trackIdentities: { records: { [key]: { workKey: key, providers: { spotify: { status: 'error' } } } } },
+    trackIdentities: { records: { [item.trackKey]: stored(item, { providers: { spotify: { status: 'error' } } }) } },
   });
   assert.equal(priorError.steps.length, 0);
   assert.equal(priorError.counts.no_route, 1);
@@ -134,10 +137,10 @@ test('planner retries only explicitly scheduled provider work after it is due', 
 
 test('planner respects resolved identities', () => {
   const inventory = build();
-  const key = inventory.items[0].trackKey;
+  const item = inventory.items[0];
   const resolved = engine.planEnrichment({
     inventory,
-    trackIdentities: { records: { [key]: { workKey: key, musicbrainzRecordingId: MB_RECORDING } } },
+    trackIdentities: { records: { [item.trackKey]: stored(item, { musicbrainzRecordingId: MB_RECORDING }) } },
   });
   assert.equal(resolved.steps.length, 0);
   assert.equal(resolved.counts.complete, 1);
@@ -233,7 +236,7 @@ test('ListenBrainz fallback requires exact normalized text plus trusted artist M
 
 test('identity merges preserve unknown fields and never mutate inputs', () => {
   const item = build().items[0];
-  const existing = { workKey: item.trackKey, futureField: { keep: true }, providers: { spotify: { futureProviderField: true } } };
+  const existing = stored(item, { futureField: { keep: true }, providers: { spotify: { futureProviderField: true } } });
   const before = structuredClone(existing);
   const outcome = {
     status: 'resolved',
@@ -250,13 +253,12 @@ test('identity merges preserve unknown fields and never mutate inputs', () => {
 
 test('identity merges never downgrade an existing resolved recording', () => {
   const item = build().items[0];
-  const existing = {
-    workKey: item.trackKey,
+  const existing = stored(item, {
     musicbrainzRecordingId: MB_RECORDING,
     status: 'resolved',
     nextEligibleCheckAt: '2026-08-09T08:00:00.000Z',
     futureField: { keep: true },
-  };
+  });
   const merged = engine.mergeIdentityRecord(
     existing,
     item,
