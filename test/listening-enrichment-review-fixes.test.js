@@ -123,7 +123,7 @@ test('reused Spotify metadata with explicit different artists is blocked by inve
     },
   } } });
   assert.equal(inventory.items[0].status, 'blocked');
-  assert.equal(inventory.items[0].reason, 'spotify_metadata_artist_conflict');
+  assert.equal(inventory.items[0].reason, 'spotify_metadata_identity_conflict');
 });
 
 test('conflicting compatible recording-id fields block rather than choosing one', () => {
