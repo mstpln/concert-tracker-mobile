@@ -55,8 +55,29 @@ async function loadListeningMaintenanceContext(client, { today } = {}) {
   let persistedMetadata = clone(spotifyMetadata);
 
   const usageTracker = new UsageTracker(normalizeMaintenanceUsageState(clone(rawUsage), today));
-  const usage = createListeningMaintenanceUsageGate(usageTracker);
+  const baseUsage = createListeningMaintenanceUsageGate(usageTracker);
   const checkpoint = clone(rawUsage?.listeningMaintenance?.checkpoint || null);
+
+  async function persistUsageBeforeProvider(provider) {
+    const allowed = await baseUsage.reserve(provider);
+    if (!allowed) return false;
+    try {
+      await client.writeJsonStrict(API_USAGE_PATH, usageTracker.state);
+    } catch (error) {
+      const wrapped = new Error(`Listening maintenance could not persist ${provider} usage before the provider request.`);
+      wrapped.code = 'USAGE_PERSIST_FAILED';
+      wrapped.cause = error;
+      throw wrapped;
+    }
+    persistedUsageBase = clone(usageTracker.state);
+    return true;
+  }
+
+  const usage = {
+    reserve: persistUsageBeforeProvider,
+    finish: baseUsage.finish,
+    state: baseUsage.state,
+  };
 
   async function preflight(snapshot) {
     const remoteUsage = await client.readJson(API_USAGE_PATH, freshState());
@@ -78,8 +99,8 @@ async function loadListeningMaintenanceContext(client, { today } = {}) {
     }
     usageTracker.state.listeningMaintenance.checkpoint = clone(snapshot.checkpoint);
 
-    // Persist usage first. A later derived-document conflict may cause a safe
-    // over-count and repeat on resume, but can never hide a real provider call.
+    // Provider usage was already conditionally persisted before the request.
+    // Persist again here to attach the durable checkpoint before derived state.
     await client.writeJsonStrict(API_USAGE_PATH, usageTracker.state);
     persistedUsageBase = clone(usageTracker.state);
 
