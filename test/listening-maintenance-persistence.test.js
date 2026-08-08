@@ -59,7 +59,31 @@ test('preflight rejects a concurrent usage change before provider quota can be r
   }), /apiUsage changed after load/);
 });
 
-test('persist writes usage before provider-owned derived documents and stores checkpoint', async () => {
+test('usage reservation is conditionally persisted before the provider can be authorized', async () => {
+  const client = fakeClient(initialDocs());
+  const context = await persistence.loadListeningMaintenanceContext(client, { today: '2026-08-08' });
+  assert.equal(await context.usage.reserve('spotify'), true);
+  assert.deepEqual(client.writes, [persistence.API_USAGE_PATH]);
+  const savedUsage = client.values.get(persistence.API_USAGE_PATH);
+  assert.equal(savedUsage.spotify.callsToday, 8);
+  assert.equal(savedUsage.listeningMaintenance.spotifyCallsThisRun, 1);
+});
+
+test('failed usage persistence prevents provider authorization', async () => {
+  const client = fakeClient(initialDocs());
+  client.writeJsonStrict = async (path) => {
+    client.writes.push(path);
+    throw new Error('synthetic usage conflict');
+  };
+  const context = await persistence.loadListeningMaintenanceContext(client, { today: '2026-08-08' });
+  await assert.rejects(() => context.usage.reserve('spotify'), (error) => {
+    assert.equal(error.code, 'USAGE_PERSIST_FAILED');
+    return true;
+  });
+  assert.deepEqual(client.writes, [persistence.API_USAGE_PATH]);
+});
+
+test('persist attaches checkpoint before provider-owned derived documents', async () => {
   const client = fakeClient(initialDocs());
   const context = await persistence.loadListeningMaintenanceContext(client, { today: '2026-08-08' });
   assert.equal(await context.preflight({
@@ -77,7 +101,12 @@ test('persist writes usage before provider-owned derived documents and stores ch
   const checkpoint = { kind: 'livevault-listening-maintenance-checkpoint', schemaVersion: 1, startedAt: '2026-08-08T09:00:00.000Z', updatedAt: '2026-08-08T09:00:00.000Z', completedStepKeys: ['spotify:exact_track:spotify:Track123'], haltReason: null };
 
   assert.equal(await context.persist({ trackIdentities: nextIdentities, spotifyMetadata: nextMetadata, checkpoint }), true);
-  assert.deepEqual(client.writes, [persistence.API_USAGE_PATH, persistence.SPOTIFY_METADATA_PATH, persistence.TRACK_IDENTITIES_PATH]);
+  assert.deepEqual(client.writes, [
+    persistence.API_USAGE_PATH,
+    persistence.API_USAGE_PATH,
+    persistence.SPOTIFY_METADATA_PATH,
+    persistence.TRACK_IDENTITIES_PATH,
+  ]);
   const savedUsage = client.values.get(persistence.API_USAGE_PATH);
   assert.equal(savedUsage.spotify.callsToday, 8);
   assert.equal(savedUsage.listeningMaintenance.spotifyCallsThisRun, 1);
