@@ -34,12 +34,17 @@ function validSpotifyId(value) {
   return inventoryLib.validSpotifyId(value);
 }
 
+function recordingMbidCandidates(record) {
+  return [...new Set([
+    validMbid(record?.musicbrainzRecordingId),
+    validMbid(record?.musicbrainzRecordingMbid),
+    validMbid(record?.recordingMbid),
+  ].filter(Boolean))];
+}
+
 function recordingMbidFromIdentity(record) {
-  return validMbid(
-    record?.musicbrainzRecordingId
-    || record?.musicbrainzRecordingMbid
-    || record?.recordingMbid,
-  );
+  const candidates = recordingMbidCandidates(record);
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 function dateMs(value) {
@@ -80,8 +85,20 @@ function identityCompatible(item, record) {
   if (storedWorkKey && storedWorkKey !== item.trackKey) return false;
   const storedBandId = clean(record.localBandId);
   if (storedBandId && item.bandId && storedBandId !== item.bandId) return false;
+  if (record.spotifyTrackId != null && !validSpotifyId(record.spotifyTrackId)) return false;
   const storedSpotifyTrackId = validSpotifyId(record.spotifyTrackId);
   if (storedSpotifyTrackId && item.spotifyTrackId && storedSpotifyTrackId !== item.spotifyTrackId) return false;
+  if (recordingMbidCandidates(record).length > 1) return false;
+
+  const trustedSpotifyArtistId = validSpotifyId(item.trustedSpotifyArtistId);
+  const storedSpotifyArtistIds = cleanStringList(record.spotifyArtistIds, (id) => Boolean(validSpotifyId(id)));
+  if (Array.isArray(record.spotifyArtistIds) && record.spotifyArtistIds.length && storedSpotifyArtistIds.length !== record.spotifyArtistIds.length) return false;
+  if (trustedSpotifyArtistId && storedSpotifyArtistIds.length && !storedSpotifyArtistIds.includes(trustedSpotifyArtistId)) return false;
+
+  const trustedMusicbrainzArtistMbid = validMbid(item.trustedMusicbrainzArtistMbid);
+  const storedMusicbrainzArtistIds = cleanStringList(record.musicbrainzArtistIds, (id) => Boolean(validMbid(id))).map((id) => id.toLowerCase());
+  if (Array.isArray(record.musicbrainzArtistIds) && record.musicbrainzArtistIds.length && storedMusicbrainzArtistIds.length !== record.musicbrainzArtistIds.length) return false;
+  if (trustedMusicbrainzArtistMbid && storedMusicbrainzArtistIds.length && !storedMusicbrainzArtistIds.includes(trustedMusicbrainzArtistMbid)) return false;
   return true;
 }
 
@@ -118,6 +135,15 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
       skipped.blocked += 1;
       continue;
     }
+
+    const storedIsrc = validIsrc(identity?.isrc);
+    const metadataIsrc = validIsrc(item.spotifyMetadataIsrc);
+    if ((identity?.isrc != null && !storedIsrc)
+      || (item.spotifyMetadataIsrc != null && !metadataIsrc)
+      || (storedIsrc && metadataIsrc && storedIsrc !== metadataIsrc)) {
+      skipped.blocked += 1;
+      continue;
+    }
     if (retryBlocked(identity, now)) {
       skipped.retry_wait += 1;
       continue;
@@ -129,7 +155,7 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
     const hasSpotifyState = providerEntryPresent(identity, 'spotify');
     const hasMusicbrainzState = providerEntryPresent(identity, 'musicbrainz');
     const hasListenbrainzState = providerEntryPresent(identity, 'listenbrainz');
-    const isrc = validIsrc(identity?.isrc || item.spotifyMetadataIsrc);
+    const isrc = storedIsrc || metadataIsrc;
     const trustedMusicbrainzArtistMbid = validMbid(item.trustedMusicbrainzArtistMbid);
     const musicbrainzRouteUsable = Boolean(isrc && trustedMusicbrainzArtistMbid);
 
@@ -342,6 +368,7 @@ function safePlanSummary(plan) {
 module.exports = {
   ISRC,
   validIsrc,
+  recordingMbidCandidates,
   recordingMbidFromIdentity,
   providerEntryPresent,
   providerState,
