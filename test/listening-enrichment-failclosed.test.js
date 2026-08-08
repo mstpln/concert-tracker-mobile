@@ -108,7 +108,7 @@ test('malformed ListenBrainz identity fields fail closed', () => {
 test('unknown provider outcome states cannot be persisted and retried as fresh work', () => {
   assert.throws(
     () => engine.mergeIdentityRecord(
-      { workKey: 'spotify:SpotifyTrack123' },
+      { workKey: 'spotify:SpotifyTrack123', spotifyTrackId: 'SpotifyTrack123' },
       item(),
       'spotify',
       { status: 'unexpected', reason: 'bad-state' },
@@ -122,7 +122,11 @@ test('unknown provider outcome states cannot be persisted and retried as fresh w
     inventory: { items: [work] },
     trackIdentities: {
       records: {
-        [work.trackKey]: { workKey: work.trackKey, providers: { spotify: { status: 'future_status' } } },
+        [work.trackKey]: {
+          workKey: work.trackKey,
+          spotifyTrackId: work.spotifyTrackId,
+          providers: { spotify: { status: 'future_status' } },
+        },
       },
     },
   });
@@ -134,7 +138,7 @@ test('retry persistence requires a valid explicit retry date', () => {
   const work = item();
   for (const nextEligibleCheckAt of [undefined, null, 'not-a-date']) {
     assert.throws(() => engine.mergeIdentityRecord(
-      { workKey: work.trackKey },
+      { workKey: work.trackKey, spotifyTrackId: work.spotifyTrackId },
       work,
       'spotify',
       { status: 'retry', reason: 'rate_limited', nextEligibleCheckAt },
@@ -149,7 +153,11 @@ test('older compatible recording-id fields still suppress provider work', () => 
     inventory: { items: [work] },
     trackIdentities: {
       records: {
-        [work.trackKey]: { workKey: work.trackKey, musicbrainzRecordingMbid: OLD_RECORDING_FIELD },
+        [work.trackKey]: {
+          workKey: work.trackKey,
+          spotifyTrackId: work.spotifyTrackId,
+          musicbrainzRecordingMbid: OLD_RECORDING_FIELD,
+        },
       },
     },
   });
@@ -163,7 +171,11 @@ test('stale band ownership in a stored identity blocks rather than migrating sil
     inventory: { items: [work] },
     trackIdentities: {
       records: {
-        [work.trackKey]: { workKey: work.trackKey, localBandId: 'different-band' },
+        [work.trackKey]: {
+          workKey: work.trackKey,
+          spotifyTrackId: work.spotifyTrackId,
+          localBandId: 'different-band',
+        },
       },
     },
   });
@@ -171,7 +183,7 @@ test('stale band ownership in a stored identity blocks rather than migrating sil
   assert.equal(plan.counts.blocked, 1);
   assert.throws(
     () => engine.mergeIdentityRecord(
-      { workKey: work.trackKey, localBandId: 'different-band' },
+      { workKey: work.trackKey, spotifyTrackId: work.spotifyTrackId, localBandId: 'different-band' },
       work,
       'spotify',
       { status: 'no_match', reason: 'not_found' },
