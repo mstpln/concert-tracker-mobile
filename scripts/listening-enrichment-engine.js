@@ -98,6 +98,7 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
     }
 
     const spotifyRouteExhausted = !item.spotifyTrackId
+      || Boolean(item.spotifyMetadataIsrc)
       || item.status === 'spotify_metadata_present'
       || spotify?.status === 'no_match'
       || spotify?.status === 'metadata';
