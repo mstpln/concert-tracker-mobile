@@ -160,6 +160,46 @@ function spotifyMetadataArtistConflict(item, metadata) {
   return ids.length > 0 && !ids.includes(item.trustedSpotifyArtistId);
 }
 
+function storedIdentityState(item, identity) {
+  if (!identity) return { recordingMbid: null, conflict: false };
+  if (!identity || typeof identity !== 'object' || Array.isArray(identity)) return { recordingMbid: null, conflict: true };
+  if (identity.workKey != null && (typeof identity.workKey !== 'string' || identity.workKey !== item.trackKey)) return { recordingMbid: null, conflict: true };
+  if (identity.localBandId != null && (typeof identity.localBandId !== 'string' || (item.bandId && identity.localBandId !== item.bandId))) return { recordingMbid: null, conflict: true };
+  if (identity.spotifyTrackId != null) {
+    const storedTrackId = validSpotifyId(identity.spotifyTrackId);
+    if (!storedTrackId || (item.spotifyTrackId && storedTrackId !== item.spotifyTrackId)) return { recordingMbid: null, conflict: true };
+  }
+  const recordingMbids = [...new Set([
+    validMbid(identity.musicbrainzRecordingId),
+    validMbid(identity.musicbrainzRecordingMbid),
+    validMbid(identity.recordingMbid),
+  ].filter(Boolean))];
+  if (recordingMbids.length > 1) return { recordingMbid: null, conflict: true };
+
+  if (identity.spotifyArtistIds != null) {
+    if (!Array.isArray(identity.spotifyArtistIds)
+      || !identity.spotifyArtistIds.every((id) => typeof id === 'string' && Boolean(validSpotifyId(id)))) {
+      return { recordingMbid: null, conflict: true };
+    }
+    if (item.trustedSpotifyArtistId && identity.spotifyArtistIds.length
+      && !identity.spotifyArtistIds.includes(item.trustedSpotifyArtistId)) {
+      return { recordingMbid: null, conflict: true };
+    }
+  }
+  if (identity.musicbrainzArtistIds != null) {
+    if (!Array.isArray(identity.musicbrainzArtistIds)
+      || !identity.musicbrainzArtistIds.every((id) => typeof id === 'string' && Boolean(validMbid(id)))) {
+      return { recordingMbid: null, conflict: true };
+    }
+    const artistMbids = identity.musicbrainzArtistIds.map(validMbid);
+    if (item.trustedMusicbrainzArtistMbid && artistMbids.length
+      && !artistMbids.includes(item.trustedMusicbrainzArtistMbid)) {
+      return { recordingMbid: null, conflict: true };
+    }
+  }
+  return { recordingMbid: recordingMbids[0] || null, conflict: false };
+}
+
 function addUnique(list, values) {
   const set = new Set(list);
   for (const value of values || []) if (value) set.add(value);
@@ -232,13 +272,13 @@ function buildListeningInventory({ bands = [], events = [], spotifyMetadata = nu
   for (const item of items) {
     if (item.reason === 'band_conflict') continue;
 
-    const existingIdentity = identityRecords[item.trackKey];
-    const existingRecordingMbid = validMbid(
-      existingIdentity?.musicbrainzRecordingId
-      || existingIdentity?.musicbrainzRecordingMbid
-      || existingIdentity?.recordingMbid,
-    );
-    if (existingRecordingMbid) {
+    const identityState = storedIdentityState(item, identityRecords[item.trackKey]);
+    if (identityState.conflict) {
+      item.status = 'blocked';
+      item.reason = 'stored_track_identity_conflict';
+      continue;
+    }
+    if (identityState.recordingMbid) {
       item.status = 'complete';
       item.reason = 'existing_track_identity';
       continue;
@@ -337,6 +377,7 @@ module.exports = {
   lookupPair,
   addLookupEvidence,
   spotifyMetadataArtistConflict,
+  storedIdentityState,
   buildListeningInventory,
   safeInventorySummary,
 };
