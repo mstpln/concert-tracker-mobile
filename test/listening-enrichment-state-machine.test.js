@@ -69,6 +69,55 @@ test('top-level retry requires exactly one provider retry state', () => {
   }
 });
 
+test('nested retry state without top-level retry never triggers a hidden retry', () => {
+  const item = work();
+  const plan = engine.planEnrichment({
+    inventory: { items: [item] },
+    now: '2026-08-08T10:00:00.000Z',
+    trackIdentities: { records: { [item.trackKey]: {
+      workKey: item.trackKey,
+      spotifyTrackId: item.spotifyTrackId,
+      status: 'unresolved',
+      nextEligibleCheckAt: '2026-08-08T09:00:00.000Z',
+      providers: { spotify: { status: 'retry' } },
+    } } },
+  });
+  assert.equal(plan.steps.length, 0);
+  assert.equal(plan.counts.no_route, 1);
+});
+
+test('a due retry can schedule only its owning provider', () => {
+  const item = work();
+  const spotifyRetry = engine.planEnrichment({
+    inventory: { items: [item] },
+    now: '2026-08-08T10:00:00.000Z',
+    trackIdentities: { records: { [item.trackKey]: {
+      workKey: item.trackKey,
+      spotifyTrackId: item.spotifyTrackId,
+      status: 'retry',
+      nextEligibleCheckAt: '2026-08-08T09:00:00.000Z',
+      providers: { spotify: { status: 'retry' } },
+    } } },
+  });
+  assert.equal(spotifyRetry.steps.length, 1);
+  assert.equal(spotifyRetry.steps[0].provider, 'spotify');
+
+  const musicbrainzRetry = engine.planEnrichment({
+    inventory: { items: [item] },
+    now: '2026-08-08T10:00:00.000Z',
+    trackIdentities: { records: { [item.trackKey]: {
+      workKey: item.trackKey,
+      spotifyTrackId: item.spotifyTrackId,
+      isrc: 'USABC1234567',
+      status: 'retry',
+      nextEligibleCheckAt: '2026-08-08T09:00:00.000Z',
+      providers: { musicbrainz: { status: 'retry' } },
+    } } },
+  });
+  assert.equal(musicbrainzRetry.steps.length, 1);
+  assert.equal(musicbrainzRetry.steps[0].provider, 'musicbrainz');
+});
+
 test('provider-specific outcome statuses are enforced at persistence', () => {
   const item = work();
   assert.throws(() => engine.mergeIdentityRecord({}, item, 'spotify', {
