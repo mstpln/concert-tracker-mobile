@@ -4,7 +4,7 @@
 
 Build C starts the activation plumbing for historical listening enrichment without activating production enrichment.
 
-The v109 branch now contains the bounded maintenance runner plus inert provider, usage and persistence adapters around the merged Build A inventory and Build B enrichment engine. Automated validation uses fictional fixtures and fake Worker/provider responses only.
+The v109 branch now contains the bounded maintenance runner plus inert provider, usage and persistence adapters around the merged Build A inventory and Build B enrichment engine. It also contains a gated inventory-only production entrypoint that can later reconstruct aggregate diagnostics from the verified private listening vault, but no production inventory has been run. Automated validation uses fictional fixtures and fake Worker/provider responses only.
 
 ## Execution contract
 
@@ -42,8 +42,8 @@ The v107 Worker allowlist remains unchanged. The maintenance credential can only
 `scripts/lib/listeningMaintenanceUsage.js` wraps the existing `UsageTracker` enforcement rather than creating a parallel Spotify or MusicBrainz allowance.
 
 - Spotify reservations use the existing `canCallSpotify()` / `recordSpotifyCall()` cap and pacing counters.
-- MusicBrainz reservations use the existing `canCallMusicbrainz()` / `recordMusicbrainzAttempt()` cap and pacing counters.
-- ListenBrainz has no invented daily/monthly provider allowance. Build C keeps only a maintenance-local per-run safety ceiling and courtesy spacing while provider HTTP rate-limit responses remain authoritative.
+- MusicBrainz reservations use the existing `canCallMusicbrainz()` / `recordMusicbrainzAttempt()` cap and pacing counters. The maintenance wrapper also honors the persisted previous MusicBrainz attempt time before the first request in a new process.
+- ListenBrainz has no invented daily/monthly provider allowance. Build C keeps only a maintenance-local per-run safety ceiling and courtesy spacing, including a persisted last-call timestamp so immediate successive invocations cannot bypass pacing.
 - Additive aggregate diagnostics are stored under `apiUsage.json.listeningMaintenance`; unrelated existing and unknown fields are preserved.
 
 The maintenance context resets only per-run counters needed for its own invocation. Existing persisted daily Spotify usage remains shared, so maintenance cannot pretend earlier production Spotify calls did not happen.
@@ -73,11 +73,27 @@ After a provider attempt, persistence is deliberately ordered:
 
 All writes are strict conditional writes. If a later derived write conflicts, the real provider call remains counted. That can conservatively over-count and require a reload/retry, but it cannot erase quota usage or silently overwrite concurrent data. Source listening observations are never written.
 
+## Gated aggregate production inventory
+
+`scripts/listening-maintenance-production.js` is a read-only inventory entrypoint. It deliberately has no provider-call mode and no production-write mode.
+
+Before it can read any private data, all three conditions must be true:
+
+1. `--inventory-only` is present;
+2. `--execute` is present;
+3. `LIVEVAULT_LISTENING_MAINTENANCE_CONFIRM` exactly equals `I_AUTHORIZE_PRIVATE_LISTENING_READS_FOR_AGGREGATE_INVENTORY`.
+
+Only then does it require `CF_WORKER_ENDPOINT` and `DATA_MAINTENANCE_TOKEN` and construct the maintenance client. It reuses the already-reviewed `spotify-artwork-backfill-source.js` reader for the immutable Spotify archive and ListenBrainz incrementals, including manifest validation, gzip decoding, SHA-256 verification, schema checks and event-count checks. It also reads bands, existing Spotify metadata and track identities and passes those inputs to the provider-free inventory planner.
+
+Output is restricted to the existing `safeInventorySummary()` numeric counts plus aggregate source-object/event counts, `providerCalls: 0`, and `productionWrites: 0`. Artist names, recording titles, timestamps, object paths, tokens and Worker endpoint are not logged by this entrypoint. Unknown CLI options such as write/provider flags are rejected.
+
+The entrypoint has been tested only with synthetic injected source/client data. It has not been invoked against the private production vault.
+
 ## Synthetic workflow
 
 `.github/workflows/listening-maintenance-dry-run.yml` remains manual-only, main-only and defaults to disabled. It has read-only repository permissions and receives no repository secrets. Its only action is running `scripts/listening-maintenance-dry-run.js`, which uses fictional bands, tracks, provider IDs and fake provider responses.
 
-The workflow cannot read the production Worker, production R2, Spotify, MusicBrainz or ListenBrainz. The newly added maintenance client/provider/persistence modules are exercised only through unit/integration tests with fake transports.
+The workflow cannot read the production Worker, production R2, Spotify, MusicBrainz or ListenBrainz. The maintenance client/provider/persistence and gated production-inventory modules are exercised only through unit/integration tests with fake transports.
 
 ## Version
 
@@ -89,13 +105,12 @@ This branch does not:
 
 - create or configure `DATA_MAINTENANCE_TOKEN` anywhere;
 - add repository secrets to a workflow;
-- add a production maintenance entrypoint;
 - dispatch the synthetic workflow;
-- read or write production R2;
-- read the private production listening archive;
+- execute the gated production inventory;
+- read or write production R2 during development/QA;
 - call Spotify, MusicBrainz or ListenBrainz;
 - write production `apiUsage.json`, Spotify metadata or track identities;
 - add a scheduled maintenance workflow;
 - activate a backfill or recurring enrichment run.
 
-The next activation step is still separately gated: build a production entrypoint that reconstructs the aggregate inventory from private source data, supplies reviewed provider credentials/tokens, and performs an aggregate-only zero-provider inventory/dry run before any bounded enrichment attempt. Secret creation, real provider calls and production R2 writes each require separate authorization even after this code is merged.
+The next rollout action is separately gated: after this code is reviewed/merged, the aggregate-only production inventory may be run only with explicit private-read authorization. Its counts should be reviewed before adding or activating any bounded provider-enrichment production mode. Secret creation, real provider calls and production R2 writes each remain separate authorizations even after this code is merged.
