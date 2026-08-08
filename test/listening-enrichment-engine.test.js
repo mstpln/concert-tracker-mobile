@@ -67,6 +67,30 @@ test('planner follows Spotify then MusicBrainz then ListenBrainz without guessin
   assert.equal(afterNoMatch.steps[0].input.recordingName, 'Exact Song');
 });
 
+test('conflicting source text never becomes an automatic ListenBrainz fallback', () => {
+  const inventory = inventoryLib.buildListeningInventory({
+    bands: [band()],
+    events: [
+      event({ stableListenId: 'listen-1' }),
+      event({ stableListenId: 'listen-2', recordingTitle: 'Different Song' }),
+    ],
+  });
+  assert.equal(inventory.items.length, 1);
+  assert.equal(inventory.items[0].lookupTextConflict, true);
+  assert.equal(inventory.items[0].artistLookupName, null);
+  assert.equal(inventory.items[0].recordingLookupName, null);
+
+  const key = inventory.items[0].trackKey;
+  const plan = engine.planEnrichment({
+    inventory,
+    trackIdentities: {
+      records: { [key]: { workKey: key, providers: { spotify: { status: 'no_match' } } } },
+    },
+  });
+  assert.equal(plan.steps.length, 0);
+  assert.equal(plan.counts.no_route, 1);
+});
+
 test('planner retries only explicitly scheduled provider work after it is due', () => {
   const inventory = build();
   const key = inventory.items[0].trackKey;
