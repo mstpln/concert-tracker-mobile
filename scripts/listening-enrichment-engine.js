@@ -251,15 +251,31 @@ function spotifyOutcome({ requestedTrackId, payload, trustedSpotifyArtistId = nu
   if (!requested || !resolved || !payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return { status: 'error', reason: 'malformed_spotify_response' };
   }
-  const artists = Array.isArray(payload.artists) ? payload.artists : [];
-  const artistIds = cleanStringList(artists.map((artist) => artist?.id), (id) => Boolean(validSpotifyId(id)));
-  if (!artistIds.length || artistIds.length > MAX_PROVIDER_IDS) return { status: 'error', reason: 'missing_spotify_artist_ids' };
+  if (!Array.isArray(payload.artists) || !payload.artists.length || payload.artists.length > MAX_PROVIDER_IDS
+    || !payload.artists.every((artist) => artist && typeof artist === 'object' && !Array.isArray(artist) && Boolean(validSpotifyId(artist.id)))) {
+    return { status: 'error', reason: 'malformed_spotify_artist_ids' };
+  }
+  const artistIds = cleanStringList(payload.artists.map((artist) => artist.id), (id) => Boolean(validSpotifyId(id)));
   const trustedArtist = validSpotifyId(trustedSpotifyArtistId);
   if (trustedArtist && !artistIds.includes(trustedArtist)) {
     return { status: 'needs_review', reason: 'spotify_artist_mismatch' };
   }
 
-  const album = payload.album && typeof payload.album === 'object' && !Array.isArray(payload.album) ? payload.album : {};
+  if (payload.album != null && (!payload.album || typeof payload.album !== 'object' || Array.isArray(payload.album))) {
+    return { status: 'error', reason: 'malformed_spotify_album' };
+  }
+  const album = payload.album || {};
+  if (album.id != null && !validSpotifyId(album.id)) return { status: 'error', reason: 'malformed_spotify_album_id' };
+  if (album.images != null && !Array.isArray(album.images)) return { status: 'error', reason: 'malformed_spotify_images' };
+  if (Array.isArray(album.images) && album.images.some((image) => image?.url != null && !validHttpsUrl(image.url))) {
+    return { status: 'error', reason: 'malformed_spotify_artwork_url' };
+  }
+  if (payload.external_ids != null && (!payload.external_ids || typeof payload.external_ids !== 'object' || Array.isArray(payload.external_ids))) {
+    return { status: 'error', reason: 'malformed_spotify_external_ids' };
+  }
+  if (payload.external_ids?.isrc != null && !validIsrc(payload.external_ids.isrc)) {
+    return { status: 'error', reason: 'malformed_spotify_isrc' };
+  }
   const albumId = validSpotifyId(album.id);
   const images = Array.isArray(album.images) ? album.images : [];
   const artworkUrl = images.map((image) => clean(image?.url)).find(validHttpsUrl) || null;
@@ -279,8 +295,13 @@ function spotifyOutcome({ requestedTrackId, payload, trustedSpotifyArtistId = nu
 }
 
 function musicbrainzArtistIds(recording) {
-  const credits = Array.isArray(recording?.['artist-credit']) ? recording['artist-credit'] : [];
-  return cleanStringList(credits.map((credit) => credit?.artist?.id), (id) => Boolean(validMbid(id))).slice(0, MAX_PROVIDER_IDS).map((id) => id.toLowerCase());
+  const credits = recording?.['artist-credit'];
+  if (!Array.isArray(credits) || credits.length > MAX_PROVIDER_IDS
+    || !credits.every((credit) => credit && typeof credit === 'object' && !Array.isArray(credit)
+      && credit.artist && typeof credit.artist === 'object' && !Array.isArray(credit.artist) && Boolean(validMbid(credit.artist.id)))) {
+    return null;
+  }
+  return cleanStringList(credits.map((credit) => credit.artist.id), (id) => Boolean(validMbid(id))).map((id) => id.toLowerCase());
 }
 
 function musicbrainzIsrcOutcome({ payload, trustedMusicbrainzArtistMbid = null } = {}) {
@@ -289,12 +310,16 @@ function musicbrainzIsrcOutcome({ payload, trustedMusicbrainzArtistMbid = null }
   if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !Array.isArray(payload.recordings)) {
     return { status: 'error', reason: 'malformed_musicbrainz_response' };
   }
-  const candidates = payload.recordings
-    .map((recording) => ({
-      recordingMbid: validMbid(recording?.id),
-      artistMbids: musicbrainzArtistIds(recording),
-    }))
-    .filter((candidate) => candidate.recordingMbid && candidate.artistMbids.includes(trusted));
+  const parsed = [];
+  for (const recording of payload.recordings) {
+    if (!recording || typeof recording !== 'object' || Array.isArray(recording) || !validMbid(recording.id)) {
+      return { status: 'error', reason: 'malformed_musicbrainz_recording' };
+    }
+    const artistMbids = musicbrainzArtistIds(recording);
+    if (!artistMbids) return { status: 'error', reason: 'malformed_musicbrainz_artist_credits' };
+    parsed.push({ recordingMbid: validMbid(recording.id), artistMbids });
+  }
+  const candidates = parsed.filter((candidate) => candidate.artistMbids.includes(trusted));
   const unique = [...new Map(candidates.map((candidate) => [candidate.recordingMbid, candidate])).values()];
   if (!unique.length) return { status: 'no_match', reason: 'no_trusted_artist_recording' };
   if (unique.length > 1) return { status: 'needs_review', reason: 'multiple_trusted_artist_recordings', candidates: unique.length };
@@ -305,10 +330,15 @@ function listenbrainzOutcome({ payload, artistName, recordingName, trustedMusicb
   const trusted = validMbid(trustedMusicbrainzArtistMbid);
   if (!trusted) return { status: 'error', reason: 'missing_trusted_musicbrainz_artist' };
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return { status: 'error', reason: 'malformed_listenbrainz_response' };
+  if (payload.recording_mbid != null && !validMbid(payload.recording_mbid)) return { status: 'error', reason: 'malformed_listenbrainz_recording_mbid' };
   const recordingMbid = validMbid(payload.recording_mbid);
   if (!recordingMbid) return { status: 'no_match', reason: 'listenbrainz_no_recording_mbid' };
-  if (payload.artist_mbids != null && (!Array.isArray(payload.artist_mbids) || payload.artist_mbids.length > MAX_PROVIDER_IDS)) {
+  if (!Array.isArray(payload.artist_mbids) || payload.artist_mbids.length > MAX_PROVIDER_IDS
+    || !payload.artist_mbids.every((id) => typeof id === 'string' && Boolean(validMbid(id)))) {
     return { status: 'error', reason: 'malformed_listenbrainz_artist_ids' };
+  }
+  if (typeof payload.artist_credit_name !== 'string' || typeof payload.recording_name !== 'string') {
+    return { status: 'error', reason: 'malformed_listenbrainz_text' };
   }
   const artistMbids = cleanStringList(payload.artist_mbids, (id) => Boolean(validMbid(id))).map((id) => id.toLowerCase());
   const artistMatches = inventoryLib.normalizeText(payload.artist_credit_name) === inventoryLib.normalizeText(artistName);
@@ -324,6 +354,7 @@ function providerObservation(provider, outcome, now) {
   if (!outcome || !PROVIDER_RESULTS.has(outcome.status)) throw new Error('Invalid enrichment provider outcome.');
   if (provider === 'spotify' && outcome.status === 'resolved') throw new Error('Invalid Spotify enrichment outcome status.');
   if (provider !== 'spotify' && outcome.status === 'metadata') throw new Error('Invalid enrichment provider outcome status.');
+  if (outcome.status === 'retry' && dateMs(outcome.nextEligibleCheckAt) == null) throw new Error('Retry outcome requires nextEligibleCheckAt.');
   return {
     status: outcome.status,
     reason: outcome.reason,
@@ -377,9 +408,7 @@ function mergeIdentityRecord(existing, item, provider, outcome, now = new Date()
       : outcome.status === 'retry' ? 'retry'
         : outcome.status === 'error' ? 'error'
           : 'unresolved';
-  const next = outcome.status === 'retry' && outcome.nextEligibleCheckAt && dateMs(outcome.nextEligibleCheckAt) != null
-    ? outcome.nextEligibleCheckAt
-    : null;
+  const next = outcome.status === 'retry' ? outcome.nextEligibleCheckAt : null;
   const record = {
     ...base,
     workKey: item.trackKey,
@@ -419,6 +448,7 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
   if (outcome.artworkUrl != null && !validHttpsUrl(outcome.artworkUrl)) return null;
   if (base.artworkUrl != null && !validHttpsUrl(base.artworkUrl)) return null;
   const existingAlbumId = validSpotifyId(base.spotifyAlbumId);
+  if (base.spotifyAlbumId != null && !existingAlbumId) return null;
   const albumId = outcomeAlbumId || existingAlbumId || null;
   const sameAlbum = !outcomeAlbumId || outcomeAlbumId === existingAlbumId;
   const incomingSpotifyArtistIds = Array.isArray(outcome.spotifyArtistIds) && outcome.spotifyArtistIds.length
@@ -450,6 +480,9 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
   if (expectedRelinked) {
     record.spotifyProviderResolvedTrackId = resolvedTrackId;
     record.spotifyProviderRelinked = true;
+  } else {
+    delete record.spotifyProviderResolvedTrackId;
+    delete record.spotifyProviderRelinked;
   }
   return record;
 }
