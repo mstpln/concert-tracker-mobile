@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const inventory = require('../scripts/listening-inventory');
 
 const MB_ARTIST = '11111111-1111-4111-8111-111111111111';
+const MB_RECORDING = '22222222-2222-4222-8222-222222222222';
 
 function band() {
   return {
@@ -71,4 +72,40 @@ test('malformed exact Spotify metadata ISRC blocks inside inventory', () => {
   });
   assert.equal(result.items[0].status, 'blocked');
   assert.equal(result.items[0].reason, 'spotify_metadata_identity_conflict');
+});
+
+test('malformed stored compatible recording fields block inventory reuse', () => {
+  for (const recordingMbid of ['bad-mbid', 17]) {
+    const result = inventory.buildListeningInventory({
+      bands: [band()],
+      events: [event()],
+      trackIdentities: { records: {
+        'spotify:SpotifyTrack123': {
+          workKey: 'spotify:SpotifyTrack123',
+          spotifyTrackId: 'SpotifyTrack123',
+          musicbrainzRecordingId: MB_RECORDING,
+          recordingMbid,
+        },
+      } },
+    });
+    assert.equal(result.items[0].status, 'blocked');
+    assert.equal(result.items[0].reason, 'stored_track_identity_conflict');
+    assert.equal(result.counts.completeTracks, 0);
+  }
+});
+
+test('malformed stored providers container blocks inventory reuse', () => {
+  const result = inventory.buildListeningInventory({
+    bands: [band()],
+    events: [event()],
+    trackIdentities: { records: {
+      'spotify:SpotifyTrack123': {
+        workKey: 'spotify:SpotifyTrack123',
+        spotifyTrackId: 'SpotifyTrack123',
+        providers: [],
+      },
+    } },
+  });
+  assert.equal(result.items[0].status, 'blocked');
+  assert.equal(result.items[0].reason, 'stored_track_identity_conflict');
 });
