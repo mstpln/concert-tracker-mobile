@@ -138,7 +138,8 @@ function spotifyOutcome({ requestedTrackId, payload, trustedSpotifyArtistId = nu
   if (!requested || !resolved || !payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return { status: 'error', reason: 'malformed_spotify_response' };
   }
-  const artistIds = cleanStringList((payload.artists || []).map((artist) => artist?.id), (id) => Boolean(validSpotifyId(id)));
+  const artists = Array.isArray(payload.artists) ? payload.artists : [];
+  const artistIds = cleanStringList(artists.map((artist) => artist?.id), (id) => Boolean(validSpotifyId(id)));
   const trustedArtist = validSpotifyId(trustedSpotifyArtistId);
   if (trustedArtist && !artistIds.includes(trustedArtist)) {
     return { status: 'needs_review', reason: 'spotify_artist_mismatch' };
@@ -207,6 +208,7 @@ function listenbrainzOutcome({ payload, artistName, recordingName, trustedMusicb
 
 function providerObservation(provider, outcome, now) {
   if (!PROVIDERS.has(provider)) throw new Error('Unknown enrichment provider.');
+  if (!outcome || !PROVIDER_RESULTS.has(outcome.status)) throw new Error('Invalid enrichment provider outcome.');
   return {
     status: outcome.status,
     reason: outcome.reason,
