@@ -67,17 +67,49 @@ test('planner follows Spotify then MusicBrainz then ListenBrainz without guessin
   assert.equal(afterNoMatch.steps[0].input.recordingName, 'Exact Song');
 });
 
-test('planner respects retry windows and resolved identities', () => {
+test('planner retries only explicitly scheduled provider work after it is due', () => {
   const inventory = build();
   const key = inventory.items[0].trackKey;
+  const futureRetry = {
+    workKey: key,
+    nextEligibleCheckAt: '2026-08-09T08:00:00.000Z',
+    providers: { spotify: { status: 'retry' } },
+  };
   const waiting = engine.planEnrichment({
     inventory,
     now: '2026-08-08T08:00:00.000Z',
-    trackIdentities: { records: { [key]: { workKey: key, nextEligibleCheckAt: '2026-08-09T08:00:00.000Z' } } },
+    trackIdentities: { records: { [key]: futureRetry } },
   });
   assert.equal(waiting.steps.length, 0);
   assert.equal(waiting.counts.retry_wait, 1);
 
+  const due = engine.planEnrichment({
+    inventory,
+    now: '2026-08-10T08:00:00.000Z',
+    trackIdentities: { records: { [key]: futureRetry } },
+  });
+  assert.equal(due.steps.length, 1);
+  assert.equal(due.steps[0].provider, 'spotify');
+
+  const unscheduledRetry = engine.planEnrichment({
+    inventory,
+    now: '2026-08-10T08:00:00.000Z',
+    trackIdentities: { records: { [key]: { workKey: key, providers: { spotify: { status: 'retry' } } } } },
+  });
+  assert.equal(unscheduledRetry.steps.length, 0);
+  assert.equal(unscheduledRetry.counts.no_route, 1);
+
+  const priorError = engine.planEnrichment({
+    inventory,
+    trackIdentities: { records: { [key]: { workKey: key, providers: { spotify: { status: 'error' } } } } },
+  });
+  assert.equal(priorError.steps.length, 0);
+  assert.equal(priorError.counts.no_route, 1);
+});
+
+test('planner respects resolved identities', () => {
+  const inventory = build();
+  const key = inventory.items[0].trackKey;
   const resolved = engine.planEnrichment({
     inventory,
     trackIdentities: { records: { [key]: { workKey: key, musicbrainzRecordingId: MB_RECORDING } } },
@@ -189,6 +221,28 @@ test('identity merges preserve unknown fields and never mutate inputs', () => {
   assert.deepEqual(merged.futureField, { keep: true });
   assert.equal(merged.musicbrainzRecordingId, MB_RECORDING);
   assert.equal(merged.status, 'resolved');
+});
+
+test('identity merges never downgrade an existing resolved recording', () => {
+  const item = build().items[0];
+  const existing = {
+    workKey: item.trackKey,
+    musicbrainzRecordingId: MB_RECORDING,
+    status: 'resolved',
+    nextEligibleCheckAt: '2026-08-09T08:00:00.000Z',
+    futureField: { keep: true },
+  };
+  const merged = engine.mergeIdentityRecord(
+    existing,
+    item,
+    'spotify',
+    { status: 'error', reason: 'provider_error' },
+    '2026-08-08T08:00:00.000Z',
+  );
+  assert.equal(merged.musicbrainzRecordingId, MB_RECORDING);
+  assert.equal(merged.status, 'resolved');
+  assert.equal(merged.nextEligibleCheckAt, null);
+  assert.deepEqual(merged.futureField, { keep: true });
 });
 
 test('safe plan summary contains counts only', () => {
