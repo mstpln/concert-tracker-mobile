@@ -31,6 +31,8 @@ function usage() {
   return { async reserve() { return true; } };
 }
 
+const preflight = async () => {};
+
 test('a persisted retry becomes eligible again when its explicit retry time is due', async () => {
   const inv = inventory();
   let firstCalls = 0;
@@ -45,6 +47,7 @@ test('a persisted retry becomes eligible again when its explicit retry time is d
       },
     },
     usage: usage(),
+    preflight,
     now: '2026-08-08T09:00:00.000Z',
     async persist() {},
   });
@@ -72,6 +75,7 @@ test('a persisted retry becomes eligible again when its explicit retry time is d
       },
     },
     usage: usage(),
+    preflight,
     maxSteps: 1,
     now: '2026-08-08T10:01:00.000Z',
     async persist() {},
