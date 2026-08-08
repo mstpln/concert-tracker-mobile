@@ -72,10 +72,12 @@ test('a persisted retry becomes eligible again when its explicit retry time is d
       },
     },
     usage: usage(),
+    maxSteps: 1,
     now: '2026-08-08T10:01:00.000Z',
     async persist() {},
   });
 
   assert.equal(secondCalls, 1);
+  assert.equal(second.summary.haltReason, 'batch_limit');
   assert.equal(second.trackIdentities.records['spotify:SpotifyTrack123'].providers.spotify.status, 'metadata');
 });
