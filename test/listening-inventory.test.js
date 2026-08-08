@@ -67,7 +67,14 @@ test('existing v107 track identity is reused before any provider planning', () =
     trackIdentities: {
       kind: 'livevault-track-identities',
       schemaVersion: 1,
-      records: { [key]: { workKey: key, musicbrainzRecordingId: MB_RECORDING, futureField: { keep: true } } },
+      records: {
+        [key]: {
+          workKey: key,
+          spotifyTrackId: 'SpotifyTrack123',
+          musicbrainzRecordingId: MB_RECORDING,
+          futureField: { keep: true },
+        },
+      },
     },
   });
   assert.equal(result.items[0].status, 'complete');
