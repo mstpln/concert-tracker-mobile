@@ -73,6 +73,7 @@ async function main() {
     },
     async persist(snapshot) {
       writes.push({ provider: snapshot.lastStep.provider, status: snapshot.lastOutcome.status });
+      return true;
     },
   });
 
