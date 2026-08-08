@@ -78,7 +78,7 @@ function providers() {
   };
 }
 
-const preflight = async () => {};
+const preflight = async () => true;
 
 test('executes one planned provider step at a time and persists before continuing', async () => {
   const persisted = [];
@@ -93,6 +93,7 @@ test('executes one planned provider step at a time and persists before continuin
     async preflight(snapshot) {
       preflightCalls += 1;
       assert.equal(snapshot.plan.planned, 1);
+      return true;
     },
     async persist(snapshot) { persisted.push(snapshot); },
   });
@@ -103,6 +104,8 @@ test('executes one planned provider step at a time and persists before continuin
   assert.equal(persisted[0].lastStep.provider, 'spotify');
   assert.equal(persisted[0].spotifyMetadata.records.SpotifyTrack123.isrc, 'USABC1234567');
   assert.equal(persisted[1].lastStep.provider, 'musicbrainz');
+  assert.equal(persisted[1].checkpoint.haltReason, null);
+  assert.equal(result.summary.halted, false);
   assert.equal(result.trackIdentities.records['spotify:SpotifyTrack123'].musicbrainzRecordingId, MB_RECORDING);
   assert.equal(result.plan.complete, 1);
 });
@@ -117,6 +120,20 @@ test('persistence preflight fails before usage reservation or provider execution
     async preflight() { throw new Error('stale persistence precondition'); },
     async persist() {},
   }), /stale persistence precondition/);
+  assert.equal(usage.calls.length, 0);
+  assert.equal(providerCalls, 0);
+});
+
+test('non-true persistence preflight is not treated as approval', async () => {
+  let providerCalls = 0;
+  const usage = usageGate();
+  await assert.rejects(() => runner.runMaintenanceBatch({
+    inventory: inventory(),
+    providers: { spotify: { exact_track: async () => { providerCalls += 1; return { kind: 'error' }; } } },
+    usage,
+    async preflight() {},
+    async persist() {},
+  }), /preflight was not approved/);
   assert.equal(usage.calls.length, 0);
   assert.equal(providerCalls, 0);
 });
@@ -140,7 +157,20 @@ test('usage gate stops before provider execution or persistence', async () => {
   assert.equal(result.summary.haltReason, 'usage_blocked:spotify');
 });
 
-test('retry outcome is persisted once and halts without hidden retry', async () => {
+test('non-true usage response blocks provider execution', async () => {
+  let providerCalls = 0;
+  const result = await runner.runMaintenanceBatch({
+    inventory: inventory(),
+    providers: { spotify: { exact_track: async () => { providerCalls += 1; return { kind: 'error' }; } } },
+    usage: { async reserve() {} },
+    preflight,
+    async persist() {},
+  });
+  assert.equal(providerCalls, 0);
+  assert.equal(result.summary.haltReason, 'usage_blocked:spotify');
+});
+
+test('retry outcome persists its halt reason and stops without hidden retry', async () => {
   let calls = 0;
   const writes = [];
   const result = await runner.runMaintenanceBatch({
@@ -161,6 +191,7 @@ test('retry outcome is persisted once and halts without hidden retry', async () 
 
   assert.equal(calls, 1);
   assert.equal(writes.length, 1);
+  assert.equal(writes[0].checkpoint.haltReason, 'spotify:retry');
   assert.equal(result.summary.haltReason, 'spotify:retry');
   assert.equal(result.trackIdentities.records['spotify:SpotifyTrack123'].status, 'retry');
   assert.equal(result.trackIdentities.records['spotify:SpotifyTrack123'].nextEligibleCheckAt, '2026-08-08T10:00:00.000Z');
@@ -205,4 +236,9 @@ test('hard batch cap and checkpoint validation fail closed', async () => {
     completedStepKeys: [],
     haltReason: null,
   }), /Invalid listening maintenance checkpoint/);
+});
+
+test('supplied identity document must satisfy the v107 envelope', () => {
+  assert.throws(() => runner.identityDocument({ schemaVersion: 1, records: {} }), /Invalid track identity document/);
+  assert.throws(() => runner.identityDocument({ kind: 'livevault-track-identities', schemaVersion: 1, updatedAt: 'bad-date', records: {} }), /Invalid track identity document/);
 });
