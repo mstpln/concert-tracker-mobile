@@ -56,6 +56,7 @@ function createListeningMaintenanceUsageGate(usage, {
   state.spotifyCallsThisRun = 0;
   state.musicbrainzCallsThisRun = 0;
   state.listenbrainzCallsThisRun = 0;
+  let firstMusicbrainzReservation = true;
   let lastListenbrainzCallAt = safeDateMs(state.listenbrainzLastCallAt);
   const startedAt = new Date(now()).toISOString();
 
@@ -70,7 +71,10 @@ function createListeningMaintenanceUsageGate(usage, {
     if (provider === 'musicbrainz') {
       if (typeof usage.canCallMusicbrainz !== 'function' || typeof usage.recordMusicbrainzAttempt !== 'function') return false;
       if (!usage.canCallMusicbrainz()) return false;
-      await waitForPersistedGap(usage.state.musicbrainz?.lastCallAt, config.MUSICBRAINZ.minDelayMs, now, sleepImpl);
+      if (firstMusicbrainzReservation) {
+        await waitForPersistedGap(usage.state.musicbrainz?.lastCallAt, config.MUSICBRAINZ.minDelayMs, now, sleepImpl);
+        firstMusicbrainzReservation = false;
+      }
       await usage.recordMusicbrainzAttempt();
       usage.state.musicbrainz.lastCallAt = new Date(now()).toISOString();
       state.musicbrainzCallsThisRun += 1;
