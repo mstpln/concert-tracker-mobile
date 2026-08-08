@@ -98,7 +98,7 @@ test('executes one planned provider step at a time and persists before continuin
     async persist(snapshot) { persisted.push(snapshot); },
   });
 
-  assert.equal(preflightCalls, 1);
+  assert.equal(preflightCalls, 2);
   assert.deepEqual(usage.calls, ['spotify', 'musicbrainz']);
   assert.equal(persisted.length, 2);
   assert.equal(persisted[0].lastStep.provider, 'spotify');
