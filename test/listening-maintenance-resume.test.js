@@ -31,7 +31,7 @@ function usage() {
   return { async reserve() { return true; } };
 }
 
-const preflight = async () => {};
+const preflight = async () => true;
 
 test('a persisted retry becomes eligible again when its explicit retry time is due', async () => {
   const inv = inventory();
