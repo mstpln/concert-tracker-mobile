@@ -5,6 +5,8 @@ const identities = require('../providerIdentityState');
 
 const SPOTIFY_ID = /^[A-Za-z0-9]{1,64}$/;
 const MBID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ISRC = /^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$/;
+const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
 function clean(value) {
   const text = String(value == null ? '' : value).trim();
@@ -153,22 +155,24 @@ function addLookupEvidence(item, event) {
 }
 
 function spotifyMetadataArtistConflict(item, metadata) {
-  if (!item.trustedSpotifyArtistId || metadata?.spotifyArtistIds == null) return false;
-  if (!Array.isArray(metadata.spotifyArtistIds)) return true;
-  const ids = metadata.spotifyArtistIds.map(validSpotifyId).filter(Boolean);
-  if (ids.length !== metadata.spotifyArtistIds.length) return true;
-  return ids.length > 0 && !ids.includes(item.trustedSpotifyArtistId);
+  if (metadata?.spotifyArtistIds == null) return false;
+  if (!Array.isArray(metadata.spotifyArtistIds) || metadata.spotifyArtistIds.length > 32) return true;
+  if (!metadata.spotifyArtistIds.every((id) => typeof id === 'string' && Boolean(validSpotifyId(id)))) return true;
+  return Boolean(item.trustedSpotifyArtistId && metadata.spotifyArtistIds.length
+    && !metadata.spotifyArtistIds.includes(item.trustedSpotifyArtistId));
 }
 
 function storedIdentityState(item, identity) {
   if (!identity) return { recordingMbid: null, conflict: false };
   if (!identity || typeof identity !== 'object' || Array.isArray(identity)) return { recordingMbid: null, conflict: true };
   if (identity.workKey != null && (typeof identity.workKey !== 'string' || identity.workKey !== item.trackKey)) return { recordingMbid: null, conflict: true };
-  if (identity.localBandId != null && (typeof identity.localBandId !== 'string' || (item.bandId && identity.localBandId !== item.bandId))) return { recordingMbid: null, conflict: true };
+  if (identity.localBandId != null && (typeof identity.localBandId !== 'string' || !SAFE_ID.test(identity.localBandId)
+    || (item.bandId && identity.localBandId !== item.bandId))) return { recordingMbid: null, conflict: true };
   if (identity.spotifyTrackId != null) {
     const storedTrackId = validSpotifyId(identity.spotifyTrackId);
     if (!storedTrackId || (item.spotifyTrackId && storedTrackId !== item.spotifyTrackId)) return { recordingMbid: null, conflict: true };
   }
+  if (identity.isrc != null && (typeof identity.isrc !== 'string' || !ISRC.test(identity.isrc))) return { recordingMbid: null, conflict: true };
   const recordingMbids = [...new Set([
     validMbid(identity.musicbrainzRecordingId),
     validMbid(identity.musicbrainzRecordingMbid),
@@ -177,7 +181,7 @@ function storedIdentityState(item, identity) {
   if (recordingMbids.length > 1) return { recordingMbid: null, conflict: true };
 
   if (identity.spotifyArtistIds != null) {
-    if (!Array.isArray(identity.spotifyArtistIds)
+    if (!Array.isArray(identity.spotifyArtistIds) || identity.spotifyArtistIds.length > 32
       || !identity.spotifyArtistIds.every((id) => typeof id === 'string' && Boolean(validSpotifyId(id)))) {
       return { recordingMbid: null, conflict: true };
     }
@@ -187,7 +191,7 @@ function storedIdentityState(item, identity) {
     }
   }
   if (identity.musicbrainzArtistIds != null) {
-    if (!Array.isArray(identity.musicbrainzArtistIds)
+    if (!Array.isArray(identity.musicbrainzArtistIds) || identity.musicbrainzArtistIds.length > 32
       || !identity.musicbrainzArtistIds.every((id) => typeof id === 'string' && Boolean(validMbid(id)))) {
       return { recordingMbid: null, conflict: true };
     }
@@ -207,17 +211,21 @@ function addUnique(list, values) {
 }
 
 function normalizeIdentityDocument(document) {
-  if (!document || typeof document !== 'object' || Array.isArray(document)) return {};
-  return document.records && typeof document.records === 'object' && !Array.isArray(document.records)
-    ? document.records
-    : {};
+  if (document == null) return {};
+  if (!document || typeof document !== 'object' || Array.isArray(document)
+    || !document.records || typeof document.records !== 'object' || Array.isArray(document.records)) {
+    throw new Error('Invalid track identity document.');
+  }
+  return document.records;
 }
 
 function normalizeSpotifyMetadata(document) {
-  if (!document || typeof document !== 'object' || Array.isArray(document)) return {};
-  return document.records && typeof document.records === 'object' && !Array.isArray(document.records)
-    ? document.records
-    : {};
+  if (document == null) return {};
+  if (!document || typeof document !== 'object' || Array.isArray(document)
+    || !document.records || typeof document.records !== 'object' || Array.isArray(document.records)) {
+    throw new Error('Invalid Spotify metadata document.');
+  }
+  return document.records;
 }
 
 function buildListeningInventory({ bands = [], events = [], spotifyMetadata = null, trackIdentities = null } = {}) {
@@ -297,16 +305,18 @@ function buildListeningInventory({ bands = [], events = [], spotifyMetadata = nu
 
     if (item.spotifyTrackId) {
       const metadata = metadataRecords[item.spotifyTrackId];
-      if (metadata?.spotifyTrackId === item.spotifyTrackId) {
-        if (spotifyMetadataArtistConflict(item, metadata)) {
+      if (metadata !== undefined) {
+        if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)
+          || metadata.spotifyTrackId !== item.spotifyTrackId
+          || spotifyMetadataArtistConflict(item, metadata)
+          || (metadata.isrc != null && (typeof metadata.isrc !== 'string' || !ISRC.test(metadata.isrc)))) {
           item.status = 'blocked';
-          item.reason = 'spotify_metadata_artist_conflict';
+          item.reason = 'spotify_metadata_identity_conflict';
           continue;
         }
-        const isrc = clean(metadata.isrc);
-        item.spotifyMetadataIsrc = isrc;
-        item.status = isrc ? 'needs_musicbrainz' : 'spotify_metadata_present';
-        item.reason = isrc ? 'spotify_metadata_with_isrc' : 'spotify_metadata_without_isrc';
+        item.spotifyMetadataIsrc = metadata.isrc || null;
+        item.status = item.spotifyMetadataIsrc ? 'needs_musicbrainz' : 'spotify_metadata_present';
+        item.reason = item.spotifyMetadataIsrc ? 'spotify_metadata_with_isrc' : 'spotify_metadata_without_isrc';
       } else {
         item.status = 'needs_spotify';
         item.reason = 'missing_spotify_metadata';
@@ -361,6 +371,8 @@ function safeInventorySummary(inventory) {
 module.exports = {
   SPOTIFY_ID,
   MBID,
+  ISRC,
+  SAFE_ID,
   clean,
   cleanList,
   normalizeText,
@@ -378,6 +390,8 @@ module.exports = {
   addLookupEvidence,
   spotifyMetadataArtistConflict,
   storedIdentityState,
+  normalizeIdentityDocument,
+  normalizeSpotifyMetadata,
   buildListeningInventory,
   safeInventorySummary,
 };
