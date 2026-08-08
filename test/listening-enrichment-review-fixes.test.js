@@ -7,14 +7,13 @@ const engine = require('../scripts/listening-enrichment-engine');
 
 const MB_ARTIST = '11111111-1111-4111-8111-111111111111';
 
-function build() {
+function build({ trustedMusicbrainz = true } = {}) {
   return inventoryLib.buildListeningInventory({
     bands: [{
       id: 'band-1',
       name: 'Example Band',
       musicbrainz: {
-        mbid: MB_ARTIST,
-        status: 'manual_confirmed',
+        ...(trustedMusicbrainz ? { mbid: MB_ARTIST, status: 'manual_confirmed' } : {}),
         spotify: { id: 'SpotifyArtist123', status: 'manual_confirmed' },
       },
     }],
@@ -48,6 +47,28 @@ test('stored ISRC is reused before another Spotify request', () => {
   assert.equal(plan.steps[0].provider, 'musicbrainz');
   assert.equal(plan.steps[0].operation, 'isrc_lookup');
   assert.equal(plan.steps[0].input.isrc, 'USABC1234567');
+});
+
+test('ISRC never schedules MusicBrainz without a trusted artist anchor', () => {
+  const inventory = build({ trustedMusicbrainz: false });
+  const key = inventory.items[0].trackKey;
+  const plan = engine.planEnrichment({
+    inventory,
+    trackIdentities: {
+      records: {
+        [key]: {
+          workKey: key,
+          localBandId: 'band-1',
+          spotifyTrackId: 'SpotifyTrack123',
+          isrc: 'USABC1234567',
+        },
+      },
+    },
+  });
+
+  assert.equal(plan.steps.length, 1);
+  assert.equal(plan.steps[0].provider, 'spotify');
+  assert.equal(plan.steps[0].operation, 'exact_track');
 });
 
 test('later incomplete Spotify metadata never erases existing valid album metadata', () => {
