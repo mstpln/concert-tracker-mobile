@@ -35,6 +35,8 @@ MusicBrainz supports `/ws/2/isrc/<isrc>` lookups that can return multiple record
 
 Build B accepts a recording automatically only when exactly one returned recording belongs to the trusted artist. Zero trusted-artist recordings is `no_match`; more than one is `needs_review`. An already-resolved recording identity cannot be replaced by a different later provider resolution, and conflicting compatible recording-ID fields block rather than choosing one.
 
+Immutable source identity remains part of the same conflict boundary: a source recording MBID that disagrees with an already-stored resolved recording blocks reuse, and explicit source MusicBrainz artist evidence that does not include the band's trusted artist MBID blocks automatic completion. Source observations remain unchanged.
+
 This keeps ISRC useful as recording evidence without assuming that every database ISRC maps uniquely in practice.
 
 ## ListenBrainz fallback
