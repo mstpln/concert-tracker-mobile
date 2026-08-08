@@ -129,14 +129,8 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
     const hasSpotifyState = providerEntryPresent(identity, 'spotify');
     const hasMusicbrainzState = providerEntryPresent(identity, 'musicbrainz');
     const hasListenbrainzState = providerEntryPresent(identity, 'listenbrainz');
-
-    if (item.spotifyTrackId && item.status === 'needs_spotify'
-      && providerAttemptAllowed(spotify, identity, now, hasSpotifyState)) {
-      steps.push(step(item.trackKey, 'spotify', 'exact_track', { spotifyTrackId: item.spotifyTrackId }));
-      continue;
-    }
-
     const isrc = validIsrc(identity?.isrc || item.spotifyMetadataIsrc);
+
     if (isrc && providerAttemptAllowed(musicbrainz, identity, now, hasMusicbrainzState)) {
       steps.push(step(item.trackKey, 'musicbrainz', 'isrc_lookup', {
         isrc,
@@ -145,8 +139,14 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
       continue;
     }
 
+    if (item.spotifyTrackId && item.status === 'needs_spotify' && !isrc
+      && providerAttemptAllowed(spotify, identity, now, hasSpotifyState)) {
+      steps.push(step(item.trackKey, 'spotify', 'exact_track', { spotifyTrackId: item.spotifyTrackId }));
+      continue;
+    }
+
     const spotifyRouteExhausted = !item.spotifyTrackId
-      || Boolean(item.spotifyMetadataIsrc)
+      || Boolean(isrc)
       || item.status === 'spotify_metadata_present'
       || spotify?.status === 'no_match'
       || spotify?.status === 'metadata';
@@ -293,13 +293,17 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
   if (!requested || outcome.requestedTrackId !== requested) return null;
   const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? clone(existing) : {};
   if (base.spotifyTrackId != null && base.spotifyTrackId !== requested) return null;
-  const albumId = validSpotifyId(outcome.spotifyAlbumId);
+  const outcomeAlbumId = validSpotifyId(outcome.spotifyAlbumId);
+  const existingAlbumId = validSpotifyId(base.spotifyAlbumId);
+  const albumId = outcomeAlbumId || existingAlbumId || null;
   const record = {
     ...base,
     spotifyTrackId: requested,
     spotifyTrackUrl: `https://open.spotify.com/track/${requested}`,
     spotifyAlbumId: albumId,
-    spotifyAlbumUrl: albumId ? `https://open.spotify.com/album/${albumId}` : null,
+    spotifyAlbumUrl: outcomeAlbumId
+      ? `https://open.spotify.com/album/${outcomeAlbumId}`
+      : existingAlbumId === albumId ? (base.spotifyAlbumUrl || `https://open.spotify.com/album/${albumId}`) : null,
     artworkUrl: outcome.artworkUrl || base.artworkUrl || null,
     spotifyArtistIds: clone(outcome.spotifyArtistIds),
     isrc: outcome.isrc || base.isrc || null,
