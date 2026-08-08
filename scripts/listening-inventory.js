@@ -184,12 +184,15 @@ function storedProviderEntriesValid(identity) {
 function storedIdentityState(item, identity) {
   if (identity === undefined) return { recordingMbid: null, conflict: false };
   if (!identity || typeof identity !== 'object' || Array.isArray(identity)) return { recordingMbid: null, conflict: true };
-  if (identity.workKey != null && (typeof identity.workKey !== 'string' || identity.workKey !== item.trackKey)) return { recordingMbid: null, conflict: true };
+  if (identity.workKey !== item.trackKey) return { recordingMbid: null, conflict: true };
   if (identity.localBandId != null && (typeof identity.localBandId !== 'string' || !SAFE_ID.test(identity.localBandId)
     || (item.bandId && identity.localBandId !== item.bandId))) return { recordingMbid: null, conflict: true };
   if (identity.spotifyTrackId != null) {
     const storedTrackId = validSpotifyId(identity.spotifyTrackId);
     if (!storedTrackId || (item.spotifyTrackId && storedTrackId !== item.spotifyTrackId)) return { recordingMbid: null, conflict: true };
+  }
+  if (item.trackKey.startsWith('spotify:') && validSpotifyId(identity.spotifyTrackId) !== item.spotifyTrackId) {
+    return { recordingMbid: null, conflict: true };
   }
   if (identity.isrc != null && (typeof identity.isrc !== 'string' || !ISRC.test(identity.isrc))) return { recordingMbid: null, conflict: true };
   if (identity.status != null && !TRACK_IDENTITY_STATUSES.has(identity.status)) return { recordingMbid: null, conflict: true };
@@ -207,6 +210,7 @@ function storedIdentityState(item, identity) {
   }
   const recordingMbids = [...new Set(recordingFields.map((field) => validMbid(identity[field])).filter(Boolean))];
   if (recordingMbids.length > 1) return { recordingMbid: null, conflict: true };
+  if (identity.status === 'resolved' && recordingMbids.length !== 1) return { recordingMbid: null, conflict: true };
 
   if (identity.spotifyArtistIds != null) {
     if (!Array.isArray(identity.spotifyArtistIds) || identity.spotifyArtistIds.length > 32
@@ -244,6 +248,8 @@ function normalizeIdentityDocument(document) {
     || !document.records || typeof document.records !== 'object' || Array.isArray(document.records)) {
     throw new Error('Invalid track identity document.');
   }
+  if (document.kind != null && document.kind !== 'livevault-track-identities') throw new Error('Invalid track identity document.');
+  if (document.schemaVersion != null && document.schemaVersion !== 1) throw new Error('Invalid track identity document.');
   return document.records;
 }
 
@@ -253,6 +259,8 @@ function normalizeSpotifyMetadata(document) {
     || !document.records || typeof document.records !== 'object' || Array.isArray(document.records)) {
     throw new Error('Invalid Spotify metadata document.');
   }
+  if (document.kind != null && document.kind !== 'livevault-spotify-listening-metadata') throw new Error('Invalid Spotify metadata document.');
+  if (document.schemaVersion != null && document.schemaVersion !== 1) throw new Error('Invalid Spotify metadata document.');
   return document.records;
 }
 
