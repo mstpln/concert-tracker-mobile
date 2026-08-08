@@ -67,7 +67,6 @@ function trustedBandIdentity(band) {
   const spotify = identities.providerRecord(band, 'spotify');
   return {
     bandId: clean(band?.id),
-    bandName: clean(band?.name),
     musicbrainzArtistMbid: identities.isConfirmed(musicbrainz, 'musicbrainz') ? validMbid(musicbrainz?.mbid) : null,
     spotifyArtistId: identities.isConfirmed(spotify, 'spotify') ? validSpotifyId(spotify?.id) : null,
   };
@@ -100,7 +99,19 @@ function workKey(event, bandId) {
   return spotifyTrackId ? `spotify:${spotifyTrackId}` : textTrackKey(event, bandId);
 }
 
+function lookupPair(event) {
+  const artistName = clean(event?.artistCreditName);
+  const recordingName = clean(event?.recordingTitle);
+  if (!artistName || !recordingName) return null;
+  return {
+    artistName,
+    recordingName,
+    key: `${normalizeText(artistName)}\n${normalizeText(recordingName)}`,
+  };
+}
+
 function newWorkItem({ trackKey, bandId, event, bandIdentity }) {
+  const lookup = lookupPair(event);
   return {
     trackKey,
     bandIds: [bandId],
@@ -109,8 +120,10 @@ function newWorkItem({ trackKey, bandId, event, bandIdentity }) {
     spotifyTrackId: validSpotifyId(event?.spotifyTrackId),
     trustedSpotifyArtistId: bandIdentity?.spotifyArtistId || null,
     trustedMusicbrainzArtistMbid: bandIdentity?.musicbrainzArtistMbid || null,
-    artistLookupName: bandIdentity?.bandName || clean(event?.artistCreditName),
-    recordingLookupName: clean(event?.recordingTitle),
+    artistLookupName: lookup?.artistName || null,
+    recordingLookupName: lookup?.recordingName || null,
+    lookupTextKey: lookup?.key || null,
+    lookupTextConflict: false,
     spotifyMetadataIsrc: null,
     sourceMusicbrainzRecordingMbids: [],
     sourceMusicbrainzArtistMbids: [],
@@ -119,6 +132,24 @@ function newWorkItem({ trackKey, bandId, event, bandIdentity }) {
     status: 'unresolved',
     reason: null,
   };
+}
+
+function addLookupEvidence(item, event) {
+  if (item.lookupTextConflict) return;
+  const lookup = lookupPair(event);
+  if (!lookup) return;
+  if (!item.lookupTextKey) {
+    item.lookupTextKey = lookup.key;
+    item.artistLookupName = lookup.artistName;
+    item.recordingLookupName = lookup.recordingName;
+    return;
+  }
+  if (item.lookupTextKey !== lookup.key) {
+    item.lookupTextConflict = true;
+    item.lookupTextKey = null;
+    item.artistLookupName = null;
+    item.recordingLookupName = null;
+  }
 }
 
 function addUnique(list, values) {
@@ -173,7 +204,12 @@ function buildListeningInventory({ bands = [], events = [], spotifyMetadata = nu
       item.reason = 'band_conflict';
       item.trustedSpotifyArtistId = null;
       item.trustedMusicbrainzArtistMbid = null;
+      item.lookupTextConflict = true;
+      item.lookupTextKey = null;
       item.artistLookupName = null;
+      item.recordingLookupName = null;
+    } else {
+      addLookupEvidence(item, event);
     }
     item.sourceEventCount += 1;
     item.sourceMusicbrainzRecordingMbids = addUnique(item.sourceMusicbrainzRecordingMbids, sourceRecordingMbids(event));
@@ -225,8 +261,12 @@ function buildListeningInventory({ bands = [], events = [], spotifyMetadata = nu
       continue;
     }
 
-    item.status = item.trustedMusicbrainzArtistMbid ? 'needs_listenbrainz_fallback' : 'blocked';
-    item.reason = item.trustedMusicbrainzArtistMbid ? 'exact_id_routes_exhausted' : 'missing_trusted_musicbrainz_artist';
+    item.status = item.trustedMusicbrainzArtistMbid && !item.lookupTextConflict && item.artistLookupName && item.recordingLookupName
+      ? 'needs_listenbrainz_fallback'
+      : 'blocked';
+    item.reason = item.status === 'needs_listenbrainz_fallback'
+      ? 'exact_id_routes_exhausted'
+      : item.lookupTextConflict ? 'conflicting_lookup_text' : 'missing_trusted_musicbrainz_artist_or_lookup_text';
   }
 
   const counts = {
@@ -277,6 +317,8 @@ module.exports = {
   sourceArtistMbids,
   textTrackKey,
   workKey,
+  lookupPair,
+  addLookupEvidence,
   buildListeningInventory,
   safeInventorySummary,
 };
