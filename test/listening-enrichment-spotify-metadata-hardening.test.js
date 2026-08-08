@@ -64,6 +64,11 @@ test('metadata without any effective Spotify artist identity is rejected', () =>
 test('malformed album IDs and non-HTTPS artwork are rejected before persistence', () => {
   assert.equal(engine.spotifyMetadataRecord(null, item(), metadataOutcome({ spotifyAlbumId: 'bad album!' })), null);
   assert.equal(engine.spotifyMetadataRecord(null, item(), metadataOutcome({ artworkUrl: 'http://example.test/art.jpg' })), null);
+  assert.equal(engine.spotifyMetadataRecord({
+    spotifyTrackId: 'SpotifyTrack123',
+    spotifyArtistIds: ['SpotifyArtist123'],
+    spotifyAlbumId: 'bad album!',
+  }, item(), metadataOutcome()), null);
 });
 
 test('relink audit fields must agree with the provider-resolved track ID', () => {
@@ -85,6 +90,19 @@ test('valid relinked metadata keeps requested storage identity and separate audi
   assert.equal(merged.spotifyTrackId, 'SpotifyTrack123');
   assert.equal(merged.spotifyProviderResolvedTrackId, 'RelinkedTrack456');
   assert.equal(merged.spotifyProviderRelinked, true);
+});
+
+test('a later non-relinked response clears stale known relink audit fields', () => {
+  const merged = engine.spotifyMetadataRecord({
+    spotifyTrackId: 'SpotifyTrack123',
+    spotifyArtistIds: ['SpotifyArtist123'],
+    spotifyProviderResolvedTrackId: 'OldRelinkedTrack456',
+    spotifyProviderRelinked: true,
+    futureField: { keep: true },
+  }, item(), metadataOutcome());
+  assert.equal(Object.prototype.hasOwnProperty.call(merged, 'spotifyProviderResolvedTrackId'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(merged, 'spotifyProviderRelinked'), false);
+  assert.deepEqual(merged.futureField, { keep: true });
 });
 
 test('inventory independently blocks stale or conflicting stored identity evidence', () => {
