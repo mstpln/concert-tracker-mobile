@@ -215,13 +215,14 @@ async function runMaintenanceBatch({
     if (!haltReason && summary.attempted >= limit && remainingPlan.steps.length) haltReason = 'batch_limit';
     state.haltReason = haltReason;
 
-    await persist({
+    const persistResult = await persist({
       trackIdentities: clone(identities),
       spotifyMetadata: clone(metadata),
       checkpoint: clone(state),
       lastStep: clone(next),
       lastOutcome: clone(outcome),
     });
+    if (persistResult !== true) throw new Error('Listening maintenance persistence was not confirmed.');
     summary.persisted += 1;
 
     if (haltReason) {
