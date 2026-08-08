@@ -126,7 +126,7 @@ test('planner retries only explicitly scheduled provider work after it is due', 
 
   const priorError = engine.planEnrichment({
     inventory,
-    trackIdentities: { records: { [key]: { workKey: key, providers: { spotify: { status: 'error' } } } },
+    trackIdentities: { records: { [key]: { workKey: key, providers: { spotify: { status: 'error' } } } } },
   });
   assert.equal(priorError.steps.length, 0);
   assert.equal(priorError.counts.no_route, 1);
