@@ -10,7 +10,12 @@ function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
+function validDate(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
 function checkpointState(value = null, now = new Date().toISOString()) {
+  if (!validDate(now)) throw new Error('Invalid listening maintenance time.');
   if (value == null) {
     return {
       kind: CHECKPOINT_KIND,
@@ -23,8 +28,11 @@ function checkpointState(value = null, now = new Date().toISOString()) {
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || value.kind !== CHECKPOINT_KIND || value.schemaVersion !== 1
+    || !validDate(value.startedAt) || !validDate(value.updatedAt)
+    || (value.haltReason != null && typeof value.haltReason !== 'string')
     || !Array.isArray(value.completedStepKeys)
-    || !value.completedStepKeys.every((key) => typeof key === 'string' && key.length > 0)) {
+    || value.completedStepKeys.length > 100000
+    || !value.completedStepKeys.every((key) => typeof key === 'string' && key.length > 0 && key.length <= 512)) {
     throw new Error('Invalid listening maintenance checkpoint.');
   }
   return clone(value);
@@ -141,18 +149,30 @@ async function runMaintenanceBatch({
   checkpoint = null,
   providers,
   usage,
+  preflight,
   persist,
   maxSteps = DEFAULT_MAX_STEPS,
   now = new Date().toISOString(),
 } = {}) {
   if (!inventory || !Array.isArray(inventory.items)) throw new Error('Invalid listening inventory.');
-  if (!persist || typeof persist !== 'function') throw new Error('Listening maintenance requires a persistence callback.');
+  if (typeof preflight !== 'function') throw new Error('Listening maintenance requires a persistence preflight.');
+  if (typeof persist !== 'function') throw new Error('Listening maintenance requires a persistence callback.');
   const limit = boundedMaxSteps(maxSteps);
   const identities = identityDocument(trackIdentities);
   const metadata = spotifyMetadataDocument(spotifyMetadata);
   const state = checkpointState(checkpoint, now);
   const completed = new Set(state.completedStepKeys);
   const summary = { attempted: 0, persisted: 0, halted: false, haltReason: null };
+
+  const initialPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
+  if (initialPlan.steps.length) {
+    await preflight({
+      trackIdentities: clone(identities),
+      spotifyMetadata: clone(metadata),
+      checkpoint: clone(state),
+      plan: enrichment.safePlanSummary(initialPlan),
+    });
+  }
 
   while (summary.attempted < limit) {
     const plan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
@@ -217,6 +237,7 @@ module.exports = {
   DEFAULT_MAX_STEPS,
   HARD_MAX_STEPS,
   CHECKPOINT_KIND,
+  validDate,
   checkpointState,
   stepKey,
   boundedMaxSteps,
