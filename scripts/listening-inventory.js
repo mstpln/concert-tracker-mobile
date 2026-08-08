@@ -152,6 +152,14 @@ function addLookupEvidence(item, event) {
   }
 }
 
+function spotifyMetadataArtistConflict(item, metadata) {
+  if (!item.trustedSpotifyArtistId || metadata?.spotifyArtistIds == null) return false;
+  if (!Array.isArray(metadata.spotifyArtistIds)) return true;
+  const ids = metadata.spotifyArtistIds.map(validSpotifyId).filter(Boolean);
+  if (ids.length !== metadata.spotifyArtistIds.length) return true;
+  return ids.length > 0 && !ids.includes(item.trustedSpotifyArtistId);
+}
+
 function addUnique(list, values) {
   const set = new Set(list);
   for (const value of values || []) if (value) set.add(value);
@@ -250,6 +258,11 @@ function buildListeningInventory({ bands = [], events = [], spotifyMetadata = nu
     if (item.spotifyTrackId) {
       const metadata = metadataRecords[item.spotifyTrackId];
       if (metadata?.spotifyTrackId === item.spotifyTrackId) {
+        if (spotifyMetadataArtistConflict(item, metadata)) {
+          item.status = 'blocked';
+          item.reason = 'spotify_metadata_artist_conflict';
+          continue;
+        }
         const isrc = clean(metadata.isrc);
         item.spotifyMetadataIsrc = isrc;
         item.status = isrc ? 'needs_musicbrainz' : 'spotify_metadata_present';
@@ -323,6 +336,7 @@ module.exports = {
   workKey,
   lookupPair,
   addLookupEvidence,
+  spotifyMetadataArtistConflict,
   buildListeningInventory,
   safeInventorySummary,
 };
