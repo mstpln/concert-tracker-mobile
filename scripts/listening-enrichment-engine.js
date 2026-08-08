@@ -35,6 +35,11 @@ function validSpotifyId(value) {
   return inventoryLib.validSpotifyId(value);
 }
 
+function validHttpsUrl(value) {
+  if (typeof value !== 'string' || !value) return false;
+  try { return new URL(value).protocol === 'https:'; } catch (_) { return false; }
+}
+
 function recordingMbidCandidates(record) {
   return [...new Set([
     validMbid(record?.musicbrainzRecordingId),
@@ -238,10 +243,7 @@ function spotifyOutcome({ requestedTrackId, payload, trustedSpotifyArtistId = nu
   const album = payload.album && typeof payload.album === 'object' && !Array.isArray(payload.album) ? payload.album : {};
   const albumId = validSpotifyId(album.id);
   const images = Array.isArray(album.images) ? album.images : [];
-  const artworkUrl = images.map((image) => clean(image?.url)).find((url) => {
-    if (!url) return false;
-    try { return new URL(url).protocol === 'https:'; } catch (_) { return false; }
-  }) || null;
+  const artworkUrl = images.map((image) => clean(image?.url)).find(validHttpsUrl) || null;
   const isrc = validIsrc(payload?.external_ids?.isrc);
 
   return {
@@ -374,6 +376,12 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
   const requested = validSpotifyId(item.spotifyTrackId);
   if (!requested || outcome.requestedTrackId !== requested) return null;
   try { validatedOutcomeArtistIds(item, outcome); } catch (_) { return null; }
+  const resolvedTrackId = outcome.resolvedTrackId == null ? null : validSpotifyId(outcome.resolvedTrackId);
+  if (outcome.resolvedTrackId != null && !resolvedTrackId) return null;
+  const expectedRelinked = Boolean(resolvedTrackId && resolvedTrackId !== requested);
+  if (outcome.relinked === true && !expectedRelinked) return null;
+  if (outcome.relinked === false && resolvedTrackId && expectedRelinked) return null;
+
   const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? clone(existing) : {};
   if (base.spotifyTrackId != null && base.spotifyTrackId !== requested) return null;
   const existingIsrc = validIsrc(base.isrc);
@@ -381,9 +389,14 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
   if ((base.isrc != null && !existingIsrc) || (outcome.isrc != null && !incomingIsrc)) return null;
   if (existingIsrc && incomingIsrc && existingIsrc !== incomingIsrc) return null;
   const outcomeAlbumId = validSpotifyId(outcome.spotifyAlbumId);
+  if (outcome.spotifyAlbumId != null && !outcomeAlbumId) return null;
+  if (outcome.artworkUrl != null && !validHttpsUrl(outcome.artworkUrl)) return null;
   const existingAlbumId = validSpotifyId(base.spotifyAlbumId);
   const albumId = outcomeAlbumId || existingAlbumId || null;
   const sameAlbum = !outcomeAlbumId || outcomeAlbumId === existingAlbumId;
+  const incomingSpotifyArtistIds = Array.isArray(outcome.spotifyArtistIds) && outcome.spotifyArtistIds.length
+    ? clone(outcome.spotifyArtistIds)
+    : null;
   const record = {
     ...base,
     spotifyTrackId: requested,
@@ -393,13 +406,13 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
       ? `https://open.spotify.com/album/${outcomeAlbumId}`
       : existingAlbumId ? (base.spotifyAlbumUrl || `https://open.spotify.com/album/${existingAlbumId}`) : null,
     artworkUrl: outcome.artworkUrl || (sameAlbum ? base.artworkUrl : null) || null,
-    spotifyArtistIds: clone(outcome.spotifyArtistIds),
+    spotifyArtistIds: incomingSpotifyArtistIds || clone(base.spotifyArtistIds) || null,
     isrc: incomingIsrc || existingIsrc || null,
     fetchedAt: now,
     source: 'spotify_exact_track_id',
   };
-  if (outcome.relinked && outcome.resolvedTrackId !== requested) {
-    record.spotifyProviderResolvedTrackId = outcome.resolvedTrackId;
+  if (expectedRelinked) {
+    record.spotifyProviderResolvedTrackId = resolvedTrackId;
     record.spotifyProviderRelinked = true;
   }
   return record;
@@ -423,6 +436,7 @@ module.exports = {
   ISRC,
   TRACK_IDENTITY_STATUSES,
   validIsrc,
+  validHttpsUrl,
   recordingMbidCandidates,
   recordingMbidFromIdentity,
   providerEntryPresent,
