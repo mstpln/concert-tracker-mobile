@@ -5,6 +5,7 @@ const inventoryLib = require('./listening-inventory');
 const ISRC = /^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$/;
 const PROVIDERS = new Set(['spotify', 'musicbrainz', 'listenbrainz']);
 const PROVIDER_RESULTS = new Set(['resolved', 'metadata', 'no_match', 'needs_review', 'retry', 'error']);
+const TRACK_IDENTITY_STATUSES = new Set(['unresolved', 'resolved', 'no_match', 'needs_review', 'retry', 'error']);
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -90,6 +91,7 @@ function identityCompatible(item, record) {
   if (storedSpotifyTrackId && item.spotifyTrackId && storedSpotifyTrackId !== item.spotifyTrackId) return false;
   if (recordingMbidCandidates(record).length > 1) return false;
   if (record.isrc != null && !validIsrc(record.isrc)) return false;
+  if (record.status != null && !TRACK_IDENTITY_STATUSES.has(record.status)) return false;
 
   const trustedSpotifyArtistId = validSpotifyId(item.trustedSpotifyArtistId);
   const storedSpotifyArtistIds = cleanStringList(record.spotifyArtistIds, (id) => Boolean(validSpotifyId(id)));
@@ -128,13 +130,33 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
       skipped.blocked += 1;
       continue;
     }
-    if (recordingMbidFromIdentity(identity) || item.status === 'complete') {
+    const recordingMbid = recordingMbidFromIdentity(identity);
+    if (recordingMbid || item.status === 'complete') {
       skipped.complete += 1;
       continue;
     }
     if (item.status === 'blocked') {
       skipped.blocked += 1;
       continue;
+    }
+    if (identity?.status === 'resolved') {
+      skipped.blocked += 1;
+      continue;
+    }
+    if (identity?.status === 'needs_review' || identity?.status === 'error' || identity?.status === 'no_match') {
+      skipped.no_route += 1;
+      continue;
+    }
+
+    const spotify = providerState(identity, 'spotify');
+    const musicbrainz = providerState(identity, 'musicbrainz');
+    const listenbrainz = providerState(identity, 'listenbrainz');
+    if (identity?.status === 'retry') {
+      const retryStates = [spotify, musicbrainz, listenbrainz].filter((state) => state?.status === 'retry');
+      if (retryStates.length !== 1) {
+        skipped.no_route += 1;
+        continue;
+      }
     }
 
     const storedIsrc = validIsrc(identity?.isrc);
@@ -149,9 +171,6 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
       continue;
     }
 
-    const spotify = providerState(identity, 'spotify');
-    const musicbrainz = providerState(identity, 'musicbrainz');
-    const listenbrainz = providerState(identity, 'listenbrainz');
     const hasSpotifyState = providerEntryPresent(identity, 'spotify');
     const hasMusicbrainzState = providerEntryPresent(identity, 'musicbrainz');
     const hasListenbrainzState = providerEntryPresent(identity, 'listenbrainz');
@@ -279,6 +298,8 @@ function listenbrainzOutcome({ payload, artistName, recordingName, trustedMusicb
 function providerObservation(provider, outcome, now) {
   if (!PROVIDERS.has(provider)) throw new Error('Unknown enrichment provider.');
   if (!outcome || !PROVIDER_RESULTS.has(outcome.status)) throw new Error('Invalid enrichment provider outcome.');
+  if (provider === 'spotify' && outcome.status === 'resolved') throw new Error('Invalid Spotify enrichment outcome status.');
+  if (provider !== 'spotify' && outcome.status === 'metadata') throw new Error('Invalid enrichment provider outcome status.');
   return {
     status: outcome.status,
     reason: outcome.reason,
@@ -309,6 +330,9 @@ function mergeIdentityRecord(existing, item, provider, outcome, now = new Date()
   validatedOutcomeArtistIds(item, outcome || {});
   const existingRecordingMbid = recordingMbidFromIdentity(base);
   const incomingRecordingMbid = validMbid(outcome?.recordingMbid);
+  if (outcome?.status === 'resolved' && !incomingRecordingMbid && !existingRecordingMbid) {
+    throw new Error('Resolved provider outcome is missing recording identity.');
+  }
   if (existingRecordingMbid && incomingRecordingMbid && existingRecordingMbid !== incomingRecordingMbid) {
     throw new Error('Resolved recording identity conflicts with the provider outcome.');
   }
@@ -325,7 +349,9 @@ function mergeIdentityRecord(existing, item, provider, outcome, now = new Date()
       : outcome.status === 'retry' ? 'retry'
         : outcome.status === 'error' ? 'error'
           : 'unresolved';
-  const next = outcome.nextEligibleCheckAt && dateMs(outcome.nextEligibleCheckAt) != null ? outcome.nextEligibleCheckAt : null;
+  const next = outcome.status === 'retry' && outcome.nextEligibleCheckAt && dateMs(outcome.nextEligibleCheckAt) != null
+    ? outcome.nextEligibleCheckAt
+    : null;
   const record = {
     ...base,
     workKey: item.trackKey,
@@ -347,6 +373,7 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
   if (outcome.status !== 'metadata') return null;
   const requested = validSpotifyId(item.spotifyTrackId);
   if (!requested || outcome.requestedTrackId !== requested) return null;
+  try { validatedOutcomeArtistIds(item, outcome); } catch (_) { return null; }
   const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? clone(existing) : {};
   if (base.spotifyTrackId != null && base.spotifyTrackId !== requested) return null;
   const existingIsrc = validIsrc(base.isrc);
@@ -394,6 +421,7 @@ function safePlanSummary(plan) {
 
 module.exports = {
   ISRC,
+  TRACK_IDENTITY_STATUSES,
   validIsrc,
   recordingMbidCandidates,
   recordingMbidFromIdentity,
