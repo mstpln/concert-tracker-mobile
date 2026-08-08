@@ -87,8 +87,10 @@ function providerAttemptAllowed(state, record, now, entryPresent = false) {
 function identityCompatible(item, record) {
   if (!record) return true;
   if (!record || typeof record !== 'object' || Array.isArray(record)) return false;
+  if (record.workKey != null && typeof record.workKey !== 'string') return false;
   const storedWorkKey = clean(record.workKey);
   if (storedWorkKey && storedWorkKey !== item.trackKey) return false;
+  if (record.localBandId != null && typeof record.localBandId !== 'string') return false;
   const storedBandId = clean(record.localBandId);
   if (storedBandId && item.bandId && storedBandId !== item.bandId) return false;
   if (record.spotifyTrackId != null && !validSpotifyId(record.spotifyTrackId)) return false;
@@ -98,14 +100,16 @@ function identityCompatible(item, record) {
   if (record.isrc != null && !validIsrc(record.isrc)) return false;
   if (record.status != null && !TRACK_IDENTITY_STATUSES.has(record.status)) return false;
 
+  if (record.spotifyArtistIds != null && !Array.isArray(record.spotifyArtistIds)) return false;
   const trustedSpotifyArtistId = validSpotifyId(item.trustedSpotifyArtistId);
   const storedSpotifyArtistIds = cleanStringList(record.spotifyArtistIds, (id) => Boolean(validSpotifyId(id)));
-  if (Array.isArray(record.spotifyArtistIds) && record.spotifyArtistIds.length && storedSpotifyArtistIds.length !== record.spotifyArtistIds.length) return false;
+  if (Array.isArray(record.spotifyArtistIds) && !record.spotifyArtistIds.every((id) => typeof id === 'string' && Boolean(validSpotifyId(id)))) return false;
   if (trustedSpotifyArtistId && storedSpotifyArtistIds.length && !storedSpotifyArtistIds.includes(trustedSpotifyArtistId)) return false;
 
+  if (record.musicbrainzArtistIds != null && !Array.isArray(record.musicbrainzArtistIds)) return false;
   const trustedMusicbrainzArtistMbid = validMbid(item.trustedMusicbrainzArtistMbid);
   const storedMusicbrainzArtistIds = cleanStringList(record.musicbrainzArtistIds, (id) => Boolean(validMbid(id))).map((id) => id.toLowerCase());
-  if (Array.isArray(record.musicbrainzArtistIds) && record.musicbrainzArtistIds.length && storedMusicbrainzArtistIds.length !== record.musicbrainzArtistIds.length) return false;
+  if (Array.isArray(record.musicbrainzArtistIds) && !record.musicbrainzArtistIds.every((id) => typeof id === 'string' && Boolean(validMbid(id)))) return false;
   if (trustedMusicbrainzArtistMbid && storedMusicbrainzArtistIds.length && !storedMusicbrainzArtistIds.includes(trustedMusicbrainzArtistMbid)) return false;
   return true;
 }
@@ -313,14 +317,14 @@ function validatedOutcomeArtistIds(item, outcome) {
   if (outcome.spotifyArtistIds != null) {
     if (!Array.isArray(outcome.spotifyArtistIds)) throw new Error('Invalid Spotify artist identity outcome.');
     const spotifyIds = cleanStringList(outcome.spotifyArtistIds, (id) => Boolean(validSpotifyId(id)));
-    if (spotifyIds.length !== outcome.spotifyArtistIds.length) throw new Error('Invalid Spotify artist identity outcome.');
+    if (!outcome.spotifyArtistIds.every((id) => typeof id === 'string' && Boolean(validSpotifyId(id)))) throw new Error('Invalid Spotify artist identity outcome.');
     const trusted = validSpotifyId(item.trustedSpotifyArtistId);
     if (trusted && spotifyIds.length && !spotifyIds.includes(trusted)) throw new Error('Spotify artist identity conflicts with the planned work item.');
   }
   if (outcome.artistMbids != null) {
     if (!Array.isArray(outcome.artistMbids)) throw new Error('Invalid MusicBrainz artist identity outcome.');
     const musicbrainzIds = cleanStringList(outcome.artistMbids, (id) => Boolean(validMbid(id))).map((id) => id.toLowerCase());
-    if (musicbrainzIds.length !== outcome.artistMbids.length) throw new Error('Invalid MusicBrainz artist identity outcome.');
+    if (!outcome.artistMbids.every((id) => typeof id === 'string' && Boolean(validMbid(id)))) throw new Error('Invalid MusicBrainz artist identity outcome.');
     const trusted = validMbid(item.trustedMusicbrainzArtistMbid);
     if (trusted && musicbrainzIds.length && !musicbrainzIds.includes(trusted)) throw new Error('MusicBrainz artist identity conflicts with the planned work item.');
   }
@@ -343,6 +347,10 @@ function mergeIdentityRecord(existing, item, provider, outcome, now = new Date()
   if (outcome?.isrc != null && !incomingIsrc) throw new Error('Invalid ISRC provider outcome.');
   if (existingIsrc && incomingIsrc && existingIsrc !== incomingIsrc) throw new Error('ISRC conflicts with the stored track identity.');
 
+  if (provider === 'spotify' && outcome?.status === 'metadata'
+    && (!Array.isArray(outcome.spotifyArtistIds) || outcome.spotifyArtistIds.length === 0)) {
+    throw new Error('Spotify metadata outcome is missing artist identity.');
+  }
   const providers = base.providers && typeof base.providers === 'object' && !Array.isArray(base.providers) ? clone(base.providers) : {};
   providers[provider] = { ...(providers[provider] || {}), ...providerObservation(provider, outcome, now) };
   const resolved = outcome.status === 'resolved' || Boolean(existingRecordingMbid);
@@ -397,6 +405,15 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
   const incomingSpotifyArtistIds = Array.isArray(outcome.spotifyArtistIds) && outcome.spotifyArtistIds.length
     ? clone(outcome.spotifyArtistIds)
     : null;
+  const existingSpotifyArtistIds = Array.isArray(base.spotifyArtistIds)
+    && base.spotifyArtistIds.every((id) => typeof id === 'string' && Boolean(validSpotifyId(id)))
+    ? clone(base.spotifyArtistIds)
+    : null;
+  const effectiveSpotifyArtistIds = incomingSpotifyArtistIds || existingSpotifyArtistIds;
+  if (!effectiveSpotifyArtistIds || effectiveSpotifyArtistIds.length === 0) return null;
+  const trustedSpotifyArtistId = validSpotifyId(item.trustedSpotifyArtistId);
+  if (trustedSpotifyArtistId && !effectiveSpotifyArtistIds.includes(trustedSpotifyArtistId)) return null;
+
   const record = {
     ...base,
     spotifyTrackId: requested,
@@ -406,7 +423,7 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
       ? `https://open.spotify.com/album/${outcomeAlbumId}`
       : existingAlbumId ? (base.spotifyAlbumUrl || `https://open.spotify.com/album/${existingAlbumId}`) : null,
     artworkUrl: outcome.artworkUrl || (sameAlbum ? base.artworkUrl : null) || null,
-    spotifyArtistIds: incomingSpotifyArtistIds || clone(base.spotifyArtistIds) || null,
+    spotifyArtistIds: effectiveSpotifyArtistIds,
     isrc: incomingIsrc || existingIsrc || null,
     fetchedAt: now,
     source: 'spotify_exact_track_id',
