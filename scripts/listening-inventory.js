@@ -322,6 +322,23 @@ function buildListeningInventory({ bands = [], events = [], spotifyMetadata = nu
       item.reason = 'stored_track_identity_conflict';
       continue;
     }
+    if (item.sourceMusicbrainzRecordingMbids.length > 1) {
+      item.status = 'blocked';
+      item.reason = 'source_recording_conflict';
+      continue;
+    }
+    if (item.trustedMusicbrainzArtistMbid && item.sourceMusicbrainzArtistMbids.length
+      && !item.sourceMusicbrainzArtistMbids.includes(item.trustedMusicbrainzArtistMbid)) {
+      item.status = 'blocked';
+      item.reason = 'source_musicbrainz_artist_conflict';
+      continue;
+    }
+    if (identityState.recordingMbid && item.sourceMusicbrainzRecordingMbids.length === 1
+      && identityState.recordingMbid !== item.sourceMusicbrainzRecordingMbids[0]) {
+      item.status = 'blocked';
+      item.reason = 'stored_source_recording_conflict';
+      continue;
+    }
     if (identityState.recordingMbid) {
       item.status = 'complete';
       item.reason = 'existing_track_identity';
@@ -331,11 +348,6 @@ function buildListeningInventory({ bands = [], events = [], spotifyMetadata = nu
     if (item.sourceMusicbrainzRecordingMbids.length === 1) {
       item.status = 'complete';
       item.reason = 'source_recording_mbid';
-      continue;
-    }
-    if (item.sourceMusicbrainzRecordingMbids.length > 1) {
-      item.status = 'blocked';
-      item.reason = 'source_recording_conflict';
       continue;
     }
 
