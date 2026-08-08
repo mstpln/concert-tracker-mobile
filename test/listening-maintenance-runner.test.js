@@ -95,7 +95,10 @@ test('executes one planned provider step at a time and persists before continuin
       assert.equal(snapshot.plan.planned, 1);
       return true;
     },
-    async persist(snapshot) { persisted.push(snapshot); },
+    async persist(snapshot) {
+      persisted.push(snapshot);
+      return true;
+    },
   });
 
   assert.equal(preflightCalls, 2);
@@ -118,7 +121,7 @@ test('persistence preflight fails before usage reservation or provider execution
     providers: { spotify: { exact_track: async () => { providerCalls += 1; return { kind: 'error' }; } } },
     usage,
     async preflight() { throw new Error('stale persistence precondition'); },
-    async persist() {},
+    async persist() { return true; },
   }), /stale persistence precondition/);
   assert.equal(usage.calls.length, 0);
   assert.equal(providerCalls, 0);
@@ -132,7 +135,7 @@ test('non-true persistence preflight is not treated as approval', async () => {
     providers: { spotify: { exact_track: async () => { providerCalls += 1; return { kind: 'error' }; } } },
     usage,
     async preflight() {},
-    async persist() {},
+    async persist() { return true; },
   }), /preflight was not approved/);
   assert.equal(usage.calls.length, 0);
   assert.equal(providerCalls, 0);
@@ -148,7 +151,7 @@ test('usage gate stops before provider execution or persistence', async () => {
     },
     usage: usageGate(false),
     preflight,
-    async persist() { writes += 1; },
+    async persist() { writes += 1; return true; },
   });
 
   assert.equal(providerCalls, 0);
@@ -164,7 +167,7 @@ test('non-true usage response blocks provider execution', async () => {
     providers: { spotify: { exact_track: async () => { providerCalls += 1; return { kind: 'error' }; } } },
     usage: { async reserve() {} },
     preflight,
-    async persist() {},
+    async persist() { return true; },
   });
   assert.equal(providerCalls, 0);
   assert.equal(result.summary.haltReason, 'usage_blocked:spotify');
@@ -186,7 +189,10 @@ test('retry outcome persists its halt reason and stops without hidden retry', as
     usage: usageGate(),
     preflight,
     now: '2026-08-08T09:00:00.000Z',
-    async persist(snapshot) { writes.push(snapshot); },
+    async persist(snapshot) {
+      writes.push(snapshot);
+      return true;
+    },
   });
 
   assert.equal(calls, 1);
@@ -221,6 +227,34 @@ test('persistence failure stops the batch before another provider call', async (
     preflight,
     async persist() { throw new Error('synthetic write conflict'); },
   }), /synthetic write conflict/);
+  assert.equal(spotifyCalls, 1);
+  assert.equal(musicbrainzCalls, 0);
+});
+
+test('non-true persistence result stops before another provider call', async () => {
+  let spotifyCalls = 0;
+  let musicbrainzCalls = 0;
+  await assert.rejects(() => runner.runMaintenanceBatch({
+    inventory: inventory(),
+    providers: {
+      ...providers(),
+      spotify: {
+        async exact_track(input) {
+          spotifyCalls += 1;
+          return providers().spotify.exact_track(input);
+        },
+      },
+      musicbrainz: {
+        async isrc_lookup(input) {
+          musicbrainzCalls += 1;
+          return providers().musicbrainz.isrc_lookup(input);
+        },
+      },
+    },
+    usage: usageGate(),
+    preflight,
+    async persist() {},
+  }), /persistence was not confirmed/);
   assert.equal(spotifyCalls, 1);
   assert.equal(musicbrainzCalls, 0);
 });
