@@ -6,6 +6,8 @@ const inventoryLib = require('../scripts/listening-inventory');
 const engine = require('../scripts/listening-enrichment-engine');
 
 const MB_ARTIST = '11111111-1111-4111-8111-111111111111';
+const MB_RECORDING = '22222222-2222-4222-8222-222222222222';
+const OTHER_RECORDING = '33333333-3333-4333-8333-333333333333';
 
 function build({ trustedMusicbrainz = true } = {}) {
   return inventoryLib.buildListeningInventory({
@@ -99,4 +101,43 @@ test('later incomplete Spotify metadata never erases existing valid album metada
   assert.equal(merged.artworkUrl, 'https://i.scdn.co/image/existing');
   assert.equal(merged.isrc, 'USABC1234567');
   assert.deepEqual(merged.futureField, { keep: true });
+});
+
+test('artwork from an old album is not carried onto a newly returned album', () => {
+  const item = build().items[0];
+  const merged = engine.spotifyMetadataRecord({
+    spotifyTrackId: 'SpotifyTrack123',
+    spotifyAlbumId: 'OldAlbum123',
+    spotifyAlbumUrl: 'https://open.spotify.com/album/OldAlbum123',
+    artworkUrl: 'https://i.scdn.co/image/old-album',
+  }, item, {
+    status: 'metadata',
+    requestedTrackId: 'SpotifyTrack123',
+    resolvedTrackId: 'SpotifyTrack123',
+    relinked: false,
+    spotifyArtistIds: ['SpotifyArtist123'],
+    spotifyAlbumId: 'NewAlbum456',
+    artworkUrl: null,
+    isrc: null,
+  }, '2026-08-08T09:00:00.000Z');
+
+  assert.equal(merged.spotifyAlbumId, 'NewAlbum456');
+  assert.equal(merged.spotifyAlbumUrl, 'https://open.spotify.com/album/NewAlbum456');
+  assert.equal(merged.artworkUrl, null);
+});
+
+test('a resolved recording can never be overwritten by a different provider resolution', () => {
+  const item = build().items[0];
+  assert.throws(() => engine.mergeIdentityRecord({
+    workKey: item.trackKey,
+    localBandId: 'band-1',
+    spotifyTrackId: 'SpotifyTrack123',
+    musicbrainzRecordingId: MB_RECORDING,
+    status: 'resolved',
+  }, item, 'musicbrainz', {
+    status: 'resolved',
+    reason: 'isrc_exact_trusted_artist',
+    recordingMbid: OTHER_RECORDING,
+    artistMbids: [MB_ARTIST],
+  }, '2026-08-08T09:00:00.000Z'), /Resolved recording identity conflicts/);
 });
