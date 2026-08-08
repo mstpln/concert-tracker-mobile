@@ -4,6 +4,7 @@ const enrichment = require('./listening-enrichment-engine');
 
 const DEFAULT_MAX_STEPS = 25;
 const HARD_MAX_STEPS = 100;
+const MAX_DOCUMENT_RECORDS = 100000;
 const CHECKPOINT_KIND = 'livevault-listening-maintenance-checkpoint';
 
 function clone(value) {
@@ -31,7 +32,7 @@ function checkpointState(value = null, now = new Date().toISOString()) {
     || !validDate(value.startedAt) || !validDate(value.updatedAt)
     || (value.haltReason != null && typeof value.haltReason !== 'string')
     || !Array.isArray(value.completedStepKeys)
-    || value.completedStepKeys.length > 100000
+    || value.completedStepKeys.length > MAX_DOCUMENT_RECORDS
     || !value.completedStepKeys.every((key) => typeof key === 'string' && key.length > 0 && key.length <= 512)) {
     throw new Error('Invalid listening maintenance checkpoint.');
   }
@@ -52,6 +53,13 @@ function boundedMaxSteps(value) {
 
 function identityDocument(value = null) {
   if (value == null) return { kind: 'livevault-track-identities', schemaVersion: 1, updatedAt: null, records: {} };
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || value.kind !== 'livevault-track-identities' || value.schemaVersion !== 1
+    || (value.updatedAt != null && !validDate(value.updatedAt))
+    || !value.records || typeof value.records !== 'object' || Array.isArray(value.records)
+    || Object.keys(value.records).length > MAX_DOCUMENT_RECORDS) {
+    throw new Error('Invalid track identity document.');
+  }
   enrichment.identityRecords(value);
   return clone(value);
 }
@@ -60,7 +68,9 @@ function spotifyMetadataDocument(value = null) {
   if (value == null) return { kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} };
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || value.kind !== 'livevault-spotify-listening-metadata' || value.schemaVersion !== 1
-    || !value.records || typeof value.records !== 'object' || Array.isArray(value.records)) {
+    || (value.updatedAt != null && !validDate(value.updatedAt))
+    || !value.records || typeof value.records !== 'object' || Array.isArray(value.records)
+    || Object.keys(value.records).length > MAX_DOCUMENT_RECORDS) {
     throw new Error('Invalid Spotify metadata document.');
   }
   return clone(value);
@@ -75,9 +85,7 @@ function providerForStep(providers, step) {
 
 async function reserveProviderCall(usage, provider) {
   if (!usage || typeof usage.reserve !== 'function') throw new Error('Listening maintenance requires an explicit usage gate.');
-  const result = await usage.reserve(provider);
-  if (result === false) return false;
-  return true;
+  return (await usage.reserve(provider)) === true;
 }
 
 function outcomeForStep(step, payload, item) {
@@ -106,7 +114,7 @@ function outcomeForStep(step, payload, item) {
 }
 
 function providerFailureOutcome(result) {
-  if (!result || typeof result !== 'object') return { status: 'error', reason: 'provider_adapter_failure' };
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return { status: 'error', reason: 'provider_adapter_failure' };
   if (result.kind === 'retry') {
     return {
       status: 'retry',
@@ -114,8 +122,8 @@ function providerFailureOutcome(result) {
       nextEligibleCheckAt: result.nextEligibleCheckAt,
     };
   }
-  if (result.kind === 'no_match') return { status: 'no_match', reason: result.reason || 'provider_no_match' };
-  if (result.kind === 'needs_review') return { status: 'needs_review', reason: result.reason || 'provider_needs_review' };
+  if (result.kind === 'no_match') return { status: 'no_match', reason: typeof result.reason === 'string' ? result.reason : 'provider_no_match' };
+  if (result.kind === 'needs_review') return { status: 'needs_review', reason: typeof result.reason === 'string' ? result.reason : 'provider_needs_review' };
   return { status: 'error', reason: typeof result.reason === 'string' ? result.reason : 'provider_error' };
 }
 
@@ -166,12 +174,13 @@ async function runMaintenanceBatch({
 
   const initialPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
   if (initialPlan.steps.length) {
-    await preflight({
+    const preflightResult = await preflight({
       trackIdentities: clone(identities),
       spotifyMetadata: clone(metadata),
       checkpoint: clone(state),
       plan: enrichment.safePlanSummary(initialPlan),
     });
+    if (preflightResult !== true) throw new Error('Listening maintenance persistence preflight was not approved.');
   }
 
   while (summary.attempted < limit) {
@@ -184,6 +193,8 @@ async function runMaintenanceBatch({
     if (!(await reserveProviderCall(usage, next.provider))) {
       summary.halted = true;
       summary.haltReason = `usage_blocked:${next.provider}`;
+      state.haltReason = summary.haltReason;
+      state.updatedAt = now;
       break;
     }
 
@@ -199,7 +210,12 @@ async function runMaintenanceBatch({
     completed.add(key);
     state.completedStepKeys = [...completed].sort();
     state.updatedAt = now;
-    state.haltReason = null;
+
+    const terminalOutcome = outcome.status === 'retry' || outcome.status === 'error' || outcome.status === 'needs_review';
+    const remainingPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
+    let haltReason = terminalOutcome ? `${next.provider}:${outcome.status}` : null;
+    if (!haltReason && summary.attempted >= limit && remainingPlan.steps.length) haltReason = 'batch_limit';
+    state.haltReason = haltReason;
 
     await persist({
       trackIdentities: clone(identities),
@@ -210,32 +226,30 @@ async function runMaintenanceBatch({
     });
     summary.persisted += 1;
 
-    if (outcome.status === 'retry' || outcome.status === 'error' || outcome.status === 'needs_review') {
+    if (haltReason) {
       summary.halted = true;
-      summary.haltReason = `${next.provider}:${outcome.status}`;
+      summary.haltReason = haltReason;
       break;
     }
   }
 
-  if (!summary.halted && summary.attempted >= limit) {
-    summary.halted = true;
-    summary.haltReason = 'batch_limit';
-  }
   state.haltReason = summary.haltReason;
   state.updatedAt = now;
+  const finalPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
 
   return {
     summary,
     checkpoint: state,
     trackIdentities: identities,
     spotifyMetadata: metadata,
-    plan: enrichment.safePlanSummary(enrichment.planEnrichment({ inventory, trackIdentities: identities, now })),
+    plan: enrichment.safePlanSummary(finalPlan),
   };
 }
 
 module.exports = {
   DEFAULT_MAX_STEPS,
   HARD_MAX_STEPS,
+  MAX_DOCUMENT_RECORDS,
   CHECKPOINT_KIND,
   validDate,
   checkpointState,
