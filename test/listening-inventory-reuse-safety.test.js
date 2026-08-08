@@ -6,6 +6,8 @@ const inventory = require('../scripts/listening-inventory');
 
 const MB_ARTIST = '11111111-1111-4111-8111-111111111111';
 const MB_RECORDING = '22222222-2222-4222-8222-222222222222';
+const OTHER_RECORDING = '33333333-3333-4333-8333-333333333333';
+const OTHER_ARTIST = '44444444-4444-4444-8444-444444444444';
 
 function band() {
   return {
@@ -19,12 +21,13 @@ function band() {
   };
 }
 
-function event() {
+function event(overrides = {}) {
   return {
     bandId: 'band-1',
     artistCreditName: 'Example Band',
     recordingTitle: 'Exact Song',
     spotifyTrackId: 'SpotifyTrack123',
+    ...overrides,
   };
 }
 
@@ -148,4 +151,38 @@ test('unknown future provider keys and statuses do not invalidate resolved ident
   });
   assert.equal(result.items[0].status, 'complete');
   assert.equal(result.items[0].reason, 'existing_track_identity');
+});
+
+test('stored and immutable source recording identities must agree', () => {
+  const result = inventory.buildListeningInventory({
+    bands: [band()],
+    events: [event({ musicbrainzRecordingId: OTHER_RECORDING, musicbrainzArtistIds: [MB_ARTIST] })],
+    trackIdentities: { records: {
+      'spotify:SpotifyTrack123': {
+        workKey: 'spotify:SpotifyTrack123',
+        spotifyTrackId: 'SpotifyTrack123',
+        musicbrainzRecordingId: MB_RECORDING,
+        status: 'resolved',
+      },
+    } },
+  });
+  assert.equal(result.items[0].status, 'blocked');
+  assert.equal(result.items[0].reason, 'stored_source_recording_conflict');
+  assert.equal(result.counts.completeTracks, 0);
+});
+
+test('immutable source artist identity must include the trusted band artist', () => {
+  const mismatch = inventory.buildListeningInventory({
+    bands: [band()],
+    events: [event({ musicbrainzRecordingId: MB_RECORDING, musicbrainzArtistIds: [OTHER_ARTIST] })],
+  });
+  assert.equal(mismatch.items[0].status, 'blocked');
+  assert.equal(mismatch.items[0].reason, 'source_musicbrainz_artist_conflict');
+
+  const collaboration = inventory.buildListeningInventory({
+    bands: [band()],
+    events: [event({ musicbrainzRecordingId: MB_RECORDING, musicbrainzArtistIds: [OTHER_ARTIST, MB_ARTIST] })],
+  });
+  assert.equal(collaboration.items[0].status, 'complete');
+  assert.equal(collaboration.items[0].reason, 'source_recording_mbid');
 });
