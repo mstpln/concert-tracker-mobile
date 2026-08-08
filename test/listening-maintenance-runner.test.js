@@ -78,18 +78,26 @@ function providers() {
   };
 }
 
+const preflight = async () => {};
+
 test('executes one planned provider step at a time and persists before continuing', async () => {
   const persisted = [];
   const usage = usageGate();
+  let preflightCalls = 0;
   const result = await runner.runMaintenanceBatch({
     inventory: inventory(),
     providers: providers(),
     usage,
     maxSteps: 2,
     now: '2026-08-08T09:00:00.000Z',
+    async preflight(snapshot) {
+      preflightCalls += 1;
+      assert.equal(snapshot.plan.planned, 1);
+    },
     async persist(snapshot) { persisted.push(snapshot); },
   });
 
+  assert.equal(preflightCalls, 1);
   assert.deepEqual(usage.calls, ['spotify', 'musicbrainz']);
   assert.equal(persisted.length, 2);
   assert.equal(persisted[0].lastStep.provider, 'spotify');
@@ -97,6 +105,20 @@ test('executes one planned provider step at a time and persists before continuin
   assert.equal(persisted[1].lastStep.provider, 'musicbrainz');
   assert.equal(result.trackIdentities.records['spotify:SpotifyTrack123'].musicbrainzRecordingId, MB_RECORDING);
   assert.equal(result.plan.complete, 1);
+});
+
+test('persistence preflight fails before usage reservation or provider execution', async () => {
+  let providerCalls = 0;
+  const usage = usageGate();
+  await assert.rejects(() => runner.runMaintenanceBatch({
+    inventory: inventory(),
+    providers: { spotify: { exact_track: async () => { providerCalls += 1; return { kind: 'error' }; } } },
+    usage,
+    async preflight() { throw new Error('stale persistence precondition'); },
+    async persist() {},
+  }), /stale persistence precondition/);
+  assert.equal(usage.calls.length, 0);
+  assert.equal(providerCalls, 0);
 });
 
 test('usage gate stops before provider execution or persistence', async () => {
@@ -108,6 +130,7 @@ test('usage gate stops before provider execution or persistence', async () => {
       spotify: { exact_track: async () => { providerCalls += 1; return { kind: 'error' }; } },
     },
     usage: usageGate(false),
+    preflight,
     async persist() { writes += 1; },
   });
 
@@ -131,6 +154,7 @@ test('retry outcome is persisted once and halts without hidden retry', async () 
       },
     },
     usage: usageGate(),
+    preflight,
     now: '2026-08-08T09:00:00.000Z',
     async persist(snapshot) { writes.push(snapshot); },
   });
@@ -163,6 +187,7 @@ test('persistence failure stops the batch before another provider call', async (
       },
     },
     usage: usageGate(),
+    preflight,
     async persist() { throw new Error('synthetic write conflict'); },
   }), /synthetic write conflict/);
   assert.equal(spotifyCalls, 1);
@@ -172,4 +197,12 @@ test('persistence failure stops the batch before another provider call', async (
 test('hard batch cap and checkpoint validation fail closed', async () => {
   assert.throws(() => runner.boundedMaxSteps(101), /maxSteps/);
   assert.throws(() => runner.checkpointState({ kind: runner.CHECKPOINT_KIND, schemaVersion: 1, completedStepKeys: [7] }), /Invalid listening maintenance checkpoint/);
+  assert.throws(() => runner.checkpointState({
+    kind: runner.CHECKPOINT_KIND,
+    schemaVersion: 1,
+    startedAt: 'bad-date',
+    updatedAt: '2026-08-08T09:00:00.000Z',
+    completedStepKeys: [],
+    haltReason: null,
+  }), /Invalid listening maintenance checkpoint/);
 });
