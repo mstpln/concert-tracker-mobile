@@ -52,6 +52,14 @@ function retryBlocked(record, now = new Date().toISOString()) {
   return next != null && current != null && next > current;
 }
 
+function providerAttemptAllowed(state, record, now) {
+  if (!state) return true;
+  if (state.status !== 'retry') return false;
+  const next = dateMs(record?.nextEligibleCheckAt);
+  const current = dateMs(now);
+  return next != null && current != null && next <= current;
+}
+
 function step(trackKey, provider, operation, input) {
   return { trackKey, provider, operation, input: clone(input) };
 }
@@ -83,13 +91,13 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
     const musicbrainz = providerState(identity, 'musicbrainz');
     const listenbrainz = providerState(identity, 'listenbrainz');
 
-    if (item.spotifyTrackId && item.status === 'needs_spotify' && !spotify) {
+    if (item.spotifyTrackId && item.status === 'needs_spotify' && providerAttemptAllowed(spotify, identity, now)) {
       steps.push(step(item.trackKey, 'spotify', 'exact_track', { spotifyTrackId: item.spotifyTrackId }));
       continue;
     }
 
     const isrc = validIsrc(identity?.isrc || item.spotifyMetadataIsrc);
-    if (isrc && musicbrainz?.status !== 'no_match' && musicbrainz?.status !== 'needs_review') {
+    if (isrc && providerAttemptAllowed(musicbrainz, identity, now)) {
       steps.push(step(item.trackKey, 'musicbrainz', 'isrc_lookup', {
         isrc,
         trustedMusicbrainzArtistMbid: validMbid(item.trustedMusicbrainzArtistMbid),
@@ -103,8 +111,8 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
       || spotify?.status === 'no_match'
       || spotify?.status === 'metadata';
     const musicbrainzRouteExhausted = !isrc || musicbrainz?.status === 'no_match';
-    if (spotifyRouteExhausted && musicbrainzRouteExhausted && !listenbrainz && validMbid(item.trustedMusicbrainzArtistMbid)
-      && clean(item.artistLookupName) && clean(item.recordingLookupName)) {
+    if (spotifyRouteExhausted && musicbrainzRouteExhausted && providerAttemptAllowed(listenbrainz, identity, now)
+      && validMbid(item.trustedMusicbrainzArtistMbid) && clean(item.artistLookupName) && clean(item.recordingLookupName)) {
       steps.push(step(item.trackKey, 'listenbrainz', 'metadata_lookup', {
         artistName: item.artistLookupName,
         recordingName: item.recordingLookupName,
@@ -210,7 +218,8 @@ function mergeIdentityRecord(existing, item, provider, outcome, now = new Date()
   const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? clone(existing) : {};
   const providers = base.providers && typeof base.providers === 'object' && !Array.isArray(base.providers) ? clone(base.providers) : {};
   providers[provider] = { ...(providers[provider] || {}), ...providerObservation(provider, outcome, now) };
-  const resolved = outcome.status === 'resolved';
+  const existingRecordingMbid = validMbid(base.musicbrainzRecordingId);
+  const resolved = outcome.status === 'resolved' || Boolean(existingRecordingMbid);
   const status = resolved ? 'resolved'
     : outcome.status === 'needs_review' ? 'needs_review'
       : outcome.status === 'retry' ? 'retry'
@@ -224,7 +233,7 @@ function mergeIdentityRecord(existing, item, provider, outcome, now = new Date()
     spotifyTrackId: item.spotifyTrackId || base.spotifyTrackId || null,
     status,
     updatedAt: now,
-    nextEligibleCheckAt: next,
+    nextEligibleCheckAt: resolved ? null : next,
     providers,
   };
   if (Array.isArray(outcome.spotifyArtistIds) && outcome.spotifyArtistIds.length) record.spotifyArtistIds = clone(outcome.spotifyArtistIds);
@@ -278,6 +287,7 @@ module.exports = {
   validIsrc,
   providerState,
   retryBlocked,
+  providerAttemptAllowed,
   planEnrichment,
   spotifyOutcome,
   musicbrainzIsrcOutcome,
