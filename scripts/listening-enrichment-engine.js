@@ -90,6 +90,16 @@ function providerAttemptAllowed(state, record, now, entryPresent = false) {
   return next != null && current != null && next <= current;
 }
 
+function knownProviderEntriesValid(record) {
+  if (!record?.providers || typeof record.providers !== 'object' || Array.isArray(record.providers)) return true;
+  for (const provider of PROVIDERS) {
+    if (!Object.prototype.hasOwnProperty.call(record.providers, provider)) continue;
+    const entry = record.providers[provider];
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+  }
+  return true;
+}
+
 function identityCompatible(item, record) {
   if (!record) return true;
   if (!record || typeof record !== 'object' || Array.isArray(record)) return false;
@@ -106,6 +116,7 @@ function identityCompatible(item, record) {
   if (record.isrc != null && !validIsrc(record.isrc)) return false;
   if (record.status != null && !TRACK_IDENTITY_STATUSES.has(record.status)) return false;
   if (record.providers != null && (!record.providers || typeof record.providers !== 'object' || Array.isArray(record.providers))) return false;
+  if (!knownProviderEntriesValid(record)) return false;
 
   if (record.spotifyArtistIds != null && (!Array.isArray(record.spotifyArtistIds) || record.spotifyArtistIds.length > MAX_PROVIDER_IDS)) return false;
   const trustedSpotifyArtistId = validSpotifyId(item.trustedSpotifyArtistId);
@@ -514,6 +525,7 @@ module.exports = {
   providerState,
   retryBlocked,
   providerAttemptAllowed,
+  knownProviderEntriesValid,
   identityCompatible,
   identityRecords,
   planEnrichment,
