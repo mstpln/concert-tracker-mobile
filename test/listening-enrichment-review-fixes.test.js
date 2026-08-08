@@ -23,9 +23,7 @@ function band() {
 
 function build({ trustedMusicbrainz = true, spotifyMetadata = null } = {}) {
   const currentBand = band();
-  if (!trustedMusicbrainz) {
-    currentBand.musicbrainz = { spotify: currentBand.musicbrainz.spotify };
-  }
+  if (!trustedMusicbrainz) currentBand.musicbrainz = { spotify: currentBand.musicbrainz.spotify };
   return inventoryLib.buildListeningInventory({
     bands: [currentBand],
     events: [{
@@ -43,18 +41,13 @@ test('stored ISRC is reused before another Spotify request', () => {
   const key = inventory.items[0].trackKey;
   const plan = engine.planEnrichment({
     inventory,
-    trackIdentities: {
-      records: {
-        [key]: {
-          workKey: key,
-          localBandId: 'band-1',
-          spotifyTrackId: 'SpotifyTrack123',
-          isrc: 'USABC1234567',
-        },
-      },
-    },
+    trackIdentities: { records: { [key]: {
+      workKey: key,
+      localBandId: 'band-1',
+      spotifyTrackId: 'SpotifyTrack123',
+      isrc: 'USABC1234567',
+    } } },
   });
-
   assert.equal(plan.steps.length, 1);
   assert.equal(plan.steps[0].provider, 'musicbrainz');
   assert.equal(plan.steps[0].operation, 'isrc_lookup');
@@ -66,42 +59,30 @@ test('ISRC never schedules MusicBrainz without a trusted artist anchor', () => {
   const key = inventory.items[0].trackKey;
   const plan = engine.planEnrichment({
     inventory,
-    trackIdentities: {
-      records: {
-        [key]: {
-          workKey: key,
-          localBandId: 'band-1',
-          spotifyTrackId: 'SpotifyTrack123',
-          isrc: 'USABC1234567',
-        },
-      },
-    },
+    trackIdentities: { records: { [key]: {
+      workKey: key,
+      localBandId: 'band-1',
+      spotifyTrackId: 'SpotifyTrack123',
+      isrc: 'USABC1234567',
+    } } },
   });
-
   assert.equal(plan.steps.length, 1);
   assert.equal(plan.steps[0].provider, 'spotify');
   assert.equal(plan.steps[0].operation, 'exact_track');
 });
 
 test('conflicting stored and Spotify-metadata ISRC evidence blocks provider work', () => {
-  const inventory = build({
-    spotifyMetadata: { records: { SpotifyTrack123: { spotifyTrackId: 'SpotifyTrack123', isrc: 'USABC1234567' } } },
-  });
+  const inventory = build({ spotifyMetadata: { records: { SpotifyTrack123: { spotifyTrackId: 'SpotifyTrack123', isrc: 'USABC1234567' } } } });
   const key = inventory.items[0].trackKey;
   const plan = engine.planEnrichment({
     inventory,
-    trackIdentities: {
-      records: {
-        [key]: {
-          workKey: key,
-          localBandId: 'band-1',
-          spotifyTrackId: 'SpotifyTrack123',
-          isrc: 'GBXYZ7654321',
-        },
-      },
-    },
+    trackIdentities: { records: { [key]: {
+      workKey: key,
+      localBandId: 'band-1',
+      spotifyTrackId: 'SpotifyTrack123',
+      isrc: 'GBXYZ7654321',
+    } } },
   });
-
   assert.equal(plan.steps.length, 0);
   assert.equal(plan.counts.blocked, 1);
 });
@@ -134,15 +115,13 @@ test('stored provider artist evidence that contradicts trusted band identity is 
 });
 
 test('reused Spotify metadata with explicit different artists is blocked by inventory', () => {
-  const inventory = build({
-    spotifyMetadata: { records: {
-      SpotifyTrack123: {
-        spotifyTrackId: 'SpotifyTrack123',
-        spotifyArtistIds: ['DifferentSpotifyArtist'],
-        isrc: 'USABC1234567',
-      },
-    } },
-  });
+  const inventory = build({ spotifyMetadata: { records: {
+    SpotifyTrack123: {
+      spotifyTrackId: 'SpotifyTrack123',
+      spotifyArtistIds: ['DifferentSpotifyArtist'],
+      isrc: 'USABC1234567',
+    },
+  } } });
   assert.equal(inventory.items[0].status, 'blocked');
   assert.equal(inventory.items[0].reason, 'spotify_metadata_artist_conflict');
 });
@@ -161,6 +140,57 @@ test('conflicting compatible recording-id fields block rather than choosing one'
   });
   assert.equal(plan.steps.length, 0);
   assert.equal(plan.counts.blocked, 1);
+});
+
+test('persistence rejects ISRC replacement and contradicting provider artist identities', () => {
+  const item = build().items[0];
+  assert.throws(() => engine.mergeIdentityRecord({
+    workKey: item.trackKey,
+    spotifyTrackId: 'SpotifyTrack123',
+    isrc: 'USABC1234567',
+  }, item, 'spotify', {
+    status: 'metadata',
+    reason: 'spotify_metadata_with_isrc',
+    isrc: 'GBXYZ7654321',
+    spotifyArtistIds: ['SpotifyArtist123'],
+  }), /ISRC conflicts/);
+
+  assert.throws(() => engine.mergeIdentityRecord({
+    workKey: item.trackKey,
+    spotifyTrackId: 'SpotifyTrack123',
+  }, item, 'spotify', {
+    status: 'metadata',
+    reason: 'spotify_metadata_without_isrc',
+    spotifyArtistIds: ['DifferentSpotifyArtist'],
+  }), /Spotify artist identity conflicts/);
+
+  assert.throws(() => engine.mergeIdentityRecord({
+    workKey: item.trackKey,
+    spotifyTrackId: 'SpotifyTrack123',
+  }, item, 'musicbrainz', {
+    status: 'resolved',
+    reason: 'isrc_exact_trusted_artist',
+    recordingMbid: MB_RECORDING,
+    artistMbids: ['44444444-4444-4444-8444-444444444444'],
+  }), /MusicBrainz artist identity conflicts/);
+});
+
+test('Spotify metadata persistence refuses a changed ISRC for the same stored track', () => {
+  const item = build().items[0];
+  const merged = engine.spotifyMetadataRecord({
+    spotifyTrackId: 'SpotifyTrack123',
+    isrc: 'USABC1234567',
+  }, item, {
+    status: 'metadata',
+    requestedTrackId: 'SpotifyTrack123',
+    resolvedTrackId: 'SpotifyTrack123',
+    relinked: false,
+    spotifyArtistIds: ['SpotifyArtist123'],
+    spotifyAlbumId: null,
+    artworkUrl: null,
+    isrc: 'GBXYZ7654321',
+  });
+  assert.equal(merged, null);
 });
 
 test('later incomplete Spotify metadata never erases existing valid album metadata', () => {
@@ -184,7 +214,6 @@ test('later incomplete Spotify metadata never erases existing valid album metada
     artworkUrl: null,
     isrc: null,
   };
-
   const merged = engine.spotifyMetadataRecord(existing, item, outcome, '2026-08-08T09:00:00.000Z');
   assert.equal(merged.spotifyAlbumId, 'ExistingAlbum123');
   assert.equal(merged.spotifyAlbumUrl, 'https://open.spotify.com/album/ExistingAlbum123');
@@ -210,7 +239,6 @@ test('artwork from an old album is not carried onto a newly returned album', () 
     artworkUrl: null,
     isrc: null,
   }, '2026-08-08T09:00:00.000Z');
-
   assert.equal(merged.spotifyAlbumId, 'NewAlbum456');
   assert.equal(merged.spotifyAlbumUrl, 'https://open.spotify.com/album/NewAlbum456');
   assert.equal(merged.artworkUrl, null);
