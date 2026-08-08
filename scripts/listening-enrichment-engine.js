@@ -130,16 +130,19 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
     const hasMusicbrainzState = providerEntryPresent(identity, 'musicbrainz');
     const hasListenbrainzState = providerEntryPresent(identity, 'listenbrainz');
     const isrc = validIsrc(identity?.isrc || item.spotifyMetadataIsrc);
+    const trustedMusicbrainzArtistMbid = validMbid(item.trustedMusicbrainzArtistMbid);
+    const musicbrainzRouteUsable = Boolean(isrc && trustedMusicbrainzArtistMbid);
 
-    if (isrc && providerAttemptAllowed(musicbrainz, identity, now, hasMusicbrainzState)) {
+    if (musicbrainzRouteUsable && providerAttemptAllowed(musicbrainz, identity, now, hasMusicbrainzState)) {
       steps.push(step(item.trackKey, 'musicbrainz', 'isrc_lookup', {
         isrc,
-        trustedMusicbrainzArtistMbid: validMbid(item.trustedMusicbrainzArtistMbid),
+        trustedMusicbrainzArtistMbid,
       }));
       continue;
     }
 
-    if (item.spotifyTrackId && item.status === 'needs_spotify' && !isrc
+    if (item.spotifyTrackId && item.status === 'needs_spotify'
+      && (!isrc || !trustedMusicbrainzArtistMbid)
       && providerAttemptAllowed(spotify, identity, now, hasSpotifyState)) {
       steps.push(step(item.trackKey, 'spotify', 'exact_track', { spotifyTrackId: item.spotifyTrackId }));
       continue;
@@ -150,14 +153,14 @@ function planEnrichment({ inventory, trackIdentities = null, now = new Date().to
       || item.status === 'spotify_metadata_present'
       || spotify?.status === 'no_match'
       || spotify?.status === 'metadata';
-    const musicbrainzRouteExhausted = !isrc || musicbrainz?.status === 'no_match';
+    const musicbrainzRouteExhausted = !musicbrainzRouteUsable || musicbrainz?.status === 'no_match';
     if (spotifyRouteExhausted && musicbrainzRouteExhausted
       && providerAttemptAllowed(listenbrainz, identity, now, hasListenbrainzState)
-      && validMbid(item.trustedMusicbrainzArtistMbid) && clean(item.artistLookupName) && clean(item.recordingLookupName)) {
+      && trustedMusicbrainzArtistMbid && clean(item.artistLookupName) && clean(item.recordingLookupName)) {
       steps.push(step(item.trackKey, 'listenbrainz', 'metadata_lookup', {
         artistName: item.artistLookupName,
         recordingName: item.recordingLookupName,
-        trustedMusicbrainzArtistMbid: validMbid(item.trustedMusicbrainzArtistMbid),
+        trustedMusicbrainzArtistMbid,
       }));
       continue;
     }
@@ -303,7 +306,7 @@ function spotifyMetadataRecord(existing, item, outcome, now = new Date().toISOSt
     spotifyAlbumId: albumId,
     spotifyAlbumUrl: outcomeAlbumId
       ? `https://open.spotify.com/album/${outcomeAlbumId}`
-      : existingAlbumId === albumId ? (base.spotifyAlbumUrl || `https://open.spotify.com/album/${albumId}`) : null,
+      : existingAlbumId ? (base.spotifyAlbumUrl || `https://open.spotify.com/album/${existingAlbumId}`) : null,
     artworkUrl: outcome.artworkUrl || base.artworkUrl || null,
     spotifyArtistIds: clone(outcome.spotifyArtistIds),
     isrc: outcome.isrc || base.isrc || null,
