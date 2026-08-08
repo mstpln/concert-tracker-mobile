@@ -171,6 +171,41 @@ test('malformed stored providers container blocks planning', () => {
   }
 });
 
+test('malformed known provider entries block planning and persistence', () => {
+  const item = work();
+  for (const spotify of ['bad-state', [], 17, null]) {
+    const existing = {
+      workKey: item.trackKey,
+      spotifyTrackId: item.spotifyTrackId,
+      providers: { spotify },
+    };
+    const plan = engine.planEnrichment({
+      inventory: { items: [item] },
+      trackIdentities: { records: { [item.trackKey]: existing } },
+    });
+    assert.equal(plan.steps.length, 0);
+    assert.equal(plan.counts.blocked, 1);
+    assert.throws(() => engine.mergeIdentityRecord(existing, item, 'spotify', {
+      status: 'no_match',
+      reason: 'not_found',
+    }), /conflicts with the planned work item/);
+  }
+});
+
+test('unknown future provider status remains existing state rather than fresh work', () => {
+  const item = work();
+  const plan = engine.planEnrichment({
+    inventory: { items: [item] },
+    trackIdentities: { records: { [item.trackKey]: {
+      workKey: item.trackKey,
+      spotifyTrackId: item.spotifyTrackId,
+      providers: { spotify: { status: 'future_status', futureField: true }, futureProvider: { value: 1 } },
+    } } },
+  });
+  assert.equal(plan.steps.length, 0);
+  assert.equal(plan.counts.no_route, 1);
+});
+
 test('malformed compatible recording identity field blocks even beside a valid field', () => {
   const item = work();
   for (const malformedValue of [17, 'not-a-mbid']) {
