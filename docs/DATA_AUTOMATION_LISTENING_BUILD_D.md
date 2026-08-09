@@ -66,14 +66,17 @@ No rollback is required; all 97 persisted steps remain durable and source observ
 
 Inspection found that the maintenance MusicBrainz adapter treated transient provider/transport failures too strictly. A MusicBrainz `429` or `503` became retryable only when a usable `Retry-After` header was present, while a missing header, network failure or timeout became terminal `error`. Because the enrichment state machine excludes terminal errors from automatic routing, a temporary provider outage could both stop the bulk process and permanently remove that track from automatic retry.
 
-The focused v111 correction changes only MusicBrainz transient-failure classification:
+The focused v111 correction changes MusicBrainz transient-failure classification and narrowly repairs legacy state created by the old policy:
 
 - `404` remains a legitimate no-match and follows the existing fallback path;
 - `429` and `503` preserve a usable provider `Retry-After` when present;
 - `429` and `503` without a usable `Retry-After` become a dated retry with a conservative 30-minute delay;
 - MusicBrainz network and timeout failures become the same conservative dated retry;
 - malformed JSON and other non-transient HTTP/data failures remain terminal `error`;
-- a persisted retry still stops the current bulk invocation, preserving fail-closed operation.
+- a persisted retry still stops the current bulk invocation, preserving fail-closed operation;
+- existing bulk identity records whose root status is `error` and whose MusicBrainz provider entry is also `error` with reason `http_429`, `http_503`, or `musicbrainz_network_error` are converted once to `retry`, with `nextEligibleCheckAt` calculated from the original provider `checkedAt` plus the same 30-minute delay;
+- legacy recovery is bulk-only, requires a valid original `checkedAt`, preserves unrelated/unknown fields and other provider observations, and leaves every non-transient or incomplete error record unchanged;
+- any legacy recovery is durably written through a strict identity-only conditional write before provider usage is reserved or a provider request is made. A concurrent identity change aborts the correction and the run before provider execution.
 
 Spotify and ListenBrainz adapter behavior is unchanged by this correction. Resuming the production backfill remains separately authorized only after the correction is reviewed and merged.
 
