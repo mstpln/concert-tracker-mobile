@@ -22,19 +22,25 @@ Each invocation attempted exactly one provider step, persisted the result requir
 
 v111 adds `scripts/listening-backfill-bulk.js` for a separately authorized historical backfill. It reuses the same inventory, provider adapters, UsageTracker accounting, persistence preflight, concurrency checks and per-step durable writes as the validated Build D path.
 
-The bulk runner executes the existing maintenance runner in internal chunks of at most 100 provider steps. A `batch_limit` after a durable 100-step chunk is the normal internal continuation point. A true provider-wide halt, provider error, usage denial, stale production state, persistence conflict or any thrown safety error still stops the process immediately.
+The bulk runner executes the existing maintenance runner in internal chunks of at most 100 provider steps. A `batch_limit` after a durable 100-step chunk is the normal internal continuation point.
 
-A persisted `needs_review` result is different: in bulk mode only, that individual work item is quarantined in its existing review-required identity state and excluded from further automatic routing, while unrelated work continues. The focused 1–5 step production entrypoint keeps the original default and still halts on `needs_review` for diagnostics. This policy change does not auto-resolve or guess an ambiguous recording.
+Bulk maintenance now scopes a provider result to one of three safety boundaries instead of adding one-off exceptions for individual error strings:
 
-A persisted track-level `retry` is also handled specially in bulk mode. The retrying track is durably saved first with its provider-owned retry state and `nextEligibleCheckAt`. The retrying provider is then deferred for the remainder of that bulk invocation, so the runner does not call that provider again during the same process. Eligible work for the other providers may continue. The focused 1–5 step production entrypoint keeps the original stop-on-retry default.
+- **Item-scoped:** an otherwise successful provider response contains invalid or contradictory data for that item, or the adapter reports invalid input. The derived item is persisted in its existing terminal/quarantined state and unrelated work continues. No invalid provider field is guessed or salvaged.
+- **Provider-scoped:** the provider adapter fails, the network/transport/HTTP/auth layer fails, or the provider explicitly reports a provider-wide halt such as quota exhaustion. The current track is left unmodified, that provider is deferred for the remainder of the invocation, and eligible work through other providers may continue. The deferred provider is not called again in the same invocation.
+- **Global safety:** missing provider configuration caught before a call, UsageTracker denial, stale/concurrent production state, failed or non-confirmed persistence, or a thrown data-safety check still stops the entire process immediately.
 
-The deferred-provider set is carried across the bulk runner's internal 100-step chunks. If all remaining currently planned work belongs to deferred providers, the invocation stops safely with `provider_retry_wait:<provider>`. If no provider step is currently eligible but dated retry state remains, the final summary reports `retry_wait`. This does not create a hidden retry loop and does not guess that a provider is healthy again inside the same invocation.
+A persisted `needs_review` result remains item-scoped in bulk mode: that individual work item is quarantined in its review-required identity state and excluded from further automatic routing while unrelated work continues. The focused 1–5 step production entrypoint still halts on `needs_review` for diagnostics.
+
+A persisted track-level `retry` retains its provider-owned retry state and `nextEligibleCheckAt`. In bulk mode the retrying provider is then deferred for the rest of that invocation. The focused 1–5 step production entrypoint keeps the original stop-on-retry default.
+
+The deferred-provider set is carried across internal 100-step chunks. If all remaining currently planned work belongs to deferred providers, the invocation stops safely with `provider_deferred:<provider[,provider...]>`. If no provider step is currently eligible but dated retry state remains, the final summary reports `retry_wait`. There is no hidden retry loop and a deferred provider is never probed again during the same invocation.
 
 The bulk process has a separate hard ceiling of 50,000 provider steps per invocation. This is sized above the current 12,000-track inventory because a track can require Spotify, then MusicBrainz, then ListenBrainz. It is a runaway guard, not a promise that providers will allow that many calls.
 
 The Spotify app-only access token is refreshed after at most 45 minutes of reuse so a multi-hour process does not depend on one short-lived token. This refresh changes no track identity and does not weaken the provider gates.
 
-A structured Spotify 429 `QUOTA_EXCEEDED` response is treated as a provider-wide halt rather than a terminal error for the current track. Usage has already been durably reserved before that request, but the work item is deliberately left incomplete and its step key is not marked completed. A later separately authorized invocation can therefore retry the same track instead of silently losing it. Ordinary retryable provider responses remain explicit dated retries and follow the bulk provider-deferral policy above.
+A structured Spotify 429 `QUOTA_EXCEEDED` response is provider-scoped in the full bulk path. Usage has already been durably reserved before that request, but the current work item remains incomplete and unmodified, Spotify is deferred for the remainder of that invocation, and work through other provider families may continue. A later separately authorized invocation can therefore retry the same Spotify track instead of silently losing it.
 
 ## First bulk production invocation
 
@@ -51,7 +57,7 @@ The process attempted four provider steps and persisted all four. It then stoppe
 - blocked: 0;
 - retry-wait: 0.
 
-The four persisted steps remain durable and source observations were not changed. The early stop demonstrated that treating every review-required track as a process-wide halt would make a large historical migration unnecessarily interactive, even though the ambiguous track itself had already been safely quarantined. The focused v111 correction therefore changes only the bulk stop policy described above; it does not rerun production or weaken provider, quota, concurrency or persistence stops.
+The four persisted steps remain durable and source observations were not changed. The early stop demonstrated that treating every review-required track as a process-wide halt would make a large historical migration unnecessarily interactive, even though the ambiguous track itself had already been safely quarantined.
 
 ## Second bulk production invocation and transient MusicBrainz correction
 
@@ -85,7 +91,7 @@ PR #100 corrected MusicBrainz transient-failure classification and narrowly repa
 
 Spotify and ListenBrainz adapter behavior was unchanged by PR #100.
 
-## Third bulk production invocation and provider-deferral correction
+## Third bulk production invocation and retry-provider deferral
 
 After PR #100 merged as `c5396c6449ae18471d66f210b3cf7d3206562c1e`, the user separately authorized another full production backfill attempt.
 
@@ -100,19 +106,36 @@ That invocation attempted and persisted 118 provider steps before stopping safel
 
 No rollback is required; all 118 persisted steps remain durable and source observations remain unchanged. The result confirmed that the PR #100 correction worked as intended: the transient MusicBrainz condition became durable retry state instead of a terminal poisoned track.
 
-The production result also exposed an operational bottleneck. Stopping the entire bulk process on every track-level retry would require repeated manual restarts while thousands of unrelated provider steps remain safe to process. PR #101 therefore changes only the full bulk stop policy:
+PR #101 then generalized that retry operation in bulk mode: the retrying item is persisted first, the retrying provider is deferred for the remainder of the invocation, and eligible work for other providers may continue. Deferral is carried across internal chunks and the focused diagnostic entrypoint remains fail-fast.
 
-- the retrying track is still persisted before any continuation;
-- the retrying provider is deferred for the rest of that invocation;
-- the deferred provider is not called again during that process;
-- eligible work for other providers continues;
-- provider deferral is carried across internal 100-step chunks;
-- when only deferred-provider work remains, the invocation stops with `provider_retry_wait:<provider>`;
-- when no provider work is currently eligible but dated retries remain, the final summary reports `retry_wait`;
-- true provider-wide halts, terminal errors, usage denial, stale state, concurrency changes, persistence failures and thrown safety errors remain global stops;
-- the focused 1–5 step diagnostic entrypoint still stops on retry by default.
+## Fourth bulk production invocation and generalized outcome policy
 
-This is not an automatic retry loop. The provider that emitted the retry remains untouched for the rest of that invocation, preserving a conservative response to 429/503/network availability signals while allowing unrelated provider families to make progress.
+After PR #101 merged as `c40e404bcdf968178e76f2600727c80ae523d035`, the user separately authorized another full production attempt.
+
+The invocation attempted and persisted 52 provider steps. MusicBrainz was deferred during the run and the process continued with other provider work, confirming the PR #101 behavior in production. It later stopped on `spotify:error`. Aggregate state after the stop was:
+
+- complete tracks: 164;
+- Spotify planned steps: 11,871;
+- MusicBrainz planned steps: 50;
+- ListenBrainz planned steps: 22;
+- total planned steps: 11,943;
+- no-route/review-required: 15;
+- blocked tracks: 0;
+- retry-wait tracks: 1.
+
+All 52 persisted steps remain durable and source observations remain unchanged. No rollback is required.
+
+A separately run read-only derived-state inspection showed that the latest Spotify terminal reason was `malformed_spotify_isrc`, checked at `2026-08-09T16:18:29.192Z`. This was not evidence of a broken Spotify connection: many immediately preceding Spotify requests had succeeded. One otherwise successful track response contained an ISRC that failed the strict validator.
+
+PR #102 replaces further one-off stop exceptions with the generalized item/provider/global policy described above. Under this policy:
+
+- the existing `malformed_spotify_isrc` record remains safely quarantined and need not be rewritten;
+- future malformed successful payloads affect only their own item and do not stop unrelated work;
+- raw provider failures and explicit provider-wide halts do not mutate the current track into terminal error;
+- a provider-scoped failure defers only that provider for the current bulk invocation while other provider families may continue;
+- dated retry state remains durable and authoritative;
+- missing configuration, UsageTracker denial, stale/concurrent state, persistence failure and data-safety exceptions still stop globally;
+- focused 1–5 step diagnostics keep their strict fail-fast defaults.
 
 ## Bulk authorization
 
@@ -132,7 +155,7 @@ Merging v111 or a focused v111 correction does not itself authorize or start ano
 
 The ordinary application/research provider caps remain unchanged. Only a context loaded explicitly with `bulk: true` widens the listening-maintenance invocation ceilings. Spotify and MusicBrainz use 15,000-step maintenance ceilings for the bulk process, while ListenBrainz retains a conservative maximum of 100 calls per process with at least one-second pacing.
 
-Spotify still uses the existing UsageTracker accounting and pacing, and its provider response remains authoritative. Spotify Development Mode does not publish a stable numeric account quota; 429/rate-limit or quota responses therefore stop or defer conservatively according to the reviewed result type rather than being guessed around.
+Spotify still uses the existing UsageTracker accounting and pacing, and its provider response remains authoritative. Spotify Development Mode does not publish a stable numeric account quota; rate-limit/quota responses are handled conservatively without guessing an allowance. In bulk mode an explicit provider-wide stop defers Spotify for the remainder of that invocation rather than allowing another Spotify request.
 
 MusicBrainz keeps the reviewed meaningful User-Agent and at least 1.1-second pacing. ListenBrainz keeps its separate courtesy ceiling rather than inheriting the larger Spotify/MusicBrainz bulk ceiling. These values are internal invocation guards, not claims about provider allowances.
 
@@ -208,7 +231,7 @@ Before v111 bulk rollout, Spotify's current Development Mode quota documentation
 
 ## Version
 
-Build D began at v110. The v111 bulk runner is an architectural extension because it changes the production operating mode from tiny diagnostic invocations to one resumable long-running process. `APP_VERSION`, `CACHE_NAME_LITERAL` and generated build state moved together to v111 exactly once. The review-quarantine, MusicBrainz transient-retry and provider-deferral changes are focused corrections to the same operational build and therefore keep v111.
+Build D began at v110. The v111 bulk runner is an architectural extension because it changes the production operating mode from tiny diagnostic invocations to one resumable long-running process. `APP_VERSION`, `CACHE_NAME_LITERAL` and generated build state moved together to v111 exactly once. The review-quarantine, MusicBrainz transient-retry, retry-provider-deferral and generalized outcome-scope changes are focused corrections to the same operational build and therefore keep v111.
 
 ## Production boundary
 
@@ -224,4 +247,4 @@ Development and QA do not:
 - modify immutable source observations;
 - remove existing provider/data safety rules.
 
-The three one-step Build D production validations and three separately authorized bulk invocations were production actions. Any resumed bulk invocation remains separately authorized after the focused correction is reviewed and merged.
+The three one-step Build D production validations and four separately authorized bulk invocations were production actions. Any resumed bulk invocation remains separately authorized after the focused correction is reviewed and merged.
