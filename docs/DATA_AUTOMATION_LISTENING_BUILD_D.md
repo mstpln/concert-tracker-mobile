@@ -26,6 +26,10 @@ The bulk runner executes the existing maintenance runner in internal chunks of a
 
 The bulk process has a separate hard ceiling of 50,000 provider steps per invocation. This is sized above the current 12,000-track inventory because a track can require Spotify, then MusicBrainz, then ListenBrainz. It is a runaway guard, not a promise that providers will allow that many calls.
 
+The Spotify app-only access token is refreshed after at most 45 minutes of reuse so a multi-hour process does not depend on one short-lived token. This refresh changes no track identity and does not weaken the provider gates.
+
+A structured Spotify 429 `QUOTA_EXCEEDED` response is treated as a provider-wide halt rather than a terminal error for the current track. Usage has already been durably reserved before that request, but the work item is deliberately left incomplete and its step key is not marked completed. A later separately authorized invocation can therefore retry the same track instead of silently losing it. Ordinary 429 responses with a valid `Retry-After` remain explicit dated retries.
+
 ## Bulk authorization
 
 The bulk runner requires the existing provider/write authorization values plus a third exact authorization dedicated to the full historical operation:
@@ -68,11 +72,11 @@ Spotify exact-track enrichment uses the existing app-only Client Credentials env
 - `SPOTIFY_CLIENT_ID`
 - `SPOTIFY_CLIENT_SECRET`
 
-The access token is acquired lazily only if the bounded planner reaches a Spotify step and is cached only for the process lifetime.
+The access token is acquired lazily only if the planner reaches a Spotify step. The focused five-step entrypoint caches it only for that short process; the v111 bulk entrypoint refreshes it after at most 45 minutes of reuse for long-running operation.
 
 MusicBrainz requires no secret and continues using the reviewed meaningful User-Agent and maintenance pacing.
 
-ListenBrainz fallback remains later in the evidence ladder and resolves `LISTENBRAINZ_USER_TOKEN` lazily only if a bounded run actually reaches a ListenBrainz step.
+ListenBrainz fallback remains later in the evidence ladder and resolves `LISTENBRAINZ_USER_TOKEN` lazily only if a run actually reaches a ListenBrainz step.
 
 Before quota reservation, the production preflight verifies that the credential required by the planned provider exists. A missing Spotify client ID/secret or ListenBrainz user token therefore stops the invocation before provider quota is reserved and before a track-level error can be persisted. Credential values are never included in aggregate output.
 
