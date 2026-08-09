@@ -195,3 +195,15 @@ QA uses fictional listening fixtures and the fake backend only. Automated tests 
 ## Development workflow
 
 Approve scope, create a branch, implement and test with synthetic data, maintain state/decisions/build facts, push and open a PR, then merge only after explicit `Merge it`. A merged change to watched Worker deployment files may deploy the reviewed Worker automatically. App-only and documentation-only changes do not trigger the Worker. R2 writes, migrations, secrets and production workflows remain separately authorized.
+
+## Current v111 production-backfill correction state
+
+This section supersedes the earlier v111 paragraph above where later production facts differ.
+
+PR #99 merged the bulk-only review-quarantine correction. The separately authorized bulk backfill was then resumed and attempted/persisted 97 additional provider steps before stopping safely on `musicbrainz:error`. Aggregate state after that stop was 115 complete tracks, 11,977 tracks remaining in the Spotify backlog, 9 no-route/review-required items, 11,999 remaining planned steps, zero blocked tracks and zero retry-wait tracks. Those 97 writes remain durable; source observations were not changed and no rollback is required.
+
+PR #100 on `fix/listening-musicbrainz-transient-retry-v111` is the focused correction for that stop. Future MusicBrainz `429`/`503` responses without usable `Retry-After` and network/timeout failures become explicit dated retries using a conservative 30-minute delay; usable provider `Retry-After` values remain authoritative. `404` still follows the existing no-match fallback, while malformed JSON and other non-transient failures remain terminal errors. The focused 1–5 step diagnostic path is unchanged.
+
+The PR also narrowly recovers legacy bulk identity state produced by the old policy: only records whose root status is `error` and whose MusicBrainz provider entry is also `error` with reason `http_429`, `http_503`, or `musicbrainz_network_error`, plus a valid original `checkedAt`, are converted to `retry`. The retry date is calculated from the original checked time plus 30 minutes. Unrelated/unknown fields and other provider observations are preserved; all other error states remain terminal. The recovery is bulk-only and is durably persisted through a strict identity-only conditional write before any provider usage reservation or external provider call. Concurrent identity changes abort the correction and the run before provider execution.
+
+`APP_VERSION`, `CACHE_NAME_LITERAL` and generated build facts remain synchronized at v111. PR #100 does not authorize resuming the production backfill, does not call live providers, and does not itself modify production data. A future bulk invocation remains a separately authorized production action after review and merge.
