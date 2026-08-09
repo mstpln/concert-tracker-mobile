@@ -82,6 +82,7 @@ async function loadListeningMaintenanceContext(client, { today, bulk = false } =
   const usage = {
     reserve: persistUsageBeforeProvider,
     state: baseUsage.state,
+    blockReason: (provider) => baseUsage.blockReason(provider),
   };
 
   async function preflight(snapshot) {
