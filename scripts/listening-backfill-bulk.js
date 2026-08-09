@@ -1,6 +1,7 @@
 'use strict';
 
 const inventoryLib = require('./listening-inventory');
+const enrichment = require('./listening-enrichment-engine');
 const sourceReader = require('./spotify-artwork-backfill-source');
 const spotifyBackfill = require('./spotify-artwork-backfill');
 const runner = require('./listening-maintenance-runner');
@@ -81,15 +82,24 @@ function legacyMusicbrainzTransientRetryAt(record) {
   return new Date(checkedAt + MUSICBRAINZ_TRANSIENT_RETRY_MS).toISOString();
 }
 
-function reviveLegacyMusicbrainzTransientErrors(document, recoveredAt = new Date().toISOString()) {
+function recoverableLegacyMusicbrainzItem(item, record) {
+  if (!item || item.status === 'blocked' || item.status === 'complete') return false;
+  if (!enrichment.identityCompatible(item, record)) return false;
+  const isrc = enrichment.validIsrc(record?.isrc) || enrichment.validIsrc(item.spotifyMetadataIsrc);
+  return Boolean(isrc && item.trustedMusicbrainzArtistMbid);
+}
+
+function reviveLegacyMusicbrainzTransientErrors(document, recoveredAt = new Date().toISOString(), inventory = null) {
   if (!document || typeof document !== 'object' || Array.isArray(document)
     || !document.records || typeof document.records !== 'object' || Array.isArray(document.records)) return document;
   if (!Number.isFinite(Date.parse(recoveredAt))) throw new Error('Legacy MusicBrainz recovery requires a valid timestamp.');
+  const itemsByKey = new Map((Array.isArray(inventory?.items) ? inventory.items : []).map((item) => [item.trackKey, item]));
   let changed = false;
   const records = {};
   for (const [trackKey, record] of Object.entries(document.records)) {
     const retryAt = legacyMusicbrainzTransientRetryAt(record);
-    if (!retryAt) {
+    const item = itemsByKey.get(trackKey);
+    if (!retryAt || !recoverableLegacyMusicbrainzItem(item, record)) {
       records[trackKey] = record;
       continue;
     }
@@ -137,8 +147,15 @@ async function runBulkBackfill({
   if (!Array.isArray(bands)) throw new Error('Production bands document is invalid.');
   if (!source || !Array.isArray(source.events)) throw new Error('Private listening source reader returned invalid data.');
   const loadedBands = clone(bands);
+
+  const inventory = inventoryLib.buildListeningInventory({
+    bands,
+    events: source.events,
+    spotifyMetadata: context.spotifyMetadata,
+    trackIdentities: context.trackIdentities,
+  });
   const recoveryNow = now();
-  const recoveredTrackIdentities = reviveLegacyMusicbrainzTransientErrors(context.trackIdentities, recoveryNow);
+  const recoveredTrackIdentities = reviveLegacyMusicbrainzTransientErrors(context.trackIdentities, recoveryNow, inventory);
 
   async function assertBandsCurrent() {
     const currentBands = await client.readJson('bands.json', []);
@@ -157,13 +174,6 @@ async function runBulkBackfill({
     const correctionPersisted = await context.persistTrackIdentitiesOnly(recoveredTrackIdentities);
     if (correctionPersisted !== true) throw new Error('Listening maintenance identity correction was not confirmed.');
   }
-
-  const inventory = inventoryLib.buildListeningInventory({
-    bands,
-    events: source.events,
-    spotifyMetadata: context.spotifyMetadata,
-    trackIdentities: recoveredTrackIdentities,
-  });
 
   let cachedSpotifyToken = null;
   let cachedSpotifyTokenAt = 0;
@@ -293,6 +303,7 @@ module.exports = {
   assertBulkAuthorization,
   safeProgressSummary,
   legacyMusicbrainzTransientRetryAt,
+  recoverableLegacyMusicbrainzItem,
   reviveLegacyMusicbrainzTransientErrors,
   runBulkBackfill,
 };
