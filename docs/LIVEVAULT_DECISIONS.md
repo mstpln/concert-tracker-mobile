@@ -97,7 +97,6 @@
 **Consequence:** Five-tab keyboard behavior and stable-band deep links are preserved.
 
 ## 2026-08-01 — Listening periods and movement use shared deterministic rules
-
 **Decision:** Three months uses calendar subtraction and weekly buckets; one year uses calendar subtraction and monthly buckets; All time begins at the earliest event and uses yearly buckets. Movement compares the immediately preceding equivalent period.
 
 **Reason:** Every listening surface must agree.
@@ -197,7 +196,6 @@
 **Decision:** Structured Ticketmaster/Spotify research runs three times per week without Tavily or Groq. Focused Tavily/Groq concert discovery runs twice monthly under the same write-concurrency group.
 
 **Reason:** Structured providers are inexpensive and benefit from frequent checks; web search is quota-limited and should be slower and narrowly framed.
-
 **Consequence:** Both workflows keep existing UsageTracker enforcement, conditional Worker writes and pinned dependencies. Tavily never searches releases or general/status news.
 
 ## 2026-08-02 — Tavily concert searches use adaptive backoff
@@ -297,7 +295,6 @@
 **Consequence:** Empty calendar years remain visible, the current year is marked year-to-date, and moving a chart window clears only that chart's selection.
 
 ## 2026-08-03 — v81 refresh is a non-destructive shell update check
-
 **Decision:** The Start refresh control requests a service-worker update, activates a waiting worker where available and performs one guarded reload with a bounded fallback.
 
 **Reason:** The installed PWA needs an explicit way to check for a newer shell without simulating device erasure.
@@ -397,7 +394,6 @@
 **Decision:** Preparing canonical listening data and using it for visible statistics are two separate local actions. Preparation writes and verifies derived identity, canonical and review records but leaves visible statistics unchanged. Visible statistics switch only after the user selects **Use cleaned totals**. Only trusted automatic or completed user-reviewed duplicate relationships are excluded; probable and ambiguous groups remain counted separately until reviewed.
 
 **Reason:** The real listening archive is private and large, and derived matching can become stale when new listens arrive. A two-step flow lets the user see aggregate results before changing the app while preserving a clear fallback to the original source observations.
-
 **Consequence:** Activation fails closed when canonical coverage is incomplete or the source event count differs from the prepared count. A later history change marks activation stale and restores source-event totals until preparation is run again. Source observations, R2 objects and provider records are never rewritten, and development/QA use synthetic fixtures only.
 
 ## 2026-08-07 — Spotify artwork runs are foreground-only, bounded and manually resumed
@@ -466,8 +462,8 @@
 
 ## 2026-08-09 — Bulk listening backfill is one resumable local process
 
-**Decision:** Keep the validated five-step Build D entrypoint unchanged for focused diagnostics and add a separate local bulk entrypoint for the full historical enrichment. The bulk process reuses the same one-step planner and persistence gates, runs internal chunks of at most 100 provider steps, automatically continues only after a durable `batch_limit`, and has a 50,000-step runaway ceiling. It requires a third exact full-backfill authorization in addition to the existing provider-execution and derived-write authorization gates. Bulk-only maintenance ceilings may be widened without changing ordinary research-pipeline caps or provider pacing.
+**Decision:** Keep the validated five-step Build D entrypoint unchanged for focused diagnostics and add a separate local bulk entrypoint for a future separately authorized historical enrichment run. The bulk process reuses the same one-step planner and persistence gates, runs internal chunks of at most 100 provider steps, automatically continues only after a durable `batch_limit`, and has a 50,000-step runaway ceiling. It requires a third exact full-backfill authorization in addition to the existing provider-execution and derived-write authorization gates. Bulk-only maintenance ceilings may be widened without changing ordinary research-pipeline caps or provider pacing; ListenBrainz retains its stricter courtesy ceiling.
 
-**Reason:** Three separately authorized one-step production runs proved the real Spotify → MusicBrainz → ListenBrainz evidence path and durable writes. Restarting the command thousands of times would add human error without improving per-step safety. At the same time, Spotify Development Mode does not provide a stable numeric quota that the app can safely assume, so an unattended process must remain resumable and stop when the provider itself reports quota or throttling conditions.
+**Reason:** The first separately authorized one-step production run proved the real Spotify exact-track call, usage-before-provider accounting, derived persistence and resumable `batch_limit` stop. The remaining backlog is large enough that manually restarting a one-step command thousands of times would add human error without improving the already-per-step durability gates. This does not substitute for separately authorized MusicBrainz or ListenBrainz production validation. Spotify Development Mode also does not provide a stable numeric quota that the app can safely assume, so a long-running process must remain resumable and stop when the provider itself reports quota or throttling conditions.
 
-**Consequence:** The intended full backfill can be started once and continue unattended until work is complete, the explicit bulk ceiling is reached, or a provider/data-safety condition requires a stop. Every completed provider result is durable before another step. Spotify client-credentials tokens are refreshed during long runs. A structured Spotify `QUOTA_EXCEEDED` response stops the process without marking the current track terminal, so a later separately authorized invocation can resume it. Source observations remain immutable, output remains aggregate-only, and merging the bulk code does not authorize or start production enrichment.
+**Consequence:** Once separately authorized after merge, the full backfill can be started as one local process and continue until work is complete, the explicit bulk ceiling is reached, or a provider/data-safety condition requires a stop. Every completed provider result remains durable before another step. Spotify client-credentials tokens are refreshed during long runs. ListenBrainz is capped at 100 calls per process with its existing pacing rather than inheriting the 15,000 Spotify/MusicBrainz bulk ceiling. A structured Spotify `QUOTA_EXCEEDED` response stops the process without marking the current track terminal, so a later separately authorized invocation can resume it. Source observations remain immutable, output remains aggregate-only, and merging the bulk code does not authorize or start production enrichment.
