@@ -6,6 +6,7 @@ const inventoryLib = require('../scripts/listening-inventory');
 const runner = require('../scripts/listening-maintenance-runner');
 
 const MB_ARTIST = '11111111-1111-4111-8111-111111111111';
+const MB_RECORDING = '22222222-2222-4222-8222-222222222222';
 
 function band() {
   return {
@@ -19,7 +20,7 @@ function band() {
   };
 }
 
-function inventory(trackIds = ['ATrack']) {
+function inventory(trackIds = ['ATrack'], spotifyMetadata = null) {
   return inventoryLib.buildListeningInventory({
     bands: [band()],
     events: trackIds.map((spotifyTrackId) => ({
@@ -28,6 +29,7 @@ function inventory(trackIds = ['ATrack']) {
       recordingTitle: `Song ${spotifyTrackId}`,
       spotifyTrackId,
     })),
+    spotifyMetadata,
   });
 }
 
@@ -108,7 +110,7 @@ test('focused maintenance still stops on an item-level malformed provider payloa
   assert.equal(result.trackIdentities.records['spotify:ATrack'].providers.spotify.reason, 'malformed_spotify_isrc');
 });
 
-test('provider-level adapter failures stop without poisoning the current track', async () => {
+test('focused provider failure stops without poisoning the current track', async () => {
   const persisted = [];
   const result = await runner.runMaintenanceBatch({
     inventory: inventory(),
@@ -132,6 +134,65 @@ test('provider-level adapter failures stop without poisoning the current track',
   assert.equal(persisted.length, 1);
   assert.equal(Object.prototype.hasOwnProperty.call(result.trackIdentities.records, 'spotify:ATrack'), false);
   assert.equal(result.plan.spotify, 1);
+});
+
+test('bulk provider failure defers that provider, preserves its track, and continues other providers', async () => {
+  const spotifyMetadata = {
+    kind: 'livevault-spotify-listening-metadata',
+    schemaVersion: 1,
+    updatedAt: '2026-08-09T16:00:00.000Z',
+    records: {
+      ZTrack: {
+        spotifyTrackId: 'ZTrack',
+        spotifyArtistIds: ['SyntheticArtist1'],
+        isrc: 'USABC1234567',
+      },
+    },
+  };
+  let spotifyCalls = 0;
+  let musicbrainzCalls = 0;
+  const persisted = [];
+  const result = await runner.runMaintenanceBatch({
+    inventory: inventory(['ATrack', 'ZTrack'], spotifyMetadata),
+    spotifyMetadata,
+    providers: {
+      spotify: {
+        async exact_track() {
+          spotifyCalls += 1;
+          return { kind: 'error', reason: 'spotify_network_error' };
+        },
+      },
+      musicbrainz: {
+        async isrc_lookup() {
+          musicbrainzCalls += 1;
+          return {
+            kind: 'ok',
+            data: { recordings: [{ id: MB_RECORDING, 'artist-credit': [{ artist: { id: MB_ARTIST } }] }] },
+          };
+        },
+      },
+    },
+    usage,
+    preflight,
+    async persist(snapshot) { persisted.push(snapshot); return true; },
+    haltOnItemError: false,
+    deferOnProviderFailure: true,
+    maxSteps: 10,
+    now: '2026-08-09T16:20:00.000Z',
+  });
+
+  assert.equal(spotifyCalls, 1);
+  assert.equal(musicbrainzCalls, 1);
+  assert.equal(persisted.length, 2);
+  assert.equal(persisted[0].lastOutcome.status, 'deferred');
+  assert.equal(Object.prototype.hasOwnProperty.call(result.trackIdentities.records, 'spotify:ATrack'), false);
+  assert.equal(result.trackIdentities.records['spotify:ZTrack'].musicbrainzRecordingId, MB_RECORDING);
+  assert.deepEqual(result.deferredProviders, ['spotify']);
+  assert.equal(result.summary.halted, true);
+  assert.equal(result.summary.haltReason, 'provider_deferred:spotify');
+  assert.equal(result.summary.persisted, 1);
+  assert.equal(result.plan.spotify, 1);
+  assert.equal(result.plan.complete, 1);
 });
 
 test('adapter-declared invalid input is item scoped while provider failures remain provider scoped', () => {
