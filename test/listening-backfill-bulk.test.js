@@ -163,6 +163,30 @@ test('bulk backfill does not continue after a provider or safety halt', async ()
   assert.equal(result.run.haltReason, 'spotify:spotify_quota_exceeded');
 });
 
+test('safety halt reason wins when the final attempted step also reaches the bulk ceiling', async () => {
+  const state = context();
+  const result = await bulk.runBulkBackfill({
+    argv: ['--execute', '--write', '--max-total-steps', '1'],
+    env: approvedEnv(),
+    clientFactory() { return syntheticClient(); },
+    async contextLoader() { return state; },
+    async readAllSourceEvents() { return source(); },
+    providerFactory() { return {}; },
+    async maintenanceRunner(args) {
+      return {
+        summary: { attempted: 1, persisted: 0, halted: true, haltReason: 'spotify:spotify_quota_exceeded' },
+        checkpoint: args.checkpoint,
+        trackIdentities: args.trackIdentities,
+        spotifyMetadata: args.spotifyMetadata,
+        plan: { planned: 1, complete: 0, blocked: 0, retry_wait: 0, no_route: 0, spotify: 1, musicbrainz: 0, listenbrainz: 0 },
+      };
+    },
+    log() {},
+  });
+  assert.equal(result.run.halted, true);
+  assert.equal(result.run.haltReason, 'spotify:spotify_quota_exceeded');
+});
+
 test('finishing exactly at the bulk step ceiling is not reported as halted when no work remains', async () => {
   const state = context();
   const result = await bulk.runBulkBackfill({
