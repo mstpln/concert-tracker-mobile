@@ -192,8 +192,8 @@ async function runBulkBackfill({
   }
 
   const finalPlan = finalResult?.plan && typeof finalResult.plan === 'object' ? { ...finalResult.plan } : {};
-  const hitBulkLimit = attempted >= options.maxTotalSteps && Number(finalPlan.planned) > 0;
   const safetyHalt = Boolean(finalResult?.summary?.halted && finalResult?.summary?.haltReason !== 'batch_limit');
+  const hitBulkLimit = !safetyHalt && attempted >= options.maxTotalSteps && Number(finalPlan.planned) > 0;
   const safe = {
     mode: 'bulk-production-enrichment',
     maxTotalSteps: options.maxTotalSteps,
@@ -204,7 +204,9 @@ async function runBulkBackfill({
       attempted,
       persisted,
       halted: safetyHalt || hitBulkLimit,
-      haltReason: hitBulkLimit ? 'bulk_limit' : (finalResult?.summary?.haltReason === 'batch_limit' ? null : finalResult?.summary?.haltReason || null),
+      haltReason: safetyHalt
+        ? finalResult.summary.haltReason
+        : (hitBulkLimit ? 'bulk_limit' : (finalResult?.summary?.haltReason === 'batch_limit' ? null : finalResult?.summary?.haltReason || null)),
       plan: finalPlan,
     },
   };
