@@ -108,6 +108,7 @@ test('bulk item policy quarantines malformed track data and continues unrelated 
   assert.equal(result.trackIdentities.records['spotify:BTrack'].providers.spotify.status, 'metadata');
   assert.equal(result.summary.persisted, 2);
   assert.notEqual(result.summary.haltReason, 'spotify:error');
+  assert.equal(result.checkpoint.itemErrorCounts.spotify, 1);
 });
 
 test('focused maintenance still stops on an item-level malformed provider payload', async () => {
@@ -239,6 +240,134 @@ test('bulk explicit provider-wide halt also defers only that provider and leaves
   assert.deepEqual(result.deferredProviders, ['spotify']);
   assert.equal(result.summary.haltReason, 'provider_deferred:spotify');
   assert.equal(result.plan.spotify, 1);
+});
+
+test('bulk item-error circuit breaker defers a provider after three quarantined item failures', async () => {
+  let spotifyCalls = 0;
+  const result = await runner.runMaintenanceBatch({
+    inventory: inventory(['ATrack', 'BTrack', 'CTrack', 'DTrack']),
+    providers: {
+      spotify: {
+        async exact_track({ spotifyTrackId }) {
+          spotifyCalls += 1;
+          return {
+            kind: 'ok',
+            data: {
+              id: spotifyTrackId,
+              artists: [{ id: 'SyntheticArtist1' }],
+              external_ids: { isrc: 'INVALID' },
+            },
+          };
+        },
+      },
+    },
+    usage,
+    preflight,
+    async persist() { return true; },
+    haltOnItemError: false,
+    deferOnProviderFailure: true,
+    maxSteps: 10,
+    now: '2026-08-09T16:20:00.000Z',
+  });
+
+  assert.equal(spotifyCalls, 3);
+  assert.equal(result.summary.persisted, 3);
+  assert.equal(result.itemErrorCounts.spotify, 3);
+  assert.equal(result.checkpoint.itemErrorCounts.spotify, 3);
+  assert.deepEqual(result.deferredProviders, ['spotify']);
+  assert.equal(result.summary.haltReason, 'provider_deferred:spotify');
+  assert.equal(result.plan.spotify, 1);
+  assert.equal(Object.prototype.hasOwnProperty.call(result.trackIdentities.records, 'spotify:DTrack'), false);
+});
+
+test('item-error circuit breaker count survives a new internal chunk through checkpoint state', async () => {
+  const first = await runner.runMaintenanceBatch({
+    inventory: inventory(['ATrack', 'BTrack', 'CTrack', 'DTrack']),
+    providers: {
+      spotify: {
+        async exact_track({ spotifyTrackId }) {
+          return {
+            kind: 'ok',
+            data: { id: spotifyTrackId, artists: [{ id: 'SyntheticArtist1' }], external_ids: { isrc: 'INVALID' } },
+          };
+        },
+      },
+    },
+    usage,
+    preflight,
+    async persist() { return true; },
+    haltOnItemError: false,
+    deferOnProviderFailure: true,
+    maxSteps: 2,
+    now: '2026-08-09T16:20:00.000Z',
+  });
+  assert.equal(first.checkpoint.itemErrorCounts.spotify, 2);
+
+  let secondCalls = 0;
+  const second = await runner.runMaintenanceBatch({
+    inventory: inventory(['ATrack', 'BTrack', 'CTrack', 'DTrack']),
+    trackIdentities: first.trackIdentities,
+    spotifyMetadata: first.spotifyMetadata,
+    checkpoint: first.checkpoint,
+    providers: {
+      spotify: {
+        async exact_track({ spotifyTrackId }) {
+          secondCalls += 1;
+          return {
+            kind: 'ok',
+            data: { id: spotifyTrackId, artists: [{ id: 'SyntheticArtist1' }], external_ids: { isrc: 'INVALID' } },
+          };
+        },
+      },
+    },
+    usage,
+    preflight,
+    async persist() { return true; },
+    haltOnItemError: false,
+    deferOnProviderFailure: true,
+    maxSteps: 10,
+    now: '2026-08-09T16:21:00.000Z',
+  });
+
+  assert.equal(secondCalls, 1);
+  assert.equal(second.itemErrorCounts.spotify, 3);
+  assert.deepEqual(second.deferredProviders, ['spotify']);
+  assert.equal(second.summary.haltReason, 'provider_deferred:spotify');
+  assert.equal(second.plan.spotify, 1);
+});
+
+test('MusicBrainz terminal adapter failures are provider-scoped and do not poison the current track in bulk mode', async () => {
+  const mixed = mixedInventory();
+  for (const reason of ['http_500', 'musicbrainz_invalid_json']) {
+    const persisted = [];
+    const result = await runner.runMaintenanceBatch({
+      inventory: mixed.inventory,
+      spotifyMetadata: mixed.spotifyMetadata,
+      providers: {
+        spotify: {
+          async exact_track() {
+            return { kind: 'ok', data: { id: 'ATrack', artists: [{ id: 'SyntheticArtist1' }] } };
+          },
+        },
+        musicbrainz: {
+          async isrc_lookup() { return { kind: 'error', reason }; },
+        },
+      },
+      usage,
+      preflight,
+      async persist(snapshot) { persisted.push(snapshot); return true; },
+      haltOnItemError: false,
+      deferOnProviderFailure: true,
+      maxSteps: 10,
+      now: '2026-08-09T16:20:00.000Z',
+    });
+
+    assert.equal(persisted[0].lastOutcome.status, 'deferred');
+    assert.equal(persisted[0].lastOutcome.reason, `musicbrainz:provider_error:${reason}`);
+    assert.equal(Object.prototype.hasOwnProperty.call(result.trackIdentities.records, 'spotify:ZTrack'), false);
+    assert.deepEqual(result.deferredProviders, ['musicbrainz']);
+    assert.equal(result.trackIdentities.records['spotify:ATrack'].providers.spotify.status, 'metadata');
+  }
 });
 
 test('adapter-declared invalid input is item scoped while provider failures remain provider scoped', () => {
