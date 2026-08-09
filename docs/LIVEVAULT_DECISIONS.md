@@ -455,3 +455,11 @@
 **Reason:** Provider quota must not be spent when durable progress is already known to be unwritable or stale, and an ambiguous callback result must never be interpreted as successful persistence. Checkpoint bookkeeping must also never suppress a legitimately due explicit retry.
 
 **Consequence:** Missing/false/undefined approval fails closed. Persistence exceptions or non-confirmation stop the batch before another provider call. Terminal retry/error/review halt reasons are persisted with the step result. Build C defaults to 25 provider steps with a hard ceiling of 100, remains synthetic-only until live adapters and maintenance-specific UsageTracker/Worker persistence are separately reviewed, and merging this foundation does not authorize production provider calls, R2 operations, secrets, schedules or backfill activation.
+
+## 2026-08-09 — Build D begins with dual authorization and a five-step ceiling
+
+**Decision:** The first Build D production enrichment entrypoint requires separate explicit authorization for provider execution and derived production writes. It defaults to one provider step and hard-caps the initial rollout at five provider steps per invocation while reusing Build C's persistence preflight, UsageTracker accounting, strict conditional writes and retry ownership.
+
+**Reason:** The production inventory found 12,026 Spotify-track work items, so the first real enrichment must prove the complete quota, provider-response and durable-write path on a tiny sample before the rollout can expand. Provider calls cannot safely run in a nominally read-only mode because Build C intentionally persists provider usage before each request.
+
+**Consequence:** Merging Build D code does not authorize a live backfill. The first production invocation remains separately authorized and should use one provider step. Increasing the five-step code ceiling requires a later reviewed change after real aggregate results have been inspected; source listening observations remain immutable.
