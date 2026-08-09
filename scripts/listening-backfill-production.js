@@ -39,8 +39,9 @@ function parseArgs(argv = []) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--execute') options.execute = true;
-    else if (arg === '--write') options.write = true;
-    else if (arg === '--max-steps') {
+    else if (arg === '--write') {
+      options.write = true;
+    } else if (arg === '--max-steps') {
       options.maxSteps = Number(argv[index + 1]);
       index += 1;
     } else if (arg === '--help' || arg === '-h') options.help = true;
@@ -185,6 +186,13 @@ async function runProductionBackfill({
       return true;
     },
   };
+  const guardedPersist = async (snapshot) => {
+    // A provider call can take long enough for band ownership or confirmed
+    // provider identity to change after the pre-request checks. Revalidate
+    // immediately before any derived/checkpoint persistence as well.
+    await assertBandsCurrent();
+    return context.persist(snapshot);
+  };
   const result = await maintenanceRunner({
     inventory,
     trackIdentities: context.trackIdentities,
@@ -193,7 +201,7 @@ async function runProductionBackfill({
     providers,
     usage: guardedUsage,
     preflight: guardedPreflight,
-    persist: context.persist,
+    persist: guardedPersist,
     maxSteps: options.maxSteps,
     now,
   });
