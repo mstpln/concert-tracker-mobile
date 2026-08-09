@@ -183,7 +183,7 @@ function deferredProviderSet(value = []) {
 
 function deferredProviderHaltReason(deferred) {
   const providers = [...deferred].sort();
-  return providers.length ? `provider_retry_wait:${providers.join(',')}` : null;
+  return providers.length ? `provider_deferred:${providers.join(',')}` : null;
 }
 
 async function runMaintenanceBatch({
@@ -199,6 +199,7 @@ async function runMaintenanceBatch({
   haltOnNeedsReview = true,
   haltOnRetry = true,
   haltOnItemError = true,
+  deferOnProviderFailure = false,
   deferredProviders = [],
   now = new Date().toISOString(),
 } = {}) {
@@ -208,6 +209,7 @@ async function runMaintenanceBatch({
   if (typeof haltOnNeedsReview !== 'boolean') throw new Error('haltOnNeedsReview must be a boolean.');
   if (typeof haltOnRetry !== 'boolean') throw new Error('haltOnRetry must be a boolean.');
   if (typeof haltOnItemError !== 'boolean') throw new Error('haltOnItemError must be a boolean.');
+  if (typeof deferOnProviderFailure !== 'boolean') throw new Error('deferOnProviderFailure must be a boolean.');
   const deferred = deferredProviderSet(deferredProviders);
   const limit = boundedMaxSteps(maxSteps);
   const identities = identityDocument(trackIdentities);
@@ -258,20 +260,34 @@ async function runMaintenanceBatch({
 
     const providerErrorHalt = providerErrorHaltReason(result, next.provider);
     const wideHalt = providerWideHalt(result, next.provider);
-    const preMergeHalt = providerErrorHalt || wideHalt;
-    if (preMergeHalt) {
-      state.haltReason = preMergeHalt;
+    const providerFailure = providerErrorHalt || wideHalt;
+    if (providerFailure) {
       state.updatedAt = now;
+      if (deferOnProviderFailure) {
+        deferred.add(next.provider);
+        state.haltReason = null;
+        const persistResult = await persist({
+          trackIdentities: clone(identities),
+          spotifyMetadata: clone(metadata),
+          checkpoint: clone(state),
+          lastStep: clone(next),
+          lastOutcome: { status: 'deferred', reason: providerFailure },
+        });
+        if (persistResult !== true) throw new Error('Listening maintenance persistence was not confirmed.');
+        continue;
+      }
+
+      state.haltReason = providerFailure;
       const persistResult = await persist({
         trackIdentities: clone(identities),
         spotifyMetadata: clone(metadata),
         checkpoint: clone(state),
         lastStep: clone(next),
-        lastOutcome: { status: 'halt', reason: preMergeHalt },
+        lastOutcome: { status: 'halt', reason: providerFailure },
       });
       if (persistResult !== true) throw new Error('Listening maintenance persistence was not confirmed.');
       summary.halted = true;
-      summary.haltReason = preMergeHalt;
+      summary.haltReason = providerFailure;
       break;
     }
 
