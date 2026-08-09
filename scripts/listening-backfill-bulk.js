@@ -18,6 +18,7 @@ const BULK_CONFIRMATION = 'I_AUTHORIZE_FULL_LISTENING_BACKFILL';
 const CHUNK_STEPS = runner.HARD_MAX_STEPS;
 const MAX_TOTAL_STEPS = 50000;
 const SPOTIFY_TOKEN_REUSE_MS = 45 * 60 * 1000;
+const REPEATED_ITEM_ERROR_LIMIT = runner.DEFAULT_BULK_REPEATED_ITEM_ERROR_LIMIT;
 const LEGACY_MUSICBRAINZ_TRANSIENT_REASONS = new Set([
   'http_429',
   'http_503',
@@ -232,6 +233,7 @@ async function runBulkBackfill({
   let chunk = 0;
   let finalResult = null;
   let deferredProviders = [];
+  let itemErrorReasonCounts = {};
 
   while (attempted < options.maxTotalSteps) {
     const remaining = options.maxTotalSteps - attempted;
@@ -249,6 +251,10 @@ async function runBulkBackfill({
       maxSteps: chunkLimit,
       haltOnNeedsReview: false,
       haltOnRetry: false,
+      haltOnItemError: false,
+      deferOnProviderFailure: true,
+      maxRepeatedItemErrorsPerProviderReason: REPEATED_ITEM_ERROR_LIMIT,
+      itemErrorReasonCounts,
       deferredProviders,
       now: now(),
     });
@@ -259,6 +265,9 @@ async function runBulkBackfill({
     spotifyMetadata = result.spotifyMetadata;
     checkpoint = result.checkpoint;
     deferredProviders = Array.isArray(result.deferredProviders) ? [...result.deferredProviders] : deferredProviders;
+    itemErrorReasonCounts = result?.itemErrorReasonCounts && typeof result.itemErrorReasonCounts === 'object'
+      ? clone(result.itemErrorReasonCounts)
+      : itemErrorReasonCounts;
 
     log(JSON.stringify(safeProgressSummary({ chunk, attempted, persisted, result })));
 
@@ -308,6 +317,7 @@ module.exports = {
   CHUNK_STEPS,
   MAX_TOTAL_STEPS,
   SPOTIFY_TOKEN_REUSE_MS,
+  REPEATED_ITEM_ERROR_LIMIT,
   LEGACY_MUSICBRAINZ_TRANSIENT_REASONS,
   parseArgs,
   usageText,

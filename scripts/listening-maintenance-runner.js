@@ -4,6 +4,7 @@ const enrichment = require('./listening-enrichment-engine');
 
 const DEFAULT_MAX_STEPS = 25;
 const HARD_MAX_STEPS = 100;
+const DEFAULT_BULK_REPEATED_ITEM_ERROR_LIMIT = 3;
 const MAX_DOCUMENT_RECORDS = 100000;
 const CHECKPOINT_KIND = 'livevault-listening-maintenance-checkpoint';
 const PROVIDERS = new Set(['spotify', 'musicbrainz', 'listenbrainz']);
@@ -50,6 +51,32 @@ function boundedMaxSteps(value) {
     throw new Error(`maxSteps must be an integer from 1 to ${HARD_MAX_STEPS}.`);
   }
   return numeric;
+}
+
+function boundedRepeatedItemErrorLimit(value) {
+  const numeric = Number(value == null ? 0 : value);
+  if (!Number.isInteger(numeric) || numeric < 0 || numeric > HARD_MAX_STEPS) {
+    throw new Error(`maxRepeatedItemErrorsPerProviderReason must be an integer from 0 to ${HARD_MAX_STEPS}.`);
+  }
+  return numeric;
+}
+
+function itemErrorReasonCountState(value = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('itemErrorReasonCounts must be an object.');
+  const counts = {};
+  for (const [provider, reasonCounts] of Object.entries(value)) {
+    if (!PROVIDERS.has(provider) || !reasonCounts || typeof reasonCounts !== 'object' || Array.isArray(reasonCounts)) {
+      throw new Error('itemErrorReasonCounts contains an invalid provider entry.');
+    }
+    counts[provider] = {};
+    for (const [reason, count] of Object.entries(reasonCounts)) {
+      if (!/^[a-z0-9_:-]{1,80}$/i.test(reason) || !Number.isInteger(count) || count < 0 || count > MAX_DOCUMENT_RECORDS) {
+        throw new Error('itemErrorReasonCounts contains an invalid reason count.');
+      }
+      counts[provider][reason] = count;
+    }
+  }
+  return counts;
 }
 
 function identityDocument(value = null) {
@@ -128,12 +155,27 @@ function providerFailureOutcome(result) {
   return { status: 'error', reason: typeof result.reason === 'string' ? result.reason : 'provider_error' };
 }
 
+function safeProviderReason(result, fallback = 'provider_error') {
+  return typeof result?.reason === 'string' && /^[a-z0-9_:-]{1,80}$/i.test(result.reason)
+    ? result.reason
+    : fallback;
+}
+
+function providerErrorScope(result) {
+  if (!result || result.kind !== 'error') return null;
+  const reason = safeProviderReason(result);
+  return reason.startsWith('invalid_') ? 'item' : 'provider';
+}
+
 function providerWideHalt(result, provider) {
   if (!result || result.kind !== 'halt') return null;
-  const reason = typeof result.reason === 'string' && /^[a-z0-9_:-]{1,80}$/i.test(result.reason)
-    ? result.reason
-    : 'provider_halt';
+  const reason = safeProviderReason(result, 'provider_halt');
   return reason.startsWith(`${provider}:`) ? reason : `${provider}:${reason}`;
+}
+
+function providerErrorHaltReason(result, provider) {
+  if (providerErrorScope(result) !== 'provider') return null;
+  return `${provider}:provider_error:${safeProviderReason(result)}`;
 }
 
 function itemByKey(inventory, trackKey) {
@@ -168,7 +210,7 @@ function deferredProviderSet(value = []) {
 
 function deferredProviderHaltReason(deferred) {
   const providers = [...deferred].sort();
-  return providers.length ? `provider_retry_wait:${providers.join(',')}` : null;
+  return providers.length ? `provider_deferred:${providers.join(',')}` : null;
 }
 
 async function runMaintenanceBatch({
@@ -183,6 +225,10 @@ async function runMaintenanceBatch({
   maxSteps = DEFAULT_MAX_STEPS,
   haltOnNeedsReview = true,
   haltOnRetry = true,
+  haltOnItemError = true,
+  deferOnProviderFailure = false,
+  maxRepeatedItemErrorsPerProviderReason = haltOnItemError ? 0 : DEFAULT_BULK_REPEATED_ITEM_ERROR_LIMIT,
+  itemErrorReasonCounts = {},
   deferredProviders = [],
   now = new Date().toISOString(),
 } = {}) {
@@ -191,6 +237,10 @@ async function runMaintenanceBatch({
   if (typeof persist !== 'function') throw new Error('Listening maintenance requires a persistence callback.');
   if (typeof haltOnNeedsReview !== 'boolean') throw new Error('haltOnNeedsReview must be a boolean.');
   if (typeof haltOnRetry !== 'boolean') throw new Error('haltOnRetry must be a boolean.');
+  if (typeof haltOnItemError !== 'boolean') throw new Error('haltOnItemError must be a boolean.');
+  if (typeof deferOnProviderFailure !== 'boolean') throw new Error('deferOnProviderFailure must be a boolean.');
+  const itemErrorLimit = boundedRepeatedItemErrorLimit(maxRepeatedItemErrorsPerProviderReason);
+  const errorCounts = itemErrorReasonCountState(itemErrorReasonCounts);
   const deferred = deferredProviderSet(deferredProviders);
   const limit = boundedMaxSteps(maxSteps);
   const identities = identityDocument(trackIdentities);
@@ -239,20 +289,48 @@ async function runMaintenanceBatch({
       result = { kind: 'error', reason: 'provider_adapter_exception' };
     }
 
+    const providerErrorHalt = providerErrorHaltReason(result, next.provider);
     const wideHalt = providerWideHalt(result, next.provider);
-    if (wideHalt) {
-      state.haltReason = wideHalt;
+    const providerFailure = providerErrorHalt || wideHalt;
+    if (providerFailure) {
       state.updatedAt = now;
+      if (deferOnProviderFailure) {
+        deferred.add(next.provider);
+        const remainingPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
+        let haltReason = null;
+        if (summary.attempted >= limit) {
+          haltReason = remainingPlan.steps.some((candidate) => !deferred.has(candidate.provider))
+            ? 'batch_limit'
+            : (remainingPlan.steps.length ? deferredProviderHaltReason(deferred) : null);
+        }
+        state.haltReason = haltReason;
+        const persistResult = await persist({
+          trackIdentities: clone(identities),
+          spotifyMetadata: clone(metadata),
+          checkpoint: clone(state),
+          lastStep: clone(next),
+          lastOutcome: { status: 'deferred', reason: providerFailure },
+        });
+        if (persistResult !== true) throw new Error('Listening maintenance persistence was not confirmed.');
+        if (haltReason) {
+          summary.halted = true;
+          summary.haltReason = haltReason;
+          break;
+        }
+        continue;
+      }
+
+      state.haltReason = providerFailure;
       const persistResult = await persist({
         trackIdentities: clone(identities),
         spotifyMetadata: clone(metadata),
         checkpoint: clone(state),
         lastStep: clone(next),
-        lastOutcome: { status: 'halt', reason: wideHalt },
+        lastOutcome: { status: 'halt', reason: providerFailure },
       });
       if (persistResult !== true) throw new Error('Listening maintenance persistence was not confirmed.');
       summary.halted = true;
-      summary.haltReason = wideHalt;
+      summary.haltReason = providerFailure;
       break;
     }
 
@@ -262,8 +340,19 @@ async function runMaintenanceBatch({
     state.updatedAt = now;
 
     if (outcome.status === 'retry' && !haltOnRetry) deferred.add(next.provider);
+    const itemScopedError = outcome.status === 'error'
+      && (result?.kind === 'ok' || providerErrorScope(result) === 'item');
+    if (itemScopedError) {
+      const reason = safeProviderReason(outcome, 'item_error');
+      if (!errorCounts[next.provider]) errorCounts[next.provider] = {};
+      errorCounts[next.provider][reason] = (errorCounts[next.provider][reason] || 0) + 1;
+      if (!haltOnItemError && itemErrorLimit > 0 && errorCounts[next.provider][reason] >= itemErrorLimit) {
+        deferred.add(next.provider);
+      }
+    }
     const terminalOutcome = (outcome.status === 'retry' && haltOnRetry)
-      || outcome.status === 'error'
+      || (itemScopedError && haltOnItemError)
+      || (outcome.status === 'error' && !itemScopedError)
       || (outcome.status === 'needs_review' && haltOnNeedsReview);
     const remainingPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
     let haltReason = terminalOutcome ? `${next.provider}:${outcome.status}` : null;
@@ -298,22 +387,29 @@ async function runMaintenanceBatch({
     spotifyMetadata: metadata,
     plan: enrichment.safePlanSummary(finalPlan),
     deferredProviders: [...deferred].sort(),
+    itemErrorReasonCounts: clone(errorCounts),
   };
 }
 
 module.exports = {
   DEFAULT_MAX_STEPS,
   HARD_MAX_STEPS,
+  DEFAULT_BULK_REPEATED_ITEM_ERROR_LIMIT,
   MAX_DOCUMENT_RECORDS,
   CHECKPOINT_KIND,
   validDate,
   checkpointState,
   stepKey,
   boundedMaxSteps,
+  boundedRepeatedItemErrorLimit,
+  itemErrorReasonCountState,
   identityDocument,
   spotifyMetadataDocument,
   reserveProviderCall,
+  providerFailureOutcome,
+  providerErrorScope,
   providerWideHalt,
+  providerErrorHaltReason,
   applyStepResult,
   deferredProviderSet,
   deferredProviderHaltReason,
