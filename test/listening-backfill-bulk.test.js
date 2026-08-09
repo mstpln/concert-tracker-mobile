@@ -50,6 +50,15 @@ function context() {
   };
 }
 
+function syntheticClient() {
+  return {
+    async readJson(path, fallback) {
+      if (path === 'bands.json') return [band()];
+      return fallback;
+    },
+  };
+}
+
 test('bulk backfill requires a third exact authorization before private reads', async () => {
   const env = approvedEnv();
   delete env[bulk.BULK_CONFIRM_ENV];
@@ -81,14 +90,7 @@ test('bulk backfill continues only across durable batch-limit chunks', async () 
   const result = await bulk.runBulkBackfill({
     argv: ['--execute', '--write', '--max-total-steps', '150'],
     env: approvedEnv(),
-    clientFactory() {
-      return {
-        async readJson(path, fallback) {
-          if (path === 'bands.json') return [band()];
-          return fallback;
-        },
-      };
-    },
+    clientFactory() { return syntheticClient(); },
     async contextLoader(_client, options) { contextOptions = options; return state; },
     async readAllSourceEvents() { return source(); },
     providerFactory() { return {}; },
@@ -140,25 +142,81 @@ test('bulk backfill does not continue after a provider or safety halt', async ()
   const result = await bulk.runBulkBackfill({
     argv: ['--execute', '--write'],
     env: approvedEnv(),
-    clientFactory() {
-      return { async readJson(path, fallback) { return path === 'bands.json' ? [band()] : fallback; } };
-    },
+    clientFactory() { return syntheticClient(); },
     async contextLoader() { return state; },
     async readAllSourceEvents() { return source(); },
     providerFactory() { return {}; },
     async maintenanceRunner(args) {
       runnerCalls += 1;
       return {
-        summary: { attempted: 1, persisted: 1, halted: true, haltReason: 'spotify:retry' },
+        summary: { attempted: 1, persisted: 0, halted: true, haltReason: 'spotify:spotify_quota_exceeded' },
         checkpoint: args.checkpoint,
         trackIdentities: args.trackIdentities,
         spotifyMetadata: args.spotifyMetadata,
-        plan: { planned: 1, complete: 0, blocked: 0, retry_wait: 1, no_route: 0, spotify: 0, musicbrainz: 0, listenbrainz: 0 },
+        plan: { planned: 1, complete: 0, blocked: 0, retry_wait: 0, no_route: 0, spotify: 1, musicbrainz: 0, listenbrainz: 0 },
       };
     },
     log() {},
   });
   assert.equal(runnerCalls, 1);
   assert.equal(result.run.halted, true);
-  assert.equal(result.run.haltReason, 'spotify:retry');
+  assert.equal(result.run.haltReason, 'spotify:spotify_quota_exceeded');
+});
+
+test('finishing exactly at the bulk step ceiling is not reported as halted when no work remains', async () => {
+  const state = context();
+  const result = await bulk.runBulkBackfill({
+    argv: ['--execute', '--write', '--max-total-steps', '1'],
+    env: approvedEnv(),
+    clientFactory() { return syntheticClient(); },
+    async contextLoader() { return state; },
+    async readAllSourceEvents() { return source(); },
+    providerFactory() { return {}; },
+    async maintenanceRunner(args) {
+      return {
+        summary: { attempted: 1, persisted: 1, halted: false, haltReason: null },
+        checkpoint: args.checkpoint,
+        trackIdentities: args.trackIdentities,
+        spotifyMetadata: args.spotifyMetadata,
+        plan: { planned: 0, complete: 1, blocked: 0, retry_wait: 0, no_route: 0, spotify: 0, musicbrainz: 0, listenbrainz: 0 },
+      };
+    },
+    log() {},
+  });
+  assert.equal(result.run.halted, false);
+  assert.equal(result.run.haltReason, null);
+});
+
+test('long bulk runs refresh the cached Spotify client token before it becomes stale', async () => {
+  const state = context();
+  let current = 1000;
+  let tokenCalls = 0;
+  let callbacks;
+  const result = await bulk.runBulkBackfill({
+    argv: ['--execute', '--write', '--max-total-steps', '1'],
+    env: approvedEnv(),
+    clientFactory() { return syntheticClient(); },
+    async contextLoader() { return state; },
+    async readAllSourceEvents() { return source(); },
+    providerFactory(value) { callbacks = value; return {}; },
+    async spotifyTokenFactory() { tokenCalls += 1; return `token-${tokenCalls}`; },
+    clock: () => current,
+    async maintenanceRunner(args) {
+      assert.equal(await callbacks.spotifyTokenProvider(), 'token-1');
+      current += bulk.SPOTIFY_TOKEN_REUSE_MS - 1;
+      assert.equal(await callbacks.spotifyTokenProvider(), 'token-1');
+      current += 2;
+      assert.equal(await callbacks.spotifyTokenProvider(), 'token-2');
+      return {
+        summary: { attempted: 0, persisted: 0, halted: false, haltReason: null },
+        checkpoint: args.checkpoint,
+        trackIdentities: args.trackIdentities,
+        spotifyMetadata: args.spotifyMetadata,
+        plan: { planned: 0, complete: 1, blocked: 0, retry_wait: 0, no_route: 0, spotify: 0, musicbrainz: 0, listenbrainz: 0 },
+      };
+    },
+    log() {},
+  });
+  assert.equal(tokenCalls, 2);
+  assert.equal(result.run.halted, false);
 });
