@@ -7,6 +7,9 @@ const { createListeningMaintenanceUsageGate } = require('./listeningMaintenanceU
 const TRACK_IDENTITIES_PATH = 'listening/track-identities.json';
 const SPOTIFY_METADATA_PATH = 'listening/spotify-metadata.json';
 const API_USAGE_PATH = 'apiUsage.json';
+const BULK_SPOTIFY_CAP = 15000;
+const BULK_MUSICBRAINZ_CAP = 15000;
+const BULK_LISTENBRAINZ_CAP = 15000;
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -24,12 +27,12 @@ function defaultSpotifyMetadata() {
   return { kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} };
 }
 
-function normalizeMaintenanceUsageState(state, today = new Date().toISOString().slice(0, 10)) {
+function normalizeMaintenanceUsageState(state, today = new Date().toISOString().slice(0, 10), { bulk = false } = {}) {
   if (!state || typeof state !== 'object' || Array.isArray(state)) state = freshState();
   const defaults = freshState();
   if (!state.spotify || typeof state.spotify !== 'object' || Array.isArray(state.spotify)) state.spotify = defaults.spotify;
-  state.spotify.dailyCap = config.SPOTIFY.dailyCap;
-  state.spotify.perRunCap = config.SPOTIFY.perRunCap;
+  state.spotify.dailyCap = bulk ? BULK_SPOTIFY_CAP : config.SPOTIFY.dailyCap;
+  state.spotify.perRunCap = bulk ? BULK_SPOTIFY_CAP : config.SPOTIFY.perRunCap;
   if (state.spotify.dayOfCounts !== today) {
     state.spotify.dayOfCounts = today;
     state.spotify.callsToday = 0;
@@ -38,11 +41,12 @@ function normalizeMaintenanceUsageState(state, today = new Date().toISOString().
   state.spotify.callsToday = Number.isFinite(callsToday) && callsToday >= 0 ? callsToday : 0;
   state.spotify.callsThisRun = 0;
   ensureMusicbrainzState(state);
+  state.musicbrainz.perRunCap = bulk ? BULK_MUSICBRAINZ_CAP : config.MUSICBRAINZ.perRunCap;
   state.musicbrainz.callsThisRun = 0;
   return state;
 }
 
-async function loadListeningMaintenanceContext(client, { today } = {}) {
+async function loadListeningMaintenanceContext(client, { today, bulk = false } = {}) {
   if (!client || typeof client.readJson !== 'function' || typeof client.writeJsonStrict !== 'function') {
     throw new Error('Listening maintenance persistence requires a conditional Worker client.');
   }
@@ -54,8 +58,10 @@ async function loadListeningMaintenanceContext(client, { today } = {}) {
   let persistedIdentities = clone(trackIdentities);
   let persistedMetadata = clone(spotifyMetadata);
 
-  const usageTracker = new UsageTracker(normalizeMaintenanceUsageState(clone(rawUsage), today));
-  const baseUsage = createListeningMaintenanceUsageGate(usageTracker);
+  const usageTracker = new UsageTracker(normalizeMaintenanceUsageState(clone(rawUsage), today, { bulk }));
+  const baseUsage = createListeningMaintenanceUsageGate(usageTracker, {
+    listenbrainzPerRunCap: bulk ? BULK_LISTENBRAINZ_CAP : undefined,
+  });
   const checkpoint = clone(rawUsage?.listeningMaintenance?.checkpoint || null);
 
   async function persistUsageBeforeProvider(provider) {
@@ -129,6 +135,9 @@ module.exports = {
   TRACK_IDENTITIES_PATH,
   SPOTIFY_METADATA_PATH,
   API_USAGE_PATH,
+  BULK_SPOTIFY_CAP,
+  BULK_MUSICBRAINZ_CAP,
+  BULK_LISTENBRAINZ_CAP,
   defaultIdentities,
   defaultSpotifyMetadata,
   normalizeMaintenanceUsageState,
