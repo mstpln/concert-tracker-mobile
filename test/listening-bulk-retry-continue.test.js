@@ -91,7 +91,7 @@ test('non-halting retry mode defers the retrying provider, continues other provi
   assert.equal(persisted.length, 2);
   assert.deepEqual(result.deferredProviders, ['spotify']);
   assert.equal(result.summary.halted, true);
-  assert.equal(result.summary.haltReason, 'provider_retry_wait:spotify');
+  assert.equal(result.summary.haltReason, 'provider_deferred:spotify');
   assert.equal(result.plan.spotify, 1);
   assert.equal(result.plan.retry_wait, 1);
   assert.equal(result.plan.complete, 1);
@@ -125,6 +125,8 @@ test('bulk mode carries provider deferral across chunks and stops only when defe
     async maintenanceRunner(args) {
       calls += 1;
       assert.equal(args.haltOnRetry, false);
+      assert.equal(args.haltOnItemError, false);
+      assert.equal(args.deferOnProviderFailure, true);
       if (calls === 1) {
         assert.deepEqual(args.deferredProviders, []);
         return {
@@ -138,7 +140,7 @@ test('bulk mode carries provider deferral across chunks and stops only when defe
       }
       assert.deepEqual(args.deferredProviders, ['musicbrainz']);
       return {
-        summary: { attempted: 1, persisted: 1, halted: true, haltReason: 'provider_retry_wait:musicbrainz' },
+        summary: { attempted: 1, persisted: 1, halted: true, haltReason: 'provider_deferred:musicbrainz' },
         checkpoint: args.checkpoint,
         trackIdentities: args.trackIdentities,
         spotifyMetadata: args.spotifyMetadata,
@@ -153,7 +155,7 @@ test('bulk mode carries provider deferral across chunks and stops only when defe
   assert.equal(result.run.attempted, 101);
   assert.equal(result.run.persisted, 101);
   assert.equal(result.run.halted, true);
-  assert.equal(result.run.haltReason, 'provider_retry_wait:musicbrainz');
+  assert.equal(result.run.haltReason, 'provider_deferred:musicbrainz');
   assert.deepEqual(result.run.deferredProviders, ['musicbrainz']);
 });
 
@@ -182,6 +184,8 @@ test('bulk mode reports retry_wait when no provider steps are currently eligible
     },
     providerFactory() { return {}; },
     async maintenanceRunner(args) {
+      assert.equal(args.haltOnItemError, false);
+      assert.equal(args.deferOnProviderFailure, true);
       return {
         summary: { attempted: 0, persisted: 0, halted: false, haltReason: null },
         checkpoint: args.checkpoint,
