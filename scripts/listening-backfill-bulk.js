@@ -13,6 +13,7 @@ const BULK_CONFIRM_ENV = 'LIVEVAULT_LISTENING_BULK_CONFIRM';
 const BULK_CONFIRMATION = 'I_AUTHORIZE_FULL_LISTENING_BACKFILL';
 const CHUNK_STEPS = runner.HARD_MAX_STEPS;
 const MAX_TOTAL_STEPS = 50000;
+const SPOTIFY_TOKEN_REUSE_MS = 45 * 60 * 1000;
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -75,6 +76,7 @@ async function runBulkBackfill({
   spotifyTokenFactory = spotifyBackfill.getSpotifyToken,
   maintenanceRunner = runner.runMaintenanceBatch,
   now = () => new Date().toISOString(),
+  clock = () => Date.now(),
 } = {}) {
   const options = parseArgs(argv);
   if (options.help) {
@@ -113,13 +115,16 @@ async function runBulkBackfill({
   });
 
   let cachedSpotifyToken = null;
+  let cachedSpotifyTokenAt = 0;
   async function spotifyTokenProvider() {
-    if (cachedSpotifyToken) return cachedSpotifyToken;
+    const current = clock();
+    if (cachedSpotifyToken && current - cachedSpotifyTokenAt < SPOTIFY_TOKEN_REUSE_MS) return cachedSpotifyToken;
     cachedSpotifyToken = await spotifyTokenFactory({
       clientId: production.requiredEnv(env, 'SPOTIFY_CLIENT_ID'),
       clientSecret: production.requiredEnv(env, 'SPOTIFY_CLIENT_SECRET'),
       fetchImpl,
     });
+    cachedSpotifyTokenAt = current;
     return cachedSpotifyToken;
   }
 
@@ -186,6 +191,9 @@ async function runBulkBackfill({
     if ((Number(result?.summary?.attempted) || 0) === 0) break;
   }
 
+  const finalPlan = finalResult?.plan && typeof finalResult.plan === 'object' ? { ...finalResult.plan } : {};
+  const hitBulkLimit = attempted >= options.maxTotalSteps && Number(finalPlan.planned) > 0;
+  const safetyHalt = Boolean(finalResult?.summary?.halted && finalResult?.summary?.haltReason !== 'batch_limit');
   const safe = {
     mode: 'bulk-production-enrichment',
     maxTotalSteps: options.maxTotalSteps,
@@ -195,9 +203,9 @@ async function runBulkBackfill({
     run: {
       attempted,
       persisted,
-      halted: Boolean(finalResult?.summary?.halted && finalResult?.summary?.haltReason !== 'batch_limit') || attempted >= options.maxTotalSteps,
-      haltReason: attempted >= options.maxTotalSteps && finalResult?.plan?.planned ? 'bulk_limit' : (finalResult?.summary?.haltReason === 'batch_limit' ? null : finalResult?.summary?.haltReason || null),
-      plan: finalResult?.plan && typeof finalResult.plan === 'object' ? { ...finalResult.plan } : {},
+      halted: safetyHalt || hitBulkLimit,
+      haltReason: hitBulkLimit ? 'bulk_limit' : (finalResult?.summary?.haltReason === 'batch_limit' ? null : finalResult?.summary?.haltReason || null),
+      plan: finalPlan,
     },
   };
   log(JSON.stringify(safe));
@@ -216,6 +224,7 @@ module.exports = {
   BULK_CONFIRMATION,
   CHUNK_STEPS,
   MAX_TOTAL_STEPS,
+  SPOTIFY_TOKEN_REUSE_MS,
   parseArgs,
   usageText,
   assertBulkAuthorization,
