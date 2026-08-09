@@ -128,12 +128,27 @@ function providerFailureOutcome(result) {
   return { status: 'error', reason: typeof result.reason === 'string' ? result.reason : 'provider_error' };
 }
 
+function safeProviderReason(result, fallback = 'provider_error') {
+  return typeof result?.reason === 'string' && /^[a-z0-9_:-]{1,80}$/i.test(result.reason)
+    ? result.reason
+    : fallback;
+}
+
+function providerErrorScope(result) {
+  if (!result || result.kind !== 'error') return null;
+  const reason = safeProviderReason(result);
+  return reason.startsWith('invalid_') ? 'item' : 'provider';
+}
+
 function providerWideHalt(result, provider) {
   if (!result || result.kind !== 'halt') return null;
-  const reason = typeof result.reason === 'string' && /^[a-z0-9_:-]{1,80}$/i.test(result.reason)
-    ? result.reason
-    : 'provider_halt';
+  const reason = safeProviderReason(result, 'provider_halt');
   return reason.startsWith(`${provider}:`) ? reason : `${provider}:${reason}`;
+}
+
+function providerErrorHaltReason(result, provider) {
+  if (providerErrorScope(result) !== 'provider') return null;
+  return `${provider}:provider_error:${safeProviderReason(result)}`;
 }
 
 function itemByKey(inventory, trackKey) {
@@ -183,6 +198,7 @@ async function runMaintenanceBatch({
   maxSteps = DEFAULT_MAX_STEPS,
   haltOnNeedsReview = true,
   haltOnRetry = true,
+  haltOnItemError = true,
   deferredProviders = [],
   now = new Date().toISOString(),
 } = {}) {
@@ -191,6 +207,7 @@ async function runMaintenanceBatch({
   if (typeof persist !== 'function') throw new Error('Listening maintenance requires a persistence callback.');
   if (typeof haltOnNeedsReview !== 'boolean') throw new Error('haltOnNeedsReview must be a boolean.');
   if (typeof haltOnRetry !== 'boolean') throw new Error('haltOnRetry must be a boolean.');
+  if (typeof haltOnItemError !== 'boolean') throw new Error('haltOnItemError must be a boolean.');
   const deferred = deferredProviderSet(deferredProviders);
   const limit = boundedMaxSteps(maxSteps);
   const identities = identityDocument(trackIdentities);
@@ -239,20 +256,22 @@ async function runMaintenanceBatch({
       result = { kind: 'error', reason: 'provider_adapter_exception' };
     }
 
+    const providerErrorHalt = providerErrorHaltReason(result, next.provider);
     const wideHalt = providerWideHalt(result, next.provider);
-    if (wideHalt) {
-      state.haltReason = wideHalt;
+    const preMergeHalt = providerErrorHalt || wideHalt;
+    if (preMergeHalt) {
+      state.haltReason = preMergeHalt;
       state.updatedAt = now;
       const persistResult = await persist({
         trackIdentities: clone(identities),
         spotifyMetadata: clone(metadata),
         checkpoint: clone(state),
         lastStep: clone(next),
-        lastOutcome: { status: 'halt', reason: wideHalt },
+        lastOutcome: { status: 'halt', reason: preMergeHalt },
       });
       if (persistResult !== true) throw new Error('Listening maintenance persistence was not confirmed.');
       summary.halted = true;
-      summary.haltReason = wideHalt;
+      summary.haltReason = preMergeHalt;
       break;
     }
 
@@ -262,8 +281,11 @@ async function runMaintenanceBatch({
     state.updatedAt = now;
 
     if (outcome.status === 'retry' && !haltOnRetry) deferred.add(next.provider);
+    const itemScopedError = outcome.status === 'error'
+      && (result?.kind === 'ok' || providerErrorScope(result) === 'item');
     const terminalOutcome = (outcome.status === 'retry' && haltOnRetry)
-      || outcome.status === 'error'
+      || (itemScopedError && haltOnItemError)
+      || (outcome.status === 'error' && !itemScopedError)
       || (outcome.status === 'needs_review' && haltOnNeedsReview);
     const remainingPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
     let haltReason = terminalOutcome ? `${next.provider}:${outcome.status}` : null;
@@ -313,7 +335,10 @@ module.exports = {
   identityDocument,
   spotifyMetadataDocument,
   reserveProviderCall,
+  providerFailureOutcome,
+  providerErrorScope,
   providerWideHalt,
+  providerErrorHaltReason,
   applyStepResult,
   deferredProviderSet,
   deferredProviderHaltReason,
