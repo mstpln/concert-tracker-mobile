@@ -217,6 +217,7 @@ async function runBulkBackfill({
       if (stillApproved !== true) throw new Error('Listening maintenance post-reservation preflight was not approved.');
       return true;
     },
+    blockReason: (provider) => (typeof context.usage.blockReason === 'function' ? context.usage.blockReason(provider) : null),
   };
   const guardedPersist = async (snapshot) => {
     // Long provider calls increase the chance that band ownership or a
