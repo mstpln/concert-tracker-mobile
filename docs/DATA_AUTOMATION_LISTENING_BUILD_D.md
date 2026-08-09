@@ -137,6 +137,24 @@ PR #102 replaces further one-off stop exceptions with the generalized item/provi
 - missing configuration, UsageTracker denial, stale/concurrent state, persistence failure and data-safety exceptions still stop globally;
 - focused 1–5 step diagnostics keep their strict fail-fast defaults.
 
+## Fifth bulk production invocation and diagnostics gap
+
+After PR #102 merged as `d31469df22ee709b379df2875ae008643c63faea`, the user separately authorized another full production invocation. The generalized scope policy behaved correctly: MusicBrainz was deferred and the process continued with Spotify; Spotify was later also deferred, after which no currently eligible provider family remained.
+
+The invocation attempted 473 provider steps and durably persisted 472 results. Aggregate state at the end was:
+
+- complete tracks: 166;
+- Spotify planned steps: 11,426;
+- MusicBrainz planned steps: 445;
+- ListenBrainz planned steps: 0;
+- total planned steps: 11,872;
+- no-route/review-required: 44;
+- blocked tracks: 0.
+
+The one attempted-but-not-persisted provider result was deliberately not written to the current track because provider-scoped failures leave that track unmodified. A read-only aggregate inspection reconstructed the 472 durable outcomes as 445 Spotify results, 4 MusicBrainz results and 23 ListenBrainz results. MusicBrainz was confirmed as `retry:http_503`, a temporary provider-availability failure. The final Spotify provider-level failure happened on attempted call 473, but its exact reason could not be reconstructed from durable identity state because that track was correctly untouched and the old final summary exposed only the deferred provider name.
+
+PR #103 adds generalized, aggregate-only diagnostics so the same observability gap does not require another forensic code change. It records provider outcome reason counts, provider deferral kind and controlled reason, `nextEligibleCheckAt` for dated retries, and controlled usage-denial reasons. The diagnostic state carries across internal chunks, is included in progress/final summaries, and is copied into the existing maintenance checkpoint. It does not change item/provider/global scope classification.
+
 ## Bulk authorization
 
 The bulk runner requires the existing provider/write authorization values plus a third exact authorization dedicated to the full historical operation:
@@ -215,13 +233,13 @@ After the provider request returns, Build D rechecks the complete `bands.json` s
 
 Synthetic regression coverage exercises changes and explicit denial before quota reservation, after quota persistence and after provider execution but before derived persistence. In each stale/denied case the next unsafe operation remains blocked; conservative provider-usage over-counting is allowed rather than erasing a reserved attempt.
 
-## Safe output
+## Safe output and diagnostics
 
 The production entrypoints log only aggregate source counts, aggregate inventory counts, selected ceilings, aggregate attempted/persisted/halt information and count-only plans.
 
-The bulk runner additionally emits count-only progress after each durable internal chunk, including the deferred-provider list, so a long local process can be observed without exposing listening details.
+The bulk runner additionally emits count-only progress after each durable internal chunk. Under PR #103 those summaries may include only aggregate diagnostic state: known provider name, controlled outcome status/reason counts, provider deferral kind/reason, retry eligibility timestamp and controlled usage-block reason. The same safe diagnostic snapshot is retained in the maintenance checkpoint for later read-only inspection.
 
-Neither entrypoint logs artist names, recording titles, raw timestamps, listening object paths, Worker endpoint, provider tokens or secret values.
+The diagnostic layer does not include track keys or Spotify track IDs, artist names, recording titles, raw timestamps from listens, listening object paths, Worker endpoint, provider tokens, secret values, raw provider payloads or free-form provider messages.
 
 ## Provider documentation review
 
@@ -231,7 +249,7 @@ Before v111 bulk rollout, Spotify's current Development Mode quota documentation
 
 ## Version
 
-Build D began at v110. The v111 bulk runner is an architectural extension because it changes the production operating mode from tiny diagnostic invocations to one resumable long-running process. `APP_VERSION`, `CACHE_NAME_LITERAL` and generated build state moved together to v111 exactly once. The review-quarantine, MusicBrainz transient-retry, retry-provider-deferral and generalized outcome-scope changes are focused corrections to the same operational build and therefore keep v111.
+Build D began at v110. The v111 bulk runner is an architectural extension because it changes the production operating mode from tiny diagnostic invocations to one resumable long-running process. `APP_VERSION`, `CACHE_NAME_LITERAL` and generated build state moved together to v111 exactly once. The review-quarantine, MusicBrainz transient-retry, retry-provider-deferral, generalized outcome-scope and self-diagnostic changes are focused corrections to the same operational build and therefore keep v111.
 
 ## Production boundary
 
@@ -247,4 +265,4 @@ Development and QA do not:
 - modify immutable source observations;
 - remove existing provider/data safety rules.
 
-The three one-step Build D production validations and four separately authorized bulk invocations were production actions. Any resumed bulk invocation remains separately authorized after the focused correction is reviewed and merged.
+The three one-step Build D production validations and five separately authorized bulk invocations were production actions. Any resumed bulk invocation remains separately authorized after the focused correction is reviewed and merged.
