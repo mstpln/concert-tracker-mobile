@@ -113,10 +113,14 @@ function diagnosticState(value = {}) {
   }
   for (const [provider, entry] of Object.entries(providerDeferrals)) {
     if (!PROVIDERS.has(provider) || !entry || typeof entry !== 'object' || Array.isArray(entry)
-      || !DIAGNOSTIC_KINDS.has(entry.kind) || !validDiagnosticReason(entry.reason)) {
+      || !DIAGNOSTIC_KINDS.has(entry.kind) || !validDiagnosticReason(entry.reason)
+      || (entry.nextEligibleCheckAt != null && !validDate(entry.nextEligibleCheckAt))) {
       throw new Error('diagnostics contains an invalid provider deferral.');
     }
     result.providerDeferrals[provider] = { kind: entry.kind, reason: entry.reason };
+    if (validDate(entry.nextEligibleCheckAt)) {
+      result.providerDeferrals[provider].nextEligibleCheckAt = entry.nextEligibleCheckAt;
+    }
   }
   for (const [provider, reason] of Object.entries(usageBlocks)) {
     if (!PROVIDERS.has(provider) || !validDiagnosticReason(reason)) {
@@ -136,11 +140,14 @@ function recordOutcomeDiagnostic(diagnostics, provider, status, reason) {
   diagnostics.outcomeReasonCounts[provider][key] = (diagnostics.outcomeReasonCounts[provider][key] || 0) + 1;
 }
 
-function recordProviderDeferral(diagnostics, provider, kind, reason) {
+function recordProviderDeferral(diagnostics, provider, kind, reason, nextEligibleCheckAt = null) {
   if (!PROVIDERS.has(provider)) return;
   const safeKind = DIAGNOSTIC_KINDS.has(kind) ? kind : 'provider_error';
   const safeReason = validDiagnosticReason(reason) ? reason : 'provider_error';
   diagnostics.providerDeferrals[provider] = { kind: safeKind, reason: safeReason };
+  if (validDate(nextEligibleCheckAt)) {
+    diagnostics.providerDeferrals[provider].nextEligibleCheckAt = nextEligibleCheckAt;
+  }
 }
 
 function recordUsageBlock(diagnostics, provider, reason) {
@@ -431,7 +438,13 @@ async function runMaintenanceBatch({
 
     if (outcome.status === 'retry' && !haltOnRetry) {
       deferred.add(next.provider);
-      recordProviderDeferral(diagnosticSummary, next.provider, 'retry', safeProviderReason(outcome, 'provider_retry'));
+      recordProviderDeferral(
+        diagnosticSummary,
+        next.provider,
+        'retry',
+        safeProviderReason(outcome, 'provider_retry'),
+        outcome.nextEligibleCheckAt,
+      );
     }
     const itemScopedError = outcome.status === 'error'
       && (result?.kind === 'ok' || providerErrorScope(result) === 'item');
