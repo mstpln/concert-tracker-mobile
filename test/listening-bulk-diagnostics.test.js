@@ -67,6 +67,26 @@ test('provider-scoped Spotify failures retain a safe diagnostic reason without m
   assert.equal(JSON.stringify(result.diagnostics).includes('ATrack'), false);
 });
 
+test('focused provider failure is diagnosed as a halt, not a provider deferral', async () => {
+  const result = await runner.runMaintenanceBatch({
+    inventory: inventory(),
+    providers: {
+      spotify: {
+        async exact_track() { return { kind: 'error', reason: 'spotify_network_error' }; },
+      },
+    },
+    usage,
+    preflight,
+    async persist() { return true; },
+    maxSteps: 1,
+    now: '2026-08-09T18:30:00.000Z',
+  });
+
+  assert.equal(result.summary.haltReason, 'spotify:provider_error:spotify_network_error');
+  assert.deepEqual(result.diagnostics.providerDeferrals, {});
+  assert.equal(result.diagnostics.outcomeReasonCounts.spotify['halted:spotify_network_error'], 1);
+});
+
 test('MusicBrainz retry diagnostics survive as aggregate-safe checkpoint state', async () => {
   const spotifyMetadata = {
     kind: 'livevault-spotify-listening-metadata',
@@ -138,6 +158,14 @@ test('repeated malformed-item circuit breaker reports why the provider was defer
   });
   assert.equal(result.diagnostics.outcomeReasonCounts.spotify['error:malformed_spotify_isrc'], 3);
   assert.equal(result.itemErrorReasonCounts.spotify.malformed_spotify_isrc, 3);
+});
+
+test('diagnostic state accepts a maximum-length safe reason after adding the status prefix', () => {
+  const reason = 'r'.repeat(80);
+  const diagnostics = { outcomeReasonCounts: {}, providerDeferrals: {} };
+  runner.recordOutcomeDiagnostic(diagnostics, 'spotify', 'deferred', reason);
+  assert.doesNotThrow(() => runner.diagnosticState(diagnostics));
+  assert.equal(diagnostics.outcomeReasonCounts.spotify[`deferred:${reason}`], 1);
 });
 
 test('bulk progress summary exposes only safe aggregate diagnostics', () => {
