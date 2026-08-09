@@ -75,7 +75,6 @@ async function loadListeningMaintenanceContext(client, { today } = {}) {
 
   const usage = {
     reserve: persistUsageBeforeProvider,
-    finish: baseUsage.finish,
     state: baseUsage.state,
   };
 
