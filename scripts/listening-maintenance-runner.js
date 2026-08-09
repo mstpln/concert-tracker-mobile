@@ -4,7 +4,7 @@ const enrichment = require('./listening-enrichment-engine');
 
 const DEFAULT_MAX_STEPS = 25;
 const HARD_MAX_STEPS = 100;
-const DEFAULT_BULK_ITEM_ERROR_LIMIT = 3;
+const DEFAULT_BULK_REPEATED_ITEM_ERROR_LIMIT = 3;
 const MAX_DOCUMENT_RECORDS = 100000;
 const CHECKPOINT_KIND = 'livevault-listening-maintenance-checkpoint';
 const PROVIDERS = new Set(['spotify', 'musicbrainz', 'listenbrainz']);
@@ -17,18 +17,6 @@ function validDate(value) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
 
-function itemErrorCountState(value = {}) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('itemErrorCounts must be an object.');
-  const counts = {};
-  for (const [provider, count] of Object.entries(value)) {
-    if (!PROVIDERS.has(provider) || !Number.isInteger(count) || count < 0 || count > MAX_DOCUMENT_RECORDS) {
-      throw new Error('itemErrorCounts contains an invalid provider count.');
-    }
-    counts[provider] = count;
-  }
-  return counts;
-}
-
 function checkpointState(value = null, now = new Date().toISOString()) {
   if (!validDate(now)) throw new Error('Invalid listening maintenance time.');
   if (value == null) {
@@ -39,7 +27,6 @@ function checkpointState(value = null, now = new Date().toISOString()) {
       updatedAt: now,
       completedStepKeys: [],
       haltReason: null,
-      itemErrorCounts: {},
     };
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)
@@ -51,9 +38,7 @@ function checkpointState(value = null, now = new Date().toISOString()) {
     || !value.completedStepKeys.every((key) => typeof key === 'string' && key.length > 0 && key.length <= 512)) {
     throw new Error('Invalid listening maintenance checkpoint.');
   }
-  const state = clone(value);
-  state.itemErrorCounts = itemErrorCountState(value.itemErrorCounts || {});
-  return state;
+  return clone(value);
 }
 
 function stepKey(step) {
@@ -68,12 +53,30 @@ function boundedMaxSteps(value) {
   return numeric;
 }
 
-function boundedItemErrorLimit(value) {
+function boundedRepeatedItemErrorLimit(value) {
   const numeric = Number(value == null ? 0 : value);
   if (!Number.isInteger(numeric) || numeric < 0 || numeric > HARD_MAX_STEPS) {
-    throw new Error(`maxItemErrorsPerProvider must be an integer from 0 to ${HARD_MAX_STEPS}.`);
+    throw new Error(`maxRepeatedItemErrorsPerProviderReason must be an integer from 0 to ${HARD_MAX_STEPS}.`);
   }
   return numeric;
+}
+
+function itemErrorReasonCountState(value = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('itemErrorReasonCounts must be an object.');
+  const counts = {};
+  for (const [provider, reasonCounts] of Object.entries(value)) {
+    if (!PROVIDERS.has(provider) || !reasonCounts || typeof reasonCounts !== 'object' || Array.isArray(reasonCounts)) {
+      throw new Error('itemErrorReasonCounts contains an invalid provider entry.');
+    }
+    counts[provider] = {};
+    for (const [reason, count] of Object.entries(reasonCounts)) {
+      if (!/^[a-z0-9_:-]{1,80}$/i.test(reason) || !Number.isInteger(count) || count < 0 || count > MAX_DOCUMENT_RECORDS) {
+        throw new Error('itemErrorReasonCounts contains an invalid reason count.');
+      }
+      counts[provider][reason] = count;
+    }
+  }
+  return counts;
 }
 
 function identityDocument(value = null) {
@@ -224,7 +227,8 @@ async function runMaintenanceBatch({
   haltOnRetry = true,
   haltOnItemError = true,
   deferOnProviderFailure = false,
-  maxItemErrorsPerProvider = haltOnItemError ? 0 : DEFAULT_BULK_ITEM_ERROR_LIMIT,
+  maxRepeatedItemErrorsPerProviderReason = haltOnItemError ? 0 : DEFAULT_BULK_REPEATED_ITEM_ERROR_LIMIT,
+  itemErrorReasonCounts = {},
   deferredProviders = [],
   now = new Date().toISOString(),
 } = {}) {
@@ -235,13 +239,13 @@ async function runMaintenanceBatch({
   if (typeof haltOnRetry !== 'boolean') throw new Error('haltOnRetry must be a boolean.');
   if (typeof haltOnItemError !== 'boolean') throw new Error('haltOnItemError must be a boolean.');
   if (typeof deferOnProviderFailure !== 'boolean') throw new Error('deferOnProviderFailure must be a boolean.');
-  const itemErrorLimit = boundedItemErrorLimit(maxItemErrorsPerProvider);
+  const itemErrorLimit = boundedRepeatedItemErrorLimit(maxRepeatedItemErrorsPerProviderReason);
+  const errorCounts = itemErrorReasonCountState(itemErrorReasonCounts);
   const deferred = deferredProviderSet(deferredProviders);
   const limit = boundedMaxSteps(maxSteps);
   const identities = identityDocument(trackIdentities);
   const metadata = spotifyMetadataDocument(spotifyMetadata);
   const state = checkpointState(checkpoint, now);
-  const errorCounts = itemErrorCountState(state.itemErrorCounts);
   const completed = new Set(state.completedStepKeys);
   const summary = { attempted: 0, persisted: 0, halted: false, haltReason: null };
 
@@ -327,9 +331,10 @@ async function runMaintenanceBatch({
     const itemScopedError = outcome.status === 'error'
       && (result?.kind === 'ok' || providerErrorScope(result) === 'item');
     if (itemScopedError) {
-      errorCounts[next.provider] = (errorCounts[next.provider] || 0) + 1;
-      state.itemErrorCounts = { ...errorCounts };
-      if (!haltOnItemError && itemErrorLimit > 0 && errorCounts[next.provider] >= itemErrorLimit) {
+      const reason = safeProviderReason(outcome, 'item_error');
+      if (!errorCounts[next.provider]) errorCounts[next.provider] = {};
+      errorCounts[next.provider][reason] = (errorCounts[next.provider][reason] || 0) + 1;
+      if (!haltOnItemError && itemErrorLimit > 0 && errorCounts[next.provider][reason] >= itemErrorLimit) {
         deferred.add(next.provider);
       }
     }
@@ -359,7 +364,6 @@ async function runMaintenanceBatch({
     }
   }
 
-  state.itemErrorCounts = { ...errorCounts };
   state.haltReason = summary.haltReason;
   state.updatedAt = now;
   const finalPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
@@ -371,22 +375,22 @@ async function runMaintenanceBatch({
     spotifyMetadata: metadata,
     plan: enrichment.safePlanSummary(finalPlan),
     deferredProviders: [...deferred].sort(),
-    itemErrorCounts: { ...errorCounts },
+    itemErrorReasonCounts: clone(errorCounts),
   };
 }
 
 module.exports = {
   DEFAULT_MAX_STEPS,
   HARD_MAX_STEPS,
-  DEFAULT_BULK_ITEM_ERROR_LIMIT,
+  DEFAULT_BULK_REPEATED_ITEM_ERROR_LIMIT,
   MAX_DOCUMENT_RECORDS,
   CHECKPOINT_KIND,
   validDate,
-  itemErrorCountState,
   checkpointState,
   stepKey,
   boundedMaxSteps,
-  boundedItemErrorLimit,
+  boundedRepeatedItemErrorLimit,
+  itemErrorReasonCountState,
   identityDocument,
   spotifyMetadataDocument,
   reserveProviderCall,
