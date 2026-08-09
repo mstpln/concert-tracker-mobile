@@ -79,6 +79,17 @@ test('usage reservation is conditionally persisted before the provider can be au
   assert.equal(savedUsage.listeningMaintenance.spotifyCallsThisRun, 1);
 });
 
+test('usage block reason is exposed through the persisted maintenance context', async () => {
+  const docs = initialDocs();
+  docs[persistence.API_USAGE_PATH].spotify.callsToday = persistence.BULK_SPOTIFY_CAP;
+  const client = fakeClient(docs);
+  const context = await persistence.loadListeningMaintenanceContext(client, { today: '2026-08-08', bulk: true });
+
+  assert.equal(await context.usage.reserve('spotify'), false);
+  assert.equal(context.usage.blockReason('spotify'), 'daily_cap');
+  assert.deepEqual(client.writes, []);
+});
+
 test('failed usage persistence prevents provider authorization', async () => {
   const client = fakeClient(initialDocs());
   client.writeJsonStrict = async (path) => {

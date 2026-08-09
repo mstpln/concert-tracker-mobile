@@ -8,6 +8,7 @@ const DEFAULT_BULK_REPEATED_ITEM_ERROR_LIMIT = 3;
 const MAX_DOCUMENT_RECORDS = 100000;
 const CHECKPOINT_KIND = 'livevault-listening-maintenance-checkpoint';
 const PROVIDERS = new Set(['spotify', 'musicbrainz', 'listenbrainz']);
+const DIAGNOSTIC_KINDS = new Set(['retry', 'provider_error', 'provider_halt', 'circuit_breaker']);
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -61,6 +62,14 @@ function boundedRepeatedItemErrorLimit(value) {
   return numeric;
 }
 
+function validDiagnosticReason(value) {
+  return typeof value === 'string' && /^[a-z0-9_:-]{1,80}$/i.test(value);
+}
+
+function validDiagnosticKey(value) {
+  return typeof value === 'string' && /^[a-z0-9_:-]{1,170}$/i.test(value);
+}
+
 function itemErrorReasonCountState(value = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('itemErrorReasonCounts must be an object.');
   const counts = {};
@@ -70,13 +79,80 @@ function itemErrorReasonCountState(value = {}) {
     }
     counts[provider] = {};
     for (const [reason, count] of Object.entries(reasonCounts)) {
-      if (!/^[a-z0-9_:-]{1,80}$/i.test(reason) || !Number.isInteger(count) || count < 0 || count > MAX_DOCUMENT_RECORDS) {
+      if (!validDiagnosticReason(reason) || !Number.isInteger(count) || count < 0 || count > MAX_DOCUMENT_RECORDS) {
         throw new Error('itemErrorReasonCounts contains an invalid reason count.');
       }
       counts[provider][reason] = count;
     }
   }
   return counts;
+}
+
+function diagnosticState(value = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('diagnostics must be an object.');
+  const result = { outcomeReasonCounts: {}, providerDeferrals: {}, usageBlocks: {} };
+  const outcomeReasonCounts = value.outcomeReasonCounts || {};
+  const providerDeferrals = value.providerDeferrals || {};
+  const usageBlocks = value.usageBlocks || {};
+  if (!outcomeReasonCounts || typeof outcomeReasonCounts !== 'object' || Array.isArray(outcomeReasonCounts)
+    || !providerDeferrals || typeof providerDeferrals !== 'object' || Array.isArray(providerDeferrals)
+    || !usageBlocks || typeof usageBlocks !== 'object' || Array.isArray(usageBlocks)) {
+    throw new Error('diagnostics contains an invalid section.');
+  }
+  for (const [provider, reasonCounts] of Object.entries(outcomeReasonCounts)) {
+    if (!PROVIDERS.has(provider) || !reasonCounts || typeof reasonCounts !== 'object' || Array.isArray(reasonCounts)) {
+      throw new Error('diagnostics contains an invalid provider outcome entry.');
+    }
+    result.outcomeReasonCounts[provider] = {};
+    for (const [key, count] of Object.entries(reasonCounts)) {
+      if (!validDiagnosticKey(key) || !Number.isInteger(count) || count < 0 || count > MAX_DOCUMENT_RECORDS) {
+        throw new Error('diagnostics contains an invalid outcome count.');
+      }
+      result.outcomeReasonCounts[provider][key] = count;
+    }
+  }
+  for (const [provider, entry] of Object.entries(providerDeferrals)) {
+    if (!PROVIDERS.has(provider) || !entry || typeof entry !== 'object' || Array.isArray(entry)
+      || !DIAGNOSTIC_KINDS.has(entry.kind) || !validDiagnosticReason(entry.reason)
+      || (entry.nextEligibleCheckAt != null && !validDate(entry.nextEligibleCheckAt))) {
+      throw new Error('diagnostics contains an invalid provider deferral.');
+    }
+    result.providerDeferrals[provider] = { kind: entry.kind, reason: entry.reason };
+    if (validDate(entry.nextEligibleCheckAt)) {
+      result.providerDeferrals[provider].nextEligibleCheckAt = entry.nextEligibleCheckAt;
+    }
+  }
+  for (const [provider, reason] of Object.entries(usageBlocks)) {
+    if (!PROVIDERS.has(provider) || !validDiagnosticReason(reason)) {
+      throw new Error('diagnostics contains an invalid usage block.');
+    }
+    result.usageBlocks[provider] = reason;
+  }
+  return result;
+}
+
+function recordOutcomeDiagnostic(diagnostics, provider, status, reason) {
+  if (!PROVIDERS.has(provider)) return;
+  const safeStatus = validDiagnosticReason(status) ? status : 'unknown';
+  const safeReason = validDiagnosticReason(reason) ? reason : 'none';
+  const key = `${safeStatus}:${safeReason}`;
+  if (!diagnostics.outcomeReasonCounts[provider]) diagnostics.outcomeReasonCounts[provider] = {};
+  diagnostics.outcomeReasonCounts[provider][key] = (diagnostics.outcomeReasonCounts[provider][key] || 0) + 1;
+}
+
+function recordProviderDeferral(diagnostics, provider, kind, reason, nextEligibleCheckAt = null) {
+  if (!PROVIDERS.has(provider)) return;
+  const safeKind = DIAGNOSTIC_KINDS.has(kind) ? kind : 'provider_error';
+  const safeReason = validDiagnosticReason(reason) ? reason : 'provider_error';
+  diagnostics.providerDeferrals[provider] = { kind: safeKind, reason: safeReason };
+  if (validDate(nextEligibleCheckAt)) {
+    diagnostics.providerDeferrals[provider].nextEligibleCheckAt = nextEligibleCheckAt;
+  }
+}
+
+function recordUsageBlock(diagnostics, provider, reason) {
+  if (!PROVIDERS.has(provider)) return;
+  diagnostics.usageBlocks[provider] = validDiagnosticReason(reason) ? reason : 'usage_gate_denied';
 }
 
 function identityDocument(value = null) {
@@ -156,9 +232,7 @@ function providerFailureOutcome(result) {
 }
 
 function safeProviderReason(result, fallback = 'provider_error') {
-  return typeof result?.reason === 'string' && /^[a-z0-9_:-]{1,80}$/i.test(result.reason)
-    ? result.reason
-    : fallback;
+  return validDiagnosticReason(result?.reason) ? result.reason : fallback;
 }
 
 function providerErrorScope(result) {
@@ -229,6 +303,7 @@ async function runMaintenanceBatch({
   deferOnProviderFailure = false,
   maxRepeatedItemErrorsPerProviderReason = haltOnItemError ? 0 : DEFAULT_BULK_REPEATED_ITEM_ERROR_LIMIT,
   itemErrorReasonCounts = {},
+  diagnostics = {},
   deferredProviders = [],
   now = new Date().toISOString(),
 } = {}) {
@@ -241,11 +316,13 @@ async function runMaintenanceBatch({
   if (typeof deferOnProviderFailure !== 'boolean') throw new Error('deferOnProviderFailure must be a boolean.');
   const itemErrorLimit = boundedRepeatedItemErrorLimit(maxRepeatedItemErrorsPerProviderReason);
   const errorCounts = itemErrorReasonCountState(itemErrorReasonCounts);
+  const diagnosticSummary = diagnosticState(diagnostics);
   const deferred = deferredProviderSet(deferredProviders);
   const limit = boundedMaxSteps(maxSteps);
   const identities = identityDocument(trackIdentities);
   const metadata = spotifyMetadataDocument(spotifyMetadata);
   const state = checkpointState(checkpoint, now);
+  state.diagnostics = clone(diagnosticSummary);
   const completed = new Set(state.completedStepKeys);
   const summary = { attempted: 0, persisted: 0, halted: false, haltReason: null };
 
@@ -258,6 +335,7 @@ async function runMaintenanceBatch({
         summary.haltReason = deferredProviderHaltReason(deferred);
         state.haltReason = summary.haltReason;
         state.updatedAt = now;
+        state.diagnostics = clone(diagnosticSummary);
       }
       break;
     }
@@ -274,10 +352,22 @@ async function runMaintenanceBatch({
     if (preflightResult !== true) throw new Error('Listening maintenance persistence preflight was not approved.');
 
     if (!(await reserveProviderCall(usage, next.provider))) {
+      const usageReason = typeof usage?.blockReason === 'function' ? usage.blockReason(next.provider) : null;
+      recordUsageBlock(diagnosticSummary, next.provider, usageReason);
+      recordOutcomeDiagnostic(diagnosticSummary, next.provider, 'usage_blocked', usageReason || 'usage_gate_denied');
       summary.halted = true;
       summary.haltReason = `usage_blocked:${next.provider}`;
       state.haltReason = summary.haltReason;
       state.updatedAt = now;
+      state.diagnostics = clone(diagnosticSummary);
+      const persistResult = await persist({
+        trackIdentities: clone(identities),
+        spotifyMetadata: clone(metadata),
+        checkpoint: clone(state),
+        lastStep: clone(next),
+        lastOutcome: { status: 'usage_blocked', reason: usageReason || 'usage_gate_denied' },
+      });
+      if (persistResult !== true) throw new Error('Listening maintenance persistence was not confirmed.');
       break;
     }
 
@@ -293,8 +383,13 @@ async function runMaintenanceBatch({
     const wideHalt = providerWideHalt(result, next.provider);
     const providerFailure = providerErrorHalt || wideHalt;
     if (providerFailure) {
+      const failureReason = safeProviderReason(result, 'provider_error');
+      const failureKind = wideHalt ? 'provider_halt' : 'provider_error';
+      recordOutcomeDiagnostic(diagnosticSummary, next.provider, deferOnProviderFailure ? 'deferred' : 'halted', failureReason);
       state.updatedAt = now;
       if (deferOnProviderFailure) {
+        recordProviderDeferral(diagnosticSummary, next.provider, failureKind, failureReason);
+        state.diagnostics = clone(diagnosticSummary);
         deferred.add(next.provider);
         const remainingPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
         let haltReason = null;
@@ -321,6 +416,7 @@ async function runMaintenanceBatch({
       }
 
       state.haltReason = providerFailure;
+      state.diagnostics = clone(diagnosticSummary);
       const persistResult = await persist({
         trackIdentities: clone(identities),
         spotifyMetadata: clone(metadata),
@@ -335,11 +431,21 @@ async function runMaintenanceBatch({
     }
 
     const outcome = applyStepResult({ step: next, result, inventory, identities, metadata, now });
+    recordOutcomeDiagnostic(diagnosticSummary, next.provider, outcome.status, safeProviderReason(outcome, 'none'));
     completed.add(key);
     state.completedStepKeys = [...completed].sort();
     state.updatedAt = now;
 
-    if (outcome.status === 'retry' && !haltOnRetry) deferred.add(next.provider);
+    if (outcome.status === 'retry' && !haltOnRetry) {
+      deferred.add(next.provider);
+      recordProviderDeferral(
+        diagnosticSummary,
+        next.provider,
+        'retry',
+        safeProviderReason(outcome, 'provider_retry'),
+        outcome.nextEligibleCheckAt,
+      );
+    }
     const itemScopedError = outcome.status === 'error'
       && (result?.kind === 'ok' || providerErrorScope(result) === 'item');
     if (itemScopedError) {
@@ -348,8 +454,10 @@ async function runMaintenanceBatch({
       errorCounts[next.provider][reason] = (errorCounts[next.provider][reason] || 0) + 1;
       if (!haltOnItemError && itemErrorLimit > 0 && errorCounts[next.provider][reason] >= itemErrorLimit) {
         deferred.add(next.provider);
+        recordProviderDeferral(diagnosticSummary, next.provider, 'circuit_breaker', reason);
       }
     }
+    state.diagnostics = clone(diagnosticSummary);
     const terminalOutcome = (outcome.status === 'retry' && haltOnRetry)
       || (itemScopedError && haltOnItemError)
       || (outcome.status === 'error' && !itemScopedError)
@@ -378,6 +486,7 @@ async function runMaintenanceBatch({
 
   state.haltReason = summary.haltReason;
   state.updatedAt = now;
+  state.diagnostics = clone(diagnosticSummary);
   const finalPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
 
   return {
@@ -388,6 +497,7 @@ async function runMaintenanceBatch({
     plan: enrichment.safePlanSummary(finalPlan),
     deferredProviders: [...deferred].sort(),
     itemErrorReasonCounts: clone(errorCounts),
+    diagnostics: clone(diagnosticSummary),
   };
 }
 
@@ -402,7 +512,13 @@ module.exports = {
   stepKey,
   boundedMaxSteps,
   boundedRepeatedItemErrorLimit,
+  validDiagnosticReason,
+  validDiagnosticKey,
   itemErrorReasonCountState,
+  diagnosticState,
+  recordOutcomeDiagnostic,
+  recordProviderDeferral,
+  recordUsageBlock,
   identityDocument,
   spotifyMetadataDocument,
   reserveProviderCall,
