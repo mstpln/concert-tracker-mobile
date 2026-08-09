@@ -391,7 +391,7 @@ test('MusicBrainz non-transient adapter failures are provider-scoped and do not 
       async persist(snapshot) { persisted.push(snapshot); return true; },
       haltOnItemError: false,
       deferOnProviderFailure: true,
-      maxSteps: 10,
+      maxSteps: 2,
       now: '2026-08-09T16:20:00.000Z',
     });
 
