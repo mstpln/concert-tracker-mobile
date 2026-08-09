@@ -136,3 +136,40 @@ test('derived-state change after quota persistence stops before provider executi
   assert.equal(providerCalls, 0);
   assert.equal(persists, 0);
 });
+
+test('explicit post-reservation preflight denial stops before provider execution', async () => {
+  let preflights = 0;
+  let reservations = 0;
+  let providerCalls = 0;
+  const ctx = context({
+    usage: { reserve: async () => { reservations += 1; return true; } },
+    preflight: async () => {
+      preflights += 1;
+      return preflights === 1;
+    },
+  });
+
+  await assert.rejects(() => production.runProductionBackfill({
+    argv: ['--execute', '--write'],
+    env: env(),
+    clientFactory: client,
+    async contextLoader() { return ctx; },
+    async readAllSourceEvents() { return source(); },
+    providerFactory() { return {}; },
+    async maintenanceRunner(args) {
+      const snapshot = {
+        nextStep: { provider: 'spotify' },
+        trackIdentities: ctx.trackIdentities,
+        spotifyMetadata: ctx.spotifyMetadata,
+      };
+      assert.equal(await args.preflight(snapshot), true);
+      await args.usage.reserve('spotify');
+      providerCalls += 1;
+      return { summary: {}, plan: {} };
+    },
+    log() {},
+  }), /post-reservation preflight was not approved/);
+
+  assert.equal(reservations, 1);
+  assert.equal(providerCalls, 0);
+});
