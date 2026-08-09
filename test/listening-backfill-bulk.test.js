@@ -40,7 +40,7 @@ function source() {
 }
 
 function context() {
-  return {
+  const state = {
     trackIdentities: { kind: 'livevault-track-identities', schemaVersion: 1, updatedAt: null, records: {} },
     spotifyMetadata: { kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} },
     checkpoint: null,
@@ -48,6 +48,11 @@ function context() {
     preflight: async () => true,
     persist: async () => true,
   };
+  state.persistTrackIdentitiesOnly = async (nextIdentities) => {
+    state.trackIdentities = nextIdentities;
+    return true;
+  };
+  return state;
 }
 
 function syntheticClient() {
@@ -105,9 +110,11 @@ test('legacy MusicBrainz transient errors revive only the failed provider state'
     },
   };
 
-  const recovered = bulk.reviveLegacyMusicbrainzTransientErrors(document);
+  const recovered = bulk.reviveLegacyMusicbrainzTransientErrors(document, '2026-08-09T15:00:00.000Z');
   assert.notEqual(recovered, document);
+  assert.equal(recovered.updatedAt, '2026-08-09T15:00:00.000Z');
   assert.equal(recovered.records.transient.status, 'retry');
+  assert.equal(recovered.records.transient.updatedAt, '2026-08-09T15:00:00.000Z');
   assert.equal(recovered.records.transient.providers.musicbrainz.status, 'retry');
   assert.equal(recovered.records.transient.providers.musicbrainz.reason, 'http_503');
   assert.equal(recovered.records.transient.nextEligibleCheckAt, '2026-08-09T14:30:00.000Z');
@@ -127,9 +134,10 @@ test('legacy MusicBrainz transient recovery fails closed on incomplete or non-tr
   ]) {
     assert.equal(bulk.legacyMusicbrainzTransientRetryAt(record), null);
   }
+  assert.throws(() => bulk.reviveLegacyMusicbrainzTransientErrors({ records: {} }, 'invalid'), /valid timestamp/);
 });
 
-test('bulk backfill passes revived legacy MusicBrainz retry state into maintenance', async () => {
+test('bulk backfill durably persists revived legacy MusicBrainz retry state before maintenance', async () => {
   const state = context();
   state.trackIdentities.records['spotify:SyntheticTrack1'] = {
     workKey: 'spotify:SyntheticTrack1',
@@ -143,6 +151,12 @@ test('bulk backfill passes revived legacy MusicBrainz retry state into maintenan
       spotify: { status: 'metadata', reason: 'spotify_metadata_with_isrc', checkedAt: '2026-08-09T13:59:00.000Z' },
       musicbrainz: { status: 'error', reason: 'musicbrainz_network_error', checkedAt: '2026-08-09T14:00:00.000Z' },
     },
+  };
+  let correctionWrites = 0;
+  state.persistTrackIdentitiesOnly = async (nextIdentities) => {
+    correctionWrites += 1;
+    state.trackIdentities = nextIdentities;
+    return true;
   };
   let observed;
   await bulk.runBulkBackfill({
@@ -165,7 +179,9 @@ test('bulk backfill passes revived legacy MusicBrainz retry state into maintenan
     now: () => '2026-08-09T14:10:00.000Z',
     log() {},
   });
+  assert.equal(correctionWrites, 1);
   assert.equal(observed.status, 'retry');
+  assert.equal(observed.updatedAt, '2026-08-09T14:10:00.000Z');
   assert.equal(observed.providers.musicbrainz.status, 'retry');
   assert.equal(observed.nextEligibleCheckAt, '2026-08-09T14:30:00.000Z');
 });
