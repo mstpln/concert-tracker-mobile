@@ -152,6 +152,13 @@ async function runBulkBackfill({
       return true;
     },
   };
+  const guardedPersist = async (snapshot) => {
+    // Long provider calls increase the chance that band ownership or a
+    // confirmed provider identity changes after the pre-request checks.
+    // Revalidate immediately before any derived/checkpoint persistence.
+    await assertBandsCurrent();
+    return context.persist(snapshot);
+  };
 
   let trackIdentities = context.trackIdentities;
   let spotifyMetadata = context.spotifyMetadata;
@@ -173,7 +180,7 @@ async function runBulkBackfill({
       providers,
       usage: guardedUsage,
       preflight: guardedPreflight,
-      persist: context.persist,
+      persist: guardedPersist,
       maxSteps: chunkLimit,
       now: now(),
     });
