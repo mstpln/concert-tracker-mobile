@@ -141,9 +141,9 @@ test('non-true persistence preflight is not treated as approval', async () => {
   assert.equal(providerCalls, 0);
 });
 
-test('usage gate stops before provider execution or persistence', async () => {
+test('usage gate stops before provider execution and persists only the diagnostic checkpoint', async () => {
   let providerCalls = 0;
-  let writes = 0;
+  const writes = [];
   const result = await runner.runMaintenanceBatch({
     inventory: inventory(),
     providers: {
@@ -151,11 +151,15 @@ test('usage gate stops before provider execution or persistence', async () => {
     },
     usage: usageGate(false),
     preflight,
-    async persist() { writes += 1; return true; },
+    async persist(snapshot) { writes.push(snapshot); return true; },
   });
 
   assert.equal(providerCalls, 0);
-  assert.equal(writes, 0);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].checkpoint.haltReason, 'usage_blocked:spotify');
+  assert.equal(writes[0].lastOutcome.status, 'usage_blocked');
+  assert.equal(writes[0].trackIdentities.records['spotify:SpotifyTrack123'], undefined);
+  assert.equal(writes[0].spotifyMetadata.records.SpotifyTrack123, undefined);
   assert.equal(result.summary.halted, true);
   assert.equal(result.summary.haltReason, 'usage_blocked:spotify');
 });
