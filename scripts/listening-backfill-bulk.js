@@ -217,6 +217,9 @@ async function runBulkBackfill({
     },
   };
   const guardedPersist = async (snapshot) => {
+    // Long provider calls increase the chance that band ownership or a
+    // confirmed provider identity changes after the pre-request checks.
+    // Revalidate immediately before any derived/checkpoint persistence.
     await assertBandsCurrent();
     return context.persist(snapshot);
   };
@@ -267,10 +270,8 @@ async function runBulkBackfill({
 
   const finalPlan = finalResult?.plan && typeof finalResult.plan === 'object' ? { ...finalResult.plan } : {};
   const safetyHalt = Boolean(finalResult?.summary?.halted && finalResult?.summary?.haltReason !== 'batch_limit');
-  const providerRetryHalt = !safetyHalt && deferredProviders.length > 0
-    && Number(finalPlan.planned) > 0
-    && (Number(finalResult?.summary?.attempted) || 0) === 0;
-  const hitBulkLimit = !safetyHalt && !providerRetryHalt && attempted >= options.maxTotalSteps && Number(finalPlan.planned) > 0;
+  const pendingRetryWait = !safetyHalt && Number(finalPlan.planned) === 0 && Number(finalPlan.retry_wait) > 0;
+  const hitBulkLimit = !safetyHalt && !pendingRetryWait && attempted >= options.maxTotalSteps && Number(finalPlan.planned) > 0;
   const safe = {
     mode: 'bulk-production-enrichment',
     maxTotalSteps: options.maxTotalSteps,
@@ -280,11 +281,11 @@ async function runBulkBackfill({
     run: {
       attempted,
       persisted,
-      halted: safetyHalt || providerRetryHalt || hitBulkLimit,
+      halted: safetyHalt || pendingRetryWait || hitBulkLimit,
       haltReason: safetyHalt
         ? finalResult.summary.haltReason
-        : providerRetryHalt
-          ? `provider_retry_wait:${deferredProviders.join(',')}`
+        : pendingRetryWait
+          ? 'retry_wait'
           : (hitBulkLimit ? 'bulk_limit' : (finalResult?.summary?.haltReason === 'batch_limit' ? null : finalResult?.summary?.haltReason || null)),
       deferredProviders,
       plan: finalPlan,
