@@ -72,6 +72,17 @@ function assertBackfillAuthorization(options, env) {
   }
 }
 
+function assertProviderConfiguration(nextStep, env) {
+  const provider = nextStep?.provider;
+  if (provider === 'spotify') {
+    requiredEnv(env, 'SPOTIFY_CLIENT_ID');
+    requiredEnv(env, 'SPOTIFY_CLIENT_SECRET');
+  } else if (provider === 'listenbrainz') {
+    requiredEnv(env, 'LISTENBRAINZ_USER_TOKEN');
+  }
+  return true;
+}
+
 function safeSourceSummary(counts = {}) {
   const allowed = ['spotifyArchiveEvents', 'incrementalObjects', 'incrementalEvents', 'totalEvents'];
   return Object.fromEntries(allowed.map((key) => [key, Number(counts[key]) || 0]));
@@ -154,6 +165,7 @@ async function runProductionBackfill({
   const providers = providerFactory({ fetchImpl, spotifyTokenProvider, listenbrainzTokenProvider });
   let lastPreflightSnapshot = null;
   const guardedPreflight = async (snapshot) => {
+    assertProviderConfiguration(snapshot?.nextStep, env);
     await assertBandsCurrent();
     const approved = await context.preflight(snapshot);
     if (approved === true) lastPreflightSnapshot = clone(snapshot);
@@ -216,6 +228,7 @@ module.exports = {
   parseArgs,
   usageText,
   assertBackfillAuthorization,
+  assertProviderConfiguration,
   safeSourceSummary,
   safeRunSummary,
   runProductionBackfill,
