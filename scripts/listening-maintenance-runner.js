@@ -353,6 +353,14 @@ async function runMaintenanceBatch({
       state.haltReason = summary.haltReason;
       state.updatedAt = now;
       state.diagnostics = clone(diagnosticSummary);
+      const persistResult = await persist({
+        trackIdentities: clone(identities),
+        spotifyMetadata: clone(metadata),
+        checkpoint: clone(state),
+        lastStep: clone(next),
+        lastOutcome: { status: 'usage_blocked', reason: usageReason || 'usage_gate_denied' },
+      });
+      if (persistResult !== true) throw new Error('Listening maintenance persistence was not confirmed.');
       break;
     }
 
