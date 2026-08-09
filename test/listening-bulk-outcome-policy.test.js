@@ -83,13 +83,7 @@ test('bulk item policy quarantines malformed track data and continues unrelated 
               },
             };
           }
-          return {
-            kind: 'ok',
-            data: {
-              id: 'BTrack',
-              artists: [{ id: 'SyntheticArtist1' }],
-            },
-          };
+          return { kind: 'ok', data: { id: 'BTrack', artists: [{ id: 'SyntheticArtist1' }] } };
         },
       },
     },
@@ -108,7 +102,9 @@ test('bulk item policy quarantines malformed track data and continues unrelated 
   assert.equal(result.trackIdentities.records['spotify:BTrack'].providers.spotify.status, 'metadata');
   assert.equal(result.summary.persisted, 2);
   assert.notEqual(result.summary.haltReason, 'spotify:error');
-  assert.equal(result.checkpoint.itemErrorCounts.spotify, 1);
+  assert.equal(result.itemErrorReasonCounts.spotify.malformed_spotify_isrc, 1);
+  assert.equal(Object.prototype.hasOwnProperty.call(result.checkpoint, 'itemErrorReasonCounts'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(result.checkpoint, 'itemErrorCounts'), false);
 });
 
 test('focused maintenance still stops on an item-level malformed provider payload', async () => {
@@ -145,9 +141,7 @@ test('focused provider failure stops without poisoning the current track', async
     inventory: inventory(),
     providers: {
       spotify: {
-        async exact_track() {
-          return { kind: 'error', reason: 'spotify_network_error' };
-        },
+        async exact_track() { return { kind: 'error', reason: 'spotify_network_error' }; },
       },
     },
     usage,
@@ -242,7 +236,7 @@ test('bulk explicit provider-wide halt also defers only that provider and leaves
   assert.equal(result.plan.spotify, 1);
 });
 
-test('bulk item-error circuit breaker defers a provider after three quarantined item failures', async () => {
+test('bulk repeated-item-error circuit breaker defers a provider after three identical quarantines', async () => {
   let spotifyCalls = 0;
   const result = await runner.runMaintenanceBatch({
     inventory: inventory(['ATrack', 'BTrack', 'CTrack', 'DTrack']),
@@ -272,24 +266,31 @@ test('bulk item-error circuit breaker defers a provider after three quarantined 
 
   assert.equal(spotifyCalls, 3);
   assert.equal(result.summary.persisted, 3);
-  assert.equal(result.itemErrorCounts.spotify, 3);
-  assert.equal(result.checkpoint.itemErrorCounts.spotify, 3);
+  assert.equal(result.itemErrorReasonCounts.spotify.malformed_spotify_isrc, 3);
   assert.deepEqual(result.deferredProviders, ['spotify']);
   assert.equal(result.summary.haltReason, 'provider_deferred:spotify');
   assert.equal(result.plan.spotify, 1);
   assert.equal(Object.prototype.hasOwnProperty.call(result.trackIdentities.records, 'spotify:DTrack'), false);
 });
 
-test('item-error circuit breaker count survives a new internal chunk through checkpoint state', async () => {
-  const first = await runner.runMaintenanceBatch({
+test('different item-validation reasons do not trip the repeated-reason circuit breaker', async () => {
+  let spotifyCalls = 0;
+  const result = await runner.runMaintenanceBatch({
     inventory: inventory(['ATrack', 'BTrack', 'CTrack', 'DTrack']),
     providers: {
       spotify: {
         async exact_track({ spotifyTrackId }) {
-          return {
-            kind: 'ok',
-            data: { id: spotifyTrackId, artists: [{ id: 'SyntheticArtist1' }], external_ids: { isrc: 'INVALID' } },
-          };
+          spotifyCalls += 1;
+          if (spotifyTrackId === 'ATrack') {
+            return { kind: 'ok', data: { id: spotifyTrackId, artists: [{ id: 'SyntheticArtist1' }], external_ids: { isrc: 'INVALID' } } };
+          }
+          if (spotifyTrackId === 'BTrack') {
+            return { kind: 'ok', data: { id: spotifyTrackId, artists: [{ id: 'SyntheticArtist1' }], album: { id: 'bad-id!' } } };
+          }
+          if (spotifyTrackId === 'CTrack') {
+            return { kind: 'ok', data: { id: spotifyTrackId, artists: [{ id: 'SyntheticArtist1' }], album: { images: [{ url: 'http://invalid.test/art.jpg' }] } } };
+          }
+          return { kind: 'ok', data: { id: spotifyTrackId, artists: [{ id: 'SyntheticArtist1' }] } };
         },
       },
     },
@@ -298,17 +299,51 @@ test('item-error circuit breaker count survives a new internal chunk through che
     async persist() { return true; },
     haltOnItemError: false,
     deferOnProviderFailure: true,
+    maxSteps: 4,
+    now: '2026-08-09T16:20:00.000Z',
+  });
+
+  assert.equal(spotifyCalls, 4);
+  assert.deepEqual(result.deferredProviders, []);
+  assert.equal(result.itemErrorReasonCounts.spotify.malformed_spotify_isrc, 1);
+  assert.equal(result.itemErrorReasonCounts.spotify.malformed_spotify_album_id, 1);
+  assert.equal(result.itemErrorReasonCounts.spotify.malformed_spotify_artwork_url, 1);
+  assert.equal(result.trackIdentities.records['spotify:DTrack'].providers.spotify.status, 'metadata');
+});
+
+test('repeated item-error counts carry only when explicitly passed to a later internal chunk', async () => {
+  const allInventory = inventory(['ATrack', 'BTrack', 'CTrack', 'DTrack']);
+  const provider = {
+    spotify: {
+      async exact_track({ spotifyTrackId }) {
+        return {
+          kind: 'ok',
+          data: { id: spotifyTrackId, artists: [{ id: 'SyntheticArtist1' }], external_ids: { isrc: 'INVALID' } },
+        };
+      },
+    },
+  };
+  const first = await runner.runMaintenanceBatch({
+    inventory: allInventory,
+    providers: provider,
+    usage,
+    preflight,
+    async persist() { return true; },
+    haltOnItemError: false,
+    deferOnProviderFailure: true,
     maxSteps: 2,
     now: '2026-08-09T16:20:00.000Z',
   });
-  assert.equal(first.checkpoint.itemErrorCounts.spotify, 2);
+  assert.equal(first.itemErrorReasonCounts.spotify.malformed_spotify_isrc, 2);
+  assert.equal(Object.prototype.hasOwnProperty.call(first.checkpoint, 'itemErrorReasonCounts'), false);
 
   let secondCalls = 0;
   const second = await runner.runMaintenanceBatch({
-    inventory: inventory(['ATrack', 'BTrack', 'CTrack', 'DTrack']),
+    inventory: allInventory,
     trackIdentities: first.trackIdentities,
     spotifyMetadata: first.spotifyMetadata,
     checkpoint: first.checkpoint,
+    itemErrorReasonCounts: first.itemErrorReasonCounts,
     providers: {
       spotify: {
         async exact_track({ spotifyTrackId }) {
@@ -330,13 +365,13 @@ test('item-error circuit breaker count survives a new internal chunk through che
   });
 
   assert.equal(secondCalls, 1);
-  assert.equal(second.itemErrorCounts.spotify, 3);
+  assert.equal(second.itemErrorReasonCounts.spotify.malformed_spotify_isrc, 3);
   assert.deepEqual(second.deferredProviders, ['spotify']);
   assert.equal(second.summary.haltReason, 'provider_deferred:spotify');
   assert.equal(second.plan.spotify, 1);
 });
 
-test('MusicBrainz terminal adapter failures are provider-scoped and do not poison the current track in bulk mode', async () => {
+test('MusicBrainz non-transient adapter failures are provider-scoped and do not poison the current track in bulk mode', async () => {
   const mixed = mixedInventory();
   for (const reason of ['http_500', 'musicbrainz_invalid_json']) {
     const persisted = [];
@@ -345,9 +380,7 @@ test('MusicBrainz terminal adapter failures are provider-scoped and do not poiso
       spotifyMetadata: mixed.spotifyMetadata,
       providers: {
         spotify: {
-          async exact_track() {
-            return { kind: 'ok', data: { id: 'ATrack', artists: [{ id: 'SyntheticArtist1' }] } };
-          },
+          async exact_track() { return { kind: 'ok', data: { id: 'ATrack', artists: [{ id: 'SyntheticArtist1' }] } }; },
         },
         musicbrainz: {
           async isrc_lookup() { return { kind: 'error', reason }; },
