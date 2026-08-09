@@ -9,7 +9,7 @@ const SPOTIFY_METADATA_PATH = 'listening/spotify-metadata.json';
 const API_USAGE_PATH = 'apiUsage.json';
 const BULK_SPOTIFY_CAP = 15000;
 const BULK_MUSICBRAINZ_CAP = 15000;
-const BULK_LISTENBRAINZ_CAP = 15000;
+const BULK_LISTENBRAINZ_CAP = 100;
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
