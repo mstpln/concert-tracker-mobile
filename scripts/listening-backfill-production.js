@@ -14,6 +14,14 @@ const BACKFILL_CONFIRMATION = 'I_AUTHORIZE_BOUNDED_LISTENING_PROVIDER_ENRICHMENT
 const WRITE_CONFIRM_ENV = 'LIVEVAULT_LISTENING_WRITE_CONFIRM';
 const WRITE_CONFIRMATION = 'I_AUTHORIZE_DERIVED_LISTENING_WRITES';
 
+function clone(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function same(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 function requiredEnv(env, name) {
   const value = String(env?.[name] || '').trim();
   if (!value) throw new Error(`Missing required environment variable: ${name}`);
@@ -110,6 +118,16 @@ async function runProductionBackfill({
   ]);
   if (!Array.isArray(bands)) throw new Error('Production bands document is invalid.');
   if (!source || !Array.isArray(source.events)) throw new Error('Private listening source reader returned invalid data.');
+  const loadedBands = clone(bands);
+
+  async function assertBandsCurrent() {
+    const currentBands = await client.readJson('bands.json', []);
+    if (!Array.isArray(currentBands)) throw new Error('Production bands document is invalid during backfill preflight.');
+    if (!same(currentBands, loadedBands)) {
+      throw new Error('Listening backfill bands changed after inventory load; reload before provider execution.');
+    }
+    return true;
+  }
 
   const inventory = inventoryLib.buildListeningInventory({
     bands,
@@ -134,14 +152,28 @@ async function runProductionBackfill({
   }
 
   const providers = providerFactory({ fetchImpl, spotifyTokenProvider, listenbrainzTokenProvider });
+  const guardedPreflight = async (snapshot) => {
+    await assertBandsCurrent();
+    return context.preflight(snapshot);
+  };
+  const guardedUsage = {
+    reserve: async (provider) => {
+      const allowed = await context.usage.reserve(provider);
+      if (allowed !== true) return false;
+      // Recheck after quota persistence as well, so a band change between
+      // preflight and reservation still stops before the provider request.
+      await assertBandsCurrent();
+      return true;
+    },
+  };
   const result = await maintenanceRunner({
     inventory,
     trackIdentities: context.trackIdentities,
     spotifyMetadata: context.spotifyMetadata,
     checkpoint: context.checkpoint,
     providers,
-    usage: context.usage,
-    preflight: context.preflight,
+    usage: guardedUsage,
+    preflight: guardedPreflight,
     persist: context.persist,
     maxSteps: options.maxSteps,
     now,
@@ -171,6 +203,8 @@ module.exports = {
   BACKFILL_CONFIRMATION,
   WRITE_CONFIRM_ENV,
   WRITE_CONFIRMATION,
+  clone,
+  same,
   requiredEnv,
   normalizeEndpoint,
   parseArgs,
