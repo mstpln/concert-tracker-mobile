@@ -46,6 +46,16 @@ test('maintenance context preserves shared usage totals while resetting only per
   assert.deepEqual(context.usageTracker.state.futureField, { keep: true });
 });
 
+test('bulk maintenance widens only the maintenance invocation provider ceilings', async () => {
+  const client = fakeClient(initialDocs());
+  const context = await persistence.loadListeningMaintenanceContext(client, { today: '2026-08-08', bulk: true });
+  assert.equal(context.usageTracker.state.spotify.callsToday, 7);
+  assert.equal(context.usageTracker.state.spotify.dailyCap, persistence.BULK_SPOTIFY_CAP);
+  assert.equal(context.usageTracker.state.spotify.perRunCap, persistence.BULK_SPOTIFY_CAP);
+  assert.equal(context.usageTracker.state.musicbrainz.perRunCap, persistence.BULK_MUSICBRAINZ_CAP);
+  assert.equal(context.usage.state.listenbrainzCallsThisRun, 0);
+});
+
 test('preflight rejects a concurrent usage change before provider quota can be reserved', async () => {
   const client = fakeClient(initialDocs());
   const context = await persistence.loadListeningMaintenanceContext(client, { today: '2026-08-08' });
