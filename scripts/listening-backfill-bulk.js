@@ -81,9 +81,10 @@ function legacyMusicbrainzTransientRetryAt(record) {
   return new Date(checkedAt + MUSICBRAINZ_TRANSIENT_RETRY_MS).toISOString();
 }
 
-function reviveLegacyMusicbrainzTransientErrors(document) {
+function reviveLegacyMusicbrainzTransientErrors(document, recoveredAt = new Date().toISOString()) {
   if (!document || typeof document !== 'object' || Array.isArray(document)
     || !document.records || typeof document.records !== 'object' || Array.isArray(document.records)) return document;
+  if (!Number.isFinite(Date.parse(recoveredAt))) throw new Error('Legacy MusicBrainz recovery requires a valid timestamp.');
   let changed = false;
   const records = {};
   for (const [trackKey, record] of Object.entries(document.records)) {
@@ -94,12 +95,13 @@ function reviveLegacyMusicbrainzTransientErrors(document) {
     }
     const recovered = clone(record);
     recovered.status = 'retry';
+    recovered.updatedAt = recoveredAt;
     recovered.nextEligibleCheckAt = retryAt;
     recovered.providers.musicbrainz.status = 'retry';
     records[trackKey] = recovered;
     changed = true;
   }
-  return changed ? { ...document, records } : document;
+  return changed ? { ...document, updatedAt: recoveredAt, records } : document;
 }
 
 async function runBulkBackfill({
@@ -135,7 +137,8 @@ async function runBulkBackfill({
   if (!Array.isArray(bands)) throw new Error('Production bands document is invalid.');
   if (!source || !Array.isArray(source.events)) throw new Error('Private listening source reader returned invalid data.');
   const loadedBands = clone(bands);
-  const recoveredTrackIdentities = reviveLegacyMusicbrainzTransientErrors(context.trackIdentities);
+  const recoveryNow = now();
+  const recoveredTrackIdentities = reviveLegacyMusicbrainzTransientErrors(context.trackIdentities, recoveryNow);
 
   async function assertBandsCurrent() {
     const currentBands = await client.readJson('bands.json', []);
@@ -144,6 +147,15 @@ async function runBulkBackfill({
       throw new Error('Listening backfill bands changed after inventory load; reload before provider execution.');
     }
     return true;
+  }
+
+  if (recoveredTrackIdentities !== context.trackIdentities) {
+    if (typeof context.persistTrackIdentitiesOnly !== 'function') {
+      throw new Error('Listening maintenance identity-correction persistence is unavailable.');
+    }
+    await assertBandsCurrent();
+    const correctionPersisted = await context.persistTrackIdentitiesOnly(recoveredTrackIdentities);
+    if (correctionPersisted !== true) throw new Error('Listening maintenance identity correction was not confirmed.');
   }
 
   const inventory = inventoryLib.buildListeningInventory({
