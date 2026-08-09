@@ -7,13 +7,21 @@ const runner = require('./listening-maintenance-runner');
 const production = require('./listening-backfill-production');
 const { createListeningMaintenanceClient } = require('./lib/listeningMaintenanceClient');
 const { loadListeningMaintenanceContext } = require('./lib/listeningMaintenancePersistence');
-const { createListeningMaintenanceProviders } = require('./lib/listeningMaintenanceProviders');
+const {
+  createListeningMaintenanceProviders,
+  MUSICBRAINZ_TRANSIENT_RETRY_MS,
+} = require('./lib/listeningMaintenanceProviders');
 
 const BULK_CONFIRM_ENV = 'LIVEVAULT_LISTENING_BULK_CONFIRM';
 const BULK_CONFIRMATION = 'I_AUTHORIZE_FULL_LISTENING_BACKFILL';
 const CHUNK_STEPS = runner.HARD_MAX_STEPS;
 const MAX_TOTAL_STEPS = 50000;
 const SPOTIFY_TOKEN_REUSE_MS = 45 * 60 * 1000;
+const LEGACY_MUSICBRAINZ_TRANSIENT_REASONS = new Set([
+  'http_429',
+  'http_503',
+  'musicbrainz_network_error',
+]);
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -64,6 +72,36 @@ function safeProgressSummary({ chunk, attempted, persisted, result }) {
   };
 }
 
+function legacyMusicbrainzTransientRetryAt(record) {
+  if (!record || record.status !== 'error') return null;
+  const state = record?.providers?.musicbrainz;
+  if (!state || state.status !== 'error' || !LEGACY_MUSICBRAINZ_TRANSIENT_REASONS.has(state.reason)) return null;
+  const checkedAt = Date.parse(state.checkedAt);
+  if (!Number.isFinite(checkedAt)) return null;
+  return new Date(checkedAt + MUSICBRAINZ_TRANSIENT_RETRY_MS).toISOString();
+}
+
+function reviveLegacyMusicbrainzTransientErrors(document) {
+  if (!document || typeof document !== 'object' || Array.isArray(document)
+    || !document.records || typeof document.records !== 'object' || Array.isArray(document.records)) return document;
+  let changed = false;
+  const records = {};
+  for (const [trackKey, record] of Object.entries(document.records)) {
+    const retryAt = legacyMusicbrainzTransientRetryAt(record);
+    if (!retryAt) {
+      records[trackKey] = record;
+      continue;
+    }
+    const recovered = clone(record);
+    recovered.status = 'retry';
+    recovered.nextEligibleCheckAt = retryAt;
+    recovered.providers.musicbrainz.status = 'retry';
+    records[trackKey] = recovered;
+    changed = true;
+  }
+  return changed ? { ...document, records } : document;
+}
+
 async function runBulkBackfill({
   argv = process.argv.slice(2),
   env = process.env,
@@ -97,6 +135,7 @@ async function runBulkBackfill({
   if (!Array.isArray(bands)) throw new Error('Production bands document is invalid.');
   if (!source || !Array.isArray(source.events)) throw new Error('Private listening source reader returned invalid data.');
   const loadedBands = clone(bands);
+  const recoveredTrackIdentities = reviveLegacyMusicbrainzTransientErrors(context.trackIdentities);
 
   async function assertBandsCurrent() {
     const currentBands = await client.readJson('bands.json', []);
@@ -111,7 +150,7 @@ async function runBulkBackfill({
     bands,
     events: source.events,
     spotifyMetadata: context.spotifyMetadata,
-    trackIdentities: context.trackIdentities,
+    trackIdentities: recoveredTrackIdentities,
   });
 
   let cachedSpotifyToken = null;
@@ -160,7 +199,7 @@ async function runBulkBackfill({
     return context.persist(snapshot);
   };
 
-  let trackIdentities = context.trackIdentities;
+  let trackIdentities = recoveredTrackIdentities;
   let spotifyMetadata = context.spotifyMetadata;
   let checkpoint = context.checkpoint;
   let attempted = 0;
@@ -236,9 +275,12 @@ module.exports = {
   CHUNK_STEPS,
   MAX_TOTAL_STEPS,
   SPOTIFY_TOKEN_REUSE_MS,
+  LEGACY_MUSICBRAINZ_TRANSIENT_REASONS,
   parseArgs,
   usageText,
   assertBulkAuthorization,
   safeProgressSummary,
+  legacyMusicbrainzTransientRetryAt,
+  reviveLegacyMusicbrainzTransientErrors,
   runBulkBackfill,
 };
