@@ -187,6 +187,38 @@ test('safety halt reason wins when the final attempted step also reaches the bul
   assert.equal(result.run.haltReason, 'spotify:spotify_quota_exceeded');
 });
 
+test('bulk post-reservation preflight denial stops before provider execution', async () => {
+  let preflights = 0;
+  let providerCalls = 0;
+  const state = context();
+  state.preflight = async () => {
+    preflights += 1;
+    return preflights === 1;
+  };
+  await assert.rejects(() => bulk.runBulkBackfill({
+    argv: ['--execute', '--write', '--max-total-steps', '1'],
+    env: approvedEnv(),
+    clientFactory() { return syntheticClient(); },
+    async contextLoader() { return state; },
+    async readAllSourceEvents() { return source(); },
+    providerFactory() { return {}; },
+    async maintenanceRunner(args) {
+      const snapshot = {
+        trackIdentities: args.trackIdentities,
+        spotifyMetadata: args.spotifyMetadata,
+        checkpoint: args.checkpoint,
+        nextStep: { provider: 'spotify' },
+      };
+      assert.equal(await args.preflight(snapshot), true);
+      await args.usage.reserve('spotify');
+      providerCalls += 1;
+      return { summary: {}, plan: {} };
+    },
+    log() {},
+  }), /post-reservation preflight was not approved/);
+  assert.equal(providerCalls, 0);
+});
+
 test('finishing exactly at the bulk step ceiling is not reported as halted when no work remains', async () => {
   const state = context();
   const result = await bulk.runBulkBackfill({
