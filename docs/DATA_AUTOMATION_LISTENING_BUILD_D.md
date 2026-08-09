@@ -47,7 +47,9 @@ The access token is acquired lazily only if the bounded planner reaches a Spotif
 
 MusicBrainz requires no secret and continues using the reviewed meaningful User-Agent and maintenance pacing.
 
-ListenBrainz fallback remains later in the evidence ladder and resolves `LISTENBRAINZ_USER_TOKEN` lazily only if a bounded run actually reaches a ListenBrainz step. Missing provider credentials therefore do not broaden access or get printed in aggregate output.
+ListenBrainz fallback remains later in the evidence ladder and resolves `LISTENBRAINZ_USER_TOKEN` lazily only if a bounded run actually reaches a ListenBrainz step.
+
+Before quota reservation, the production preflight verifies that the credential required by the planned provider exists. A missing Spotify client ID/secret or ListenBrainz user token therefore stops the invocation before provider quota is reserved and before a track-level error can be persisted. Credential values are never included in aggregate output.
 
 ## Reused Build C safety
 
@@ -66,6 +68,14 @@ Build D does not create a second enrichment engine. It reuses:
 - Build B retry state and `nextEligibleCheckAt` ownership.
 
 Source Spotify and ListenBrainz observations remain immutable.
+
+## Per-step ownership and concurrency guard
+
+The inventory is built from one loaded `bands.json` snapshot, but Build D does not trust that snapshot indefinitely. Before every provider quota reservation it rereads `bands.json` and requires the complete loaded band document to remain unchanged. This protects stable band ownership and confirmed Spotify/MusicBrainz identity from concurrent browser changes, deletions or review decisions while the local maintenance process is running.
+
+After provider quota has been durably reserved in `apiUsage.json`, Build D rechecks `bands.json` again and reruns the Build C preflight against the exact same planned metadata/identity snapshot. A concurrent change to bands, Spotify metadata or track identities therefore stops before the external provider request. The already-persisted quota reservation may conservatively over-count an aborted attempt, but stale derived data is not written and quota accounting is never erased.
+
+Synthetic regression coverage exercises changes both before quota reservation and after quota persistence. In both cases provider execution and derived persistence remain at zero.
 
 ## Safe output
 
