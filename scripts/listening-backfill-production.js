@@ -180,7 +180,8 @@ async function runProductionBackfill({
       // mutable input against the same planned snapshot before the provider
       // request so a concurrent band/metadata/identity change fails closed.
       await assertBandsCurrent();
-      await context.preflight(lastPreflightSnapshot);
+      const stillApproved = await context.preflight(lastPreflightSnapshot);
+      if (stillApproved !== true) throw new Error('Listening maintenance post-reservation preflight was not approved.');
       return true;
     },
   };
