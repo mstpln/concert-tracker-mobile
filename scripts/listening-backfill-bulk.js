@@ -71,6 +71,7 @@ function safeProgressSummary({ chunk, attempted, persisted, result }) {
     persisted,
     haltReason: result?.summary?.haltReason || null,
     deferredProviders: Array.isArray(result?.deferredProviders) ? [...result.deferredProviders] : [],
+    diagnostics: result?.diagnostics && typeof result.diagnostics === 'object' ? clone(result.diagnostics) : {},
     plan: result?.plan && typeof result.plan === 'object' ? { ...result.plan } : {},
   };
 }
@@ -234,6 +235,7 @@ async function runBulkBackfill({
   let finalResult = null;
   let deferredProviders = [];
   let itemErrorReasonCounts = {};
+  let diagnostics = {};
 
   while (attempted < options.maxTotalSteps) {
     const remaining = options.maxTotalSteps - attempted;
@@ -255,6 +257,7 @@ async function runBulkBackfill({
       deferOnProviderFailure: true,
       maxRepeatedItemErrorsPerProviderReason: REPEATED_ITEM_ERROR_LIMIT,
       itemErrorReasonCounts,
+      diagnostics,
       deferredProviders,
       now: now(),
     });
@@ -268,6 +271,9 @@ async function runBulkBackfill({
     itemErrorReasonCounts = result?.itemErrorReasonCounts && typeof result.itemErrorReasonCounts === 'object'
       ? clone(result.itemErrorReasonCounts)
       : itemErrorReasonCounts;
+    diagnostics = result?.diagnostics && typeof result.diagnostics === 'object'
+      ? clone(result.diagnostics)
+      : diagnostics;
 
     log(JSON.stringify(safeProgressSummary({ chunk, attempted, persisted, result })));
 
@@ -297,6 +303,7 @@ async function runBulkBackfill({
           ? 'retry_wait'
           : (hitBulkLimit ? 'bulk_limit' : (finalResult?.summary?.haltReason === 'batch_limit' ? null : finalResult?.summary?.haltReason || null)),
       deferredProviders,
+      diagnostics,
       plan: finalPlan,
     },
   };
