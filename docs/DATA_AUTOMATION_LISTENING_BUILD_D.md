@@ -10,17 +10,13 @@ The initial Build D slice added a production entrypoint around the already-revie
 
 ## Initial rollout validation
 
-The initial production entrypoint defaults to one provider step and remains hard-capped at five provider steps per invocation. Three separately authorized one-step production runs validated the complete evidence path without widening that entrypoint:
+The initial production entrypoint defaults to one provider step and remains hard-capped at five provider steps per invocation. One separately authorized one-step production run has been completed so far. It exercised the Spotify exact-track stage: one provider result was attempted and persisted, the run stopped at the requested `batch_limit`, and the resulting aggregate plan exposed one ISRC-backed MusicBrainz next step while reducing the Spotify backlog from 12,026 to 12,025.
 
-1. Spotify exact-track metadata persisted successfully and produced an ISRC-backed MusicBrainz next step.
-2. MusicBrainz processed that ISRC conservatively and routed the unresolved recording to ListenBrainz fallback.
-3. ListenBrainz completed the recording identity, increasing the aggregate complete-track count from 75 to 76.
-
-Each invocation attempted and persisted exactly one provider result and stopped at the requested batch limit. The original five-step rollout command remains available for focused diagnostics and is not converted into the bulk command.
+No second MusicBrainz or ListenBrainz production validation has been authorized or run yet. The original five-step rollout command remains available for focused diagnostics and is not converted into the bulk command.
 
 ## Bulk backfill entrypoint
 
-v111 adds `scripts/listening-backfill-bulk.js` for the approved historical backfill phase. It reuses the same inventory, provider adapters, UsageTracker accounting, persistence preflight, concurrency checks and per-step durable writes as the validated Build D path.
+v111 adds `scripts/listening-backfill-bulk.js` for a future separately authorized historical backfill. It reuses the same inventory, provider adapters, UsageTracker accounting, persistence preflight, concurrency checks and per-step durable writes as the validated Build D path.
 
 The bulk runner executes the existing maintenance runner in internal chunks of at most 100 provider steps. A `batch_limit` after a durable 100-step chunk is the only halt reason that the bulk wrapper automatically continues across. Provider retry, provider error, review-required state, usage denial, stale production state, persistence conflict or any thrown safety error stops the process immediately.
 
@@ -46,11 +42,11 @@ Merging v111 does not itself authorize or start the bulk production invocation.
 
 ## Bulk provider ceilings
 
-The ordinary application/research provider caps remain unchanged. Only a context loaded explicitly with `bulk: true` widens the listening-maintenance invocation ceilings to 15,000 calls each for Spotify, MusicBrainz and ListenBrainz.
+The ordinary application/research provider caps remain unchanged. Only a context loaded explicitly with `bulk: true` widens the listening-maintenance invocation ceilings. Spotify and MusicBrainz use 15,000-step maintenance ceilings for the bulk process, while ListenBrainz retains a conservative maximum of 100 calls per process with at least one-second pacing.
 
 Spotify still uses the existing UsageTracker accounting and pacing, and its provider response remains authoritative. Spotify Development Mode does not publish a stable numeric account quota; 429/rate-limit or quota responses therefore stop conservatively rather than being guessed around.
 
-MusicBrainz keeps the reviewed meaningful User-Agent and at least 1.1-second pacing. ListenBrainz keeps at least one-second maintenance pacing. The widened values are invocation ceilings, not claims about provider allowances.
+MusicBrainz keeps the reviewed meaningful User-Agent and at least 1.1-second pacing. ListenBrainz keeps its separate courtesy ceiling rather than inheriting the larger Spotify/MusicBrainz bulk ceiling. These values are internal invocation guards, not claims about provider allowances.
 
 ## Dual production authorization
 
@@ -138,4 +134,4 @@ Development and QA do not:
 - modify immutable source observations;
 - remove existing provider/data safety rules.
 
-The first three real one-step Build D validations were separately authorized and completed. The full bulk invocation remains separately authorized after the v111 code is reviewed and merged.
+Only the first real one-step Spotify Build D validation has been separately authorized and completed. Any additional focused validation or the full bulk invocation remains separately authorized after the v111 code is reviewed and merged.
