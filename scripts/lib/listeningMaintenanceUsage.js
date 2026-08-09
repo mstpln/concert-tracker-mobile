@@ -59,18 +59,42 @@ function createListeningMaintenanceUsageGate(usage, {
   let firstMusicbrainzReservation = true;
   let lastListenbrainzCallAt = safeDateMs(state.listenbrainzLastCallAt);
   const startedAt = new Date(now()).toISOString();
+  const blockedReasons = {};
+
+  function setBlocked(provider, reason) {
+    blockedReasons[provider] = reason;
+    return false;
+  }
+
+  function clearBlocked(provider) {
+    delete blockedReasons[provider];
+  }
+
+  function blockReason(provider) {
+    return blockedReasons[provider] || null;
+  }
 
   async function reserve(provider) {
     if (provider === 'spotify') {
-      if (typeof usage.canCallSpotify !== 'function' || typeof usage.recordSpotifyCall !== 'function') return false;
-      if (!usage.canCallSpotify()) return false;
+      if (typeof usage.canCallSpotify !== 'function' || typeof usage.recordSpotifyCall !== 'function') {
+        return setBlocked(provider, 'usage_gate_unavailable');
+      }
+      const spotify = usage.state?.spotify || {};
+      if (safeCounter(spotify.callsThisRun) >= safeCounter(spotify.perRunCap)) return setBlocked(provider, 'per_run_cap');
+      if (safeCounter(spotify.callsToday) >= safeCounter(spotify.dailyCap)) return setBlocked(provider, 'daily_cap');
+      if (!usage.canCallSpotify()) return setBlocked(provider, 'policy_denied');
       await usage.recordSpotifyCall();
       state.spotifyCallsThisRun += 1;
+      clearBlocked(provider);
       return true;
     }
     if (provider === 'musicbrainz') {
-      if (typeof usage.canCallMusicbrainz !== 'function' || typeof usage.recordMusicbrainzAttempt !== 'function') return false;
-      if (!usage.canCallMusicbrainz()) return false;
+      if (typeof usage.canCallMusicbrainz !== 'function' || typeof usage.recordMusicbrainzAttempt !== 'function') {
+        return setBlocked(provider, 'usage_gate_unavailable');
+      }
+      const musicbrainz = usage.state?.musicbrainz || {};
+      if (safeCounter(musicbrainz.callsThisRun) >= safeCounter(musicbrainz.perRunCap)) return setBlocked(provider, 'per_run_cap');
+      if (!usage.canCallMusicbrainz()) return setBlocked(provider, 'policy_denied');
       if (firstMusicbrainzReservation) {
         await waitForPersistedGap(usage.state.musicbrainz?.lastCallAt, config.MUSICBRAINZ.minDelayMs, now, sleepImpl);
         firstMusicbrainzReservation = false;
@@ -78,10 +102,11 @@ function createListeningMaintenanceUsageGate(usage, {
       await usage.recordMusicbrainzAttempt();
       usage.state.musicbrainz.lastCallAt = new Date(now()).toISOString();
       state.musicbrainzCallsThisRun += 1;
+      clearBlocked(provider);
       return true;
     }
     if (provider === 'listenbrainz') {
-      if (state.listenbrainzCallsThisRun >= listenbrainzPerRunCap) return false;
+      if (state.listenbrainzCallsThisRun >= listenbrainzPerRunCap) return setBlocked(provider, 'per_run_cap');
       const current = now();
       const gap = current - lastListenbrainzCallAt;
       if (lastListenbrainzCallAt && gap < listenbrainzMinDelayMs) {
@@ -90,9 +115,10 @@ function createListeningMaintenanceUsageGate(usage, {
       lastListenbrainzCallAt = now();
       state.listenbrainzLastCallAt = new Date(lastListenbrainzCallAt).toISOString();
       state.listenbrainzCallsThisRun += 1;
+      clearBlocked(provider);
       return true;
     }
-    return false;
+    return setBlocked(provider, 'unknown_provider');
   }
 
   function finish(summary = {}) {
@@ -107,7 +133,7 @@ function createListeningMaintenanceUsageGate(usage, {
     return state.lastRun;
   }
 
-  return { reserve, finish, state };
+  return { reserve, finish, state, blockReason };
 }
 
 module.exports = {
