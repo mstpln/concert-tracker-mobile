@@ -152,17 +152,23 @@ async function runProductionBackfill({
   }
 
   const providers = providerFactory({ fetchImpl, spotifyTokenProvider, listenbrainzTokenProvider });
+  let lastPreflightSnapshot = null;
   const guardedPreflight = async (snapshot) => {
     await assertBandsCurrent();
-    return context.preflight(snapshot);
+    const approved = await context.preflight(snapshot);
+    if (approved === true) lastPreflightSnapshot = clone(snapshot);
+    return approved;
   };
   const guardedUsage = {
     reserve: async (provider) => {
+      if (!lastPreflightSnapshot) throw new Error('Listening backfill usage reservation requires a successful preflight snapshot.');
       const allowed = await context.usage.reserve(provider);
       if (allowed !== true) return false;
-      // Recheck after quota persistence as well, so a band change between
-      // preflight and reservation still stops before the provider request.
+      // Quota persistence changes apiUsage.json. Revalidate every other
+      // mutable input against the same planned snapshot before the provider
+      // request so a concurrent band/metadata/identity change fails closed.
       await assertBandsCurrent();
+      await context.preflight(lastPreflightSnapshot);
       return true;
     },
   };
