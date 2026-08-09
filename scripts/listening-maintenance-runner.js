@@ -90,11 +90,13 @@ function itemErrorReasonCountState(value = {}) {
 
 function diagnosticState(value = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('diagnostics must be an object.');
-  const result = { outcomeReasonCounts: {}, providerDeferrals: {} };
+  const result = { outcomeReasonCounts: {}, providerDeferrals: {}, usageBlocks: {} };
   const outcomeReasonCounts = value.outcomeReasonCounts || {};
   const providerDeferrals = value.providerDeferrals || {};
+  const usageBlocks = value.usageBlocks || {};
   if (!outcomeReasonCounts || typeof outcomeReasonCounts !== 'object' || Array.isArray(outcomeReasonCounts)
-    || !providerDeferrals || typeof providerDeferrals !== 'object' || Array.isArray(providerDeferrals)) {
+    || !providerDeferrals || typeof providerDeferrals !== 'object' || Array.isArray(providerDeferrals)
+    || !usageBlocks || typeof usageBlocks !== 'object' || Array.isArray(usageBlocks)) {
     throw new Error('diagnostics contains an invalid section.');
   }
   for (const [provider, reasonCounts] of Object.entries(outcomeReasonCounts)) {
@@ -116,6 +118,12 @@ function diagnosticState(value = {}) {
     }
     result.providerDeferrals[provider] = { kind: entry.kind, reason: entry.reason };
   }
+  for (const [provider, reason] of Object.entries(usageBlocks)) {
+    if (!PROVIDERS.has(provider) || !validDiagnosticReason(reason)) {
+      throw new Error('diagnostics contains an invalid usage block.');
+    }
+    result.usageBlocks[provider] = reason;
+  }
   return result;
 }
 
@@ -133,6 +141,11 @@ function recordProviderDeferral(diagnostics, provider, kind, reason) {
   const safeKind = DIAGNOSTIC_KINDS.has(kind) ? kind : 'provider_error';
   const safeReason = validDiagnosticReason(reason) ? reason : 'provider_error';
   diagnostics.providerDeferrals[provider] = { kind: safeKind, reason: safeReason };
+}
+
+function recordUsageBlock(diagnostics, provider, reason) {
+  if (!PROVIDERS.has(provider)) return;
+  diagnostics.usageBlocks[provider] = validDiagnosticReason(reason) ? reason : 'usage_gate_denied';
 }
 
 function identityDocument(value = null) {
@@ -332,10 +345,14 @@ async function runMaintenanceBatch({
     if (preflightResult !== true) throw new Error('Listening maintenance persistence preflight was not approved.');
 
     if (!(await reserveProviderCall(usage, next.provider))) {
+      const usageReason = typeof usage?.blockReason === 'function' ? usage.blockReason(next.provider) : null;
+      recordUsageBlock(diagnosticSummary, next.provider, usageReason);
+      recordOutcomeDiagnostic(diagnosticSummary, next.provider, 'usage_blocked', usageReason || 'usage_gate_denied');
       summary.halted = true;
       summary.haltReason = `usage_blocked:${next.provider}`;
       state.haltReason = summary.haltReason;
       state.updatedAt = now;
+      state.diagnostics = clone(diagnosticSummary);
       break;
     }
 
@@ -480,6 +497,7 @@ module.exports = {
   diagnosticState,
   recordOutcomeDiagnostic,
   recordProviderDeferral,
+  recordUsageBlock,
   identityDocument,
   spotifyMetadataDocument,
   reserveProviderCall,
