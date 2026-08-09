@@ -20,15 +20,34 @@ Each invocation attempted exactly one provider step, persisted the result requir
 
 ## Bulk backfill entrypoint
 
-v111 adds `scripts/listening-backfill-bulk.js` for a future separately authorized historical backfill. It reuses the same inventory, provider adapters, UsageTracker accounting, persistence preflight, concurrency checks and per-step durable writes as the validated Build D path.
+v111 adds `scripts/listening-backfill-bulk.js` for a separately authorized historical backfill. It reuses the same inventory, provider adapters, UsageTracker accounting, persistence preflight, concurrency checks and per-step durable writes as the validated Build D path.
 
-The bulk runner executes the existing maintenance runner in internal chunks of at most 100 provider steps. A `batch_limit` after a durable 100-step chunk is the only halt reason that the bulk wrapper automatically continues across. Provider retry, provider error, review-required state, usage denial, stale production state, persistence conflict or any thrown safety error stops the process immediately.
+The bulk runner executes the existing maintenance runner in internal chunks of at most 100 provider steps. A `batch_limit` after a durable 100-step chunk is the normal internal continuation point. Provider retry, provider error, provider-wide halt, usage denial, stale production state, persistence conflict or any thrown safety error stops the process immediately.
+
+A persisted `needs_review` result is different: in bulk mode only, that individual work item is quarantined in its existing review-required identity state and excluded from further automatic routing, while unrelated work continues. The focused 1–5 step production entrypoint keeps the original default and still halts on `needs_review` for diagnostics. This policy change does not auto-resolve or guess an ambiguous recording.
 
 The bulk process has a separate hard ceiling of 50,000 provider steps per invocation. This is sized above the current 12,000-track inventory because a track can require Spotify, then MusicBrainz, then ListenBrainz. It is a runaway guard, not a promise that providers will allow that many calls.
 
 The Spotify app-only access token is refreshed after at most 45 minutes of reuse so a multi-hour process does not depend on one short-lived token. This refresh changes no track identity and does not weaken the provider gates.
 
 A structured Spotify 429 `QUOTA_EXCEEDED` response is treated as a provider-wide halt rather than a terminal error for the current track. Usage has already been durably reserved before that request, but the work item is deliberately left incomplete and its step key is not marked completed. A later separately authorized invocation can therefore retry the same track instead of silently losing it. Ordinary 429 responses with a valid `Retry-After` remain explicit dated retries.
+
+## First bulk production invocation
+
+After PR #98 merged as `d872ab3d91c144bf27002c13af05f53d52453639`, the user separately authorized the first full bulk invocation and ran it locally from merged v111.
+
+The process attempted four provider steps and persisted all four. It then stopped safely on `musicbrainz:needs_review`. Aggregate state after that stop was:
+
+- complete tracks: 77;
+- planned provider steps: 12,045;
+- Spotify: 12,023;
+- MusicBrainz immediate queue: 0;
+- ListenBrainz fallback: 22;
+- no-route/review-required: 1;
+- blocked: 0;
+- retry-wait: 0.
+
+The four persisted steps remain durable and source observations were not changed. The early stop demonstrated that treating every review-required track as a process-wide halt would make a large historical migration unnecessarily interactive, even though the ambiguous track itself had already been safely quarantined. The focused v111 correction therefore changes only the bulk stop policy described above; it does not rerun production or weaken provider, quota, concurrency or persistence stops.
 
 ## Bulk authorization
 
@@ -42,7 +61,7 @@ The bulk runner requires the existing provider/write authorization values plus a
 
 The maintenance Worker URL and `DATA_MAINTENANCE_TOKEN` remain required. Spotify credentials and the ListenBrainz token continue to be resolved only when their provider is actually planned.
 
-Merging v111 does not itself authorize or start the bulk production invocation.
+Merging v111 or a focused v111 correction does not itself authorize or start another bulk production invocation.
 
 ## Bulk provider ceilings
 
@@ -63,7 +82,7 @@ A real Build D invocation requires all of the following:
 
 The maintenance Worker URL and `DATA_MAINTENANCE_TOKEN` are then required for the existing least-privilege Worker client.
 
-The separate exact values distinguish authorization to consume provider quota from authorization to write the derived maintenance state required for safe progress. Provider execution cannot be enabled in a read-only mode because Build C deliberately persists provider usage before the provider request.
+The separate exact values distinguish authorization to consume provider quota from authorization to write the derived maintenance state required for safe progress. Provider execution cannot be enabled in a read-only mode because Build C deliberately persists provider usage before each request.
 
 ## Provider credentials
 
@@ -124,11 +143,11 @@ Before v111 bulk rollout, Spotify's current Development Mode quota documentation
 
 ## Version
 
-Build D began at v110. The v111 bulk runner is an architectural extension because it changes the production operating mode from tiny diagnostic invocations to one resumable long-running process. `APP_VERSION`, `CACHE_NAME_LITERAL` and generated build state move together to v111 exactly once.
+Build D began at v110. The v111 bulk runner is an architectural extension because it changes the production operating mode from tiny diagnostic invocations to one resumable long-running process. `APP_VERSION`, `CACHE_NAME_LITERAL` and generated build state moved together to v111 exactly once. The review-quarantine change is a focused correction to the same unreleased operational build and therefore keeps v111.
 
 ## Production boundary
 
-Creating and merging Build D code does **not** authorize a real backfill invocation.
+Creating, reviewing or merging Build D code does **not** authorize a real backfill invocation.
 
 Development and QA do not:
 
@@ -140,4 +159,4 @@ Development and QA do not:
 - modify immutable source observations;
 - remove existing provider/data safety rules.
 
-The three one-step Build D production validations were separately authorized and completed before the bulk rollout. The full bulk invocation remains separately authorized after the v111 code is reviewed and merged.
+The three one-step Build D production validations and the first four-step bulk invocation were separately authorized production actions. Any resumed bulk invocation remains separately authorized after the focused correction is reviewed and merged.

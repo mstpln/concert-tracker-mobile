@@ -182,6 +182,7 @@ async function runBulkBackfill({
       preflight: guardedPreflight,
       persist: guardedPersist,
       maxSteps: chunkLimit,
+      haltOnNeedsReview: false,
       now: now(),
     });
     finalResult = result;
