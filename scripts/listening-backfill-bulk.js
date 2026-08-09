@@ -85,8 +85,10 @@ function legacyMusicbrainzTransientRetryAt(record) {
 function recoverableLegacyMusicbrainzItem(item, record) {
   if (!item || item.status === 'blocked' || item.status === 'complete') return false;
   if (!enrichment.identityCompatible(item, record)) return false;
-  const isrc = enrichment.validIsrc(record?.isrc) || enrichment.validIsrc(item.spotifyMetadataIsrc);
-  return Boolean(isrc && item.trustedMusicbrainzArtistMbid);
+  const storedIsrc = enrichment.validIsrc(record?.isrc);
+  const metadataIsrc = enrichment.validIsrc(item.spotifyMetadataIsrc);
+  if (storedIsrc && metadataIsrc && storedIsrc !== metadataIsrc) return false;
+  return Boolean((storedIsrc || metadataIsrc) && item.trustedMusicbrainzArtistMbid);
 }
 
 function reviveLegacyMusicbrainzTransientErrors(document, recoveredAt = new Date().toISOString(), inventory = null) {
