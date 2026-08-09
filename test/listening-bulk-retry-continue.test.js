@@ -48,11 +48,7 @@ test('non-halting retry mode defers the retrying provider, continues other provi
       schemaVersion: 1,
       updatedAt: '2026-08-09T15:00:00.000Z',
       records: {
-        ZTrack: {
-          spotifyTrackId: 'ZTrack',
-          spotifyArtistIds: ['SyntheticArtist1'],
-          isrc: 'USABC1234567',
-        },
+        ZTrack: { spotifyTrackId: 'ZTrack', spotifyArtistIds: ['SyntheticArtist1'], isrc: 'USABC1234567' },
       },
     },
   });
@@ -97,7 +93,7 @@ test('non-halting retry mode defers the retrying provider, continues other provi
   assert.equal(result.plan.complete, 1);
 });
 
-test('bulk mode carries provider deferral across chunks and stops only when deferred work is all that remains', async () => {
+test('bulk mode carries provider deferral and repeated item-error state across internal chunks', async () => {
   const state = {
     trackIdentities: { kind: 'livevault-track-identities', schemaVersion: 1, updatedAt: null, records: {} },
     spotifyMetadata: { kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} },
@@ -127,24 +123,29 @@ test('bulk mode carries provider deferral across chunks and stops only when defe
       assert.equal(args.haltOnRetry, false);
       assert.equal(args.haltOnItemError, false);
       assert.equal(args.deferOnProviderFailure, true);
+      assert.equal(args.maxRepeatedItemErrorsPerProviderReason, 3);
       if (calls === 1) {
         assert.deepEqual(args.deferredProviders, []);
+        assert.deepEqual(args.itemErrorReasonCounts, {});
         return {
           summary: { attempted: 100, persisted: 100, halted: true, haltReason: 'batch_limit' },
           checkpoint: args.checkpoint,
           trackIdentities: args.trackIdentities,
           spotifyMetadata: args.spotifyMetadata,
           deferredProviders: ['musicbrainz'],
+          itemErrorReasonCounts: { spotify: { malformed_spotify_isrc: 2 } },
           plan: { planned: 2, complete: 0, blocked: 0, retry_wait: 1, no_route: 0, spotify: 1, musicbrainz: 1, listenbrainz: 0 },
         };
       }
       assert.deepEqual(args.deferredProviders, ['musicbrainz']);
+      assert.deepEqual(args.itemErrorReasonCounts, { spotify: { malformed_spotify_isrc: 2 } });
       return {
         summary: { attempted: 1, persisted: 1, halted: true, haltReason: 'provider_deferred:musicbrainz' },
         checkpoint: args.checkpoint,
         trackIdentities: args.trackIdentities,
         spotifyMetadata: args.spotifyMetadata,
         deferredProviders: ['musicbrainz'],
+        itemErrorReasonCounts: { spotify: { malformed_spotify_isrc: 2 } },
         plan: { planned: 1, complete: 1, blocked: 0, retry_wait: 1, no_route: 0, spotify: 0, musicbrainz: 1, listenbrainz: 0 },
       };
     },
@@ -157,6 +158,52 @@ test('bulk mode carries provider deferral across chunks and stops only when defe
   assert.equal(result.run.halted, true);
   assert.equal(result.run.haltReason, 'provider_deferred:musicbrainz');
   assert.deepEqual(result.run.deferredProviders, ['musicbrainz']);
+});
+
+test('a separate bulk invocation starts with a fresh repeated item-error circuit-breaker state', async () => {
+  const seen = [];
+  const common = {
+    argv: ['--execute', '--write', '--max-total-steps', '1'],
+    env: approvedEnv(),
+    clientFactory() {
+      return { async readJson(path, fallback) { return path === 'bands.json' ? [band()] : fallback; } };
+    },
+    async contextLoader() {
+      return {
+        trackIdentities: { kind: 'livevault-track-identities', schemaVersion: 1, updatedAt: null, records: {} },
+        spotifyMetadata: { kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} },
+        checkpoint: null,
+        usage: { reserve: async () => true },
+        preflight: async () => true,
+        persist: async () => true,
+        persistTrackIdentitiesOnly: async () => true,
+      };
+    },
+    async readAllSourceEvents() {
+      return {
+        events: [{ bandId: 'band-1', artistCreditName: 'Synthetic Artist', recordingTitle: 'Synthetic Song', spotifyTrackId: 'SyntheticTrack1' }],
+        counts: { spotifyArchiveEvents: 1, incrementalObjects: 0, incrementalEvents: 0, totalEvents: 1 },
+      };
+    },
+    providerFactory() { return {}; },
+    async maintenanceRunner(args) {
+      seen.push(args.itemErrorReasonCounts);
+      return {
+        summary: { attempted: 1, persisted: 1, halted: true, haltReason: 'bulk_limit' },
+        checkpoint: args.checkpoint,
+        trackIdentities: args.trackIdentities,
+        spotifyMetadata: args.spotifyMetadata,
+        deferredProviders: [],
+        itemErrorReasonCounts: { spotify: { malformed_spotify_isrc: 1 } },
+        plan: { planned: 1, complete: 0, blocked: 0, retry_wait: 0, no_route: 0, spotify: 1, musicbrainz: 0, listenbrainz: 0 },
+      };
+    },
+    log() {},
+  };
+
+  await bulk.runBulkBackfill(common);
+  await bulk.runBulkBackfill(common);
+  assert.deepEqual(seen, [{}, {}]);
 });
 
 test('bulk mode reports retry_wait when no provider steps are currently eligible', async () => {
@@ -186,12 +233,14 @@ test('bulk mode reports retry_wait when no provider steps are currently eligible
     async maintenanceRunner(args) {
       assert.equal(args.haltOnItemError, false);
       assert.equal(args.deferOnProviderFailure, true);
+      assert.deepEqual(args.itemErrorReasonCounts, {});
       return {
         summary: { attempted: 0, persisted: 0, halted: false, haltReason: null },
         checkpoint: args.checkpoint,
         trackIdentities: args.trackIdentities,
         spotifyMetadata: args.spotifyMetadata,
         deferredProviders: [],
+        itemErrorReasonCounts: {},
         plan: { planned: 0, complete: 0, blocked: 0, retry_wait: 1, no_route: 0, spotify: 0, musicbrainz: 0, listenbrainz: 0 },
       };
     },
