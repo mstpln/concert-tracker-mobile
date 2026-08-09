@@ -10,9 +10,13 @@ The initial Build D slice added a production entrypoint around the already-revie
 
 ## Initial rollout validation
 
-The initial production entrypoint defaults to one provider step and remains hard-capped at five provider steps per invocation. One separately authorized one-step production run has been completed so far. It exercised the Spotify exact-track stage: one provider result was attempted and persisted, the run stopped at the requested `batch_limit`, and the resulting aggregate plan exposed one ISRC-backed MusicBrainz next step while reducing the Spotify backlog from 12,026 to 12,025.
+The initial production entrypoint defaults to one provider step and remains hard-capped at five provider steps per invocation. Three separately authorized one-step production runs validated the full provider sequence without widening that entrypoint:
 
-No second MusicBrainz or ListenBrainz production validation has been authorized or run yet. The original five-step rollout command remains available for focused diagnostics and is not converted into the bulk command.
+1. Spotify exact-track metadata persisted successfully, reduced the Spotify backlog from 12,026 to 12,025, and exposed one ISRC-backed MusicBrainz next step.
+2. MusicBrainz processed that ISRC conservatively; the immediate MusicBrainz queue returned to zero and the unresolved recording moved to ListenBrainz fallback.
+3. ListenBrainz completed that recording identity; the complete-track count increased from 75 to 76 and the ListenBrainz fallback queue returned to 22.
+
+Each invocation attempted exactly one provider step, persisted the result required by that step, and stopped at the requested `batch_limit`. The original five-step rollout command remains available for focused diagnostics and is not converted into the bulk command.
 
 ## Bulk backfill entrypoint
 
@@ -98,9 +102,9 @@ Source Spotify and ListenBrainz observations remain immutable.
 
 The inventory is built from one loaded `bands.json` snapshot, but Build D does not trust that snapshot indefinitely. Before every provider quota reservation it rereads `bands.json` and requires the complete loaded band document to remain unchanged. This protects stable band ownership and confirmed Spotify/MusicBrainz identity from concurrent browser changes, deletions or review decisions while the local maintenance process is running.
 
-After provider quota has been durably reserved in `apiUsage.json`, Build D rechecks `bands.json` again and reruns the Build C preflight against the exact same planned metadata/identity snapshot. A concurrent change to bands, Spotify metadata or track identities therefore stops before the external provider request. The already-persisted quota reservation may conservatively over-count an aborted attempt, but stale derived data is not written and quota accounting is never erased.
+After provider quota has been durably reserved in `apiUsage.json`, Build D rechecks `bands.json` again and reruns the Build C preflight against the exact same planned metadata/identity snapshot. That second preflight must explicitly return `true`; a false, undefined, thrown, stale or conflicting result stops before the external provider request. The already-persisted quota reservation may conservatively over-count an aborted attempt, but stale derived data is not written and quota accounting is never erased.
 
-Synthetic regression coverage exercises changes both before quota reservation and after quota persistence. In both cases provider execution and derived persistence remain at zero.
+Synthetic regression coverage exercises changes and explicit denial both before quota reservation and after quota persistence. In every case provider execution and derived persistence remain at zero.
 
 ## Safe output
 
@@ -134,4 +138,4 @@ Development and QA do not:
 - modify immutable source observations;
 - remove existing provider/data safety rules.
 
-Only the first real one-step Spotify Build D validation has been separately authorized and completed. Any additional focused validation or the full bulk invocation remains separately authorized after the v111 code is reviewed and merged.
+The three one-step Build D production validations were separately authorized and completed before the bulk rollout. The full bulk invocation remains separately authorized after the v111 code is reviewed and merged.
