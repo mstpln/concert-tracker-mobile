@@ -6,6 +6,7 @@ const DEFAULT_MAX_STEPS = 25;
 const HARD_MAX_STEPS = 100;
 const MAX_DOCUMENT_RECORDS = 100000;
 const CHECKPOINT_KIND = 'livevault-listening-maintenance-checkpoint';
+const PROVIDERS = new Set(['spotify', 'musicbrainz', 'listenbrainz']);
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -158,6 +159,13 @@ function applyStepResult({ step, result, inventory, identities, metadata, now })
   return outcome;
 }
 
+function deferredProviderSet(value = []) {
+  if (!Array.isArray(value) || !value.every((provider) => PROVIDERS.has(provider))) {
+    throw new Error('deferredProviders must contain only known providers.');
+  }
+  return new Set(value);
+}
+
 async function runMaintenanceBatch({
   inventory,
   trackIdentities = null,
@@ -169,12 +177,16 @@ async function runMaintenanceBatch({
   persist,
   maxSteps = DEFAULT_MAX_STEPS,
   haltOnNeedsReview = true,
+  haltOnRetry = true,
+  deferredProviders = [],
   now = new Date().toISOString(),
 } = {}) {
   if (!inventory || !Array.isArray(inventory.items)) throw new Error('Invalid listening inventory.');
   if (typeof preflight !== 'function') throw new Error('Listening maintenance requires a persistence preflight.');
   if (typeof persist !== 'function') throw new Error('Listening maintenance requires a persistence callback.');
   if (typeof haltOnNeedsReview !== 'boolean') throw new Error('haltOnNeedsReview must be a boolean.');
+  if (typeof haltOnRetry !== 'boolean') throw new Error('haltOnRetry must be a boolean.');
+  const deferred = deferredProviderSet(deferredProviders);
   const limit = boundedMaxSteps(maxSteps);
   const identities = identityDocument(trackIdentities);
   const metadata = spotifyMetadataDocument(spotifyMetadata);
@@ -184,7 +196,7 @@ async function runMaintenanceBatch({
 
   while (summary.attempted < limit) {
     const plan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
-    const next = plan.steps[0] || null;
+    const next = plan.steps.find((candidate) => !deferred.has(candidate.provider)) || null;
     if (!next) break;
     const key = stepKey(next);
     const operation = providerForStep(providers, next);
@@ -236,12 +248,13 @@ async function runMaintenanceBatch({
     state.completedStepKeys = [...completed].sort();
     state.updatedAt = now;
 
-    const terminalOutcome = outcome.status === 'retry'
+    if (outcome.status === 'retry' && !haltOnRetry) deferred.add(next.provider);
+    const terminalOutcome = (outcome.status === 'retry' && haltOnRetry)
       || outcome.status === 'error'
       || (outcome.status === 'needs_review' && haltOnNeedsReview);
     const remainingPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
     let haltReason = terminalOutcome ? `${next.provider}:${outcome.status}` : null;
-    if (!haltReason && summary.attempted >= limit && remainingPlan.steps.length) haltReason = 'batch_limit';
+    if (!haltReason && summary.attempted >= limit && remainingPlan.steps.some((candidate) => !deferred.has(candidate.provider))) haltReason = 'batch_limit';
     state.haltReason = haltReason;
 
     const persistResult = await persist({
@@ -271,6 +284,7 @@ async function runMaintenanceBatch({
     trackIdentities: identities,
     spotifyMetadata: metadata,
     plan: enrichment.safePlanSummary(finalPlan),
+    deferredProviders: [...deferred].sort(),
   };
 }
 
@@ -288,5 +302,6 @@ module.exports = {
   reserveProviderCall,
   providerWideHalt,
   applyStepResult,
+  deferredProviderSet,
   runMaintenanceBatch,
 };
