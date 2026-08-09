@@ -296,7 +296,14 @@ async function runMaintenanceBatch({
       state.updatedAt = now;
       if (deferOnProviderFailure) {
         deferred.add(next.provider);
-        state.haltReason = null;
+        const remainingPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
+        let haltReason = null;
+        if (summary.attempted >= limit) {
+          haltReason = remainingPlan.steps.some((candidate) => !deferred.has(candidate.provider))
+            ? 'batch_limit'
+            : (remainingPlan.steps.length ? deferredProviderHaltReason(deferred) : null);
+        }
+        state.haltReason = haltReason;
         const persistResult = await persist({
           trackIdentities: clone(identities),
           spotifyMetadata: clone(metadata),
@@ -305,6 +312,11 @@ async function runMaintenanceBatch({
           lastOutcome: { status: 'deferred', reason: providerFailure },
         });
         if (persistResult !== true) throw new Error('Listening maintenance persistence was not confirmed.');
+        if (haltReason) {
+          summary.halted = true;
+          summary.haltReason = haltReason;
+          break;
+        }
         continue;
       }
 
