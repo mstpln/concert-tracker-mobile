@@ -104,7 +104,9 @@ The inventory is built from one loaded `bands.json` snapshot, but Build D does n
 
 After provider quota has been durably reserved in `apiUsage.json`, Build D rechecks `bands.json` again and reruns the Build C preflight against the exact same planned metadata/identity snapshot. That second preflight must explicitly return `true`; a false, undefined, thrown, stale or conflicting result stops before the external provider request. The already-persisted quota reservation may conservatively over-count an aborted attempt, but stale derived data is not written and quota accounting is never erased.
 
-Synthetic regression coverage exercises changes and explicit denial both before quota reservation and after quota persistence. In every case provider execution and derived persistence remain at zero.
+After the provider request returns, Build D rechecks the complete `bands.json` snapshot once more immediately before checkpoint or derived-state persistence. A band deletion, ownership change or confirmed provider-identity change that happened while the external request was in flight therefore stops the write instead of persisting a result against stale band ownership. Conditional metadata/identity writes remain the separate protection against concurrent derived-document changes.
+
+Synthetic regression coverage exercises changes and explicit denial before quota reservation, after quota persistence and after provider execution but before derived persistence. In each stale/denied case the next unsafe operation remains blocked; conservative provider-usage over-counting is allowed rather than erasing a reserved attempt.
 
 ## Safe output
 
