@@ -166,6 +166,11 @@ function deferredProviderSet(value = []) {
   return new Set(value);
 }
 
+function deferredProviderHaltReason(deferred) {
+  const providers = [...deferred].sort();
+  return providers.length ? `provider_retry_wait:${providers.join(',')}` : null;
+}
+
 async function runMaintenanceBatch({
   inventory,
   trackIdentities = null,
@@ -197,7 +202,15 @@ async function runMaintenanceBatch({
   while (summary.attempted < limit) {
     const plan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
     const next = plan.steps.find((candidate) => !deferred.has(candidate.provider)) || null;
-    if (!next) break;
+    if (!next) {
+      if (plan.steps.length && deferred.size) {
+        summary.halted = true;
+        summary.haltReason = deferredProviderHaltReason(deferred);
+        state.haltReason = summary.haltReason;
+        state.updatedAt = now;
+      }
+      break;
+    }
     const key = stepKey(next);
     const operation = providerForStep(providers, next);
 
@@ -303,5 +316,6 @@ module.exports = {
   providerWideHalt,
   applyStepResult,
   deferredProviderSet,
+  deferredProviderHaltReason,
   runMaintenanceBatch,
 };
