@@ -74,8 +74,9 @@ The focused v111 correction changes MusicBrainz transient-failure classification
 - MusicBrainz network and timeout failures become the same conservative dated retry;
 - malformed JSON and other non-transient HTTP/data failures remain terminal `error`;
 - a persisted retry still stops the current bulk invocation, preserving fail-closed operation;
-- existing bulk identity records whose root status is `error` and whose MusicBrainz provider entry is also `error` with reason `http_429`, `http_503`, or `musicbrainz_network_error` are converted once to `retry`, with `nextEligibleCheckAt` calculated from the original provider `checkedAt` plus the same 30-minute delay;
-- legacy recovery is bulk-only, requires a valid original `checkedAt`, preserves unrelated/unknown fields and other provider observations, and leaves every non-transient or incomplete error record unchanged;
+- a legacy record is eligible for one-time conversion only when it is still validated current inventory work, remains identity-compatible with that work, retains a usable MusicBrainz route (valid ISRC plus trusted MusicBrainz artist), has root status `error`, and has a MusicBrainz provider `error` reason of `http_429`, `http_503`, or `musicbrainz_network_error` with a valid original `checkedAt`; eligible records become `retry` with `nextEligibleCheckAt` set to the original `checkedAt` plus 30 minutes;
+- orphaned, blocked, complete, incompatible, non-routable, non-transient or incomplete error records are left unchanged;
+- legacy recovery is bulk-only and preserves unrelated/unknown fields and other provider observations;
 - any legacy recovery is durably written through a strict identity-only conditional write before provider usage is reserved or a provider request is made. A concurrent identity change aborts the correction and the run before provider execution.
 
 Spotify and ListenBrainz adapter behavior is unchanged by this correction. Resuming the production backfill remains separately authorized only after the correction is reviewed and merged.
