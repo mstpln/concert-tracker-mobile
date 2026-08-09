@@ -36,6 +36,34 @@ function inventory(trackIds = ['ATrack'], spotifyMetadata = null) {
 const usage = { async reserve() { return true; } };
 const preflight = async () => true;
 
+function mixedInventory() {
+  const spotifyMetadata = {
+    kind: 'livevault-spotify-listening-metadata',
+    schemaVersion: 1,
+    updatedAt: '2026-08-09T16:00:00.000Z',
+    records: {
+      ZTrack: {
+        spotifyTrackId: 'ZTrack',
+        spotifyArtistIds: ['SyntheticArtist1'],
+        isrc: 'USABC1234567',
+      },
+    },
+  };
+  return { spotifyMetadata, inventory: inventory(['ATrack', 'ZTrack'], spotifyMetadata) };
+}
+
+function successfulMusicbrainzProvider(counter) {
+  return {
+    async isrc_lookup() {
+      counter.count += 1;
+      return {
+        kind: 'ok',
+        data: { recordings: [{ id: MB_RECORDING, 'artist-credit': [{ artist: { id: MB_ARTIST } }] }] },
+      };
+    },
+  };
+}
+
 test('bulk item policy quarantines malformed track data and continues unrelated work', async () => {
   const persisted = [];
   let calls = 0;
@@ -137,24 +165,13 @@ test('focused provider failure stops without poisoning the current track', async
 });
 
 test('bulk provider failure defers that provider, preserves its track, and continues other providers', async () => {
-  const spotifyMetadata = {
-    kind: 'livevault-spotify-listening-metadata',
-    schemaVersion: 1,
-    updatedAt: '2026-08-09T16:00:00.000Z',
-    records: {
-      ZTrack: {
-        spotifyTrackId: 'ZTrack',
-        spotifyArtistIds: ['SyntheticArtist1'],
-        isrc: 'USABC1234567',
-      },
-    },
-  };
+  const mixed = mixedInventory();
   let spotifyCalls = 0;
-  let musicbrainzCalls = 0;
+  const musicbrainzCalls = { count: 0 };
   const persisted = [];
   const result = await runner.runMaintenanceBatch({
-    inventory: inventory(['ATrack', 'ZTrack'], spotifyMetadata),
-    spotifyMetadata,
+    inventory: mixed.inventory,
+    spotifyMetadata: mixed.spotifyMetadata,
     providers: {
       spotify: {
         async exact_track() {
@@ -162,15 +179,7 @@ test('bulk provider failure defers that provider, preserves its track, and conti
           return { kind: 'error', reason: 'spotify_network_error' };
         },
       },
-      musicbrainz: {
-        async isrc_lookup() {
-          musicbrainzCalls += 1;
-          return {
-            kind: 'ok',
-            data: { recordings: [{ id: MB_RECORDING, 'artist-credit': [{ artist: { id: MB_ARTIST } }] }] },
-          };
-        },
-      },
+      musicbrainz: successfulMusicbrainzProvider(musicbrainzCalls),
     },
     usage,
     preflight,
@@ -182,7 +191,7 @@ test('bulk provider failure defers that provider, preserves its track, and conti
   });
 
   assert.equal(spotifyCalls, 1);
-  assert.equal(musicbrainzCalls, 1);
+  assert.equal(musicbrainzCalls.count, 1);
   assert.equal(persisted.length, 2);
   assert.equal(persisted[0].lastOutcome.status, 'deferred');
   assert.equal(Object.prototype.hasOwnProperty.call(result.trackIdentities.records, 'spotify:ATrack'), false);
@@ -193,6 +202,43 @@ test('bulk provider failure defers that provider, preserves its track, and conti
   assert.equal(result.summary.persisted, 1);
   assert.equal(result.plan.spotify, 1);
   assert.equal(result.plan.complete, 1);
+});
+
+test('bulk explicit provider-wide halt also defers only that provider and leaves the current track retryable', async () => {
+  const mixed = mixedInventory();
+  let spotifyCalls = 0;
+  const musicbrainzCalls = { count: 0 };
+  const persisted = [];
+  const result = await runner.runMaintenanceBatch({
+    inventory: mixed.inventory,
+    spotifyMetadata: mixed.spotifyMetadata,
+    providers: {
+      spotify: {
+        async exact_track() {
+          spotifyCalls += 1;
+          return { kind: 'halt', reason: 'spotify_quota_exceeded' };
+        },
+      },
+      musicbrainz: successfulMusicbrainzProvider(musicbrainzCalls),
+    },
+    usage,
+    preflight,
+    async persist(snapshot) { persisted.push(snapshot); return true; },
+    haltOnItemError: false,
+    deferOnProviderFailure: true,
+    maxSteps: 10,
+    now: '2026-08-09T16:20:00.000Z',
+  });
+
+  assert.equal(spotifyCalls, 1);
+  assert.equal(musicbrainzCalls.count, 1);
+  assert.equal(persisted[0].lastOutcome.status, 'deferred');
+  assert.equal(persisted[0].lastOutcome.reason, 'spotify:spotify_quota_exceeded');
+  assert.equal(Object.prototype.hasOwnProperty.call(result.trackIdentities.records, 'spotify:ATrack'), false);
+  assert.equal(result.trackIdentities.records['spotify:ZTrack'].musicbrainzRecordingId, MB_RECORDING);
+  assert.deepEqual(result.deferredProviders, ['spotify']);
+  assert.equal(result.summary.haltReason, 'provider_deferred:spotify');
+  assert.equal(result.plan.spotify, 1);
 });
 
 test('adapter-declared invalid input is item scoped while provider failures remain provider scoped', () => {
