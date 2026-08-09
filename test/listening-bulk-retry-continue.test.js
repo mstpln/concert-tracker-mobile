@@ -35,7 +35,7 @@ function approvedEnv() {
   };
 }
 
-test('non-halting retry mode defers the retrying provider and continues other providers', async () => {
+test('non-halting retry mode defers the retrying provider, continues other providers, then stops when only deferred work remains', async () => {
   const inventory = inventoryLib.buildListeningInventory({
     bands: [band()],
     events: [
@@ -90,8 +90,8 @@ test('non-halting retry mode defers the retrying provider and continues other pr
   assert.equal(musicbrainzCalls, 1);
   assert.equal(persisted.length, 2);
   assert.deepEqual(result.deferredProviders, ['spotify']);
-  assert.equal(result.summary.halted, false);
-  assert.equal(result.summary.haltReason, null);
+  assert.equal(result.summary.halted, true);
+  assert.equal(result.summary.haltReason, 'provider_retry_wait:spotify');
   assert.equal(result.plan.spotify, 1);
   assert.equal(result.plan.retry_wait, 1);
   assert.equal(result.plan.complete, 1);
@@ -133,24 +133,67 @@ test('bulk mode carries provider deferral across chunks and stops only when defe
           trackIdentities: args.trackIdentities,
           spotifyMetadata: args.spotifyMetadata,
           deferredProviders: ['musicbrainz'],
-          plan: { planned: 1, complete: 0, blocked: 0, retry_wait: 1, no_route: 0, spotify: 0, musicbrainz: 1, listenbrainz: 0 },
+          plan: { planned: 2, complete: 0, blocked: 0, retry_wait: 1, no_route: 0, spotify: 1, musicbrainz: 1, listenbrainz: 0 },
         };
       }
       assert.deepEqual(args.deferredProviders, ['musicbrainz']);
       return {
-        summary: { attempted: 0, persisted: 0, halted: false, haltReason: null },
+        summary: { attempted: 1, persisted: 1, halted: true, haltReason: 'provider_retry_wait:musicbrainz' },
         checkpoint: args.checkpoint,
         trackIdentities: args.trackIdentities,
         spotifyMetadata: args.spotifyMetadata,
         deferredProviders: ['musicbrainz'],
-        plan: { planned: 1, complete: 0, blocked: 0, retry_wait: 1, no_route: 0, spotify: 0, musicbrainz: 1, listenbrainz: 0 },
+        plan: { planned: 1, complete: 1, blocked: 0, retry_wait: 1, no_route: 0, spotify: 0, musicbrainz: 1, listenbrainz: 0 },
       };
     },
     log() {},
   });
 
   assert.equal(calls, 2);
+  assert.equal(result.run.attempted, 101);
+  assert.equal(result.run.persisted, 101);
   assert.equal(result.run.halted, true);
   assert.equal(result.run.haltReason, 'provider_retry_wait:musicbrainz');
   assert.deepEqual(result.run.deferredProviders, ['musicbrainz']);
+});
+
+test('bulk mode reports retry_wait when no provider steps are currently eligible', async () => {
+  const state = {
+    trackIdentities: { kind: 'livevault-track-identities', schemaVersion: 1, updatedAt: null, records: {} },
+    spotifyMetadata: { kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} },
+    checkpoint: null,
+    usage: { reserve: async () => true },
+    preflight: async () => true,
+    persist: async () => true,
+    persistTrackIdentitiesOnly: async () => true,
+  };
+  const result = await bulk.runBulkBackfill({
+    argv: ['--execute', '--write', '--max-total-steps', '200'],
+    env: approvedEnv(),
+    clientFactory() {
+      return { async readJson(path, fallback) { return path === 'bands.json' ? [band()] : fallback; } };
+    },
+    async contextLoader() { return state; },
+    async readAllSourceEvents() {
+      return {
+        events: [{ bandId: 'band-1', artistCreditName: 'Synthetic Artist', recordingTitle: 'Synthetic Song', spotifyTrackId: 'SyntheticTrack1' }],
+        counts: { spotifyArchiveEvents: 1, incrementalObjects: 0, incrementalEvents: 0, totalEvents: 1 },
+      };
+    },
+    providerFactory() { return {}; },
+    async maintenanceRunner(args) {
+      return {
+        summary: { attempted: 0, persisted: 0, halted: false, haltReason: null },
+        checkpoint: args.checkpoint,
+        trackIdentities: args.trackIdentities,
+        spotifyMetadata: args.spotifyMetadata,
+        deferredProviders: [],
+        plan: { planned: 0, complete: 0, blocked: 0, retry_wait: 1, no_route: 0, spotify: 0, musicbrainz: 0, listenbrainz: 0 },
+      };
+    },
+    log() {},
+  });
+
+  assert.equal(result.run.halted, true);
+  assert.equal(result.run.haltReason, 'retry_wait');
 });
