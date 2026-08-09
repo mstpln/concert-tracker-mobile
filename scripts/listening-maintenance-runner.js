@@ -127,6 +127,14 @@ function providerFailureOutcome(result) {
   return { status: 'error', reason: typeof result.reason === 'string' ? result.reason : 'provider_error' };
 }
 
+function providerWideHalt(result, provider) {
+  if (!result || result.kind !== 'halt') return null;
+  const reason = typeof result.reason === 'string' && /^[a-z0-9_:-]{1,80}$/i.test(result.reason)
+    ? result.reason
+    : 'provider_halt';
+  return reason.startsWith(`${provider}:`) ? reason : `${provider}:${reason}`;
+}
+
 function itemByKey(inventory, trackKey) {
   return (inventory?.items || []).find((item) => item.trackKey === trackKey) || null;
 }
@@ -204,6 +212,23 @@ async function runMaintenanceBatch({
       result = { kind: 'error', reason: 'provider_adapter_exception' };
     }
 
+    const wideHalt = providerWideHalt(result, next.provider);
+    if (wideHalt) {
+      state.haltReason = wideHalt;
+      state.updatedAt = now;
+      const persistResult = await persist({
+        trackIdentities: clone(identities),
+        spotifyMetadata: clone(metadata),
+        checkpoint: clone(state),
+        lastStep: clone(next),
+        lastOutcome: { status: 'halt', reason: wideHalt },
+      });
+      if (persistResult !== true) throw new Error('Listening maintenance persistence was not confirmed.');
+      summary.halted = true;
+      summary.haltReason = wideHalt;
+      break;
+    }
+
     const outcome = applyStepResult({ step: next, result, inventory, identities, metadata, now });
     completed.add(key);
     state.completedStepKeys = [...completed].sort();
@@ -257,6 +282,7 @@ module.exports = {
   identityDocument,
   spotifyMetadataDocument,
   reserveProviderCall,
+  providerWideHalt,
   applyStepResult,
   runMaintenanceBatch,
 };

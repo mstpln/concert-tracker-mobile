@@ -39,6 +39,10 @@ function requiredToken(provider, value) {
   return value.trim();
 }
 
+function spotifyQuotaExceeded(payload) {
+  return payload?.error?.reason === 'QUOTA_EXCEEDED';
+}
+
 function createListeningMaintenanceProviders({
   fetchImpl = fetch,
   spotifyTokenProvider,
@@ -64,7 +68,13 @@ function createListeningMaintenanceProviders({
           return { kind: 'error', reason: 'spotify_network_error' };
         }
         if (response.status === 404) return { kind: 'no_match', reason: 'spotify_track_not_found' };
-        if (!response.ok) return httpFailure(response, now());
+        if (!response.ok) {
+          if (response.status === 429) {
+            const payload = await safeJson(response);
+            if (spotifyQuotaExceeded(payload)) return { kind: 'halt', reason: 'spotify_quota_exceeded' };
+          }
+          return httpFailure(response, now());
+        }
         const data = await safeJson(response);
         return data && typeof data === 'object' ? { kind: 'ok', data } : { kind: 'error', reason: 'spotify_invalid_json' };
       },
@@ -125,5 +135,6 @@ module.exports = {
   LISTENBRAINZ_LOOKUP_URL,
   retryAtFromHeader,
   httpFailure,
+  spotifyQuotaExceeded,
   createListeningMaintenanceProviders,
 };
