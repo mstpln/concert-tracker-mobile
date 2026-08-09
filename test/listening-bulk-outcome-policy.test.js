@@ -371,17 +371,77 @@ test('repeated item-error counts carry only when explicitly passed to a later in
   assert.equal(second.plan.spotify, 1);
 });
 
+test('provider deferral at the batch boundary does not overrun maxSteps and leaves unrelated work for the next chunk', async () => {
+  const spotifyMetadata = {
+    kind: 'livevault-spotify-listening-metadata',
+    schemaVersion: 1,
+    updatedAt: '2026-08-09T16:00:00.000Z',
+    records: {
+      ZTrack: {
+        spotifyTrackId: 'ZTrack',
+        spotifyArtistIds: ['SyntheticArtist1'],
+        isrc: 'USABC1234567',
+      },
+    },
+  };
+  let musicbrainzCalls = 0;
+  let spotifyCalls = 0;
+  const result = await runner.runMaintenanceBatch({
+    inventory: inventory(['ZTrack', 'ATrack'], spotifyMetadata),
+    spotifyMetadata,
+    providers: {
+      musicbrainz: {
+        async isrc_lookup() {
+          musicbrainzCalls += 1;
+          return { kind: 'error', reason: 'http_500' };
+        },
+      },
+      spotify: {
+        async exact_track() {
+          spotifyCalls += 1;
+          return { kind: 'ok', data: { id: 'ATrack', artists: [{ id: 'SyntheticArtist1' }] } };
+        },
+      },
+    },
+    usage,
+    preflight,
+    async persist() { return true; },
+    haltOnItemError: false,
+    deferOnProviderFailure: true,
+    maxSteps: 1,
+    now: '2026-08-09T16:20:00.000Z',
+  });
+
+  assert.equal(musicbrainzCalls, 1);
+  assert.equal(spotifyCalls, 0);
+  assert.equal(result.summary.attempted, 1);
+  assert.equal(result.summary.persisted, 0);
+  assert.equal(result.summary.halted, true);
+  assert.equal(result.summary.haltReason, 'batch_limit');
+  assert.deepEqual(result.deferredProviders, ['musicbrainz']);
+  assert.equal(result.plan.musicbrainz, 1);
+  assert.equal(result.plan.spotify, 1);
+});
+
 test('MusicBrainz non-transient adapter failures are provider-scoped and do not poison the current track in bulk mode', async () => {
-  const mixed = mixedInventory();
+  const spotifyMetadata = {
+    kind: 'livevault-spotify-listening-metadata',
+    schemaVersion: 1,
+    updatedAt: '2026-08-09T16:00:00.000Z',
+    records: {
+      ZTrack: {
+        spotifyTrackId: 'ZTrack',
+        spotifyArtistIds: ['SyntheticArtist1'],
+        isrc: 'USABC1234567',
+      },
+    },
+  };
   for (const reason of ['http_500', 'musicbrainz_invalid_json']) {
     const persisted = [];
     const result = await runner.runMaintenanceBatch({
-      inventory: mixed.inventory,
-      spotifyMetadata: mixed.spotifyMetadata,
+      inventory: inventory(['ZTrack'], spotifyMetadata),
+      spotifyMetadata,
       providers: {
-        spotify: {
-          async exact_track() { return { kind: 'ok', data: { id: 'ATrack', artists: [{ id: 'SyntheticArtist1' }] } }; },
-        },
         musicbrainz: {
           async isrc_lookup() { return { kind: 'error', reason }; },
         },
@@ -391,15 +451,18 @@ test('MusicBrainz non-transient adapter failures are provider-scoped and do not 
       async persist(snapshot) { persisted.push(snapshot); return true; },
       haltOnItemError: false,
       deferOnProviderFailure: true,
-      maxSteps: 2,
+      maxSteps: 1,
       now: '2026-08-09T16:20:00.000Z',
     });
 
+    assert.equal(persisted.length, 1);
     assert.equal(persisted[0].lastOutcome.status, 'deferred');
     assert.equal(persisted[0].lastOutcome.reason, `musicbrainz:provider_error:${reason}`);
     assert.equal(Object.prototype.hasOwnProperty.call(result.trackIdentities.records, 'spotify:ZTrack'), false);
     assert.deepEqual(result.deferredProviders, ['musicbrainz']);
-    assert.equal(result.trackIdentities.records['spotify:ATrack'].providers.spotify.status, 'metadata');
+    assert.equal(result.summary.attempted, 1);
+    assert.equal(result.summary.persisted, 0);
+    assert.equal(result.summary.haltReason, 'provider_deferred:musicbrainz');
   }
 });
 
