@@ -71,7 +71,7 @@ function createListeningMaintenanceProviders({
         if (!response.ok) {
           if (response.status === 429) {
             const payload = await safeJson(response);
-            if (spotifyQuotaExceeded(payload)) return { kind: 'halt', reason: 'quota_exceeded' };
+            if (spotifyQuotaExceeded(payload)) return { kind: 'halt', reason: 'spotify_quota_exceeded' };
           }
           return httpFailure(response, now());
         }
