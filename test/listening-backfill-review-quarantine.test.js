@@ -109,10 +109,38 @@ test('bulk policy persists and quarantines needs_review then continues unrelated
   assert.equal(result.trackIdentities.records['spotify:SyntheticTrack1'].status, 'needs_review');
   assert.equal(result.summary.attempted, 2);
   assert.equal(result.summary.persisted, 2);
-  assert.equal(result.summary.halted, false);
-  assert.equal(result.summary.haltReason, null);
-  assert.equal(result.plan.planned, 0);
-  assert.equal(result.plan.no_route, 2);
+  assert.equal(result.summary.halted, true);
+  assert.equal(result.summary.haltReason, 'batch_limit');
+  assert.equal(result.plan.planned, 1);
+  assert.equal(result.plan.no_route, 1);
+  assert.equal(result.plan.listenbrainz, 1);
+});
+
+test('bulk review policy does not weaken retry halts', async () => {
+  const result = await runner.runMaintenanceBatch({
+    inventory: twoTrackInventory(),
+    providers: {
+      spotify: {
+        exact_track: async () => ({
+          kind: 'retry',
+          reason: 'http_429',
+          nextEligibleCheckAt: '2026-08-09T14:10:00.000Z',
+        }),
+      },
+    },
+    usage: { reserve: async () => true },
+    preflight: async () => true,
+    persist: async () => true,
+    maxSteps: 2,
+    haltOnNeedsReview: false,
+    now: '2026-08-09T14:00:00.000Z',
+  });
+
+  assert.equal(result.summary.attempted, 1);
+  assert.equal(result.summary.persisted, 1);
+  assert.equal(result.summary.halted, true);
+  assert.equal(result.summary.haltReason, 'spotify:retry');
+  assert.equal(result.plan.retry_wait, 1);
 });
 
 test('bulk entrypoint explicitly opts into review quarantine policy', async () => {
