@@ -120,7 +120,11 @@ test('MusicBrainz retry diagnostics survive as aggregate-safe checkpoint state',
     now: '2026-08-09T18:30:00.000Z',
   });
 
-  assert.deepEqual(result.diagnostics.providerDeferrals.musicbrainz, { kind: 'retry', reason: 'http_503' });
+  assert.deepEqual(result.diagnostics.providerDeferrals.musicbrainz, {
+    kind: 'retry',
+    reason: 'http_503',
+    nextEligibleCheckAt: '2026-08-09T19:00:00.000Z',
+  });
   assert.equal(result.diagnostics.outcomeReasonCounts.musicbrainz['retry:http_503'], 1);
   assert.deepEqual(result.checkpoint.diagnostics, result.diagnostics);
   assert.equal(result.trackIdentities.records['spotify:ZTrack'].providers.musicbrainz.reason, 'http_503');
@@ -175,7 +179,11 @@ test('bulk progress summary exposes only safe aggregate diagnostics', () => {
       musicbrainz: { 'retry:http_503': 1 },
     },
     providerDeferrals: {
-      musicbrainz: { kind: 'retry', reason: 'http_503' },
+      musicbrainz: {
+        kind: 'retry',
+        reason: 'http_503',
+        nextEligibleCheckAt: '2026-08-09T19:00:00.000Z',
+      },
       spotify: { kind: 'provider_error', reason: 'http_429' },
     },
   };
