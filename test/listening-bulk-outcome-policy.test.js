@@ -377,8 +377,8 @@ test('provider deferral at the batch boundary does not overrun maxSteps and leav
     schemaVersion: 1,
     updatedAt: '2026-08-09T16:00:00.000Z',
     records: {
-      ZTrack: {
-        spotifyTrackId: 'ZTrack',
+      ATrack: {
+        spotifyTrackId: 'ATrack',
         spotifyArtistIds: ['SyntheticArtist1'],
         isrc: 'USABC1234567',
       },
@@ -387,7 +387,7 @@ test('provider deferral at the batch boundary does not overrun maxSteps and leav
   let musicbrainzCalls = 0;
   let spotifyCalls = 0;
   const result = await runner.runMaintenanceBatch({
-    inventory: inventory(['ZTrack', 'ATrack'], spotifyMetadata),
+    inventory: inventory(['ATrack', 'ZTrack'], spotifyMetadata),
     spotifyMetadata,
     providers: {
       musicbrainz: {
@@ -399,7 +399,7 @@ test('provider deferral at the batch boundary does not overrun maxSteps and leav
       spotify: {
         async exact_track() {
           spotifyCalls += 1;
-          return { kind: 'ok', data: { id: 'ATrack', artists: [{ id: 'SyntheticArtist1' }] } };
+          return { kind: 'ok', data: { id: 'ZTrack', artists: [{ id: 'SyntheticArtist1' }] } };
         },
       },
     },
