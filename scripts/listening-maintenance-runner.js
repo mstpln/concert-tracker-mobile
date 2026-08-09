@@ -168,11 +168,13 @@ async function runMaintenanceBatch({
   preflight,
   persist,
   maxSteps = DEFAULT_MAX_STEPS,
+  haltOnNeedsReview = true,
   now = new Date().toISOString(),
 } = {}) {
   if (!inventory || !Array.isArray(inventory.items)) throw new Error('Invalid listening inventory.');
   if (typeof preflight !== 'function') throw new Error('Listening maintenance requires a persistence preflight.');
   if (typeof persist !== 'function') throw new Error('Listening maintenance requires a persistence callback.');
+  if (typeof haltOnNeedsReview !== 'boolean') throw new Error('haltOnNeedsReview must be a boolean.');
   const limit = boundedMaxSteps(maxSteps);
   const identities = identityDocument(trackIdentities);
   const metadata = spotifyMetadataDocument(spotifyMetadata);
@@ -234,7 +236,9 @@ async function runMaintenanceBatch({
     state.completedStepKeys = [...completed].sort();
     state.updatedAt = now;
 
-    const terminalOutcome = outcome.status === 'retry' || outcome.status === 'error' || outcome.status === 'needs_review';
+    const terminalOutcome = outcome.status === 'retry'
+      || outcome.status === 'error'
+      || (outcome.status === 'needs_review' && haltOnNeedsReview);
     const remainingPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
     let haltReason = terminalOutcome ? `${next.provider}:${outcome.status}` : null;
     if (!haltReason && summary.attempted >= limit && remainingPlan.steps.length) haltReason = 'batch_limit';
