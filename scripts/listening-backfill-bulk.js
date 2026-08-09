@@ -147,7 +147,8 @@ async function runBulkBackfill({
       const allowed = await context.usage.reserve(provider);
       if (allowed !== true) return false;
       await assertBandsCurrent();
-      await context.preflight(lastPreflightSnapshot);
+      const stillApproved = await context.preflight(lastPreflightSnapshot);
+      if (stillApproved !== true) throw new Error('Listening maintenance post-reservation preflight was not approved.');
       return true;
     },
   };
