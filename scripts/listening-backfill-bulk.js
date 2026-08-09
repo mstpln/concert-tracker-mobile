@@ -217,9 +217,6 @@ async function runBulkBackfill({
     },
   };
   const guardedPersist = async (snapshot) => {
-    // Long provider calls increase the chance that band ownership or a
-    // confirmed provider identity changes after the pre-request checks.
-    // Revalidate immediately before any derived/checkpoint persistence.
     await assertBandsCurrent();
     return context.persist(snapshot);
   };
@@ -249,6 +246,7 @@ async function runBulkBackfill({
       maxSteps: chunkLimit,
       haltOnNeedsReview: false,
       haltOnRetry: false,
+      haltOnItemError: false,
       deferredProviders,
       now: now(),
     });
