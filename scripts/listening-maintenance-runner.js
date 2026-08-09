@@ -66,6 +66,10 @@ function validDiagnosticReason(value) {
   return typeof value === 'string' && /^[a-z0-9_:-]{1,80}$/i.test(value);
 }
 
+function validDiagnosticKey(value) {
+  return typeof value === 'string' && /^[a-z0-9_:-]{1,170}$/i.test(value);
+}
+
 function itemErrorReasonCountState(value = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('itemErrorReasonCounts must be an object.');
   const counts = {};
@@ -99,7 +103,7 @@ function diagnosticState(value = {}) {
     }
     result.outcomeReasonCounts[provider] = {};
     for (const [key, count] of Object.entries(reasonCounts)) {
-      if (!validDiagnosticReason(key) || !Number.isInteger(count) || count < 0 || count > MAX_DOCUMENT_RECORDS) {
+      if (!validDiagnosticKey(key) || !Number.isInteger(count) || count < 0 || count > MAX_DOCUMENT_RECORDS) {
         throw new Error('diagnostics contains an invalid outcome count.');
       }
       result.outcomeReasonCounts[provider][key] = count;
@@ -349,11 +353,11 @@ async function runMaintenanceBatch({
     if (providerFailure) {
       const failureReason = safeProviderReason(result, 'provider_error');
       const failureKind = wideHalt ? 'provider_halt' : 'provider_error';
-      recordOutcomeDiagnostic(diagnosticSummary, next.provider, 'deferred', failureReason);
-      recordProviderDeferral(diagnosticSummary, next.provider, failureKind, failureReason);
+      recordOutcomeDiagnostic(diagnosticSummary, next.provider, deferOnProviderFailure ? 'deferred' : 'halted', failureReason);
       state.updatedAt = now;
-      state.diagnostics = clone(diagnosticSummary);
       if (deferOnProviderFailure) {
+        recordProviderDeferral(diagnosticSummary, next.provider, failureKind, failureReason);
+        state.diagnostics = clone(diagnosticSummary);
         deferred.add(next.provider);
         const remainingPlan = enrichment.planEnrichment({ inventory, trackIdentities: identities, now });
         let haltReason = null;
@@ -380,6 +384,7 @@ async function runMaintenanceBatch({
       }
 
       state.haltReason = providerFailure;
+      state.diagnostics = clone(diagnosticSummary);
       const persistResult = await persist({
         trackIdentities: clone(identities),
         spotifyMetadata: clone(metadata),
@@ -470,6 +475,7 @@ module.exports = {
   boundedMaxSteps,
   boundedRepeatedItemErrorLimit,
   validDiagnosticReason,
+  validDiagnosticKey,
   itemErrorReasonCountState,
   diagnosticState,
   recordOutcomeDiagnostic,
