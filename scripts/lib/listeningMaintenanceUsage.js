@@ -11,6 +11,16 @@ function safeCounter(value) {
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : 0;
 }
 
+function finiteNonnegativeLimit(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
+
+function reachedLimit(counter, limit) {
+  const numericLimit = finiteNonnegativeLimit(limit);
+  return numericLimit != null && safeCounter(counter) >= numericLimit;
+}
+
 function safeDateMs(value) {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -80,8 +90,8 @@ function createListeningMaintenanceUsageGate(usage, {
         return setBlocked(provider, 'usage_gate_unavailable');
       }
       const spotify = usage.state?.spotify || {};
-      if (safeCounter(spotify.callsThisRun) >= safeCounter(spotify.perRunCap)) return setBlocked(provider, 'per_run_cap');
-      if (safeCounter(spotify.callsToday) >= safeCounter(spotify.dailyCap)) return setBlocked(provider, 'daily_cap');
+      if (reachedLimit(spotify.callsThisRun, spotify.perRunCap)) return setBlocked(provider, 'per_run_cap');
+      if (reachedLimit(spotify.callsToday, spotify.dailyCap)) return setBlocked(provider, 'daily_cap');
       if (!usage.canCallSpotify()) return setBlocked(provider, 'policy_denied');
       await usage.recordSpotifyCall();
       state.spotifyCallsThisRun += 1;
@@ -93,7 +103,7 @@ function createListeningMaintenanceUsageGate(usage, {
         return setBlocked(provider, 'usage_gate_unavailable');
       }
       const musicbrainz = usage.state?.musicbrainz || {};
-      if (safeCounter(musicbrainz.callsThisRun) >= safeCounter(musicbrainz.perRunCap)) return setBlocked(provider, 'per_run_cap');
+      if (reachedLimit(musicbrainz.callsThisRun, musicbrainz.perRunCap)) return setBlocked(provider, 'per_run_cap');
       if (!usage.canCallMusicbrainz()) return setBlocked(provider, 'policy_denied');
       if (firstMusicbrainzReservation) {
         await waitForPersistedGap(usage.state.musicbrainz?.lastCallAt, config.MUSICBRAINZ.minDelayMs, now, sleepImpl);
@@ -139,6 +149,9 @@ function createListeningMaintenanceUsageGate(usage, {
 module.exports = {
   DEFAULT_LISTENBRAINZ_PER_RUN_CAP,
   DEFAULT_LISTENBRAINZ_MIN_DELAY_MS,
+  safeCounter,
+  finiteNonnegativeLimit,
+  reachedLimit,
   safeDateMs,
   ensureMaintenanceState,
   waitForPersistedGap,
