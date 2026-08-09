@@ -98,6 +98,17 @@ async function loadListeningMaintenanceContext(client, { today, bulk = false } =
     return true;
   }
 
+  async function persistTrackIdentitiesOnly(nextIdentities) {
+    const remoteIdentities = await client.readJson(TRACK_IDENTITIES_PATH, defaultIdentities());
+    if (!same(remoteIdentities, persistedIdentities)) {
+      throw new Error('Listening maintenance track identities changed before correction persistence.');
+    }
+    if (same(nextIdentities, persistedIdentities)) return true;
+    await client.writeJsonStrict(TRACK_IDENTITIES_PATH, nextIdentities);
+    persistedIdentities = clone(nextIdentities);
+    return true;
+  }
+
   async function persist(snapshot) {
     if (!usageTracker.state.listeningMaintenance || typeof usageTracker.state.listeningMaintenance !== 'object') {
       throw new Error('Listening maintenance usage state is unavailable.');
@@ -127,6 +138,7 @@ async function loadListeningMaintenanceContext(client, { today, bulk = false } =
     usageTracker,
     usage,
     preflight,
+    persistTrackIdentitiesOnly,
     persist,
   };
 }
