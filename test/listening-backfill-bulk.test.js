@@ -40,7 +40,7 @@ function source() {
 }
 
 function context() {
-  return {
+  const state = {
     trackIdentities: { kind: 'livevault-track-identities', schemaVersion: 1, updatedAt: null, records: {} },
     spotifyMetadata: { kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} },
     checkpoint: null,
@@ -48,6 +48,11 @@ function context() {
     preflight: async () => true,
     persist: async () => true,
   };
+  state.persistTrackIdentitiesOnly = async (nextIdentities) => {
+    state.trackIdentities = nextIdentities;
+    return true;
+  };
+  return state;
 }
 
 function syntheticClient() {
@@ -56,6 +61,19 @@ function syntheticClient() {
       if (path === 'bands.json') return [band()];
       return fallback;
     },
+  };
+}
+
+function recoverableItem(trackKey = 'spotify:SyntheticTrack1') {
+  return {
+    trackKey,
+    bandId: 'band-1',
+    bandIds: ['band-1'],
+    spotifyTrackId: trackKey.replace('spotify:', ''),
+    trustedSpotifyArtistId: 'SyntheticArtist1',
+    trustedMusicbrainzArtistMbid: MB_ARTIST,
+    spotifyMetadataIsrc: 'USABC1234567',
+    status: 'needs_musicbrainz',
   };
 }
 
@@ -80,6 +98,160 @@ test('bulk parser keeps a fixed total ceiling and rejects unknown options', () =
   assert.equal(bulk.parseArgs(['--max-total-steps', '250']).maxTotalSteps, 250);
   assert.throws(() => bulk.parseArgs(['--max-total-steps', String(bulk.MAX_TOTAL_STEPS + 1)]), /max-total-steps/);
   assert.throws(() => bulk.parseArgs(['--provider', 'spotify']), /Unknown listening bulk-backfill option/);
+});
+
+test('legacy MusicBrainz transient errors revive only validated current work and preserve unrelated fields', () => {
+  const transientKey = 'spotify:SyntheticTrack1';
+  const terminalKey = 'spotify:SyntheticTrack2';
+  const document = {
+    kind: 'livevault-track-identities',
+    schemaVersion: 1,
+    updatedAt: '2026-08-09T14:00:00.000Z',
+    futureDocumentField: { keep: true },
+    records: {
+      [transientKey]: {
+        workKey: transientKey,
+        localBandId: 'band-1',
+        spotifyTrackId: 'SyntheticTrack1',
+        isrc: 'USABC1234567',
+        status: 'error',
+        futureField: { keep: true },
+        spotifyArtistIds: ['SyntheticArtist1'],
+        providers: {
+          spotify: { status: 'metadata', checkedAt: '2026-08-09T13:00:00.000Z' },
+          musicbrainz: { status: 'error', reason: 'http_503', checkedAt: '2026-08-09T14:00:00.000Z' },
+        },
+      },
+      [terminalKey]: {
+        workKey: terminalKey,
+        localBandId: 'band-1',
+        spotifyTrackId: 'SyntheticTrack2',
+        status: 'error',
+        providers: { musicbrainz: { status: 'error', reason: 'http_500', checkedAt: '2026-08-09T14:00:00.000Z' } },
+      },
+    },
+  };
+  const inventory = { items: [recoverableItem(transientKey), recoverableItem(terminalKey)] };
+
+  const recovered = bulk.reviveLegacyMusicbrainzTransientErrors(document, '2026-08-09T15:00:00.000Z', inventory);
+  assert.notEqual(recovered, document);
+  assert.equal(recovered.updatedAt, '2026-08-09T15:00:00.000Z');
+  assert.deepEqual(recovered.futureDocumentField, { keep: true });
+  assert.equal(recovered.records[transientKey].status, 'retry');
+  assert.equal(recovered.records[transientKey].updatedAt, '2026-08-09T15:00:00.000Z');
+  assert.equal(recovered.records[transientKey].providers.musicbrainz.status, 'retry');
+  assert.equal(recovered.records[transientKey].providers.musicbrainz.reason, 'http_503');
+  assert.equal(recovered.records[transientKey].nextEligibleCheckAt, '2026-08-09T14:30:00.000Z');
+  assert.deepEqual(recovered.records[transientKey].futureField, { keep: true });
+  assert.equal(recovered.records[transientKey].providers.spotify.status, 'metadata');
+  assert.equal(recovered.records[terminalKey].status, 'error');
+  assert.equal(document.records[transientKey].status, 'error');
+});
+
+test('legacy MusicBrainz transient recovery ignores orphaned, blocked, incompatible and non-routable work', () => {
+  const key = 'spotify:SyntheticTrack1';
+  const record = {
+    workKey: key,
+    localBandId: 'band-1',
+    spotifyTrackId: 'SyntheticTrack1',
+    isrc: 'USABC1234567',
+    status: 'error',
+    providers: { musicbrainz: { status: 'error', reason: 'http_503', checkedAt: '2026-08-09T14:00:00.000Z' } },
+  };
+  const document = { kind: 'livevault-track-identities', schemaVersion: 1, updatedAt: null, records: { [key]: record } };
+
+  assert.equal(bulk.reviveLegacyMusicbrainzTransientErrors(document, '2026-08-09T15:00:00.000Z', { items: [] }), document);
+  assert.equal(bulk.reviveLegacyMusicbrainzTransientErrors(document, '2026-08-09T15:00:00.000Z', { items: [{ ...recoverableItem(key), status: 'blocked' }] }), document);
+  assert.equal(bulk.reviveLegacyMusicbrainzTransientErrors(document, '2026-08-09T15:00:00.000Z', { items: [{ ...recoverableItem(key), trustedMusicbrainzArtistMbid: null }] }), document);
+  assert.equal(bulk.reviveLegacyMusicbrainzTransientErrors(document, '2026-08-09T15:00:00.000Z', { items: [{ ...recoverableItem(key), spotifyTrackId: 'DifferentTrack' }] }), document);
+});
+
+test('legacy MusicBrainz transient recovery fails closed on incomplete or non-transient evidence', () => {
+  for (const record of [
+    { status: 'error', providers: { musicbrainz: { status: 'error', reason: 'musicbrainz_invalid_json', checkedAt: '2026-08-09T14:00:00.000Z' } } },
+    { status: 'error', providers: { musicbrainz: { status: 'error', reason: 'http_503' } } },
+    { status: 'error', providers: { musicbrainz: { status: 'needs_review', reason: 'http_503', checkedAt: '2026-08-09T14:00:00.000Z' } } },
+    { status: 'needs_review', providers: { musicbrainz: { status: 'error', reason: 'http_503', checkedAt: '2026-08-09T14:00:00.000Z' } } },
+  ]) {
+    assert.equal(bulk.legacyMusicbrainzTransientRetryAt(record), null);
+  }
+  assert.throws(() => bulk.reviveLegacyMusicbrainzTransientErrors({ records: {} }, 'invalid', { items: [] }), /valid timestamp/);
+});
+
+test('bulk backfill durably persists revived legacy MusicBrainz retry state before maintenance', async () => {
+  const state = context();
+  state.trackIdentities.records['spotify:SyntheticTrack1'] = {
+    workKey: 'spotify:SyntheticTrack1',
+    localBandId: 'band-1',
+    spotifyTrackId: 'SyntheticTrack1',
+    isrc: 'USABC1234567',
+    status: 'error',
+    updatedAt: '2026-08-09T14:00:00.000Z',
+    nextEligibleCheckAt: null,
+    providers: {
+      spotify: { status: 'metadata', reason: 'spotify_metadata_with_isrc', checkedAt: '2026-08-09T13:59:00.000Z' },
+      musicbrainz: { status: 'error', reason: 'musicbrainz_network_error', checkedAt: '2026-08-09T14:00:00.000Z' },
+    },
+  };
+  let correctionWrites = 0;
+  state.persistTrackIdentitiesOnly = async (nextIdentities) => {
+    correctionWrites += 1;
+    state.trackIdentities = nextIdentities;
+    return true;
+  };
+  let observed;
+  await bulk.runBulkBackfill({
+    argv: ['--execute', '--write', '--max-total-steps', '1'],
+    env: approvedEnv(),
+    clientFactory() { return syntheticClient(); },
+    async contextLoader() { return state; },
+    async readAllSourceEvents() { return source(); },
+    providerFactory() { return {}; },
+    async maintenanceRunner(args) {
+      observed = args.trackIdentities.records['spotify:SyntheticTrack1'];
+      return {
+        summary: { attempted: 0, persisted: 0, halted: false, haltReason: null },
+        checkpoint: args.checkpoint,
+        trackIdentities: args.trackIdentities,
+        spotifyMetadata: args.spotifyMetadata,
+        plan: { planned: 0, complete: 0, blocked: 0, retry_wait: 1, no_route: 0, spotify: 0, musicbrainz: 0, listenbrainz: 0 },
+      };
+    },
+    now: () => '2026-08-09T14:10:00.000Z',
+    log() {},
+  });
+  assert.equal(correctionWrites, 1);
+  assert.equal(observed.status, 'retry');
+  assert.equal(observed.updatedAt, '2026-08-09T14:10:00.000Z');
+  assert.equal(observed.providers.musicbrainz.status, 'retry');
+  assert.equal(observed.nextEligibleCheckAt, '2026-08-09T14:30:00.000Z');
+});
+
+test('legacy recovery persistence failure stops before maintenance execution', async () => {
+  const state = context();
+  state.trackIdentities.records['spotify:SyntheticTrack1'] = {
+    workKey: 'spotify:SyntheticTrack1',
+    localBandId: 'band-1',
+    spotifyTrackId: 'SyntheticTrack1',
+    isrc: 'USABC1234567',
+    status: 'error',
+    updatedAt: '2026-08-09T14:00:00.000Z',
+    providers: { musicbrainz: { status: 'error', reason: 'http_503', checkedAt: '2026-08-09T14:00:00.000Z' } },
+  };
+  state.persistTrackIdentitiesOnly = async () => false;
+  let runnerCalls = 0;
+  await assert.rejects(() => bulk.runBulkBackfill({
+    argv: ['--execute', '--write', '--max-total-steps', '1'],
+    env: approvedEnv(),
+    clientFactory() { return syntheticClient(); },
+    async contextLoader() { return state; },
+    async readAllSourceEvents() { return source(); },
+    providerFactory() { return {}; },
+    async maintenanceRunner() { runnerCalls += 1; return {}; },
+    now: () => '2026-08-09T15:00:00.000Z',
+    log() {},
+  }), /identity correction was not confirmed/);
+  assert.equal(runnerCalls, 0);
 });
 
 test('bulk backfill continues only across durable batch-limit chunks', async () => {

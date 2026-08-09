@@ -49,6 +49,38 @@ The process attempted four provider steps and persisted all four. It then stoppe
 
 The four persisted steps remain durable and source observations were not changed. The early stop demonstrated that treating every review-required track as a process-wide halt would make a large historical migration unnecessarily interactive, even though the ambiguous track itself had already been safely quarantined. The focused v111 correction therefore changes only the bulk stop policy described above; it does not rerun production or weaken provider, quota, concurrency or persistence stops.
 
+## Second bulk production invocation and transient MusicBrainz correction
+
+After the review-quarantine correction merged through PR #99, the separately authorized bulk run was resumed from the durable production state. That invocation attempted and persisted 97 provider steps before stopping safely on `musicbrainz:error`.
+
+Aggregate state after the stop was:
+
+- complete tracks: 115;
+- Spotify backlog: 11,977;
+- no-route/review-required: 9;
+- remaining planned work: 11,999;
+- blocked tracks: 0;
+- retry-wait tracks: 0.
+
+No rollback is required; all 97 persisted steps remain durable and source observations remain unchanged.
+
+Inspection found that the maintenance MusicBrainz adapter treated transient provider/transport failures too strictly. A MusicBrainz `429` or `503` became retryable only when a usable `Retry-After` header was present, while a missing header, network failure or timeout became terminal `error`. Because the enrichment state machine excludes terminal errors from automatic routing, a temporary provider outage could both stop the bulk process and permanently remove that track from automatic retry.
+
+The focused v111 correction changes MusicBrainz transient-failure classification and narrowly repairs legacy state created by the old policy:
+
+- `404` remains a legitimate no-match and follows the existing fallback path;
+- `429` and `503` preserve a usable provider `Retry-After` when present;
+- `429` and `503` without a usable `Retry-After` become a dated retry with a conservative 30-minute delay;
+- MusicBrainz network and timeout failures become the same conservative dated retry;
+- malformed JSON and other non-transient HTTP/data failures remain terminal `error`;
+- a persisted retry still stops the current bulk invocation, preserving fail-closed operation;
+- a legacy record is eligible for one-time conversion only when it is still validated current inventory work, remains identity-compatible with that work, retains a usable MusicBrainz route (valid ISRC plus trusted MusicBrainz artist), has root status `error`, and has a MusicBrainz provider `error` reason of `http_429`, `http_503`, or `musicbrainz_network_error` with a valid original `checkedAt`; eligible records become `retry` with `nextEligibleCheckAt` set to the original `checkedAt` plus 30 minutes;
+- orphaned, blocked, complete, incompatible, non-routable, non-transient or incomplete error records are left unchanged;
+- legacy recovery is bulk-only and preserves unrelated/unknown fields and other provider observations;
+- any legacy recovery is durably written through a strict identity-only conditional write before provider usage is reserved or a provider request is made. A concurrent identity change aborts the correction and the run before provider execution.
+
+Spotify and ListenBrainz adapter behavior is unchanged by this correction. Resuming the production backfill remains separately authorized only after the correction is reviewed and merged.
+
 ## Bulk authorization
 
 The bulk runner requires the existing provider/write authorization values plus a third exact authorization dedicated to the full historical operation:
@@ -143,7 +175,7 @@ Before v111 bulk rollout, Spotify's current Development Mode quota documentation
 
 ## Version
 
-Build D began at v110. The v111 bulk runner is an architectural extension because it changes the production operating mode from tiny diagnostic invocations to one resumable long-running process. `APP_VERSION`, `CACHE_NAME_LITERAL` and generated build state moved together to v111 exactly once. The review-quarantine change is a focused correction to the same unreleased operational build and therefore keeps v111.
+Build D began at v110. The v111 bulk runner is an architectural extension because it changes the production operating mode from tiny diagnostic invocations to one resumable long-running process. `APP_VERSION`, `CACHE_NAME_LITERAL` and generated build state moved together to v111 exactly once. The review-quarantine and MusicBrainz transient-retry changes are focused corrections to the same operational build and therefore keep v111.
 
 ## Production boundary
 
@@ -159,4 +191,4 @@ Development and QA do not:
 - modify immutable source observations;
 - remove existing provider/data safety rules.
 
-The three one-step Build D production validations and the first four-step bulk invocation were separately authorized production actions. Any resumed bulk invocation remains separately authorized after the focused correction is reviewed and merged.
+The three one-step Build D production validations and both separately authorized bulk invocations were production actions. Any resumed bulk invocation remains separately authorized after the focused correction is reviewed and merged.

@@ -6,6 +6,7 @@ const SPOTIFY_TRACK_URL = 'https://api.spotify.com/v1/tracks';
 const LISTENBRAINZ_LOOKUP_URL = 'https://api.listenbrainz.org/1/metadata/lookup/';
 const ISRC_RE = /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/;
 const SPOTIFY_ID_RE = /^[A-Za-z0-9]{1,64}$/;
+const MUSICBRAINZ_TRANSIENT_RETRY_MS = 30 * 60 * 1000;
 
 function validDateMs(value) {
   const parsed = Date.parse(value);
@@ -30,6 +31,25 @@ function httpFailure(response, nowMs) {
   const retryAt = retryAtFromHeader(response, nowMs);
   if ((status === 429 || status === 503) && retryAt) {
     return { kind: 'retry', reason: `http_${status}`, nextEligibleCheckAt: retryAt };
+  }
+  return { kind: 'error', reason: Number.isFinite(status) ? `http_${status}` : 'provider_http_error' };
+}
+
+function musicbrainzTransientRetry(reason, nowMs) {
+  return {
+    kind: 'retry',
+    reason,
+    nextEligibleCheckAt: new Date(nowMs + MUSICBRAINZ_TRANSIENT_RETRY_MS).toISOString(),
+  };
+}
+
+function musicbrainzHttpFailure(response, nowMs) {
+  const status = Number(response?.status);
+  const retryAt = retryAtFromHeader(response, nowMs);
+  if (status === 429 || status === 503) {
+    return retryAt
+      ? { kind: 'retry', reason: `http_${status}`, nextEligibleCheckAt: retryAt }
+      : musicbrainzTransientRetry(`http_${status}`, nowMs);
   }
   return { kind: 'error', reason: Number.isFinite(status) ? `http_${status}` : 'provider_http_error' };
 }
@@ -94,10 +114,10 @@ function createListeningMaintenanceProviders({
             },
           });
         } catch (error) {
-          return { kind: 'error', reason: 'musicbrainz_network_error' };
+          return musicbrainzTransientRetry('musicbrainz_network_error', now());
         }
         if (response.status === 404) return { kind: 'no_match', reason: 'musicbrainz_isrc_not_found' };
-        if (!response.ok) return httpFailure(response, now());
+        if (!response.ok) return musicbrainzHttpFailure(response, now());
         const data = await safeJson(response);
         return data && typeof data === 'object' ? { kind: 'ok', data } : { kind: 'error', reason: 'musicbrainz_invalid_json' };
       },
@@ -133,8 +153,11 @@ function createListeningMaintenanceProviders({
 module.exports = {
   SPOTIFY_TRACK_URL,
   LISTENBRAINZ_LOOKUP_URL,
+  MUSICBRAINZ_TRANSIENT_RETRY_MS,
   retryAtFromHeader,
   httpFailure,
+  musicbrainzTransientRetry,
+  musicbrainzHttpFailure,
   spotifyQuotaExceeded,
   createListeningMaintenanceProviders,
 };

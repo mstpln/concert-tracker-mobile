@@ -93,6 +93,43 @@ test('failed usage persistence prevents provider authorization', async () => {
   assert.deepEqual(client.writes, [persistence.API_USAGE_PATH]);
 });
 
+test('identity-only correction persistence is strict and does not touch usage or metadata', async () => {
+  const client = fakeClient(initialDocs());
+  const context = await persistence.loadListeningMaintenanceContext(client, { today: '2026-08-08', bulk: true });
+  const nextIdentities = clone(context.trackIdentities);
+  nextIdentities.updatedAt = '2026-08-09T14:10:00.000Z';
+  nextIdentities.records['spotify:Track123'] = {
+    workKey: 'spotify:Track123',
+    status: 'retry',
+    nextEligibleCheckAt: '2026-08-09T14:30:00.000Z',
+    providers: { musicbrainz: { status: 'retry', reason: 'http_503', checkedAt: '2026-08-09T14:00:00.000Z' } },
+  };
+
+  assert.equal(await context.persistTrackIdentitiesOnly(nextIdentities), true);
+  assert.deepEqual(client.writes, [persistence.TRACK_IDENTITIES_PATH]);
+  assert.deepEqual(client.values.get(persistence.TRACK_IDENTITIES_PATH), nextIdentities);
+
+  assert.equal(await context.preflight({
+    trackIdentities: nextIdentities,
+    spotifyMetadata: context.spotifyMetadata,
+  }), true);
+  assert.deepEqual(client.writes, [persistence.TRACK_IDENTITIES_PATH]);
+});
+
+test('identity-only correction persistence rejects stale remote identities before writing', async () => {
+  const client = fakeClient(initialDocs());
+  const context = await persistence.loadListeningMaintenanceContext(client, { today: '2026-08-08', bulk: true });
+  const concurrent = clone(context.trackIdentities);
+  concurrent.updatedAt = '2026-08-09T14:05:00.000Z';
+  concurrent.records.concurrent = { workKey: 'text:concurrent', status: 'unresolved' };
+  client.values.set(persistence.TRACK_IDENTITIES_PATH, concurrent);
+
+  const nextIdentities = clone(context.trackIdentities);
+  nextIdentities.updatedAt = '2026-08-09T14:10:00.000Z';
+  await assert.rejects(() => context.persistTrackIdentitiesOnly(nextIdentities), /changed before correction persistence/);
+  assert.deepEqual(client.writes, []);
+});
+
 test('persist attaches checkpoint before provider-owned derived documents', async () => {
   const client = fakeClient(initialDocs());
   const context = await persistence.loadListeningMaintenanceContext(client, { today: '2026-08-08' });

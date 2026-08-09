@@ -3,7 +3,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createListeningMaintenanceClient } = require('../scripts/lib/listeningMaintenanceClient');
-const { createListeningMaintenanceProviders, retryAtFromHeader } = require('../scripts/lib/listeningMaintenanceProviders');
+const {
+  createListeningMaintenanceProviders,
+  retryAtFromHeader,
+  MUSICBRAINZ_TRANSIENT_RETRY_MS,
+} = require('../scripts/lib/listeningMaintenanceProviders');
 
 function response(status, data = {}, headers = {}) {
   return {
@@ -84,7 +88,7 @@ test('ListenBrainz adapter authenticates metadata lookup without adding release 
   assert.equal(calls[0].options.headers.Authorization, 'Token listenbrainz-token');
 });
 
-test('rate limits become explicit retry state only when Retry-After is usable', async () => {
+test('generic rate limits remain retryable only when Retry-After is usable', async () => {
   const now = Date.parse('2026-08-08T09:00:00.000Z');
   assert.equal(retryAtFromHeader(response(429, {}, { 'retry-after': '30' }), now), '2026-08-08T09:00:30.000Z');
 
@@ -101,4 +105,73 @@ test('rate limits become explicit retry state only when Retry-After is usable', 
     async fetchImpl() { return response(429); },
   });
   assert.deepEqual(await noHeaderProviders.spotify.exact_track({ spotifyTrackId: 'Track123' }), { kind: 'error', reason: 'http_429' });
+});
+
+test('MusicBrainz transient failures use a conservative dated retry and preserve terminal data failures', async () => {
+  const now = Date.parse('2026-08-09T12:00:00.000Z');
+  const retryAt = new Date(now + MUSICBRAINZ_TRANSIENT_RETRY_MS).toISOString();
+
+  for (const status of [429, 503]) {
+    const providers = createListeningMaintenanceProviders({
+      now: () => now,
+      async fetchImpl() { return response(status); },
+    });
+    assert.deepEqual(await providers.musicbrainz.isrc_lookup({ isrc: 'USABC1234567' }), {
+      kind: 'retry',
+      reason: `http_${status}`,
+      nextEligibleCheckAt: retryAt,
+    });
+  }
+
+  const headerProviders = createListeningMaintenanceProviders({
+    now: () => now,
+    async fetchImpl() { return response(503, {}, { 'retry-after': '120' }); },
+  });
+  assert.deepEqual(await headerProviders.musicbrainz.isrc_lookup({ isrc: 'USABC1234567' }), {
+    kind: 'retry',
+    reason: 'http_503',
+    nextEligibleCheckAt: '2026-08-09T12:02:00.000Z',
+  });
+
+  const networkProviders = createListeningMaintenanceProviders({
+    now: () => now,
+    async fetchImpl() { throw Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }); },
+  });
+  assert.deepEqual(await networkProviders.musicbrainz.isrc_lookup({ isrc: 'USABC1234567' }), {
+    kind: 'retry',
+    reason: 'musicbrainz_network_error',
+    nextEligibleCheckAt: retryAt,
+  });
+
+  const notFoundProviders = createListeningMaintenanceProviders({
+    now: () => now,
+    async fetchImpl() { return response(404); },
+  });
+  assert.deepEqual(await notFoundProviders.musicbrainz.isrc_lookup({ isrc: 'USABC1234567' }), {
+    kind: 'no_match',
+    reason: 'musicbrainz_isrc_not_found',
+  });
+
+  const serverErrorProviders = createListeningMaintenanceProviders({
+    now: () => now,
+    async fetchImpl() { return response(500); },
+  });
+  assert.deepEqual(await serverErrorProviders.musicbrainz.isrc_lookup({ isrc: 'USABC1234567' }), {
+    kind: 'error',
+    reason: 'http_500',
+  });
+
+  const invalidJsonProviders = createListeningMaintenanceProviders({
+    now: () => now,
+    async fetchImpl() {
+      return {
+        ...response(200),
+        async json() { throw new Error('bad json'); },
+      };
+    },
+  });
+  assert.deepEqual(await invalidJsonProviders.musicbrainz.isrc_lookup({ isrc: 'USABC1234567' }), {
+    kind: 'error',
+    reason: 'musicbrainz_invalid_json',
+  });
 });
