@@ -18,25 +18,30 @@ function approvedEnv() {
   };
 }
 
-function syntheticClient(reads) {
+function syntheticBand(overrides = {}) {
+  return {
+    id: 'band-1',
+    name: 'Synthetic Artist',
+    musicbrainz: {
+      mbid: MB_ARTIST,
+      status: 'manual_confirmed',
+      spotify: { id: 'SyntheticArtist1', status: 'manual_confirmed' },
+    },
+    ...overrides,
+  };
+}
+
+function syntheticClient(reads, { readBands } = {}) {
   return {
     async readJson(path, fallback) {
       reads.push(path);
-      if (path === 'bands.json') return [{
-        id: 'band-1',
-        name: 'Synthetic Artist',
-        musicbrainz: {
-          mbid: MB_ARTIST,
-          status: 'manual_confirmed',
-          spotify: { id: 'SyntheticArtist1', status: 'manual_confirmed' },
-        },
-      }];
+      if (path === 'bands.json') return readBands ? readBands() : [syntheticBand()];
       return fallback;
     },
   };
 }
 
-function syntheticContext() {
+function syntheticContext(overrides = {}) {
   return {
     trackIdentities: { kind: 'livevault-track-identities', schemaVersion: 1, updatedAt: null, records: {} },
     spotifyMetadata: { kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} },
@@ -44,6 +49,14 @@ function syntheticContext() {
     usage: { reserve: async () => true },
     preflight: async () => true,
     persist: async () => true,
+    ...overrides,
+  };
+}
+
+function sourceFixture() {
+  return {
+    events: [{ bandId: 'band-1', artistCreditName: 'Synthetic Artist', recordingTitle: 'Synthetic Song', spotifyTrackId: 'SyntheticTrack1' }],
+    counts: { spotifyArchiveEvents: 1, incrementalObjects: 0, incrementalEvents: 0, totalEvents: 1 },
   };
 }
 
@@ -119,7 +132,9 @@ test('authorized synthetic backfill passes bounded context to runner and logs ag
       assert.equal(args.maxSteps, 3);
       assert.equal(args.trackIdentities, context.trackIdentities);
       assert.equal(args.spotifyMetadata, context.spotifyMetadata);
-      assert.equal(args.usage, context.usage);
+      assert.notEqual(args.usage, context.usage);
+      assert.equal(await args.preflight({ trackIdentities: context.trackIdentities, spotifyMetadata: context.spotifyMetadata }), true);
+      assert.equal(await args.usage.reserve('spotify'), true);
       assert.equal(args.inventory.counts.needsSpotifyTracks, 1);
       return {
         summary: { attempted: 2, persisted: 2, halted: true, haltReason: 'batch_limit' },
@@ -131,7 +146,7 @@ test('authorized synthetic backfill passes bounded context to runner and logs ag
 
   assert.equal(sourceReads, 1);
   assert.equal(runnerCalls, 1);
-  assert.deepEqual(reads, ['bands.json']);
+  assert.deepEqual(reads, ['bands.json', 'bands.json', 'bands.json']);
   assert.equal(result.mode, 'bounded-production-enrichment');
   assert.equal(result.maxSteps, 3);
   assert.equal(result.inventory.needsSpotifyTracks, 1);
@@ -148,6 +163,79 @@ test('authorized synthetic backfill passes bounded context to runner and logs ag
   assert.equal(output.includes('worker.test'), false);
 });
 
+test('band changes after inventory load stop before quota reservation or provider work', async () => {
+  let bandReads = 0;
+  let usageReservations = 0;
+  let providerCalls = 0;
+  let persists = 0;
+  const context = syntheticContext({
+    usage: { reserve: async () => { usageReservations += 1; return true; } },
+    persist: async () => { persists += 1; return true; },
+  });
+
+  await assert.rejects(() => production.runProductionBackfill({
+    argv: ['--execute', '--write'],
+    env: approvedEnv(),
+    clientFactory() {
+      return syntheticClient([], {
+        readBands() {
+          bandReads += 1;
+          return bandReads === 1 ? [syntheticBand()] : [syntheticBand({ name: 'Changed Artist' })];
+        },
+      });
+    },
+    async contextLoader() { return context; },
+    async readAllSourceEvents() { return sourceFixture(); },
+    providerFactory() {
+      return { spotify: { exact_track: async () => { providerCalls += 1; return { kind: 'no_match' }; } } };
+    },
+    async maintenanceRunner(args) {
+      await args.preflight({ trackIdentities: context.trackIdentities, spotifyMetadata: context.spotifyMetadata });
+      return { summary: {}, plan: {} };
+    },
+    log() {},
+  }), /bands changed after inventory load/);
+
+  assert.equal(usageReservations, 0);
+  assert.equal(providerCalls, 0);
+  assert.equal(persists, 0);
+});
+
+test('band changes during quota reservation stop before provider request and derived persistence', async () => {
+  let bandReads = 0;
+  let providerCalls = 0;
+  let persists = 0;
+  const context = syntheticContext({ persist: async () => { persists += 1; return true; } });
+
+  await assert.rejects(() => production.runProductionBackfill({
+    argv: ['--execute', '--write'],
+    env: approvedEnv(),
+    clientFactory() {
+      return syntheticClient([], {
+        readBands() {
+          bandReads += 1;
+          return bandReads < 3 ? [syntheticBand()] : [syntheticBand({ musicbrainz: { mbid: MB_ARTIST, status: 'manual_confirmed', spotify: { id: 'ChangedSpotifyId', status: 'manual_confirmed' } } })];
+        },
+      });
+    },
+    async contextLoader() { return context; },
+    async readAllSourceEvents() { return sourceFixture(); },
+    providerFactory() {
+      return { spotify: { exact_track: async () => { providerCalls += 1; return { kind: 'no_match' }; } } };
+    },
+    async maintenanceRunner(args) {
+      assert.equal(await args.preflight({ trackIdentities: context.trackIdentities, spotifyMetadata: context.spotifyMetadata }), true);
+      await args.usage.reserve('spotify');
+      providerCalls += 1;
+      return { summary: {}, plan: {} };
+    },
+    log() {},
+  }), /bands changed after inventory load/);
+
+  assert.equal(providerCalls, 0);
+  assert.equal(persists, 0);
+});
+
 test('Spotify and ListenBrainz credentials are resolved lazily through provider callbacks', async () => {
   const env = approvedEnv();
   let spotifyTokenCalls = 0;
@@ -158,12 +246,7 @@ test('Spotify and ListenBrainz credentials are resolved lazily through provider 
     env,
     clientFactory() { return syntheticClient([]); },
     async contextLoader() { return syntheticContext(); },
-    async readAllSourceEvents() {
-      return {
-        events: [{ bandId: 'band-1', artistCreditName: 'Synthetic Artist', recordingTitle: 'Synthetic Song', spotifyTrackId: 'SyntheticTrack1' }],
-        counts: { totalEvents: 1 },
-      };
-    },
+    async readAllSourceEvents() { return sourceFixture(); },
     providerFactory(callbacks) { providerCallbacks = callbacks; return {}; },
     async spotifyTokenFactory({ clientId, clientSecret }) {
       spotifyTokenCalls += 1;
