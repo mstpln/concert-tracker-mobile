@@ -49,6 +49,7 @@ function cache(recordings = []) {
       [ARTIST]: {
         artistMbid: ARTIST,
         sourceEntity: 'release',
+        coverageScopes: [...resolver.CATALOGUE_COVERAGE_SCOPES],
         nextOffset: releaseMbids.length,
         totalCount: releaseMbids.length,
         complete: true,
@@ -385,6 +386,7 @@ test('MusicBrainz catalogue pages normalize supported release-browse pagination 
   assert.equal(completed.artists[ARTIST].recordings.find((row) => row.recordingMbid === RECORDING).releases.length, 2);
   assert.equal(completed.artists[ARTIST].nextOffset, 2);
   assert.equal(completed.artists[ARTIST].complete, true);
+  assert.equal(resolver.catalogueSnapshotComplete(completed.artists[ARTIST]), false);
 });
 
 test('MusicBrainz release browsing ignores valid other-artist tracks but fails closed on malformed provider rows', () => {
