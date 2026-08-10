@@ -556,11 +556,33 @@ function resolveCatalogueEvidence({ evidence, catalogueCache } = {}) {
   return { schemaVersion: 1, counts, results };
 }
 
-function planListenBrainzBatchBridge({ evidence, localResults, maxItems = 25 } = {}) {
+function localResultsMatchCurrent(supplied, current) {
+  if (supplied.results.length !== current.results.length) return false;
+  const currentByKey = new Map(current.results.map((result) => [result.trackKey, result]));
+  for (const result of supplied.results) {
+    const expected = currentByKey.get(result.trackKey);
+    if (!expected || result.evidenceTier !== expected.evidenceTier
+      || result.status !== expected.status || result.reason !== expected.reason
+      || clean(result.musicbrainzRecordingMbid) !== clean(expected.musicbrainzRecordingMbid)
+      || clean(result.musicbrainzArtistMbid) !== clean(expected.musicbrainzArtistMbid)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function planListenBrainzBatchBridge({ evidence, catalogueCache, localResults, maxItems = 25 } = {}) {
   validateEvidenceDocument(evidence);
-  validateLocalResults(localResults);
+  const currentLocalResults = resolveCatalogueEvidence({ evidence, catalogueCache });
+  if (localResults != null) {
+    validateLocalResults(localResults);
+    if (!localResultsMatchCurrent(localResults, currentLocalResults)) {
+      throw new Error('Stale catalogue resolution results.');
+    }
+  }
+  const authoritativeResults = localResults || currentLocalResults;
   const limit = Number.isInteger(maxItems) ? Math.max(1, Math.min(MAX_BATCH_SIZE, maxItems)) : 25;
-  const resultByKey = new Map(localResults.results.map((result) => [result.trackKey, result]));
+  const resultByKey = new Map(authoritativeResults.results.map((result) => [result.trackKey, result]));
   const items = [];
   const skipped = {
     complete: 0,
@@ -654,6 +676,7 @@ module.exports = {
   catalogueSnapshotComplete,
   resolveFromCatalogue,
   resolveCatalogueEvidence,
+  localResultsMatchCurrent,
   planListenBrainzBatchBridge,
   safeResolverDiagnostics,
 };
