@@ -22,9 +22,9 @@ The C2 path is additive beside the existing v111 planner:
 5. Normalize synthetic MusicBrainz **release-browse** catalogue pages through a pure parser with explicit offset/count checkpoints and sequential merge rules.
 6. Validate a versioned artist-MBID-keyed MusicBrainz catalogue-cache contract.
 7. Match locally using exact deterministic normalized recording text, the already trusted BANDMARKR MusicBrainz artist MBID and, for tier B, compatible release evidence.
-8. Resolve only when exactly one compatible recording MBID remains.
+8. Resolve only when the relevant catalogue slice is complete and exactly one compatible recording MBID remains.
 9. Keep multiple compatible recording MBIDs ambiguous and out of the automatic batch bridge.
-10. Plan only items with an explicit local `unresolved` result from the same current evidence tier for a bounded future ListenBrainz batch request.
+10. Plan only items with an explicit exhausted local `unresolved` result from the same current evidence tier for a bounded future ListenBrainz batch request.
 11. Derive an exact Spotify track URL directly from an already trusted Spotify track ID without a Spotify request; this is presentation convenience only and never evidence of recording identity.
 12. Expose aggregate-only feasibility diagnostics.
 
@@ -40,8 +40,9 @@ The C2 path is additive beside the existing v111 planner:
 - Existing durable `needs_review`, `retry`, `error`, and `no_match` state is not automatically reopened by C2. A later C3/C4 recovery or migration rule must explicitly define which old states may be reconsidered and how protected review/retry ownership is preserved.
 - Malformed known-provider containers/entries and unknown provider statuses are held rather than reinterpreted as fresh work.
 - Invalid catalogue/evidence/result structures fail closed. Duplicate evidence track keys, local-result keys, catalogue recording rows and release rows are rejected.
-- A future ListenBrainz batch candidate must have a corresponding local catalogue result whose status is explicitly `unresolved` **and whose evidence tier still matches the current evidence item**; missing, stale-tier, exception, complete, resolved or ambiguous local results cannot be widened automatically.
-- Unknown future catalogue fields are tolerated and validation does not mutate input objects.
+- A checkpointed catalogue slice with `complete: false` is not authoritative enough to resolve identity. A later page could introduce another compatible recording, so partial uniqueness is never accepted.
+- A future ListenBrainz batch candidate must have a corresponding local catalogue result whose status is explicitly `unresolved`, whose evidence tier still matches the current evidence item, and whose local reason proves the catalogue route is exhausted (`catalogue_no_match` or `catalogue_release_mismatch`). Missing catalogues, incomplete catalogues, stale-tier results, exceptions, complete, resolved, ambiguous and unknown unresolved reasons cannot be widened automatically.
+- Unknown future fields already present in cache recording/release rows survive compatible page merges. Provider normalization remains allowlisted and does not copy arbitrary provider payload fields into cache rows.
 
 ## Pure MusicBrainz catalogue parsing
 
@@ -60,7 +61,7 @@ The parser requires:
 - no duplicate release row in one provider page;
 - repeated recording MBIDs across multiple releases to be consolidated into one recording row with multiple release relations instead of treated as an error.
 
-MusicBrainz release paging can return fewer releases than the requested limit when a page contains many tracks. The normalized `nextOffset` therefore advances by the **number of release rows actually returned**, never by a fixed requested limit and never by the number of normalized recordings. A pure cache merge accepts only the next sequential release page, rejects a total-count change mid-pagination, merges repeated recording identities conservatively, and validates the combined cache after merging. This defines the C2 checkpoint contract without deciding where or how a future production checkpoint is persisted.
+MusicBrainz release paging can return fewer releases than the requested limit when a page contains many tracks. The normalized `nextOffset` therefore advances by the **number of release rows actually returned**, never by a fixed requested limit and never by the number of normalized recordings. A pure cache merge accepts only the next sequential release page, rejects a total-count change mid-pagination, merges repeated recording identities conservatively, preserves existing unknown future cache fields, and validates the combined cache after merging. This defines the C2 checkpoint contract without deciding where or how a future production checkpoint is persisted.
 
 The future C3 adapter still owns the exact request strategy (including whether an artist slice requires ordinary artist release browsing, track-artist browsing, or both), pacing, headers, freshness and persisted checkpoints. C2 deliberately does not make those provider calls.
 
@@ -75,8 +76,10 @@ C2 defines the in-memory/synthetic contract only:
 - each recording stores `recordingMbid`, title, artist MBIDs and optional release rows
 - release rows carry a MusicBrainz release MBID, optional release-group MBID and release title
 - a cache slice created through the release-page parser identifies `sourceEntity: "release"`
-- an artist may carry normalized release-pagination fields `nextOffset`, `totalCount` and `complete`; if any is present, all must be valid and mutually consistent
+- an artist may carry normalized release-pagination fields `nextOffset`, `totalCount` and `complete`; if any is present, all must be valid and mutually consistent and `sourceEntity` must be `release`
 - pagination offsets count provider **release rows**, so they are intentionally independent of the number of normalized recording rows retained in the cache
+- a checkpointed slice may be used for automatic identity resolution only when `complete` is true
+- checkpoint-less artist slices are accepted only as caller-supplied complete in-memory snapshots for pure C2 tests/tools; C3 production persistence must use the explicit checkpointed contract
 
 C2 intentionally does **not** decide the production R2 object name, object-size ceiling, pagination persistence mechanism, ETag write path, freshness/refresh policy or Worker allowlist. Those are C3 concerns and require separate review before production activation.
 
@@ -86,9 +89,9 @@ An already trusted Spotify track ID can be converted locally to `https://open.sp
 
 ## ListenBrainz batch bridge planning
 
-The C2 batch planner is pure and makes no request. It accepts only tier B/C items that have an explicit locally unresolved catalogue result from the same current evidence tier, trusted artist identity and clean artist/recording text. It emits a bounded list, hard-limited to at most 100 items per planned batch.
+The C2 batch planner is pure and makes no request. It accepts only tier B/C items that have an explicit locally unresolved catalogue result from the same current evidence tier, trusted artist identity and clean artist/recording text. The local result must represent an exhausted catalogue route (`catalogue_no_match` or `catalogue_release_mismatch`). It emits a bounded list, hard-limited to at most 100 items per planned batch.
 
-Items already resolved locally are excluded. Catalogue ambiguity is also excluded and remains exception/review work rather than being silently widened into another automatic route. Items carrying a durable routing hold are likewise excluded. Missing, malformed or stale-tier local-result documents fail closed rather than treating local resolution as skipped.
+Items already resolved locally are excluded. Catalogue ambiguity is also excluded and remains exception/review work rather than being silently widened into another automatic route. Missing or incomplete catalogue state is not considered exhausted and cannot widen into ListenBrainz. Items carrying a durable routing hold are likewise excluded. Missing, malformed, stale-tier or unknown unresolved local-result documents fail closed rather than treating local resolution as skipped.
 
 ## Production boundary
 
@@ -113,12 +116,13 @@ Synthetic unit coverage includes:
 - tier C unique-title resolution;
 - trusted-artist mismatch;
 - supported MusicBrainz release-page normalization, variable release paging, sequential checkpoints, artist-credit boundaries, repeated-recording consolidation and total-count drift;
+- incomplete-catalogue resolution blocking;
+- cache-row unknown-field preservation across compatible merges;
 - zero-call Spotify track URL derivation from an exact trusted ID;
 - bounded tier D planning;
-- requirement for explicit locally unresolved same-tier results before batch widening;
-- exclusion of resolved, ambiguous, stale-tier and held items from the bridge;
+- requirement for explicit exhausted locally unresolved same-tier results before batch widening;
+- exclusion of resolved, ambiguous, stale-tier, incomplete-catalogue, missing-catalogue, unknown-unresolved and held items from the bridge;
 - malformed and duplicate cache/evidence/result-state failure;
-- unknown-field non-mutation;
 - aggregate-only diagnostics.
 
 Automated repository QA remains synthetic/fake-backend only and must not call production providers or production R2.
