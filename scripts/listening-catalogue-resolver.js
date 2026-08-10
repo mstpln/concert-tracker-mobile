@@ -12,6 +12,7 @@ const KNOWN_PROVIDERS = ['spotify', 'musicbrainz', 'listenbrainz'];
 const LOCAL_RESULT_STATUSES = new Set(['complete', 'resolved', 'unresolved', 'ambiguous', 'exception']);
 const EVIDENCE_TIERS = new Set(['A', 'B', 'C', 'D', 'E']);
 const BRIDGE_UNRESOLVED_REASONS = new Set(['catalogue_no_match', 'catalogue_release_mismatch']);
+const COMPLETE_INVENTORY_REASONS = new Set(['existing_track_identity', 'source_recording_mbid']);
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -537,12 +538,12 @@ function catalogueSnapshotComplete(artistCatalogue) {
 function resolveFromCatalogue(item, cache) {
   validateCatalogueCache(cache);
   if (!item || typeof item !== 'object' || Array.isArray(item)) return { status: 'exception', reason: 'invalid_evidence_item' };
+  if (item.routingHoldReason) return { status: 'exception', reason: item.routingHoldReason };
   if (item.evidenceTier === 'A') {
-    return item.status === 'complete'
+    return item.status === 'complete' && COMPLETE_INVENTORY_REASONS.has(item.reason)
       ? { status: 'complete', reason: 'already_complete' }
       : { status: 'exception', reason: 'invalid_tier_a_evidence' };
   }
-  if (item.routingHoldReason) return { status: 'exception', reason: item.routingHoldReason };
   if (!['B', 'C'].includes(item.evidenceTier)) return { status: 'exception', reason: 'not_catalogue_eligible' };
   const artistMbid = inventoryLib.validMbid(item.trustedMusicbrainzArtistMbid);
   const normalizedTrack = inventoryLib.normalizeText(item.recordingLookupName || item.normalizedRecordingTitle);
@@ -704,6 +705,7 @@ module.exports = {
   LOCAL_RESULT_STATUSES,
   EVIDENCE_TIERS,
   BRIDGE_UNRESOLVED_REASONS,
+  COMPLETE_INVENTORY_REASONS,
   releaseText,
   sourceReleaseMbids,
   sourceReleaseEvidenceMalformed,
