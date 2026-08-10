@@ -41,11 +41,22 @@ function recording(overrides = {}) {
 }
 
 function completeCache(recordings = []) {
+  const releaseMbids = [...new Set(recordings.flatMap((row) => (
+    (row?.releases || []).map((release) => release.releaseMbid).filter(Boolean)
+  )))];
   return {
     kind: resolver.CACHE_KIND,
     schemaVersion: resolver.CACHE_SCHEMA_VERSION,
     artists: {
-      [ARTIST]: { artistMbid: ARTIST, recordings },
+      [ARTIST]: {
+        artistMbid: ARTIST,
+        sourceEntity: 'release',
+        nextOffset: releaseMbids.length,
+        totalCount: releaseMbids.length,
+        complete: true,
+        releaseMbids,
+        recordings,
+      },
     },
   };
 }
@@ -343,7 +354,7 @@ test('trusted source release MBID is authoritative over text variation for the s
   }, item), true);
 });
 
-test('checkpoint-less snapshots cannot be extended by paginated page merges', () => {
+test('checkpoint-less snapshots are non-authoritative and cannot be extended by page merges', () => {
   const snapshot = {
     kind: resolver.CACHE_KIND,
     schemaVersion: resolver.CACHE_SCHEMA_VERSION,
@@ -351,6 +362,12 @@ test('checkpoint-less snapshots cannot be extended by paginated page merges', ()
       [ARTIST]: { artistMbid: ARTIST, recordings: [recording()] },
     },
   };
+  assert.equal(resolver.validateCatalogueCache(snapshot), snapshot);
+  assert.equal(resolver.catalogueSnapshotComplete(snapshot.artists[ARTIST]), false);
+  const evidence = minimalEvidence('B');
+  const result = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: snapshot });
+  assert.equal(result.results[0].status, 'unresolved');
+  assert.equal(result.results[0].reason, 'catalogue_incomplete');
   assert.throws(
     () => resolver.mergeCataloguePage(snapshot, completePage()),
     /checkpoint-less catalogue snapshot/,
