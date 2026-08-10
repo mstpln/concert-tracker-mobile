@@ -233,3 +233,12 @@ PR #103 on `fix/listening-bulk-diagnostics-v111` closes that observability gap g
 A UsageTracker denial still makes zero provider calls. PR #103 persists only the safe diagnostic checkpoint for that stop and does not mutate track identity or Spotify metadata. Diagnostic values are constrained to aggregate provider names, controlled status/reason strings, count totals and retry dates; track IDs, artist names, recording titles, tokens, URLs and raw provider payloads are excluded.
 
 PR #103 remains a focused correction to the unreleased v111 operational build, so `APP_VERSION` and `CACHE_NAME_LITERAL` remain synchronized at v111. The deterministic build-state facts are unchanged. Merging PR #103 will not authorize or start another production backfill, provider call, R2 write, production workflow or deployment; production resumption remains a separately authorized action.
+
+## PR #104 C2 catalogue resolver review state
+
+PR #104 on `feature/listening-catalogue-resolver-c2` is open and unmerged. It implements the production-inert C2 catalogue-first resolver foundation beside the existing v111 production planner: additive evidence tiers, a versioned artist-MBID-keyed MusicBrainz catalogue-cache contract, exact trusted-artist recording/release matching, ambiguity quarantine, a bounded future ListenBrainz batch-bridge planner, aggregate-only diagnostics, and synthetic regression coverage.
+
+Review corrections now preserve existing durable routing ownership. Any root or provider `needs_review`, `retry`, `error`, or `no_match` state in `listening/track-identities.json` is held as C2 exception work and cannot be silently reopened by catalogue matching or the future batch bridge. Catalogue ambiguity is also excluded from automatic widening, malformed evidence fails closed, and duplicate recording MBIDs in one artist catalogue are rejected. A later C3/C4 recovery or migration rule must explicitly define which held legacy states may be reconsidered.
+
+C2 changes only pure Node tooling, tests and documentation. It does not replace the Spotify-first v111 production entrypoint, call a live provider, add or write a production R2 catalogue object, change Worker allowlists, enable the planned six-hour maintenance schedule, modify production data, deploy, or authorize another historical backfill run. `APP_VERSION` and `CACHE_NAME_LITERAL` remain synchronized at v111, and `LIVEVAULT_BUILD_STATE.json` remains unchanged because its deterministic source facts have not changed.
+
