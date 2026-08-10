@@ -2,8 +2,7 @@ name: Finalize C2 continuity records
 
 on:
   push:
-    branches:
-      - feature/listening-catalogue-resolver-c2
+    branches: [feature/listening-catalogue-resolver-c2]
     paths:
       - .github/workflows/c2-continuity-finalize.yml
 
@@ -18,11 +17,12 @@ jobs:
         with:
           ref: feature/listening-catalogue-resolver-c2
           fetch-depth: 0
-      - name: Update continuity files and remove temporary workflow
+      - name: Update C2 continuity records
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
+          from textwrap import dedent
 
           state_path = Path('docs/LIVEVAULT_STATE.md')
           state = state_path.read_text()
@@ -37,36 +37,41 @@ jobs:
           marker = '## PR #104 C2 catalogue resolver review state\n'
           if marker not in state:
               raise SystemExit('PR #104 state marker missing')
-          prefix = state.split(marker, 1)[0].rstrip()
-          section = '''## PR #104 C2 catalogue resolver review state
+          state_section = dedent('''
+          ## PR #104 C2 catalogue resolver review state
 
-PR #104 on `feature/listening-catalogue-resolver-c2` is open and unmerged. It implements the production-inert C2 catalogue-first resolver foundation beside the existing v111 production planner: additive evidence tiers, durable routing holds, a versioned artist-MBID-keyed MusicBrainz catalogue-cache contract, pure release-page normalization with sequential checkpoint and cumulative release-coverage proof, exact trusted-artist recording/release matching, zero-call Spotify track URL derivation from trusted exact IDs, ambiguity quarantine, a bounded future ListenBrainz batch-bridge planner, aggregate-only diagnostics, and synthetic regression coverage.
+          PR #104 on `feature/listening-catalogue-resolver-c2` is open and unmerged. It implements the production-inert C2 catalogue-first resolver foundation beside the existing v111 production planner: additive evidence tiers, durable routing holds, a versioned artist-MBID-keyed MusicBrainz catalogue-cache contract, pure release-page normalization with sequential checkpoint and cumulative release-coverage proof, exact trusted-artist recording/release matching, zero-call Spotify track URL derivation from trusted exact IDs, ambiguity quarantine, a bounded future ListenBrainz batch-bridge planner, aggregate-only diagnostics, and synthetic regression coverage.
 
-Review hardening preserves provider ownership and prevents partial catalogue state from becoming identity authority. Root or provider `needs_review`, `retry`, `error`, and `no_match` state remains held and cannot be silently reopened. Malformed/unknown provider state and malformed explicitly MusicBrainz-owned release evidence fail closed; a generic future `releaseMbid` is not claimed as MusicBrainz-owned. Tier A accepts only the current inventory's known complete reasons. Catalogue pagination must be sequential with stable totals and cumulative unique release coverage, and checkpointed recording relations must retain release provenance. A completed release-page stream alone is not treated as whole-artist recording coverage: automatic local resolution and exhausted no-match/release-mismatch widening require explicit catalogue coverage for both `release_artist` and `release_track_artist`. C2 defines and validates those coverage markers but does not perform or persist either provider stream; C3 owns the live adapters, multi-scope assembly, freshness and persistence policy.
+          Review hardening preserves provider ownership and prevents partial catalogue state from becoming identity authority. Root or provider `needs_review`, `retry`, `error`, and `no_match` state remains held and cannot be silently reopened. Malformed/unknown provider state and malformed explicitly MusicBrainz-owned release evidence fail closed; a generic future `releaseMbid` is not claimed as MusicBrainz-owned. Tier A accepts only the current inventory's known complete reasons. Catalogue pagination must be sequential with stable totals and cumulative unique release coverage, and checkpointed recording relations must retain release provenance. A completed release-page stream alone is not treated as whole-artist recording coverage: automatic local resolution and exhausted no-match/release-mismatch widening require explicit catalogue coverage for both `release_artist` and `release_track_artist`. C2 defines and validates those coverage markers but does not perform or persist either provider stream; C3 owns the live adapters, multi-scope assembly, freshness and persistence policy.
 
-The batch bridge recomputes current catalogue resolution before widening, so stale results from an older evidence tier or catalogue snapshot cannot be reused. Cache validation is performed once per evidence-resolution pass rather than once per item, while direct single-item resolution still validates its input cache. Ambiguous, missing, incomplete, partial-coverage, held and malformed states remain outside automatic widening.
+          The batch bridge recomputes current catalogue resolution before widening, so stale results from an older evidence tier or catalogue snapshot cannot be reused. Cache validation is performed once per evidence-resolution pass rather than once per item, while direct single-item resolution still validates its input cache. Ambiguous, missing, incomplete, partial-coverage, held and malformed states remain outside automatic widening.
 
-C2 changes only pure Node tooling, tests and documentation. It does not replace the Spotify-first v111 production entrypoint, call a live provider, add or write a production R2 catalogue object, change Worker allowlists, enable the planned six-hour maintenance schedule, modify production data, deploy, or authorize another historical backfill run. `APP_VERSION` and `CACHE_NAME_LITERAL` remain synchronized at v111, and `LIVEVAULT_BUILD_STATE.json` remains unchanged because its deterministic source facts have not changed.'''
-          state_path.write_text(prefix + '\n\n' + section + '\n')
+          C2 changes only pure Node tooling, tests and documentation. It does not replace the Spotify-first v111 production entrypoint, call a live provider, add or write a production R2 catalogue object, change Worker allowlists, enable the planned six-hour maintenance schedule, modify production data, deploy, or authorize another historical backfill run. `APP_VERSION` and `CACHE_NAME_LITERAL` remain synchronized at v111, and `LIVEVAULT_BUILD_STATE.json` remains unchanged because its deterministic source facts have not changed.
+          ''').strip()
+          state_path.write_text(state.split(marker, 1)[0].rstrip() + '\n\n' + state_section + '\n')
 
-          decision_path = Path('docs/LIVEVAULT_DECISIONS.md')
-          decisions = decision_path.read_text()
+          decisions_path = Path('docs/LIVEVAULT_DECISIONS.md')
+          decisions = decisions_path.read_text()
           marker = '## 2026-08-10 — Catalogue-first listening resolution preserves durable routing holds\n'
           if marker not in decisions:
               raise SystemExit('C2 decision marker missing')
-          prefix = decisions.split(marker, 1)[0].rstrip()
-          section = '''## 2026-08-10 — Catalogue-first listening resolution preserves durable routing holds
+          decision_section = dedent('''
+          ## 2026-08-10 — Catalogue-first listening resolution preserves durable routing holds
 
-**Decision:** Historical listening identity resolution moves toward the cache/catalogue-first architecture from the revised Data Automation plan: reuse existing recording identity first, anchor automatic local matching to the already trusted MusicBrainz artist MBID, require exact normalized recording evidence and conservative explicitly owned release evidence, normalize catalogue pages through sequential pure checkpoints before future persistence, leave ambiguous candidates unresolved, derive trusted Spotify track URLs locally without provider calls, and reserve Spotify for genuinely Spotify-specific presentation or metadata work. Existing durable root or provider `needs_review`, `retry`, `error`, and `no_match` states are not automatically reopened by the C2 resolver or future batch-bridge planning.
+          **Decision:** Historical listening identity resolution moves toward the cache/catalogue-first architecture from the revised Data Automation plan: reuse existing recording identity first, anchor automatic local matching to the already trusted MusicBrainz artist MBID, require exact normalized recording evidence and conservative explicitly owned release evidence, normalize catalogue pages through sequential pure checkpoints before future persistence, leave ambiguous candidates unresolved, derive trusted Spotify track URLs locally without provider calls, and reserve Spotify for genuinely Spotify-specific presentation or metadata work. Existing durable root or provider `needs_review`, `retry`, `error`, and `no_match` states are not automatically reopened by the C2 resolver or future batch-bridge planning.
 
-**Reason:** The revised architecture should reduce provider dependence without discarding review decisions, retry ownership, terminal quarantine, provider boundaries, or previously persisted maintenance evidence. A new evidence source is not sufficient reason to silently bypass durable state, and pagination completion for one MusicBrainz release-browse scope is not sufficient proof that every recording credited to the trusted artist has been represented.
+          **Reason:** The revised architecture should reduce provider dependence without discarding review decisions, retry ownership, terminal quarantine, provider boundaries, or previously persisted maintenance evidence. A new evidence source is not sufficient reason to silently bypass durable state, and pagination completion for one MusicBrainz release-browse scope is not sufficient proof that every recording credited to the trusted artist has been represented.
 
-**Consequence:** C2 remains production-inert and treats held durable states, malformed/unknown provider state, provider-ownership conflicts and catalogue ambiguity as exception/review work. Its MusicBrainz page contract requires sequential offsets, stable totals, trusted artist credit, cumulative release-MBID coverage and release provenance. Automatic catalogue resolution or exhausted-catalogue widening additionally requires explicit coverage markers for both `release_artist` and `release_track_artist`; completing only one browse scope stays non-authoritative. The C2 parser does not manufacture those coverage markers from a single page stream. A locally constructed Spotify URL remains presentation-only evidence. Any C3/C4 rule that deliberately reconsiders an old held state must be explicit, tested, additive and preserve unknown fields and source observations. C3 still owns live MusicBrainz/ListenBrainz adapters, multi-scope catalogue assembly, production object limits, freshness/checkpoint persistence, conditional ETag writes, migration/rollback and Worker allowlisting; C4 owns separately authorized historical activation, and the six-hour schedule remains inactive until later approval.'''
-          decision_path.write_text(prefix + '\n\n' + section + '\n')
+          **Consequence:** C2 remains production-inert and treats held durable states, malformed/unknown provider state, provider-ownership conflicts and catalogue ambiguity as exception/review work. Its MusicBrainz page contract requires sequential offsets, stable totals, trusted artist credit, cumulative release-MBID coverage and release provenance. Automatic catalogue resolution or exhausted-catalogue widening additionally requires explicit coverage markers for both `release_artist` and `release_track_artist`; completing only one browse scope stays non-authoritative. The C2 parser does not manufacture those coverage markers from a single page stream. A locally constructed Spotify URL remains presentation-only evidence. Any C3/C4 rule that deliberately reconsiders an old held state must be explicit, tested, additive and preserve unknown fields and source observations. C3 still owns live MusicBrainz/ListenBrainz adapters, multi-scope catalogue assembly, production object limits, freshness/checkpoint persistence, conditional ETag writes, migration/rollback and Worker allowlisting; C4 owns separately authorized historical activation, and the six-hour schedule remains inactive until later approval.
+          ''').strip()
+          decisions_path.write_text(decisions.split(marker, 1)[0].rstrip() + '\n\n' + decision_section + '\n')
           PY
+      - name: Commit continuity updates and remove helper workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git rm .github/workflows/c2-continuity-finalize.yml
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add docs/LIVEVAULT_STATE.md docs/LIVEVAULT_DECISIONS.md
-          git commit -m "docs: finalize C2 continuity state"
+          git commit -m 'docs: finalize C2 continuity state'
           git push origin HEAD:feature/listening-catalogue-resolver-c2
