@@ -33,6 +33,12 @@ function sourceReleaseMbids(event) {
   ].map(inventoryLib.validMbid).filter(Boolean))];
 }
 
+function sourceReleaseEvidenceMalformed(event) {
+  return ['musicbrainzReleaseId', 'musicbrainzReleaseMbid'].some((field) => (
+    event?.[field] != null && !inventoryLib.validMbid(event[field])
+  ));
+}
+
 function spotifyTrackUrlFromId(value) {
   const id = clean(value);
   return id && /^[A-Za-z0-9]{1,64}$/.test(id) ? `https://open.spotify.com/track/${id}` : null;
@@ -90,6 +96,7 @@ function buildCatalogueEvidence({ bands = [], events = [], spotifyMetadata = nul
       sourceMusicbrainzReleaseMbids: [],
       sourceMusicbrainzReleaseMbid: null,
       sourceReleaseIdentityConflict: false,
+      sourceReleaseEvidenceMalformed: false,
       evidenceTier: null,
       durableIdentityStatus: routing.priorIdentityStatus,
       routingHoldReason: routing.reason,
@@ -104,6 +111,7 @@ function buildCatalogueEvidence({ bands = [], events = [], spotifyMetadata = nul
     if (!trackKey || !byKey.has(trackKey)) continue;
     const item = byKey.get(trackKey);
     item.sourceMusicbrainzReleaseMbids = addUnique(item.sourceMusicbrainzReleaseMbids, sourceReleaseMbids(event));
+    item.sourceReleaseEvidenceMalformed = item.sourceReleaseEvidenceMalformed || sourceReleaseEvidenceMalformed(event);
     const release = releaseText(event);
     if (!release) continue;
     const normalized = inventoryLib.normalizeText(release);
@@ -129,7 +137,8 @@ function buildCatalogueEvidence({ bands = [], events = [], spotifyMetadata = nul
 
     const trustedArtist = inventoryLib.validMbid(item.trustedMusicbrainzArtistMbid);
     const normalizedTrack = inventoryLib.normalizeText(item.recordingLookupName || item.normalizedRecordingTitle);
-    const trustedReleaseContradiction = item.sourceReleaseIdentityConflict
+    const trustedReleaseContradiction = item.sourceReleaseEvidenceMalformed
+      || item.sourceReleaseIdentityConflict
       || (item.sourceMusicbrainzReleaseMbid && item.releaseLookupConflict);
     const hasSingleReleaseEvidence = !trustedReleaseContradiction
       && (Boolean(item.sourceMusicbrainzReleaseMbid) || releases.size === 1);
@@ -658,6 +667,7 @@ module.exports = {
   BRIDGE_UNRESOLVED_REASONS,
   releaseText,
   sourceReleaseMbids,
+  sourceReleaseEvidenceMalformed,
   spotifyTrackUrlFromId,
   durableRoutingState,
   buildCatalogueEvidence,
