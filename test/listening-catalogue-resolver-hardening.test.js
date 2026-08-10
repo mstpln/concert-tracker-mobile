@@ -8,6 +8,7 @@ const ARTIST = '11111111-1111-4111-8111-111111111111';
 const RECORDING = '22222222-2222-4222-8222-222222222222';
 const RELEASE = '44444444-4444-4444-8444-444444444444';
 const RELEASE_GROUP = '55555555-5555-4555-8555-555555555555';
+const OTHER_ARTIST = '66666666-6666-4666-8666-666666666666';
 
 function minimalEvidence(tier = 'B') {
   return {
@@ -35,6 +36,20 @@ function recording(overrides = {}) {
     artistMbids: [ARTIST],
     releases: [{ releaseMbid: RELEASE, releaseGroupMbid: RELEASE_GROUP, title: 'Exact Album' }],
     ...overrides,
+  };
+}
+
+function completePage() {
+  return {
+    schemaVersion: resolver.CATALOGUE_PAGE_SCHEMA_VERSION,
+    sourceEntity: 'release',
+    artistMbid: ARTIST,
+    offset: 0,
+    releaseCount: 1,
+    nextOffset: 1,
+    totalCount: 1,
+    complete: true,
+    recordings: [recording()],
   };
 }
 
@@ -185,4 +200,53 @@ test('fallback only accepts local no-match or release-mismatch exhaustion reason
     const batch = resolver.planListenBrainzBatchBridge({ evidence, localResults });
     assert.equal(batch.count, 0);
   }
+});
+
+test('unknown future provider ownership fails closed instead of being silently bypassed', () => {
+  const routing = resolver.durableRoutingState({
+    status: 'unresolved',
+    providers: { futureprovider: { status: 'metadata' } },
+  });
+  assert.equal(routing.held, true);
+  assert.equal(routing.reason, 'durable_provider_unknown_provider');
+});
+
+test('catalogue cache rejects recordings outside the enclosing trusted artist boundary', () => {
+  const cache = {
+    kind: resolver.CACHE_KIND,
+    schemaVersion: resolver.CACHE_SCHEMA_VERSION,
+    artists: {
+      [ARTIST]: {
+        artistMbid: ARTIST,
+        recordings: [recording({ artistMbids: [OTHER_ARTIST] })],
+      },
+    },
+  };
+  assert.throws(() => resolver.validateCatalogueCache(cache), /outside artist boundary/);
+});
+
+test('trusted source release MBID is authoritative over text variation for the same edition', () => {
+  const item = {
+    ...minimalEvidence('B').items[0],
+    sourceMusicbrainzReleaseMbid: RELEASE,
+    normalizedReleaseTitle: 'spotify wording differs',
+  };
+  assert.equal(resolver.releaseMatchesEvidence({
+    releaseMbid: RELEASE,
+    title: 'MusicBrainz Canonical Title',
+  }, item), true);
+});
+
+test('checkpoint-less snapshots cannot be extended by paginated page merges', () => {
+  const snapshot = {
+    kind: resolver.CACHE_KIND,
+    schemaVersion: resolver.CACHE_SCHEMA_VERSION,
+    artists: {
+      [ARTIST]: { artistMbid: ARTIST, recordings: [recording()] },
+    },
+  };
+  assert.throws(
+    () => resolver.mergeCataloguePage(snapshot, completePage()),
+    /checkpoint-less catalogue snapshot/,
+  );
 });
