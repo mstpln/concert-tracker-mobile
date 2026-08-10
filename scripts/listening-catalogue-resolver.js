@@ -5,8 +5,8 @@ const inventoryLib = require('./listening-inventory');
 const CACHE_KIND = 'livevault-musicbrainz-catalogue-cache';
 const CACHE_SCHEMA_VERSION = 1;
 const MAX_BATCH_SIZE = 100;
-const HELD_IDENTITY_STATUSES = new Set(['needs_review', 'retry', 'error']);
-const HELD_PROVIDER_STATUSES = new Set(['needs_review', 'retry', 'error']);
+const HELD_IDENTITY_STATUSES = new Set(['needs_review', 'retry', 'error', 'no_match']);
+const HELD_PROVIDER_STATUSES = new Set(['needs_review', 'retry', 'error', 'no_match']);
 const KNOWN_PROVIDERS = ['spotify', 'musicbrainz', 'listenbrainz'];
 
 function clone(value) {
