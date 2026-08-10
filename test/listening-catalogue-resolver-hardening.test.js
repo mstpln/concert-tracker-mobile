@@ -214,7 +214,7 @@ test('release-browse checkpoints are independent of normalized recording count',
         totalCount: 3,
         complete: false,
         releaseMbids: [RELEASE, RELEASE_2],
-        recordings: [recording({ releases: [] })],
+        recordings: [],
       },
     },
   };
@@ -415,5 +415,27 @@ test('checkpointed cache rejects recording release relations outside processed r
   assert.throws(
     () => resolver.validateCatalogueCache(malformed),
     /references an uncounted release/,
+  );
+});
+
+test('checkpointed cache rejects recordings without release provenance', () => {
+  const malformed = {
+    kind: resolver.CACHE_KIND,
+    schemaVersion: resolver.CACHE_SCHEMA_VERSION,
+    artists: {
+      [ARTIST]: {
+        artistMbid: ARTIST,
+        sourceEntity: 'release',
+        nextOffset: 0,
+        totalCount: 0,
+        complete: true,
+        releaseMbids: [],
+        recordings: [recording({ releases: [] })],
+      },
+    },
+  };
+  assert.throws(
+    () => resolver.validateCatalogueCache(malformed),
+    /missing release provenance/,
   );
 });
