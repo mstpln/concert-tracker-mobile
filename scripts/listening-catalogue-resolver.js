@@ -5,6 +5,9 @@ const inventoryLib = require('./listening-inventory');
 const CACHE_KIND = 'livevault-musicbrainz-catalogue-cache';
 const CACHE_SCHEMA_VERSION = 1;
 const MAX_BATCH_SIZE = 100;
+const HELD_IDENTITY_STATUSES = new Set(['needs_review', 'retry', 'error']);
+const HELD_PROVIDER_STATUSES = new Set(['needs_review', 'retry', 'error']);
+const KNOWN_PROVIDERS = ['spotify', 'musicbrainz', 'listenbrainz'];
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -19,17 +22,40 @@ function releaseText(event) {
   return clean(event?.releaseTitle || event?.albumName || event?.albumTitle);
 }
 
+function durableRoutingState(record) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    return { held: false, reason: null, priorIdentityStatus: null };
+  }
+  const priorIdentityStatus = typeof record.status === 'string' ? record.status : null;
+  if (HELD_IDENTITY_STATUSES.has(priorIdentityStatus)) {
+    return { held: true, reason: `durable_identity_${priorIdentityStatus}`, priorIdentityStatus };
+  }
+  for (const provider of KNOWN_PROVIDERS) {
+    const status = record?.providers?.[provider]?.status;
+    if (HELD_PROVIDER_STATUSES.has(status)) {
+      return { held: true, reason: `durable_provider_${provider}_${status}`, priorIdentityStatus };
+    }
+  }
+  return { held: false, reason: null, priorIdentityStatus };
+}
+
 function buildCatalogueEvidence({ bands = [], events = [], spotifyMetadata = null, trackIdentities = null } = {}) {
   const inventory = inventoryLib.buildListeningInventory({ bands, events, spotifyMetadata, trackIdentities });
+  const identityRecords = inventoryLib.normalizeIdentityDocument(trackIdentities);
   const index = inventoryLib.bandIndex(bands);
-  const byKey = new Map(inventory.items.map((item) => [item.trackKey, {
-    ...clone(item),
-    releaseLookupName: null,
-    normalizedReleaseTitle: null,
-    releaseLookupConflict: false,
-    releaseLookupNames: [],
-    evidenceTier: null,
-  }]));
+  const byKey = new Map(inventory.items.map((item) => {
+    const routing = durableRoutingState(identityRecords[item.trackKey]);
+    return [item.trackKey, {
+      ...clone(item),
+      releaseLookupName: null,
+      normalizedReleaseTitle: null,
+      releaseLookupConflict: false,
+      releaseLookupNames: [],
+      evidenceTier: null,
+      durableIdentityStatus: routing.priorIdentityStatus,
+      routingHoldReason: routing.reason,
+    }];
+  }));
   const releaseSets = new Map();
 
   for (const event of events || []) {
@@ -59,7 +85,7 @@ function buildCatalogueEvidence({ bands = [], events = [], spotifyMetadata = nul
     const trustedArtist = inventoryLib.validMbid(item.trustedMusicbrainzArtistMbid);
     const normalizedTrack = inventoryLib.normalizeText(item.recordingLookupName || item.normalizedRecordingTitle);
     if (item.status === 'complete') item.evidenceTier = 'A';
-    else if (item.status === 'blocked' || !trustedArtist || !normalizedTrack || item.lookupTextConflict) item.evidenceTier = 'E';
+    else if (item.status === 'blocked' || item.routingHoldReason || !trustedArtist || !normalizedTrack || item.lookupTextConflict) item.evidenceTier = 'E';
     else if (releases.size === 1) item.evidenceTier = 'B';
     else item.evidenceTier = 'C';
     tierCounts[item.evidenceTier] += 1;
@@ -134,7 +160,7 @@ function resolveFromCatalogue(item, cache) {
   validateCatalogueCache(cache);
   if (!item || typeof item !== 'object' || Array.isArray(item)) return { status: 'exception', reason: 'invalid_evidence_item' };
   if (item.evidenceTier === 'A') return { status: 'complete', reason: 'already_complete' };
-  if (!['B', 'C'].includes(item.evidenceTier)) return { status: 'exception', reason: 'not_catalogue_eligible' };
+  if (!['B', 'C'].includes(item.evidenceTier)) return { status: 'exception', reason: item.routingHoldReason || 'not_catalogue_eligible' };
   const artistMbid = inventoryLib.validMbid(item.trustedMusicbrainzArtistMbid);
   const artistCatalogue = artistMbid ? cache.artists[artistMbid] : null;
   if (!artistCatalogue) return { status: 'unresolved', reason: 'catalogue_missing' };
@@ -198,6 +224,7 @@ function planListenBrainzBatchBridge({ evidence, localResults, maxItems = 25 } =
     if (local?.status === 'resolved') { skipped.resolvedLocally += 1; continue; }
     if (local?.status === 'ambiguous') { skipped.ambiguous += 1; continue; }
     if (!['B', 'C'].includes(item.evidenceTier)
+      || item.routingHoldReason
       || !inventoryLib.validMbid(item.trustedMusicbrainzArtistMbid)
       || !clean(item.artistLookupName)
       || !clean(item.recordingLookupName)) {
@@ -241,7 +268,11 @@ module.exports = {
   CACHE_KIND,
   CACHE_SCHEMA_VERSION,
   MAX_BATCH_SIZE,
+  HELD_IDENTITY_STATUSES,
+  HELD_PROVIDER_STATUSES,
+  KNOWN_PROVIDERS,
   releaseText,
+  durableRoutingState,
   buildCatalogueEvidence,
   validateCatalogueCache,
   candidateRecordings,
