@@ -223,13 +223,29 @@ function mergeRecordingRows(existing, incoming) {
     const key = releaseRowKey(release);
     if (!key) throw new Error('Invalid catalogue release identity.');
     const prior = byRelease.get(key);
-    if (prior && (inventoryLib.normalizeText(prior.title) !== inventoryLib.normalizeText(release.title)
-      || inventoryLib.validMbid(prior.releaseGroupMbid) !== inventoryLib.validMbid(release.releaseGroupMbid))) {
+    const priorGroup = inventoryLib.validMbid(prior?.releaseGroupMbid);
+    const incomingGroup = inventoryLib.validMbid(release.releaseGroupMbid);
+    if (prior && inventoryLib.normalizeText(prior.title) !== inventoryLib.normalizeText(release.title)) {
       throw new Error('Conflicting catalogue release identity.');
     }
-    if (!prior) byRelease.set(key, clone(release));
+    if (priorGroup && incomingGroup && priorGroup !== incomingGroup) {
+      throw new Error('Conflicting catalogue release identity.');
+    }
+    if (prior) {
+      byRelease.set(key, {
+        ...clone(release),
+        ...clone(prior),
+        releaseMbid: key,
+        title: prior.title,
+        ...((priorGroup || incomingGroup) ? { releaseGroupMbid: priorGroup || incomingGroup } : {}),
+      });
+    } else {
+      byRelease.set(key, clone(release));
+    }
   }
   return {
+    ...clone(incoming),
+    ...clone(existing),
     recordingMbid: existing.recordingMbid,
     title: existing.title,
     artistMbids: addUnique(existing.artistMbids, incoming.artistMbids),
@@ -468,6 +484,7 @@ function resolveFromCatalogue(item, cache) {
   }
   const artistCatalogue = cache.artists[artistMbid];
   if (!artistCatalogue) return { status: 'unresolved', reason: 'catalogue_missing' };
+  if (artistCatalogue.complete !== true) return { status: 'unresolved', reason: 'catalogue_incomplete' };
 
   const titleCandidates = candidateRecordings(item, artistCatalogue);
   if (!titleCandidates.length) return { status: 'unresolved', reason: 'catalogue_no_match' };
