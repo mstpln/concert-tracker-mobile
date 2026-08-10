@@ -60,13 +60,14 @@ test('local result validation requires an explicit known evidence tier and statu
   }), /Invalid catalogue resolution result/);
 });
 
-test('catalogue checkpoint coverage must equal the number of normalized cached recordings', () => {
-  const inconsistent = {
+test('release-browse checkpoints are independent of normalized recording count', () => {
+  const cache = {
     kind: resolver.CACHE_KIND,
     schemaVersion: resolver.CACHE_SCHEMA_VERSION,
     artists: {
       [ARTIST]: {
         artistMbid: ARTIST,
+        sourceEntity: 'release',
         nextOffset: 2,
         totalCount: 3,
         complete: false,
@@ -79,5 +80,25 @@ test('catalogue checkpoint coverage must equal the number of normalized cached r
       },
     },
   };
-  assert.throws(() => resolver.validateCatalogueCache(inconsistent), /checkpoint coverage/);
+  assert.equal(resolver.validateCatalogueCache(cache), cache);
+});
+
+test('catalogue checkpoint metadata fails closed when incomplete or tied to an unsupported source entity', () => {
+  const incomplete = {
+    kind: resolver.CACHE_KIND,
+    schemaVersion: resolver.CACHE_SCHEMA_VERSION,
+    artists: {
+      [ARTIST]: { artistMbid: ARTIST, nextOffset: 1, recordings: [] },
+    },
+  };
+  assert.throws(() => resolver.validateCatalogueCache(incomplete), /checkpoint/);
+
+  const unsupported = {
+    kind: resolver.CACHE_KIND,
+    schemaVersion: resolver.CACHE_SCHEMA_VERSION,
+    artists: {
+      [ARTIST]: { artistMbid: ARTIST, sourceEntity: 'recording', recordings: [] },
+    },
+  };
+  assert.throws(() => resolver.validateCatalogueCache(unsupported), /source entity/);
 });
