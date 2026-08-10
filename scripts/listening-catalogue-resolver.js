@@ -529,10 +529,16 @@ function uniqueRecording(candidates) {
 }
 
 function catalogueSnapshotComplete(artistCatalogue) {
-  if (!artistCatalogue) return false;
-  const hasCheckpoint = ['nextOffset', 'totalCount', 'complete']
-    .some((field) => Object.prototype.hasOwnProperty.call(artistCatalogue, field));
-  return hasCheckpoint ? artistCatalogue.complete === true : true;
+  if (!artistCatalogue || artistCatalogue.sourceEntity !== 'release' || artistCatalogue.complete !== true
+    || !Number.isInteger(artistCatalogue.nextOffset) || !Number.isInteger(artistCatalogue.totalCount)
+    || artistCatalogue.nextOffset !== artistCatalogue.totalCount || !Array.isArray(artistCatalogue.releaseMbids)) {
+    return false;
+  }
+  try {
+    return normalizedMbidList(artistCatalogue.releaseMbids).length === artistCatalogue.totalCount;
+  } catch {
+    return false;
+  }
 }
 
 function resolveFromCatalogue(item, cache) {
