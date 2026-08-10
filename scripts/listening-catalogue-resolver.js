@@ -133,8 +133,9 @@ function buildCatalogueEvidence({ bands = [], events = [], spotifyMetadata = nul
       || (item.sourceMusicbrainzReleaseMbid && item.releaseLookupConflict);
     const hasSingleReleaseEvidence = !trustedReleaseContradiction
       && (Boolean(item.sourceMusicbrainzReleaseMbid) || releases.size === 1);
-    if (item.status === 'complete') item.evidenceTier = 'A';
-    else if (item.status === 'blocked' || item.routingHoldReason || trustedReleaseContradiction
+    if (item.routingHoldReason) item.evidenceTier = 'E';
+    else if (item.status === 'complete') item.evidenceTier = 'A';
+    else if (item.status === 'blocked' || trustedReleaseContradiction
       || !trustedArtist || !normalizedTrack || item.lookupTextConflict) item.evidenceTier = 'E';
     else if (hasSingleReleaseEvidence) item.evidenceTier = 'B';
     else item.evidenceTier = 'C';
