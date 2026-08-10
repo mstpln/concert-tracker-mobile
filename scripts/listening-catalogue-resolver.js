@@ -181,35 +181,82 @@ function normalizeMusicBrainzRelease(release) {
   };
 }
 
-function normalizeMusicBrainzRecording(recording, artistMbid) {
-  if (!recording || typeof recording !== 'object' || Array.isArray(recording)) throw new Error('Invalid MusicBrainz recording.');
-  const recordingMbid = inventoryLib.validMbid(recording.id);
-  const title = clean(recording.title);
-  if (!recordingMbid || !title || !Array.isArray(recording['artist-credit']) || !recording['artist-credit'].length) {
-    throw new Error('Invalid MusicBrainz recording.');
-  }
+function normalizeMusicBrainzArtistCredits(credits) {
+  if (!Array.isArray(credits) || !credits.length) throw new Error('Invalid MusicBrainz artist credit.');
   const artistMbids = [];
-  for (const credit of recording['artist-credit']) {
+  for (const credit of credits) {
     if (!credit || typeof credit !== 'object' || Array.isArray(credit)
       || !credit.artist || typeof credit.artist !== 'object' || Array.isArray(credit.artist)) {
       throw new Error('Invalid MusicBrainz artist credit.');
     }
-    const creditMbid = inventoryLib.validMbid(credit.artist.id);
-    if (!creditMbid) throw new Error('Invalid MusicBrainz artist credit.');
-    artistMbids.push(creditMbid);
+    const artistMbid = inventoryLib.validMbid(credit.artist.id);
+    if (!artistMbid) throw new Error('Invalid MusicBrainz artist credit.');
+    artistMbids.push(artistMbid);
   }
-  const uniqueArtists = [...new Set(artistMbids)];
-  if (!uniqueArtists.includes(artistMbid)) throw new Error('MusicBrainz recording does not credit requested artist.');
-  if (recording.releases != null && !Array.isArray(recording.releases)) throw new Error('Invalid MusicBrainz releases.');
-  const releases = [];
-  const seenReleases = new Set();
-  for (const release of recording.releases || []) {
-    const normalized = normalizeMusicBrainzRelease(release);
-    if (seenReleases.has(normalized.releaseMbid)) throw new Error('Duplicate MusicBrainz release identity.');
-    seenReleases.add(normalized.releaseMbid);
-    releases.push(normalized);
+  return [...new Set(artistMbids)].sort();
+}
+
+function normalizeMusicBrainzRecording(recording, artistMbid) {
+  if (!recording || typeof recording !== 'object' || Array.isArray(recording)) throw new Error('Invalid MusicBrainz recording.');
+  const recordingMbid = inventoryLib.validMbid(recording.id);
+  const title = clean(recording.title);
+  if (!recordingMbid || !title) throw new Error('Invalid MusicBrainz recording.');
+  const artistMbids = normalizeMusicBrainzArtistCredits(recording['artist-credit']);
+  const trustedArtist = inventoryLib.validMbid(artistMbid);
+  if (!trustedArtist) throw new Error('Invalid trusted MusicBrainz artist.');
+  if (!artistMbids.includes(trustedArtist)) return null;
+  return { recordingMbid, title, artistMbids, releases: [] };
+}
+
+function releaseRowKey(release) {
+  return inventoryLib.validMbid(release?.releaseMbid);
+}
+
+function mergeRecordingRows(existing, incoming) {
+  if (!existing) return clone(incoming);
+  if (!incoming || existing.recordingMbid !== incoming.recordingMbid
+    || inventoryLib.normalizeText(existing.title) !== inventoryLib.normalizeText(incoming.title)) {
+    throw new Error('Conflicting catalogue recording identity.');
   }
-  return { recordingMbid, title, artistMbids: uniqueArtists.sort(), releases };
+  const byRelease = new Map((existing.releases || []).map((release) => [releaseRowKey(release), clone(release)]));
+  for (const release of incoming.releases || []) {
+    const key = releaseRowKey(release);
+    if (!key) throw new Error('Invalid catalogue release identity.');
+    const prior = byRelease.get(key);
+    if (prior && (inventoryLib.normalizeText(prior.title) !== inventoryLib.normalizeText(release.title)
+      || inventoryLib.validMbid(prior.releaseGroupMbid) !== inventoryLib.validMbid(release.releaseGroupMbid))) {
+      throw new Error('Conflicting catalogue release identity.');
+    }
+    if (!prior) byRelease.set(key, clone(release));
+  }
+  return {
+    recordingMbid: existing.recordingMbid,
+    title: existing.title,
+    artistMbids: addUnique(existing.artistMbids, incoming.artistMbids),
+    releases: [...byRelease.values()].sort((a, b) => a.releaseMbid.localeCompare(b.releaseMbid)),
+  };
+}
+
+function recordingsFromMusicBrainzRelease(release, artistMbid) {
+  const releaseRelation = normalizeMusicBrainzRelease(release);
+  if (!Array.isArray(release.media)) throw new Error('Invalid MusicBrainz release media.');
+  const byRecording = new Map();
+  for (const medium of release.media) {
+    if (!medium || typeof medium !== 'object' || Array.isArray(medium) || !Array.isArray(medium.tracks)) {
+      throw new Error('Invalid MusicBrainz release media.');
+    }
+    for (const track of medium.tracks) {
+      if (!track || typeof track !== 'object' || Array.isArray(track)) throw new Error('Invalid MusicBrainz track.');
+      const normalized = normalizeMusicBrainzRecording(track.recording, artistMbid);
+      if (!normalized) continue;
+      normalized.releases = [releaseRelation];
+      byRecording.set(
+        normalized.recordingMbid,
+        mergeRecordingRows(byRecording.get(normalized.recordingMbid), normalized),
+      );
+    }
+  }
+  return [...byRecording.values()].sort((a, b) => a.recordingMbid.localeCompare(b.recordingMbid));
 }
 
 function parseMusicBrainzCataloguePage({ artistMbid, payload, expectedOffset = 0 } = {}) {
@@ -218,30 +265,36 @@ function parseMusicBrainzCataloguePage({ artistMbid, payload, expectedOffset = 0
     || !Number.isInteger(expectedOffset) || expectedOffset < 0) {
     throw new Error('Invalid MusicBrainz catalogue page.');
   }
-  const totalCount = payload['recording-count'];
-  const offset = payload['recording-offset'];
-  const rows = payload.recordings;
+  const totalCount = payload['release-count'];
+  const offset = payload['release-offset'];
+  const releases = payload.releases;
   if (!Number.isInteger(totalCount) || totalCount < 0 || !Number.isInteger(offset) || offset < 0
-    || offset !== expectedOffset || offset > totalCount || !Array.isArray(rows)
-    || offset + rows.length > totalCount || (rows.length === 0 && offset < totalCount)) {
+    || offset !== expectedOffset || offset > totalCount || !Array.isArray(releases)
+    || offset + releases.length > totalCount || (releases.length === 0 && offset < totalCount)) {
     throw new Error('Invalid MusicBrainz catalogue pagination.');
   }
-  const recordings = [];
-  const seenRecordings = new Set();
-  for (const row of rows) {
-    const normalized = normalizeMusicBrainzRecording(row, trustedArtist);
-    if (seenRecordings.has(normalized.recordingMbid)) throw new Error('Duplicate MusicBrainz recording identity.');
-    seenRecordings.add(normalized.recordingMbid);
-    recordings.push(normalized);
+
+  const seenReleases = new Set();
+  const byRecording = new Map();
+  for (const release of releases) {
+    const relation = normalizeMusicBrainzRelease(release);
+    if (seenReleases.has(relation.releaseMbid)) throw new Error('Duplicate MusicBrainz release identity.');
+    seenReleases.add(relation.releaseMbid);
+    for (const recording of recordingsFromMusicBrainzRelease(release, trustedArtist)) {
+      byRecording.set(recording.recordingMbid, mergeRecordingRows(byRecording.get(recording.recordingMbid), recording));
+    }
   }
-  const nextOffset = offset + recordings.length;
+
+  const nextOffset = offset + releases.length;
   const complete = nextOffset === totalCount;
   const checkpoint = normalizeCatalogueCheckpoint({ artistMbid: trustedArtist, nextOffset, totalCount, complete });
   return {
     schemaVersion: CATALOGUE_PAGE_SCHEMA_VERSION,
+    sourceEntity: 'release',
     artistMbid: trustedArtist,
     offset,
-    recordings,
+    releaseCount: releases.length,
+    recordings: [...byRecording.values()].sort((a, b) => a.recordingMbid.localeCompare(b.recordingMbid)),
     ...checkpoint,
   };
 }
@@ -258,7 +311,7 @@ function validateCatalogueCache(cache) {
     if (!artist || typeof artist !== 'object' || Array.isArray(artist)) throw new Error('Invalid catalogue artist.');
     const artistMbid = inventoryLib.validMbid(artist.artistMbid);
     if (!artistMbid || artistMbid !== key) throw new Error('Invalid catalogue artist identity.');
-    if (!Array.isArray(artist.recordings)) throw new Error('Invalid catalogue recordings.');
+    if (artist.sourceEntity != null && artist.sourceEntity !== 'release') throw new Error('Invalid catalogue source entity.');
     const paginationFields = ['nextOffset', 'totalCount', 'complete'].filter((field) => Object.prototype.hasOwnProperty.call(artist, field));
     if (paginationFields.length && paginationFields.length !== 3) throw new Error('Invalid catalogue artist checkpoint.');
     if (paginationFields.length === 3) {
@@ -268,8 +321,8 @@ function validateCatalogueCache(cache) {
         totalCount: artist.totalCount,
         complete: artist.complete,
       });
-      if (artist.nextOffset !== artist.recordings.length) throw new Error('Invalid catalogue artist checkpoint coverage.');
     }
+    if (!Array.isArray(artist.recordings)) throw new Error('Invalid catalogue recordings.');
     const seenRecordings = new Set();
     for (const recording of artist.recordings) {
       if (!recording || typeof recording !== 'object' || Array.isArray(recording)) throw new Error('Invalid catalogue recording.');
@@ -285,10 +338,10 @@ function validateCatalogueCache(cache) {
       const seenReleases = new Set();
       for (const release of recording.releases || []) {
         if (!release || typeof release !== 'object' || Array.isArray(release) || !clean(release.title)) throw new Error('Invalid catalogue release.');
-        const releaseMbid = release.releaseMbid == null ? null : inventoryLib.validMbid(release.releaseMbid);
-        if (release.releaseMbid != null && !releaseMbid) throw new Error('Invalid catalogue release identity.');
-        if (releaseMbid && seenReleases.has(releaseMbid)) throw new Error('Duplicate catalogue release identity.');
-        if (releaseMbid) seenReleases.add(releaseMbid);
+        const releaseMbid = inventoryLib.validMbid(release.releaseMbid);
+        if (!releaseMbid) throw new Error('Invalid catalogue release identity.');
+        if (seenReleases.has(releaseMbid)) throw new Error('Duplicate catalogue release identity.');
+        seenReleases.add(releaseMbid);
         if (release.releaseGroupMbid != null && !inventoryLib.validMbid(release.releaseGroupMbid)) throw new Error('Invalid catalogue release-group identity.');
       }
     }
@@ -299,12 +352,13 @@ function validateCatalogueCache(cache) {
 function mergeCataloguePage(cache, page) {
   const base = clone(validateCatalogueCache(cache));
   if (!page || typeof page !== 'object' || Array.isArray(page)
-    || page.schemaVersion !== CATALOGUE_PAGE_SCHEMA_VERSION || !Array.isArray(page.recordings)) {
+    || page.schemaVersion !== CATALOGUE_PAGE_SCHEMA_VERSION || page.sourceEntity !== 'release'
+    || !Array.isArray(page.recordings) || !Number.isInteger(page.releaseCount) || page.releaseCount < 0) {
     throw new Error('Invalid catalogue page.');
   }
   const checkpoint = normalizeCatalogueCheckpoint(page);
-  if (!Number.isInteger(page.offset) || page.offset < 0 || page.offset > checkpoint.nextOffset
-    || page.offset + page.recordings.length !== checkpoint.nextOffset) {
+  if (!Number.isInteger(page.offset) || page.offset < 0
+    || page.offset + page.releaseCount !== checkpoint.nextOffset) {
     throw new Error('Invalid catalogue page offset.');
   }
   const existing = base.artists[checkpoint.artistMbid];
@@ -313,16 +367,20 @@ function mergeCataloguePage(cache, page) {
   if (existing?.totalCount != null && existing.totalCount !== checkpoint.totalCount) {
     throw new Error('Catalogue total count changed during pagination.');
   }
-  const combined = [...(existing?.recordings || []), ...clone(page.recordings)];
-  const merged = {
+
+  const byRecording = new Map((existing?.recordings || []).map((recording) => [recording.recordingMbid, clone(recording)]));
+  for (const recording of page.recordings) {
+    byRecording.set(recording.recordingMbid, mergeRecordingRows(byRecording.get(recording.recordingMbid), recording));
+  }
+  base.artists[checkpoint.artistMbid] = {
     ...(existing || {}),
     artistMbid: checkpoint.artistMbid,
-    recordings: combined,
+    sourceEntity: 'release',
+    recordings: [...byRecording.values()].sort((a, b) => a.recordingMbid.localeCompare(b.recordingMbid)),
     nextOffset: checkpoint.nextOffset,
     totalCount: checkpoint.totalCount,
     complete: checkpoint.complete,
   };
-  base.artists[checkpoint.artistMbid] = merged;
   validateCatalogueCache(base);
   return base;
 }
@@ -541,9 +599,12 @@ module.exports = {
   buildCatalogueEvidence,
   normalizeCatalogueCheckpoint,
   normalizeMusicBrainzRelease,
+  normalizeMusicBrainzArtistCredits,
   normalizeMusicBrainzRecording,
+  recordingsFromMusicBrainzRelease,
   parseMusicBrainzCataloguePage,
   validateCatalogueCache,
+  mergeRecordingRows,
   mergeCataloguePage,
   validateEvidenceDocument,
   validateLocalResults,
