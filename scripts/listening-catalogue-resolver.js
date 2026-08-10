@@ -53,6 +53,10 @@ function durableRoutingState(record) {
   if (record.providers != null && (typeof record.providers !== 'object' || Array.isArray(record.providers))) {
     return { held: true, reason: 'durable_provider_state_malformed', priorIdentityStatus };
   }
+  const providerNames = Object.keys(record.providers || {});
+  if (providerNames.some((provider) => !KNOWN_PROVIDERS.includes(provider))) {
+    return { held: true, reason: 'durable_provider_unknown_provider', priorIdentityStatus };
+  }
   for (const provider of KNOWN_PROVIDERS) {
     if (!Object.prototype.hasOwnProperty.call(record.providers || {}, provider)) continue;
     const entry = record.providers[provider];
@@ -352,6 +356,9 @@ function validateCatalogueCache(cache) {
         || !recording.artistMbids.every((value) => Boolean(inventoryLib.validMbid(value)))) {
         throw new Error('Invalid catalogue recording artists.');
       }
+      if (!recording.artistMbids.map(inventoryLib.validMbid).includes(artistMbid)) {
+        throw new Error('Catalogue recording is outside artist boundary.');
+      }
       if (recording.releases != null && !Array.isArray(recording.releases)) throw new Error('Invalid catalogue releases.');
       const seenReleases = new Set();
       for (const release of recording.releases || []) {
@@ -380,6 +387,9 @@ function mergeCataloguePage(cache, page) {
     throw new Error('Invalid catalogue page offset.');
   }
   const existing = base.artists[checkpoint.artistMbid];
+  if (existing && !['nextOffset', 'totalCount', 'complete'].every((field) => Object.prototype.hasOwnProperty.call(existing, field))) {
+    throw new Error('Cannot paginate a checkpoint-less catalogue snapshot.');
+  }
   const expectedOffset = existing?.nextOffset ?? 0;
   if (page.offset !== expectedOffset) throw new Error('Catalogue page is not sequential.');
   if (existing?.totalCount != null && existing.totalCount !== checkpoint.totalCount) {
@@ -454,10 +464,11 @@ function candidateRecordings(item, artistCatalogue) {
 
 function releaseMatchesEvidence(release, item) {
   const expectedMbid = inventoryLib.validMbid(item.sourceMusicbrainzReleaseMbid);
-  if (expectedMbid && inventoryLib.validMbid(release?.releaseMbid) !== expectedMbid) return false;
-  if (item.normalizedReleaseTitle
-    && inventoryLib.normalizeText(release?.title) !== item.normalizedReleaseTitle) return false;
-  return Boolean(expectedMbid || item.normalizedReleaseTitle);
+  if (expectedMbid) return inventoryLib.validMbid(release?.releaseMbid) === expectedMbid;
+  if (item.normalizedReleaseTitle) {
+    return inventoryLib.normalizeText(release?.title) === item.normalizedReleaseTitle;
+  }
+  return false;
 }
 
 function uniqueRecording(candidates) {
