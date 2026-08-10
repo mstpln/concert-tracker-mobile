@@ -51,6 +51,7 @@ function completeCache(recordings = []) {
       [ARTIST]: {
         artistMbid: ARTIST,
         sourceEntity: 'release',
+        coverageScopes: [...resolver.CATALOGUE_COVERAGE_SCOPES],
         nextOffset: releaseMbids.length,
         totalCount: releaseMbids.length,
         complete: true,
@@ -251,6 +252,7 @@ test('incomplete paginated catalogues cannot resolve or widen into ListenBrainz 
       [ARTIST]: {
         artistMbid: ARTIST,
         sourceEntity: 'release',
+        coverageScopes: [...resolver.CATALOGUE_COVERAGE_SCOPES],
         nextOffset: 1,
         totalCount: 2,
         complete: false,
@@ -265,6 +267,26 @@ test('incomplete paginated catalogues cannot resolve or widen into ListenBrainz 
   const batch = resolver.planListenBrainzBatchBridge({ evidence, catalogueCache, localResults: local });
   assert.equal(batch.count, 0);
   assert.equal(batch.skipped.notUnresolvedLocally, 1);
+});
+
+test('completed release pagination without all coverage scopes cannot resolve or widen', () => {
+  const evidence = minimalEvidence('B');
+  const catalogueCache = completeCache([recording()]);
+  catalogueCache.artists[ARTIST].coverageScopes = ['release_artist'];
+  assert.equal(resolver.validateCatalogueCache(catalogueCache), catalogueCache);
+  assert.equal(resolver.catalogueSnapshotComplete(catalogueCache.artists[ARTIST]), false);
+  const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache });
+  assert.equal(local.results[0].status, 'unresolved');
+  assert.equal(local.results[0].reason, 'catalogue_incomplete');
+  const batch = resolver.planListenBrainzBatchBridge({ evidence, catalogueCache, localResults: local });
+  assert.equal(batch.count, 0);
+  assert.equal(batch.skipped.notUnresolvedLocally, 1);
+});
+
+test('unknown catalogue coverage scope fails closed', () => {
+  const catalogueCache = completeCache([recording()]);
+  catalogueCache.artists[ARTIST].coverageScopes = ['release_artist', 'future_scope'];
+  assert.throws(() => resolver.validateCatalogueCache(catalogueCache), /Invalid catalogue coverage scopes/);
 });
 
 test('missing catalogue is not treated as exhausted catalogue work for fallback', () => {
