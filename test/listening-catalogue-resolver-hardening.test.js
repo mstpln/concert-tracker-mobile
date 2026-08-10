@@ -355,3 +355,27 @@ test('release coverage rejects a repeated release across otherwise sequential pa
     /release repeated across pages/,
   );
 });
+
+test('checkpointed cache rejects recording release relations outside processed release coverage', () => {
+  const malformed = {
+    kind: resolver.CACHE_KIND,
+    schemaVersion: resolver.CACHE_SCHEMA_VERSION,
+    artists: {
+      [ARTIST]: {
+        artistMbid: ARTIST,
+        sourceEntity: 'release',
+        nextOffset: 1,
+        totalCount: 1,
+        complete: true,
+        releaseMbids: [RELEASE],
+        recordings: [recording({
+          releases: [{ releaseMbid: RELEASE_2, title: 'Uncounted Album' }],
+        })],
+      },
+    },
+  };
+  assert.throws(
+    () => resolver.validateCatalogueCache(malformed),
+    /references an uncounted release/,
+  );
+});
