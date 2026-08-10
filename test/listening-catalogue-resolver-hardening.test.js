@@ -72,6 +72,27 @@ test('forged tier A evidence cannot claim an incomplete item is already complete
   assert.equal(outcome.reason, 'invalid_tier_a_evidence');
 });
 
+test('tier A requires a known complete inventory reason and cannot bypass a durable hold', () => {
+  const forged = {
+    ...minimalEvidence('B').items[0],
+    evidenceTier: 'A',
+    status: 'complete',
+    reason: 'future_complete_reason',
+  };
+  const invalid = resolver.resolveFromCatalogue(forged, null);
+  assert.equal(invalid.status, 'exception');
+  assert.equal(invalid.reason, 'invalid_tier_a_evidence');
+
+  const held = {
+    ...forged,
+    reason: 'source_recording_mbid',
+    routingHoldReason: 'durable_identity_needs_review',
+  };
+  const heldOutcome = resolver.resolveFromCatalogue(held, null);
+  assert.equal(heldOutcome.status, 'exception');
+  assert.equal(heldOutcome.reason, 'durable_identity_needs_review');
+});
+
 test('durable routing hold outranks otherwise complete source identity', () => {
   const bands = [{
     id: 'band-1',
