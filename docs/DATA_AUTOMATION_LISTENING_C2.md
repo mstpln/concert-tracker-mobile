@@ -12,18 +12,18 @@ The C2 path is additive beside the existing v111 planner:
 
 1. Reuse the current immutable listening inventory and stable track keys.
 2. Derive catalogue evidence without changing source events or existing durable identities.
-3. Preserve durable routing holds before considering new automatic evidence. Existing root or provider `needs_review`, `retry`, `error`, and `no_match` states remain held as exception work in C2 rather than being silently bypassed by the new resolver.
+3. Preserve durable routing holds before considering new automatic evidence. Existing root or provider `needs_review`, `retry`, `error`, and `no_match` states remain held as exception work in C2 rather than being silently bypassed by the new resolver. Unknown provider statuses are also held rather than interpreted optimistically.
 4. Classify evidence conservatively:
    - **A** — already complete from existing/source recording identity;
-   - **B** — trusted MusicBrainz artist + clean recording text + exactly one normalized release text;
-   - **C** — trusted MusicBrainz artist + clean recording text with missing or conflicting release evidence;
-   - **D** — unresolved B/C work eligible for the future bounded ListenBrainz batch bridge;
-   - **E** — blocked, malformed, held durable routing state, artist-untrusted or conflicting lookup evidence.
+   - **B** — trusted MusicBrainz artist + clean recording text + one compatible release evidence path, using a trusted source MusicBrainz release MBID when present and otherwise exactly one normalized release text;
+   - **C** — trusted MusicBrainz artist + clean recording text with release evidence missing or text-only conflicting;
+   - **D** — locally unresolved B/C work eligible for the future bounded ListenBrainz batch bridge;
+   - **E** — blocked, malformed, held durable routing state, conflicting trusted release identity, artist-untrusted or conflicting lookup evidence.
 5. Validate a versioned artist-MBID-keyed MusicBrainz catalogue-cache contract.
-6. Match locally using exact deterministic normalized recording text, the already trusted BANDMARKR MusicBrainz artist MBID and, for tier B, exact normalized release text.
+6. Match locally using exact deterministic normalized recording text, the already trusted BANDMARKR MusicBrainz artist MBID and, for tier B, compatible release evidence.
 7. Resolve only when exactly one compatible recording MBID remains.
 8. Keep multiple compatible recording MBIDs ambiguous and out of the automatic batch bridge.
-9. Plan only still-unresolved eligible items for a bounded future ListenBrainz batch request.
+9. Plan only items with an explicit local `unresolved` result for a bounded future ListenBrainz batch request.
 10. Expose aggregate-only feasibility diagnostics.
 
 ## Matching rules
@@ -31,11 +31,13 @@ The C2 path is additive beside the existing v111 planner:
 - Trusted BANDMARKR MusicBrainz artist identity is mandatory for automatic catalogue resolution.
 - Recording-title matching is exact after the project's deterministic normalization.
 - Version qualifiers remain identity-significant because exact normalized text must match; `Song` does not match `Song (Live)`, `Song (Remix)`, and similar variants.
-- Tier B additionally requires one exact normalized release-title match.
+- Tier B additionally requires one compatible release relation. If immutable source evidence already contains one trusted MusicBrainz release MBID, the catalogue relation must contain that exact release MBID; matching release text cannot override a different trusted edition identity. Without a trusted release MBID, tier B requires one exact normalized release-title match.
+- Multiple trusted source release MBIDs for the same work item are a conflict and remain tier E. A single trusted release MBID combined with conflicting release text also fails closed rather than choosing an interpretation.
 - Tier C may resolve only when exact recording title plus trusted artist yields one unique recording MBID. Release identity is never inferred from ambiguous or missing release text.
 - Multiple compatible recording MBIDs remain ambiguous.
 - Existing durable `needs_review`, `retry`, `error`, and `no_match` state is not automatically reopened by C2. A later C3/C4 recovery or migration rule must explicitly define which old states may be reconsidered and how protected review/retry ownership is preserved.
-- Invalid catalogue structures fail closed.
+- Invalid catalogue/evidence/result structures fail closed.
+- A future ListenBrainz batch candidate must have a corresponding local catalogue result whose status is explicitly `unresolved`; missing, exception, complete, resolved or ambiguous local results cannot be widened automatically.
 - Duplicate recording MBIDs inside one artist catalogue are rejected as invalid cache input rather than silently collapsed.
 - Unknown future catalogue fields are tolerated and validation does not mutate input objects.
 
@@ -54,9 +56,9 @@ C2 intentionally does **not** decide the production R2 object name, object-size 
 
 ## ListenBrainz batch bridge planning
 
-The C2 batch planner is pure and makes no request. It accepts only unresolved tier B/C items with trusted artist identity plus clean artist/recording text. It emits a bounded list, hard-limited to at most 100 items per planned batch.
+The C2 batch planner is pure and makes no request. It accepts only tier B/C items that have an explicit locally unresolved catalogue result, trusted artist identity and clean artist/recording text. It emits a bounded list, hard-limited to at most 100 items per planned batch.
 
-Items already resolved locally are excluded. Catalogue ambiguity is also excluded and remains exception/review work rather than being silently widened into another automatic route. Items carrying a durable routing hold are likewise excluded.
+Items already resolved locally are excluded. Catalogue ambiguity is also excluded and remains exception/review work rather than being silently widened into another automatic route. Items carrying a durable routing hold are likewise excluded. Missing or malformed local-result documents fail closed rather than treating local resolution as skipped.
 
 ## Production boundary
 
@@ -71,17 +73,19 @@ This is pure Node maintenance tooling and documentation. The PWA shell is unchan
 Synthetic unit coverage includes:
 
 - tier A/B/C classification;
-- clean and conflicting release evidence;
+- clean, missing and conflicting release text evidence;
+- trusted source release-MBID matching and conflict quarantine;
 - exact artist/recording/release resolution;
-- durable root/provider `needs_review`, `retry`, `error`, and `no_match` hold preservation;
+- durable root/provider `needs_review`, `retry`, `error`, `no_match`, and unknown-provider-status hold preservation;
 - version-qualifier mismatch;
-- release mismatch;
+- release mismatch and malformed tier-B evidence;
 - duplicate and ambiguous recording candidates;
 - tier C unique-title resolution;
 - trusted-artist mismatch;
 - bounded tier D planning;
+- requirement for explicit locally unresolved results before batch widening;
 - exclusion of resolved, ambiguous and held items from the bridge;
-- malformed and duplicate cache-state failure;
+- malformed and duplicate cache/result-state failure;
 - invalid evidence fail-closed behavior;
 - unknown-field non-mutation;
 - aggregate-only diagnostics.
