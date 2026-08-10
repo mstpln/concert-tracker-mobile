@@ -9,6 +9,7 @@ const RECORDING = '22222222-2222-4222-8222-222222222222';
 const RECORDING_2 = '33333333-3333-4333-8333-333333333333';
 const RELEASE = '44444444-4444-4444-8444-444444444444';
 const RELEASE_GROUP = '55555555-5555-4555-8555-555555555555';
+const RELEASE_2 = '77777777-7777-4777-8777-777777777777';
 
 function band() {
   return {
@@ -92,7 +93,7 @@ test('strong artist + track + one release becomes tier B without changing the le
   assert.equal(evidence.tierCounts.B, 1);
 });
 
-test('missing or conflicting release evidence becomes tier C rather than being guessed', () => {
+test('missing or conflicting release text becomes tier C rather than being guessed', () => {
   const missing = resolver.buildCatalogueEvidence({ bands: [band()], events: [event({ releaseTitle: null })] });
   assert.equal(missing.items[0].evidenceTier, 'C');
   assert.equal(missing.items[0].releaseLookupName, null);
@@ -107,6 +108,38 @@ test('missing or conflicting release evidence becomes tier C rather than being g
   assert.equal(conflicting.items[0].evidenceTier, 'C');
   assert.equal(conflicting.items[0].releaseLookupConflict, true);
   assert.equal(conflicting.items[0].releaseLookupName, null);
+});
+
+test('trusted source release identity strengthens tier B and must match the exact catalogue release', () => {
+  const evidence = resolver.buildCatalogueEvidence({
+    bands: [band()],
+    events: [event({ releaseTitle: null, musicbrainzReleaseId: RELEASE })],
+  });
+  assert.equal(evidence.items[0].evidenceTier, 'B');
+  assert.equal(evidence.items[0].sourceMusicbrainzReleaseMbid, RELEASE);
+
+  const exact = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: cache([recording()]) });
+  assert.equal(exact.results[0].status, 'resolved');
+  assert.equal(exact.results[0].reason, 'catalogue_exact_recording_release_identity');
+
+  const wrongEdition = resolver.resolveCatalogueEvidence({
+    evidence,
+    catalogueCache: cache([recording({ releases: [{ releaseMbid: RELEASE_2, title: 'Exact Album' }] })]),
+  });
+  assert.equal(wrongEdition.results[0].status, 'unresolved');
+  assert.equal(wrongEdition.results[0].reason, 'catalogue_release_mismatch');
+});
+
+test('conflicting trusted source release identities are quarantined as tier E', () => {
+  const evidence = resolver.buildCatalogueEvidence({
+    bands: [band()],
+    events: [
+      event({ musicbrainzReleaseId: RELEASE }),
+      event({ stableListenId: 'listen-2', musicbrainzReleaseId: RELEASE_2 }),
+    ],
+  });
+  assert.equal(evidence.items[0].sourceReleaseIdentityConflict, true);
+  assert.equal(evidence.items[0].evidenceTier, 'E');
 });
 
 test('existing recording identity remains tier A and never requires catalogue resolution', () => {
@@ -132,19 +165,22 @@ test('durable terminal and retry states remain held from catalogue and bridge au
     assert.equal(local.results[0].reason, `durable_identity_${status}`);
     const batch = resolver.planListenBrainzBatchBridge({ evidence, localResults: local });
     assert.equal(batch.count, 0);
-    assert.equal(batch.skipped.ineligible, 1);
+    assert.equal(batch.skipped.notUnresolvedLocally, 1);
     assert.deepEqual(trackIdentities, before);
   }
 });
 
-test('provider-level terminal and retry states remain held even when root status is unresolved', () => {
-  for (const status of ['needs_review', 'retry', 'error', 'no_match']) {
+test('provider-level terminal retry and unknown states remain held even when root status is unresolved', () => {
+  for (const status of ['needs_review', 'retry', 'error', 'no_match', 'future_status']) {
     const trackIdentities = identityRecord('unresolved', {
       musicbrainz: { status, reason: 'synthetic', checkedAt: '2026-08-10T00:00:00.000Z' },
     });
     const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()], trackIdentities });
     assert.equal(evidence.items[0].evidenceTier, 'E');
-    assert.equal(evidence.items[0].routingHoldReason, `durable_provider_musicbrainz_${status}`);
+    assert.equal(
+      evidence.items[0].routingHoldReason,
+      status === 'future_status' ? 'durable_provider_musicbrainz_unknown_status' : `durable_provider_musicbrainz_${status}`,
+    );
   }
 });
 
@@ -176,6 +212,14 @@ test('tier B release mismatch stays unresolved and never manufactures release id
   assert.equal(result.results[0].status, 'unresolved');
   assert.equal(result.results[0].reason, 'catalogue_release_mismatch');
   assert.equal(Object.hasOwn(result.results[0], 'releaseMbid'), false);
+});
+
+test('malformed tier B evidence cannot fall back to title-only resolution', () => {
+  const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()] });
+  const item = { ...evidence.items[0], normalizedReleaseTitle: null, sourceMusicbrainzReleaseMbid: null };
+  const result = resolver.resolveFromCatalogue(item, cache([recording()]));
+  assert.equal(result.status, 'exception');
+  assert.equal(result.reason, 'invalid_tier_b_release_evidence');
 });
 
 test('multiple compatible recording MBIDs remain ambiguous', () => {
@@ -231,6 +275,20 @@ test('unresolved eligible items become bounded tier D batch-bridge candidates', 
   assert.equal(batch.skipped.overflow, 1);
 });
 
+test('batch bridge requires an explicit unresolved local catalogue result', () => {
+  const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()] });
+  assert.throws(
+    () => resolver.planListenBrainzBatchBridge({ evidence }),
+    /Invalid catalogue resolution results/,
+  );
+
+  const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: cache([]) });
+  local.results = [];
+  const batch = resolver.planListenBrainzBatchBridge({ evidence, localResults: local });
+  assert.equal(batch.count, 0);
+  assert.equal(batch.skipped.notUnresolvedLocally, 1);
+});
+
 test('locally resolved and ambiguous items are excluded from the ListenBrainz batch bridge', () => {
   const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()] });
   const resolved = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: cache([recording()]) });
@@ -260,7 +318,11 @@ test('cache validation is fail-closed but does not mutate unknown future fields'
   assert.throws(() => resolver.validateCatalogueCache(duplicate), /Duplicate catalogue recording identity/);
 });
 
-test('invalid evidence items fail closed instead of being marked complete', () => {
+test('invalid evidence documents and items fail closed', () => {
+  assert.throws(
+    () => resolver.resolveCatalogueEvidence({ evidence: null, catalogueCache: cache([]) }),
+    /Invalid catalogue evidence/,
+  );
   const result = resolver.resolveFromCatalogue(null, cache([]));
   assert.equal(result.status, 'exception');
   assert.equal(result.reason, 'invalid_evidence_item');
