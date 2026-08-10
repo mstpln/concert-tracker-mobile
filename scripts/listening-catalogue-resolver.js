@@ -355,6 +355,7 @@ function validateCatalogueCache(cache) {
     if (artist.sourceEntity != null && artist.sourceEntity !== 'release') throw new Error('Invalid catalogue source entity.');
     const paginationFields = ['nextOffset', 'totalCount', 'complete'].filter((field) => Object.prototype.hasOwnProperty.call(artist, field));
     if (paginationFields.length && paginationFields.length !== 3) throw new Error('Invalid catalogue artist checkpoint.');
+    let coveredReleaseSet = null;
     if (paginationFields.length === 3) {
       normalizeCatalogueCheckpoint({
         artistMbid,
@@ -365,8 +366,9 @@ function validateCatalogueCache(cache) {
       if (artist.sourceEntity !== 'release') throw new Error('Invalid catalogue source entity.');
       const releaseMbids = normalizedMbidList(artist.releaseMbids);
       if (releaseMbids.length !== artist.nextOffset) throw new Error('Invalid catalogue release coverage.');
+      coveredReleaseSet = new Set(releaseMbids);
     } else if (artist.releaseMbids != null) {
-      normalizedMbidList(artist.releaseMbids);
+      coveredReleaseSet = new Set(normalizedMbidList(artist.releaseMbids));
     }
     if (!Array.isArray(artist.recordings)) throw new Error('Invalid catalogue recordings.');
     const seenRecordings = new Set();
@@ -391,6 +393,9 @@ function validateCatalogueCache(cache) {
         if (!releaseMbid) throw new Error('Invalid catalogue release identity.');
         if (seenReleases.has(releaseMbid)) throw new Error('Duplicate catalogue release identity.');
         seenReleases.add(releaseMbid);
+        if (coveredReleaseSet && !coveredReleaseSet.has(releaseMbid)) {
+          throw new Error('Catalogue recording references an uncounted release.');
+        }
         if (release.releaseGroupMbid != null && !inventoryLib.validMbid(release.releaseGroupMbid)) throw new Error('Invalid catalogue release-group identity.');
       }
     }
