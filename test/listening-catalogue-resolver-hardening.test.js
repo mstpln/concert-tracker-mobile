@@ -298,6 +298,43 @@ test('missing catalogue is not treated as exhausted catalogue work for fallback'
   assert.equal(batch.skipped.notUnresolvedLocally, 1);
 });
 
+test('repeated recording identity rejects contradictory artist membership', () => {
+  assert.throws(
+    () => resolver.mergeRecordingRows(
+      recording(),
+      recording({ artistMbids: [ARTIST, OTHER_ARTIST] }),
+    ),
+    /Conflicting catalogue recording artist identity/,
+  );
+});
+
+test('evidence and local result track keys must be canonical non-empty strings', () => {
+  const evidence = minimalEvidence('B');
+  evidence.items[0].trackKey = ' spotify:SyntheticSpotifyTrack1 ';
+  assert.throws(() => resolver.validateEvidenceDocument(evidence), /Invalid catalogue evidence item/);
+
+  const local = {
+    schemaVersion: 1,
+    results: [{ trackKey: 123, evidenceTier: 'B', status: 'unresolved', reason: 'catalogue_no_match' }],
+  };
+  assert.throws(() => resolver.validateLocalResults(local), /Invalid catalogue resolution result/);
+});
+
+test('batch bridge rejects non-positive or non-integer caller limits', () => {
+  const evidence = minimalEvidence('B');
+  const catalogueCache = completeCache([]);
+  for (const maxItems of [0, -1, 1.5, '1']) {
+    assert.throws(
+      () => resolver.planListenBrainzBatchBridge({ evidence, catalogueCache, maxItems }),
+      /Invalid batch size/,
+    );
+  }
+  assert.equal(
+    resolver.planListenBrainzBatchBridge({ evidence, catalogueCache, maxItems: 101 }).maxItems,
+    resolver.MAX_BATCH_SIZE,
+  );
+});
+
 test('catalogue row merge preserves unknown fields while enriching compatible release context', () => {
   const existing = recording({
     futureRecordingField: { keep: true },

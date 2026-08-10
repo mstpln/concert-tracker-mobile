@@ -248,6 +248,12 @@ function mergeRecordingRows(existing, incoming) {
     || inventoryLib.normalizeText(existing.title) !== inventoryLib.normalizeText(incoming.title)) {
     throw new Error('Conflicting catalogue recording identity.');
   }
+  const existingArtists = normalizedMbidList(existing.artistMbids).sort();
+  const incomingArtists = normalizedMbidList(incoming.artistMbids).sort();
+  if (!existingArtists.length || !incomingArtists.length
+    || existingArtists.join('\n') !== incomingArtists.join('\n')) {
+    throw new Error('Conflicting catalogue recording artist identity.');
+  }
   const byRelease = new Map((existing.releases || []).map((release) => [releaseRowKey(release), clone(release)]));
   for (const release of incoming.releases || []) {
     const key = releaseRowKey(release);
@@ -440,10 +446,13 @@ function validateEvidenceDocument(evidence) {
     || evidence.schemaVersion !== 1 || !Array.isArray(evidence.items)) throw new Error('Invalid catalogue evidence.');
   const seen = new Set();
   for (const item of evidence.items) {
+    const trackKey = typeof item?.trackKey === 'string' ? clean(item.trackKey) : null;
     if (!item || typeof item !== 'object' || Array.isArray(item)
-      || !clean(item.trackKey) || !EVIDENCE_TIERS.has(item.evidenceTier)) throw new Error('Invalid catalogue evidence item.');
-    if (seen.has(item.trackKey)) throw new Error('Duplicate catalogue evidence item.');
-    seen.add(item.trackKey);
+      || !trackKey || item.trackKey !== trackKey || !EVIDENCE_TIERS.has(item.evidenceTier)) {
+      throw new Error('Invalid catalogue evidence item.');
+    }
+    if (seen.has(trackKey)) throw new Error('Duplicate catalogue evidence item.');
+    seen.add(trackKey);
   }
   return evidence;
 }
@@ -453,10 +462,13 @@ function validateLocalResults(localResults) {
     || localResults.schemaVersion !== 1 || !Array.isArray(localResults.results)) throw new Error('Invalid catalogue resolution results.');
   const seen = new Set();
   for (const result of localResults.results) {
-    if (!result || typeof result !== 'object' || Array.isArray(result) || !clean(result.trackKey)
-      || !EVIDENCE_TIERS.has(result.evidenceTier) || !LOCAL_RESULT_STATUSES.has(result.status)) throw new Error('Invalid catalogue resolution result.');
-    if (seen.has(result.trackKey)) throw new Error('Duplicate catalogue resolution result.');
-    seen.add(result.trackKey);
+    const trackKey = typeof result?.trackKey === 'string' ? clean(result.trackKey) : null;
+    if (!result || typeof result !== 'object' || Array.isArray(result) || !trackKey || result.trackKey !== trackKey
+      || !EVIDENCE_TIERS.has(result.evidenceTier) || !LOCAL_RESULT_STATUSES.has(result.status)) {
+      throw new Error('Invalid catalogue resolution result.');
+    }
+    if (seen.has(trackKey)) throw new Error('Duplicate catalogue resolution result.');
+    seen.add(trackKey);
   }
   return localResults;
 }
@@ -588,7 +600,8 @@ function planListenBrainzBatchBridge({ evidence, catalogueCache, localResults, m
     if (!localResultsMatchCurrent(localResults, currentLocalResults)) throw new Error('Stale catalogue resolution results.');
   }
   const authoritativeResults = localResults || currentLocalResults;
-  const limit = Number.isInteger(maxItems) ? Math.max(1, Math.min(MAX_BATCH_SIZE, maxItems)) : 25;
+  if (!Number.isInteger(maxItems) || maxItems < 1) throw new Error('Invalid batch size.');
+  const limit = Math.min(MAX_BATCH_SIZE, maxItems);
   const resultByKey = new Map(authoritativeResults.results.map((result) => [result.trackKey, result]));
   const items = [];
   const skipped = { complete: 0, resolvedLocally: 0, ambiguous: 0, notUnresolvedLocally: 0, ineligible: 0, overflow: 0 };
