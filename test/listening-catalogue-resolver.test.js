@@ -38,6 +38,9 @@ function event(overrides = {}) {
 }
 
 function cache(recordings = []) {
+  const releaseMbids = [...new Set(recordings.flatMap((row) => (
+    (row?.releases || []).map((release) => release.releaseMbid).filter(Boolean)
+  )))];
   return {
     kind: resolver.CACHE_KIND,
     schemaVersion: resolver.CACHE_SCHEMA_VERSION,
@@ -45,6 +48,11 @@ function cache(recordings = []) {
     artists: {
       [ARTIST]: {
         artistMbid: ARTIST,
+        sourceEntity: 'release',
+        nextOffset: releaseMbids.length,
+        totalCount: releaseMbids.length,
+        complete: true,
+        releaseMbids,
         futureArtistField: { keep: true },
         recordings,
       },
