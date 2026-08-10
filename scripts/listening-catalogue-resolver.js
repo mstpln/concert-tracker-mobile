@@ -86,9 +86,13 @@ function validateCatalogueCache(cache) {
     const artistMbid = inventoryLib.validMbid(artist.artistMbid);
     if (!artistMbid || artistMbid !== key) throw new Error('Invalid catalogue artist identity.');
     if (!Array.isArray(artist.recordings)) throw new Error('Invalid catalogue recordings.');
+    const seenRecordings = new Set();
     for (const recording of artist.recordings) {
       if (!recording || typeof recording !== 'object' || Array.isArray(recording)) throw new Error('Invalid catalogue recording.');
-      if (!inventoryLib.validMbid(recording.recordingMbid) || !clean(recording.title)) throw new Error('Invalid catalogue recording identity.');
+      const recordingMbid = inventoryLib.validMbid(recording.recordingMbid);
+      if (!recordingMbid || !clean(recording.title)) throw new Error('Invalid catalogue recording identity.');
+      if (seenRecordings.has(recordingMbid)) throw new Error('Duplicate catalogue recording identity.');
+      seenRecordings.add(recordingMbid);
       if (!Array.isArray(recording.artistMbids) || !recording.artistMbids.length
         || !recording.artistMbids.every((value) => Boolean(inventoryLib.validMbid(value)))) {
         throw new Error('Invalid catalogue recording artists.');
@@ -128,7 +132,8 @@ function uniqueRecording(candidates) {
 
 function resolveFromCatalogue(item, cache) {
   validateCatalogueCache(cache);
-  if (!item || typeof item !== 'object' || item.evidenceTier === 'A') return { status: 'complete', reason: 'already_complete' };
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return { status: 'exception', reason: 'invalid_evidence_item' };
+  if (item.evidenceTier === 'A') return { status: 'complete', reason: 'already_complete' };
   if (!['B', 'C'].includes(item.evidenceTier)) return { status: 'exception', reason: 'not_catalogue_eligible' };
   const artistMbid = inventoryLib.validMbid(item.trustedMusicbrainzArtistMbid);
   const artistCatalogue = artistMbid ? cache.artists[artistMbid] : null;
@@ -185,12 +190,13 @@ function planListenBrainzBatchBridge({ evidence, localResults, maxItems = 25 } =
   const limit = Number.isInteger(maxItems) ? Math.max(1, Math.min(MAX_BATCH_SIZE, maxItems)) : 25;
   const resultByKey = new Map((localResults?.results || []).map((result) => [result.trackKey, result]));
   const items = [];
-  const skipped = { complete: 0, resolvedLocally: 0, ineligible: 0, overflow: 0 };
+  const skipped = { complete: 0, resolvedLocally: 0, ambiguous: 0, ineligible: 0, overflow: 0 };
 
   for (const item of evidence?.items || []) {
     const local = resultByKey.get(item.trackKey);
     if (item.evidenceTier === 'A') { skipped.complete += 1; continue; }
     if (local?.status === 'resolved') { skipped.resolvedLocally += 1; continue; }
+    if (local?.status === 'ambiguous') { skipped.ambiguous += 1; continue; }
     if (!['B', 'C'].includes(item.evidenceTier)
       || !inventoryLib.validMbid(item.trustedMusicbrainzArtistMbid)
       || !clean(item.artistLookupName)
