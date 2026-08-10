@@ -20,9 +20,9 @@ The C2 path is additive beside the existing v111 planner:
    - **D** — locally unresolved B/C work eligible for the future bounded ListenBrainz batch bridge;
    - **E** — blocked, malformed, held durable routing state, conflicting or malformed provider-owned release identity, artist-untrusted or conflicting lookup evidence.
 5. Normalize synthetic MusicBrainz **release-browse** catalogue pages through a pure parser with explicit offset/count checkpoints, cumulative release-ID coverage and sequential merge rules.
-6. Validate a versioned artist-MBID-keyed MusicBrainz catalogue-cache contract.
+6. Validate a versioned artist-MBID-keyed MusicBrainz catalogue-cache contract that distinguishes page-stream completion from authoritative whole-artist coverage.
 7. Match locally using exact deterministic normalized recording text, the already trusted BANDMARKR MusicBrainz artist MBID and, for tier B, compatible release evidence.
-8. Resolve only when the relevant catalogue slice carries explicit complete checkpoint proof and exactly one compatible recording MBID remains.
+8. Resolve only when the catalogue slice carries complete checkpoint proof **and** explicit coverage for both required MusicBrainz release scopes, with exactly one compatible recording MBID remaining.
 9. Keep multiple compatible recording MBIDs ambiguous and out of the automatic batch bridge.
 10. Recompute current local catalogue results before future ListenBrainz widening and reject supplied local results that no longer match the current evidence/catalogue state.
 11. Plan only items with an explicit exhausted local `unresolved` result from the same current evidence tier for a bounded future ListenBrainz batch request.
@@ -43,8 +43,9 @@ The C2 path is additive beside the existing v111 planner:
 - Tier A is accepted only for the current inventory's known complete reasons (`existing_track_identity` or `source_recording_mbid`); a forged/unknown complete reason fails closed.
 - Malformed known-provider containers/entries, unknown provider statuses and unknown provider namespaces are held rather than reinterpreted as fresh work.
 - Invalid catalogue/evidence/result structures fail closed. Duplicate evidence track keys, local-result keys, catalogue recording rows and per-recording release rows are rejected.
-- A catalogue slice without complete checkpoint proof is not authoritative enough to resolve identity. A later page could introduce another compatible recording, so partial or checkpoint-less uniqueness is never accepted.
-- A future ListenBrainz batch candidate must have a corresponding local catalogue result whose status is explicitly `unresolved`, whose evidence tier still matches the current evidence item, and whose local reason proves the catalogue route is exhausted (`catalogue_no_match` or `catalogue_release_mismatch`). Missing catalogues, incomplete catalogues, stale results, exceptions, complete, resolved, ambiguous and unknown unresolved reasons cannot be widened automatically.
+- Completing one release-browse stream is **not** enough to claim that the trusted artist's recording catalogue is complete. A slice is authoritative only when it explicitly carries both `release_artist` and `release_track_artist` coverage markers in addition to complete pagination proof.
+- A catalogue slice without complete checkpoint proof or without both required coverage markers is not authoritative enough to resolve identity. A later page or a different release scope could introduce another compatible recording, so partial uniqueness is never accepted.
+- A future ListenBrainz batch candidate must have a corresponding local catalogue result whose status is explicitly `unresolved`, whose evidence tier still matches the current evidence item, and whose local reason proves the authoritative catalogue route is exhausted (`catalogue_no_match` or `catalogue_release_mismatch`). Missing catalogues, incomplete or partial-coverage catalogues, stale results, exceptions, complete, resolved, ambiguous and unknown unresolved reasons cannot be widened automatically.
 - Unknown future fields already present in cache recording/release rows survive compatible page merges. Provider normalization remains allowlisted and does not copy arbitrary provider payload fields into cache rows.
 
 ## Pure MusicBrainz catalogue parsing
@@ -66,9 +67,9 @@ The parser requires:
 
 MusicBrainz release paging can return fewer releases than the requested limit when a page contains many tracks. The normalized `nextOffset` therefore advances by the **number of release rows actually returned**, never by a fixed requested limit and never by the number of normalized recordings. Each normalized page also carries the exact release MBIDs represented by those release rows.
 
-A pure cache merge accepts only the next sequential release page, rejects a total-count change mid-pagination, rejects a release MBID repeated across pages, and requires cumulative unique release-MBID coverage to equal the processed release offset. Every normalized recording relation must point to a release counted by that page/cache coverage, and a checkpointed release-browse recording cannot exist without release provenance. Repeated recording identities merge conservatively, existing unknown future cache fields survive compatible merges, and the combined cache is validated after every page. This defines the C2 checkpoint contract without deciding where or how a future production checkpoint is persisted.
+A pure cache merge accepts only the next sequential release page, rejects a total-count change mid-pagination, rejects a release MBID repeated across pages, and requires cumulative unique release-MBID coverage to equal the processed release offset. Every normalized recording relation must point to a release counted by that page/cache coverage, and a checkpointed release-browse recording cannot exist without release provenance. Repeated recording identities merge conservatively, existing unknown future cache fields survive compatible merges, and the combined cache is validated after every page. This proves the integrity and completion of that **page stream**; it deliberately does not claim whole-artist catalogue authority.
 
-The future C3 adapter still owns the exact request strategy (including whether an artist slice requires ordinary artist release browsing, track-artist browsing, or both), pacing, headers, freshness, restart behavior if the provider catalogue changes during a multi-page fetch, and persisted checkpoints. C2 deliberately does not make those provider calls.
+The C2 parser and page merge do not manufacture `coverageScopes`. Future C3 provider logic must explicitly prove and combine the required release scopes before a cache can be authoritative for local uniqueness or no-match conclusions. C2's required authority markers are `release_artist` and `release_track_artist`. C3 still owns the actual browse requests, any deduplication/assembly needed between those scopes, pacing, headers, freshness, restart behavior if the provider catalogue changes during a multi-page fetch, and persisted checkpoints.
 
 ## Catalogue cache contract
 
@@ -82,10 +83,14 @@ C2 defines the in-memory/synthetic contract only:
 - release rows carry a MusicBrainz release MBID, optional release-group MBID and release title
 - a cache slice created through the release-page parser identifies `sourceEntity: "release"`
 - a release-browse artist slice carries normalized pagination fields `nextOffset`, `totalCount`, `complete`, plus cumulative unique `releaseMbids`; those fields must be mutually consistent
+- optional `coverageScopes` contains only known scope names; the authoritative C2 set is exactly the two required scopes `release_artist` and `release_track_artist`
 - pagination offsets count provider **release rows**, so they are intentionally independent of the number of normalized recording rows retained in the cache
 - every recording release relation in a covered slice must refer to a release MBID represented by that slice's cumulative release coverage
-- a slice may be used for automatic identity resolution only when `complete` is true, `nextOffset === totalCount`, and cumulative release-MBID coverage proves the declared total
+- a slice may be used for automatic identity resolution only when `complete` is true, `nextOffset === totalCount`, cumulative release-MBID coverage proves the declared total, and both required coverage scopes are explicitly present
+- a structurally valid cache with only one coverage scope remains non-authoritative; unknown scope names fail validation
 - checkpoint-less artist snapshots may still be structurally validated for pure tooling compatibility, but they are non-authoritative for automatic resolution and cannot be extended through the sequential page merge API
+
+Validation of a catalogue cache is performed once per multi-item evidence-resolution pass. Direct single-item resolution validates its input cache before matching. This keeps the safety contract while avoiding repeated whole-cache validation for every track in a large historical pass.
 
 C2 intentionally does **not** decide the production R2 object name, object-size ceiling, pagination persistence mechanism, ETag write path, freshness/refresh policy or Worker allowlist. Those are C3 concerns and require separate review before production activation.
 
@@ -95,11 +100,11 @@ An already trusted Spotify track ID can be converted locally to `https://open.sp
 
 ## ListenBrainz batch bridge planning
 
-The C2 batch planner is pure and makes no request. It accepts only tier B/C items that have an explicit locally unresolved catalogue result from the same current evidence tier, trusted artist identity and clean artist/recording text. The local result must represent an exhausted catalogue route (`catalogue_no_match` or `catalogue_release_mismatch`). It emits a bounded list, hard-limited to at most 100 items per planned batch.
+The C2 batch planner is pure and makes no request. It accepts only tier B/C items that have an explicit locally unresolved catalogue result from the same current evidence tier, trusted artist identity and clean artist/recording text. The local result must represent an exhausted **authoritative** catalogue route (`catalogue_no_match` or `catalogue_release_mismatch`). It emits a bounded list, hard-limited to at most 100 items per planned batch.
 
 Before planning, the bridge recomputes catalogue resolution from the supplied current evidence and current catalogue cache. If a caller supplies previously computed local results, they must still match that recomputed track key, tier, status, reason and resolved MusicBrainz identity. A result produced from an older catalogue snapshot cannot be used to widen work after the current cache has changed.
 
-Items already resolved locally are excluded. Catalogue ambiguity is also excluded and remains exception/review work rather than being silently widened into another automatic route. Missing, checkpoint-less or incomplete catalogue state is not considered exhausted and cannot widen into ListenBrainz. Items carrying a durable routing hold are likewise excluded. Missing, malformed, stale or unknown unresolved local-result documents fail closed rather than treating local resolution as skipped.
+Items already resolved locally are excluded. Catalogue ambiguity is also excluded and remains exception/review work rather than being silently widened into another automatic route. Missing, checkpoint-less, incomplete or partial-coverage catalogue state is not considered exhausted and cannot widen into ListenBrainz. Items carrying a durable routing hold are likewise excluded. Missing, malformed, stale or unknown unresolved local-result documents fail closed rather than treating local resolution as skipped.
 
 ## Production boundary
 
@@ -125,13 +130,14 @@ Synthetic unit coverage includes:
 - trusted-artist mismatch;
 - supported MusicBrainz release-page normalization, variable release paging, sequential checkpoints, cumulative release-ID coverage, cross-page duplicate rejection, artist-credit boundaries, repeated-recording consolidation and total-count drift;
 - rejection of uncounted release relations and checkpointed recordings without release provenance;
-- incomplete and checkpoint-less catalogue resolution blocking;
+- incomplete, checkpoint-less and single-scope catalogue resolution blocking;
+- validation of known coverage scopes and rejection of unknown coverage markers;
 - cache-row unknown-field preservation across compatible merges;
 - zero-call Spotify track URL derivation from an exact trusted ID;
 - bounded tier D planning;
 - requirement for explicit exhausted locally unresolved same-tier results before batch widening;
 - recomputation/rejection of stale catalogue results before batch widening;
-- exclusion of resolved, ambiguous, stale, incomplete-catalogue, missing-catalogue, unknown-unresolved and held items from the bridge;
+- exclusion of resolved, ambiguous, stale, incomplete-catalogue, partial-coverage, missing-catalogue, unknown-unresolved and held items from the bridge;
 - malformed and duplicate cache/evidence/result-state failure;
 - aggregate-only diagnostics.
 
