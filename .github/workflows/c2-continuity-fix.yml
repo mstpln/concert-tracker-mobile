@@ -1,0 +1,48 @@
+name: C2 continuity fix
+
+on:
+  push:
+    branches: [feature/listening-catalogue-resolver-c2]
+    paths:
+      - .github/workflows/c2-continuity-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-continuity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/listening-catalogue-resolver-c2
+          fetch-depth: 0
+      - name: Append C2 state and decision records
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          state = Path('docs/LIVEVAULT_STATE.md')
+          state_marker = '## PR #104 C2 catalogue resolver review state'
+          state_append = '''\n\n## PR #104 C2 catalogue resolver review state\n\nPR #104 on `feature/listening-catalogue-resolver-c2` is open and unmerged. It implements the production-inert C2 catalogue-first resolver foundation beside the existing v111 production planner: additive evidence tiers, a versioned artist-MBID-keyed MusicBrainz catalogue-cache contract, exact trusted-artist recording/release matching, ambiguity quarantine, a bounded future ListenBrainz batch-bridge planner, aggregate-only diagnostics, and synthetic regression coverage.\n\nReview corrections now preserve existing durable routing ownership. Any root or provider `needs_review`, `retry`, `error`, or `no_match` state in `listening/track-identities.json` is held as C2 exception work and cannot be silently reopened by catalogue matching or the future batch bridge. Catalogue ambiguity is also excluded from automatic widening, malformed evidence fails closed, and duplicate recording MBIDs in one artist catalogue are rejected. A later C3/C4 recovery or migration rule must explicitly define which held legacy states may be reconsidered.\n\nC2 changes only pure Node tooling, tests and documentation. It does not replace the Spotify-first v111 production entrypoint, call a live provider, add or write a production R2 catalogue object, change Worker allowlists, enable the planned six-hour maintenance schedule, modify production data, deploy, or authorize another historical backfill run. `APP_VERSION` and `CACHE_NAME_LITERAL` remain synchronized at v111, and `LIVEVAULT_BUILD_STATE.json` remains unchanged because its deterministic source facts have not changed.\n'''
+          text = state.read_text()
+          if state_marker not in text:
+              state.write_text(text.rstrip() + state_append + '\n')
+
+          decisions = Path('docs/LIVEVAULT_DECISIONS.md')
+          decision_marker = '## 2026-08-10 — Catalogue-first listening resolution preserves durable routing holds'
+          decision_append = '''\n\n## 2026-08-10 — Catalogue-first listening resolution preserves durable routing holds\n\n**Decision:** Historical listening identity resolution moves toward the cache/catalogue-first architecture from the revised Data Automation plan: reuse existing recording identity first, anchor automatic local matching to the already trusted MusicBrainz artist MBID, require exact normalized recording evidence and conservative release evidence, leave ambiguous candidates unresolved, and reserve Spotify for genuinely Spotify-specific presentation or metadata work. Existing durable root or provider `needs_review`, `retry`, `error`, and `no_match` states are not automatically reopened by the C2 resolver or future batch-bridge planning.\n\n**Reason:** The revised architecture should reduce provider dependence without discarding review decisions, retry ownership, terminal quarantine, provider boundaries, or previously persisted maintenance evidence. A new evidence source is not sufficient reason to silently bypass durable state.\n\n**Consequence:** C2 remains production-inert and treats held durable states plus catalogue ambiguity as exception/review work. Any C3/C4 rule that deliberately reconsiders an old held state must be explicit, tested, additive and preserve unknown fields and source observations. Production catalogue persistence, freshness/checkpoint semantics, Worker allowlisting, provider adapters, backfill activation and the six-hour schedule remain separately reviewed and authorized steps.\n'''
+          text = decisions.read_text()
+          if decision_marker not in text:
+              decisions.write_text(text.rstrip() + decision_append + '\n')
+          PY
+      - name: Commit continuity updates and remove helper workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/c2-continuity-fix.yml
+          git add docs/LIVEVAULT_STATE.md docs/LIVEVAULT_DECISIONS.md
+          git commit -m 'docs: record C2 resolver state and decision'
+          git push origin HEAD:feature/listening-catalogue-resolver-c2
