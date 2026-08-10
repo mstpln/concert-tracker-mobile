@@ -66,6 +66,24 @@ function recording(overrides = {}) {
   };
 }
 
+function identityRecord(status, providers = {}) {
+  const workKey = 'spotify:SyntheticSpotifyTrack1';
+  return {
+    kind: 'livevault-track-identities',
+    schemaVersion: 1,
+    records: {
+      [workKey]: {
+        workKey,
+        spotifyTrackId: 'SyntheticSpotifyTrack1',
+        localBandId: 'band-1',
+        status,
+        providers,
+        futureField: { keep: true },
+      },
+    },
+  };
+}
+
 test('strong artist + track + one release becomes tier B without changing the legacy Spotify planner state', () => {
   const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()] });
   assert.equal(evidence.items[0].evidenceTier, 'B');
@@ -100,6 +118,43 @@ test('existing recording identity remains tier A and never requires catalogue re
   const result = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: cache([]) });
   assert.equal(result.results[0].status, 'complete');
   assert.equal(result.counts.alreadyComplete, 1);
+});
+
+test('durable review retry and error states remain held from catalogue and bridge automation', () => {
+  for (const status of ['needs_review', 'retry', 'error']) {
+    const trackIdentities = identityRecord(status);
+    const before = structuredClone(trackIdentities);
+    const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()], trackIdentities });
+    assert.equal(evidence.items[0].evidenceTier, 'E');
+    assert.equal(evidence.items[0].routingHoldReason, `durable_identity_${status}`);
+    const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: cache([recording()]) });
+    assert.equal(local.results[0].status, 'exception');
+    assert.equal(local.results[0].reason, `durable_identity_${status}`);
+    const batch = resolver.planListenBrainzBatchBridge({ evidence, localResults: local });
+    assert.equal(batch.count, 0);
+    assert.equal(batch.skipped.ineligible, 1);
+    assert.deepEqual(trackIdentities, before);
+  }
+});
+
+test('provider-level review retry and error states remain held even when root status is unresolved', () => {
+  for (const status of ['needs_review', 'retry', 'error']) {
+    const trackIdentities = identityRecord('unresolved', {
+      musicbrainz: { status, reason: 'synthetic', checkedAt: '2026-08-10T00:00:00.000Z' },
+    });
+    const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()], trackIdentities });
+    assert.equal(evidence.items[0].evidenceTier, 'E');
+    assert.equal(evidence.items[0].routingHoldReason, `durable_provider_musicbrainz_${status}`);
+  }
+});
+
+test('durable no_match is not silently treated as a hold in the revised catalogue path', () => {
+  const trackIdentities = identityRecord('no_match', {
+    spotify: { status: 'no_match', reason: 'synthetic', checkedAt: '2026-08-10T00:00:00.000Z' },
+  });
+  const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()], trackIdentities });
+  assert.equal(evidence.items[0].evidenceTier, 'B');
+  assert.equal(evidence.items[0].routingHoldReason, null);
 });
 
 test('tier B resolves only one exact artist + recording + release candidate', () => {
