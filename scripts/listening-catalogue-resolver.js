@@ -258,15 +258,18 @@ function validateCatalogueCache(cache) {
     if (!artist || typeof artist !== 'object' || Array.isArray(artist)) throw new Error('Invalid catalogue artist.');
     const artistMbid = inventoryLib.validMbid(artist.artistMbid);
     if (!artistMbid || artistMbid !== key) throw new Error('Invalid catalogue artist identity.');
+    if (!Array.isArray(artist.recordings)) throw new Error('Invalid catalogue recordings.');
     const paginationFields = ['nextOffset', 'totalCount', 'complete'].filter((field) => Object.prototype.hasOwnProperty.call(artist, field));
     if (paginationFields.length && paginationFields.length !== 3) throw new Error('Invalid catalogue artist checkpoint.');
-    if (paginationFields.length === 3) normalizeCatalogueCheckpoint({
-      artistMbid,
-      nextOffset: artist.nextOffset,
-      totalCount: artist.totalCount,
-      complete: artist.complete,
-    });
-    if (!Array.isArray(artist.recordings)) throw new Error('Invalid catalogue recordings.');
+    if (paginationFields.length === 3) {
+      normalizeCatalogueCheckpoint({
+        artistMbid,
+        nextOffset: artist.nextOffset,
+        totalCount: artist.totalCount,
+        complete: artist.complete,
+      });
+      if (artist.nextOffset !== artist.recordings.length) throw new Error('Invalid catalogue artist checkpoint coverage.');
+    }
     const seenRecordings = new Set();
     for (const recording of artist.recordings) {
       if (!recording || typeof recording !== 'object' || Array.isArray(recording)) throw new Error('Invalid catalogue recording.');
@@ -349,7 +352,7 @@ function validateLocalResults(localResults) {
   const seen = new Set();
   for (const result of localResults.results) {
     if (!result || typeof result !== 'object' || Array.isArray(result) || !clean(result.trackKey)
-      || !LOCAL_RESULT_STATUSES.has(result.status)) {
+      || !EVIDENCE_TIERS.has(result.evidenceTier) || !LOCAL_RESULT_STATUSES.has(result.status)) {
       throw new Error('Invalid catalogue resolution result.');
     }
     if (seen.has(result.trackKey)) throw new Error('Duplicate catalogue resolution result.');
@@ -391,7 +394,11 @@ function uniqueRecording(candidates) {
 function resolveFromCatalogue(item, cache) {
   validateCatalogueCache(cache);
   if (!item || typeof item !== 'object' || Array.isArray(item)) return { status: 'exception', reason: 'invalid_evidence_item' };
-  if (item.evidenceTier === 'A') return { status: 'complete', reason: 'already_complete' };
+  if (item.evidenceTier === 'A') {
+    return item.status === 'complete'
+      ? { status: 'complete', reason: 'already_complete' }
+      : { status: 'exception', reason: 'invalid_tier_a_evidence' };
+  }
   if (item.routingHoldReason) return { status: 'exception', reason: item.routingHoldReason };
   if (!['B', 'C'].includes(item.evidenceTier)) return { status: 'exception', reason: 'not_catalogue_eligible' };
   const artistMbid = inventoryLib.validMbid(item.trustedMusicbrainzArtistMbid);
@@ -472,9 +479,10 @@ function planListenBrainzBatchBridge({ evidence, localResults, maxItems = 25 } =
   for (const item of evidence.items) {
     const local = resultByKey.get(item.trackKey);
     if (item.evidenceTier === 'A') { skipped.complete += 1; continue; }
-    if (local?.status === 'resolved') { skipped.resolvedLocally += 1; continue; }
-    if (local?.status === 'ambiguous') { skipped.ambiguous += 1; continue; }
-    if (!local || local.status !== 'unresolved') { skipped.notUnresolvedLocally += 1; continue; }
+    if (!local || local.evidenceTier !== item.evidenceTier) { skipped.notUnresolvedLocally += 1; continue; }
+    if (local.status === 'resolved') { skipped.resolvedLocally += 1; continue; }
+    if (local.status === 'ambiguous') { skipped.ambiguous += 1; continue; }
+    if (local.status !== 'unresolved') { skipped.notUnresolvedLocally += 1; continue; }
     if (!['B', 'C'].includes(item.evidenceTier)
       || item.routingHoldReason
       || !inventoryLib.validMbid(item.trustedMusicbrainzArtistMbid)
