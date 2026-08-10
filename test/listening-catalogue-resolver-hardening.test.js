@@ -39,6 +39,16 @@ function recording(overrides = {}) {
   };
 }
 
+function completeCache(recordings = []) {
+  return {
+    kind: resolver.CACHE_KIND,
+    schemaVersion: resolver.CACHE_SCHEMA_VERSION,
+    artists: {
+      [ARTIST]: { artistMbid: ARTIST, recordings },
+    },
+  };
+}
+
 function completePage() {
   return {
     schemaVersion: resolver.CATALOGUE_PAGE_SCHEMA_VERSION,
@@ -62,18 +72,29 @@ test('forged tier A evidence cannot claim an incomplete item is already complete
 
 test('batch bridge rejects a stale local result from a different evidence tier', () => {
   const evidence = minimalEvidence('B');
-  const localResults = {
-    schemaVersion: 1,
-    results: [{
-      trackKey: evidence.items[0].trackKey,
-      evidenceTier: 'C',
-      status: 'unresolved',
-      reason: 'catalogue_no_match',
-    }],
-  };
-  const plan = resolver.planListenBrainzBatchBridge({ evidence, localResults });
-  assert.equal(plan.count, 0);
-  assert.equal(plan.skipped.notUnresolvedLocally, 1);
+  const catalogueCache = completeCache([]);
+  const localResults = resolver.resolveCatalogueEvidence({ evidence, catalogueCache });
+  localResults.results[0].evidenceTier = 'C';
+  assert.throws(
+    () => resolver.planListenBrainzBatchBridge({ evidence, catalogueCache, localResults }),
+    /Stale catalogue resolution results/,
+  );
+});
+
+test('batch bridge rejects results produced from an older catalogue snapshot', () => {
+  const evidence = minimalEvidence('B');
+  const oldCache = completeCache([]);
+  const stale = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: oldCache });
+  assert.equal(stale.results[0].reason, 'catalogue_no_match');
+
+  const currentCache = completeCache([recording()]);
+  assert.throws(
+    () => resolver.planListenBrainzBatchBridge({ evidence, catalogueCache: currentCache, localResults: stale }),
+    /Stale catalogue resolution results/,
+  );
+  const currentPlan = resolver.planListenBrainzBatchBridge({ evidence, catalogueCache: currentCache });
+  assert.equal(currentPlan.count, 0);
+  assert.equal(currentPlan.skipped.resolvedLocally, 1);
 });
 
 test('local result validation requires an explicit known evidence tier and status', () => {
@@ -128,7 +149,7 @@ test('catalogue checkpoint metadata fails closed when incomplete or tied to an u
 
 test('incomplete paginated catalogues cannot resolve or widen into ListenBrainz fallback', () => {
   const evidence = minimalEvidence('B');
-  const cache = {
+  const catalogueCache = {
     kind: resolver.CACHE_KIND,
     schemaVersion: resolver.CACHE_SCHEMA_VERSION,
     artists: {
@@ -142,10 +163,10 @@ test('incomplete paginated catalogues cannot resolve or widen into ListenBrainz 
       },
     },
   };
-  const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: cache });
+  const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache });
   assert.equal(local.results[0].status, 'unresolved');
   assert.equal(local.results[0].reason, 'catalogue_incomplete');
-  const batch = resolver.planListenBrainzBatchBridge({ evidence, localResults: local });
+  const batch = resolver.planListenBrainzBatchBridge({ evidence, catalogueCache, localResults: local });
   assert.equal(batch.count, 0);
   assert.equal(batch.skipped.notUnresolvedLocally, 1);
 });
@@ -154,7 +175,7 @@ test('missing catalogue is not treated as exhausted catalogue work for fallback'
   const evidence = minimalEvidence('C');
   const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: null });
   assert.equal(local.results[0].reason, 'catalogue_missing');
-  const batch = resolver.planListenBrainzBatchBridge({ evidence, localResults: local });
+  const batch = resolver.planListenBrainzBatchBridge({ evidence, catalogueCache: null, localResults: local });
   assert.equal(batch.count, 0);
   assert.equal(batch.skipped.notUnresolvedLocally, 1);
 });
@@ -185,20 +206,20 @@ test('catalogue row merge preserves unknown fields while enriching compatible re
   assert.equal(merged.releases[0].releaseGroupMbid, RELEASE_GROUP);
 });
 
-test('fallback only accepts local no-match or release-mismatch exhaustion reasons', () => {
+test('fallback only accepts current local no-match or release-mismatch exhaustion reasons', () => {
   const evidence = minimalEvidence('B');
+  const noMatchCache = completeCache([]);
+  const noMatch = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: noMatchCache });
+  assert.equal(noMatch.results[0].reason, 'catalogue_no_match');
+  assert.equal(resolver.planListenBrainzBatchBridge({ evidence, catalogueCache: noMatchCache, localResults: noMatch }).count, 1);
+
   for (const reason of ['catalogue_missing', 'catalogue_incomplete', 'future_unresolved_reason']) {
-    const localResults = {
-      schemaVersion: 1,
-      results: [{
-        trackKey: evidence.items[0].trackKey,
-        evidenceTier: 'B',
-        status: 'unresolved',
-        reason,
-      }],
-    };
-    const batch = resolver.planListenBrainzBatchBridge({ evidence, localResults });
-    assert.equal(batch.count, 0);
+    const forged = structuredClone(noMatch);
+    forged.results[0].reason = reason;
+    assert.throws(
+      () => resolver.planListenBrainzBatchBridge({ evidence, catalogueCache: noMatchCache, localResults: forged }),
+      /Stale catalogue resolution results/,
+    );
   }
 });
 
