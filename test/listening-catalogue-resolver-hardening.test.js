@@ -70,6 +70,43 @@ test('forged tier A evidence cannot claim an incomplete item is already complete
   assert.equal(outcome.reason, 'invalid_tier_a_evidence');
 });
 
+test('durable routing hold outranks otherwise complete source identity', () => {
+  const bands = [{
+    id: 'band-1',
+    name: 'Synthetic Artist',
+    musicbrainz: { mbid: ARTIST, status: 'manual_confirmed' },
+  }];
+  const events = [{
+    stableListenId: 'listen-1',
+    bandId: 'band-1',
+    artistCreditName: 'Synthetic Artist',
+    recordingTitle: 'Exact Song',
+    spotifyTrackId: 'SyntheticSpotifyTrack1',
+    musicbrainzRecordingId: RECORDING,
+    musicbrainzArtistIds: [ARTIST],
+  }];
+  const trackIdentities = {
+    kind: 'livevault-track-identities',
+    schemaVersion: 1,
+    records: {
+      'spotify:SyntheticSpotifyTrack1': {
+        workKey: 'spotify:SyntheticSpotifyTrack1',
+        spotifyTrackId: 'SyntheticSpotifyTrack1',
+        localBandId: 'band-1',
+        status: 'needs_review',
+        providers: {},
+      },
+    },
+  };
+  const evidence = resolver.buildCatalogueEvidence({ bands, events, trackIdentities });
+  assert.equal(evidence.items[0].status, 'complete');
+  assert.equal(evidence.items[0].routingHoldReason, 'durable_identity_needs_review');
+  assert.equal(evidence.items[0].evidenceTier, 'E');
+  const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: completeCache([recording()]) });
+  assert.equal(local.results[0].status, 'exception');
+  assert.equal(local.results[0].reason, 'durable_identity_needs_review');
+});
+
 test('batch bridge rejects a stale local result from a different evidence tier', () => {
   const evidence = minimalEvidence('B');
   const catalogueCache = completeCache([]);
