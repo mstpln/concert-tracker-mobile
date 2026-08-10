@@ -107,6 +107,29 @@ test('durable routing hold outranks otherwise complete source identity', () => {
   assert.equal(local.results[0].reason, 'durable_identity_needs_review');
 });
 
+test('malformed explicitly MusicBrainz-owned release evidence cannot downgrade to text-only matching', () => {
+  const bands = [{
+    id: 'band-1',
+    name: 'Synthetic Artist',
+    musicbrainz: { mbid: ARTIST, status: 'manual_confirmed' },
+  }];
+  const events = [{
+    stableListenId: 'listen-1',
+    bandId: 'band-1',
+    artistCreditName: 'Synthetic Artist',
+    recordingTitle: 'Exact Song',
+    releaseTitle: 'Exact Album',
+    spotifyTrackId: 'SyntheticSpotifyTrack1',
+    musicbrainzReleaseId: 'not-an-mbid',
+  }];
+  const evidence = resolver.buildCatalogueEvidence({ bands, events });
+  assert.equal(evidence.items[0].sourceReleaseEvidenceMalformed, true);
+  assert.equal(evidence.items[0].sourceMusicbrainzReleaseMbid, null);
+  assert.equal(evidence.items[0].evidenceTier, 'E');
+  const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: completeCache([recording()]) });
+  assert.equal(local.results[0].status, 'exception');
+});
+
 test('batch bridge rejects a stale local result from a different evidence tier', () => {
   const evidence = minimalEvidence('B');
   const catalogueCache = completeCache([]);
