@@ -325,12 +325,13 @@ test('tier C may resolve only a unique exact-title recording for the trusted art
 
 test('trusted MusicBrainz artist boundary rejects same-title recordings by another artist', () => {
   const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()] });
-  const result = resolver.resolveCatalogueEvidence({
-    evidence,
-    catalogueCache: cache([recording({ artistMbids: [OTHER_ARTIST] })]),
-  });
-  assert.equal(result.results[0].status, 'unresolved');
-  assert.equal(result.results[0].reason, 'catalogue_no_match');
+  assert.throws(
+    () => resolver.resolveCatalogueEvidence({
+      evidence,
+      catalogueCache: cache([recording({ artistMbids: [OTHER_ARTIST] })]),
+    }),
+    /outside artist boundary/,
+  );
 });
 
 test('MusicBrainz catalogue pages normalize supported release-browse pagination without provider side effects', () => {
