@@ -185,12 +185,20 @@ test('unresolved eligible items become bounded tier D batch-bridge candidates', 
   assert.equal(batch.skipped.overflow, 1);
 });
 
-test('locally resolved items are excluded from the ListenBrainz batch bridge', () => {
+test('locally resolved and ambiguous items are excluded from the ListenBrainz batch bridge', () => {
   const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()] });
-  const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: cache([recording()]) });
-  const batch = resolver.planListenBrainzBatchBridge({ evidence, localResults: local });
-  assert.equal(batch.count, 0);
-  assert.equal(batch.skipped.resolvedLocally, 1);
+  const resolved = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: cache([recording()]) });
+  const resolvedBatch = resolver.planListenBrainzBatchBridge({ evidence, localResults: resolved });
+  assert.equal(resolvedBatch.count, 0);
+  assert.equal(resolvedBatch.skipped.resolvedLocally, 1);
+
+  const ambiguous = resolver.resolveCatalogueEvidence({
+    evidence,
+    catalogueCache: cache([recording(), recording({ recordingMbid: RECORDING_2 })]),
+  });
+  const ambiguousBatch = resolver.planListenBrainzBatchBridge({ evidence, localResults: ambiguous });
+  assert.equal(ambiguousBatch.count, 0);
+  assert.equal(ambiguousBatch.skipped.ambiguous, 1);
 });
 
 test('cache validation is fail-closed but does not mutate unknown future fields', () => {
@@ -201,6 +209,15 @@ test('cache validation is fail-closed but does not mutate unknown future fields'
 
   const invalid = cache([recording({ recordingMbid: 'not-an-mbid' })]);
   assert.throws(() => resolver.validateCatalogueCache(invalid), /Invalid catalogue recording identity/);
+
+  const duplicate = cache([recording(), recording()]);
+  assert.throws(() => resolver.validateCatalogueCache(duplicate), /Duplicate catalogue recording identity/);
+});
+
+test('invalid evidence items fail closed instead of being marked complete', () => {
+  const result = resolver.resolveFromCatalogue(null, cache([]));
+  assert.equal(result.status, 'exception');
+  assert.equal(result.reason, 'invalid_evidence_item');
 });
 
 test('aggregate diagnostics expose counts only', () => {
