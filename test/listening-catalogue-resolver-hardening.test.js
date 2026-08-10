@@ -9,6 +9,7 @@ const RECORDING = '22222222-2222-4222-8222-222222222222';
 const RELEASE = '44444444-4444-4444-8444-444444444444';
 const RELEASE_GROUP = '55555555-5555-4555-8555-555555555555';
 const OTHER_ARTIST = '66666666-6666-4666-8666-666666666666';
+const RELEASE_2 = '77777777-7777-4777-8777-777777777777';
 
 function minimalEvidence(tier = 'B') {
   return {
@@ -56,6 +57,7 @@ function completePage() {
     artistMbid: ARTIST,
     offset: 0,
     releaseCount: 1,
+    releaseMbids: [RELEASE],
     nextOffset: 1,
     totalCount: 1,
     complete: true,
@@ -179,6 +181,7 @@ test('release-browse checkpoints are independent of normalized recording count',
         nextOffset: 2,
         totalCount: 3,
         complete: false,
+        releaseMbids: [RELEASE, RELEASE_2],
         recordings: [recording({ releases: [] })],
       },
     },
@@ -219,6 +222,7 @@ test('incomplete paginated catalogues cannot resolve or widen into ListenBrainz 
         nextOffset: 1,
         totalCount: 2,
         complete: false,
+        releaseMbids: [RELEASE],
         recordings: [recording()],
       },
     },
@@ -329,5 +333,25 @@ test('checkpoint-less snapshots cannot be extended by paginated page merges', ()
   assert.throws(
     () => resolver.mergeCataloguePage(snapshot, completePage()),
     /checkpoint-less catalogue snapshot/,
+  );
+});
+
+test('release coverage rejects a repeated release across otherwise sequential pages', () => {
+  const firstPage = {
+    ...completePage(),
+    totalCount: 2,
+    complete: false,
+  };
+  const first = resolver.mergeCataloguePage(null, firstPage);
+  const repeatedSecondPage = {
+    ...completePage(),
+    offset: 1,
+    nextOffset: 2,
+    totalCount: 2,
+    complete: true,
+  };
+  assert.throws(
+    () => resolver.mergeCataloguePage(first, repeatedSecondPage),
+    /release repeated across pages/,
   );
 });
