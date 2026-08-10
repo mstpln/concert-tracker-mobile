@@ -386,6 +386,9 @@ function validateCatalogueCache(cache) {
       if (!recording.artistMbids.map(inventoryLib.validMbid).includes(artistMbid)) {
         throw new Error('Catalogue recording is outside artist boundary.');
       }
+      if (coveredReleaseSet && (!Array.isArray(recording.releases) || !recording.releases.length)) {
+        throw new Error('Catalogue recording is missing release provenance.');
+      }
       if (recording.releases != null && !Array.isArray(recording.releases)) throw new Error('Invalid catalogue releases.');
       const seenReleases = new Set();
       for (const release of recording.releases || []) {
