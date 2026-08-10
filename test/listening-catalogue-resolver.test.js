@@ -9,6 +9,7 @@ const RECORDING = '22222222-2222-4222-8222-222222222222';
 const RECORDING_2 = '33333333-3333-4333-8333-333333333333';
 const RELEASE = '44444444-4444-4444-8444-444444444444';
 const RELEASE_GROUP = '55555555-5555-4555-8555-555555555555';
+const OTHER_ARTIST = '66666666-6666-4666-8666-666666666666';
 const RELEASE_2 = '77777777-7777-4777-8777-777777777777';
 
 function band() {
@@ -67,6 +68,31 @@ function recording(overrides = {}) {
   };
 }
 
+function musicBrainzRecording(overrides = {}) {
+  return {
+    id: RECORDING,
+    title: 'Exact Song',
+    'artist-credit': [{ artist: { id: ARTIST, name: 'Synthetic Artist' } }],
+    releases: [{
+      id: RELEASE,
+      title: 'Exact Album',
+      'release-group': { id: RELEASE_GROUP, title: 'Exact Album' },
+      futureReleaseField: { keep: true },
+    }],
+    futureRecordingField: { keep: true },
+    ...overrides,
+  };
+}
+
+function musicBrainzPage({ offset = 0, total = 1, recordings = [musicBrainzRecording()] } = {}) {
+  return {
+    'recording-offset': offset,
+    'recording-count': total,
+    recordings,
+    futurePageField: { keep: true },
+  };
+}
+
 function identityRecord(status, providers = {}) {
   const workKey = 'spotify:SyntheticSpotifyTrack1';
   return {
@@ -91,6 +117,17 @@ test('strong artist + track + one release becomes tier B without changing the le
   assert.equal(evidence.items[0].releaseLookupName, 'Exact Album');
   assert.equal(evidence.items[0].status, 'needs_spotify');
   assert.equal(evidence.tierCounts.B, 1);
+});
+
+test('exact Spotify track URLs are derived locally with zero provider dependency', () => {
+  assert.equal(
+    resolver.spotifyTrackUrlFromId('SyntheticSpotifyTrack1'),
+    'https://open.spotify.com/track/SyntheticSpotifyTrack1',
+  );
+  assert.equal(resolver.spotifyTrackUrlFromId('bad/id'), null);
+  assert.equal(resolver.spotifyTrackUrlFromId(''), null);
+  const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()] });
+  assert.equal(evidence.items[0].spotifyTrackUrl, 'https://open.spotify.com/track/SyntheticSpotifyTrack1');
 });
 
 test('missing or conflicting release text becomes tier C rather than being guessed', () => {
@@ -128,6 +165,15 @@ test('trusted source release identity strengthens tier B and must match the exac
   });
   assert.equal(wrongEdition.results[0].status, 'unresolved');
   assert.equal(wrongEdition.results[0].reason, 'catalogue_release_mismatch');
+});
+
+test('generic future releaseMbid is not silently claimed as MusicBrainz-owned evidence', () => {
+  const evidence = resolver.buildCatalogueEvidence({
+    bands: [band()],
+    events: [event({ releaseTitle: null, releaseMbid: RELEASE })],
+  });
+  assert.equal(evidence.items[0].sourceMusicbrainzReleaseMbid, null);
+  assert.equal(evidence.items[0].evidenceTier, 'C');
 });
 
 test('conflicting trusted source release identities are quarantined as tier E', () => {
@@ -182,6 +228,21 @@ test('provider-level terminal retry and unknown states remain held even when roo
       status === 'future_status' ? 'durable_provider_musicbrainz_unknown_status' : `durable_provider_musicbrainz_${status}`,
     );
   }
+});
+
+test('malformed provider containers and entries fail closed into held evidence', () => {
+  const malformedContainer = identityRecord('unresolved');
+  malformedContainer.records['spotify:SyntheticSpotifyTrack1'].providers = [];
+  const containerEvidence = resolver.buildCatalogueEvidence({
+    bands: [band()], events: [event()], trackIdentities: malformedContainer,
+  });
+  assert.equal(containerEvidence.items[0].evidenceTier, 'E');
+
+  const malformedEntry = identityRecord('unresolved', { musicbrainz: {} });
+  const entryEvidence = resolver.buildCatalogueEvidence({
+    bands: [band()], events: [event()], trackIdentities: malformedEntry,
+  });
+  assert.equal(entryEvidence.items[0].evidenceTier, 'E');
 });
 
 test('tier B resolves only one exact artist + recording + release candidate', () => {
@@ -249,7 +310,6 @@ test('tier C may resolve only a unique exact-title recording for the trusted art
 });
 
 test('trusted MusicBrainz artist boundary rejects same-title recordings by another artist', () => {
-  const OTHER_ARTIST = '66666666-6666-4666-8666-666666666666';
   const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()] });
   const result = resolver.resolveCatalogueEvidence({
     evidence,
@@ -257,6 +317,96 @@ test('trusted MusicBrainz artist boundary rejects same-title recordings by anoth
   });
   assert.equal(result.results[0].status, 'unresolved');
   assert.equal(result.results[0].reason, 'catalogue_no_match');
+});
+
+test('MusicBrainz catalogue pages normalize sequential pagination without provider side effects', () => {
+  const firstPayload = musicBrainzPage({ total: 2 });
+  const before = structuredClone(firstPayload);
+  const first = resolver.parseMusicBrainzCataloguePage({ artistMbid: ARTIST, payload: firstPayload, expectedOffset: 0 });
+  assert.deepEqual(firstPayload, before);
+  assert.equal(first.nextOffset, 1);
+  assert.equal(first.totalCount, 2);
+  assert.equal(first.complete, false);
+  assert.equal(first.recordings[0].recordingMbid, RECORDING);
+  assert.equal(first.recordings[0].releases[0].releaseMbid, RELEASE);
+
+  const initial = resolver.mergeCataloguePage(null, first);
+  assert.equal(initial.artists[ARTIST].nextOffset, 1);
+  assert.equal(initial.artists[ARTIST].complete, false);
+
+  const secondPayload = musicBrainzPage({
+    offset: 1,
+    total: 2,
+    recordings: [musicBrainzRecording({ id: RECORDING_2, title: 'Second Song', releases: [] })],
+  });
+  const second = resolver.parseMusicBrainzCataloguePage({ artistMbid: ARTIST, payload: secondPayload, expectedOffset: 1 });
+  const completed = resolver.mergeCataloguePage(initial, second);
+  assert.equal(completed.artists[ARTIST].recordings.length, 2);
+  assert.equal(completed.artists[ARTIST].nextOffset, 2);
+  assert.equal(completed.artists[ARTIST].complete, true);
+});
+
+test('MusicBrainz catalogue pagination and artist boundaries fail closed', () => {
+  assert.throws(
+    () => resolver.parseMusicBrainzCataloguePage({ artistMbid: ARTIST, payload: musicBrainzPage({ offset: 1 }), expectedOffset: 0 }),
+    /pagination/,
+  );
+  assert.throws(
+    () => resolver.parseMusicBrainzCataloguePage({ artistMbid: ARTIST, payload: musicBrainzPage({ total: 2, recordings: [] }) }),
+    /pagination/,
+  );
+  assert.throws(
+    () => resolver.parseMusicBrainzCataloguePage({
+      artistMbid: ARTIST,
+      payload: musicBrainzPage({ recordings: [musicBrainzRecording({ 'artist-credit': [{ artist: { id: OTHER_ARTIST } }] })] }),
+    }),
+    /does not credit requested artist/,
+  );
+
+  const first = resolver.parseMusicBrainzCataloguePage({ artistMbid: ARTIST, payload: musicBrainzPage({ total: 2 }) });
+  const initial = resolver.mergeCataloguePage(null, first);
+  const changedTotal = resolver.parseMusicBrainzCataloguePage({
+    artistMbid: ARTIST,
+    payload: musicBrainzPage({
+      offset: 1,
+      total: 3,
+      recordings: [musicBrainzRecording({ id: RECORDING_2, title: 'Second Song', releases: [] })],
+    }),
+    expectedOffset: 1,
+  });
+  assert.throws(() => resolver.mergeCataloguePage(initial, changedTotal), /total count changed/);
+});
+
+test('catalogue and provider-page duplicate identities fail closed', () => {
+  const duplicateRelease = cache([recording({
+    releases: [
+      { releaseMbid: RELEASE, title: 'Exact Album' },
+      { releaseMbid: RELEASE, title: 'Exact Album Duplicate' },
+    ],
+  })]);
+  assert.throws(() => resolver.validateCatalogueCache(duplicateRelease), /Duplicate catalogue release identity/);
+
+  const duplicateProviderRelease = musicBrainzPage({ recordings: [musicBrainzRecording({
+    releases: [
+      { id: RELEASE, title: 'Exact Album' },
+      { id: RELEASE, title: 'Duplicate Album' },
+    ],
+  })] });
+  assert.throws(
+    () => resolver.parseMusicBrainzCataloguePage({ artistMbid: ARTIST, payload: duplicateProviderRelease }),
+    /Duplicate MusicBrainz release identity/,
+  );
+});
+
+test('catalogue checkpoints reject inconsistent completion state', () => {
+  assert.deepEqual(
+    resolver.normalizeCatalogueCheckpoint({ artistMbid: ARTIST, nextOffset: 1, totalCount: 2, complete: false }),
+    { schemaVersion: 1, artistMbid: ARTIST, nextOffset: 1, totalCount: 2, complete: false },
+  );
+  assert.throws(
+    () => resolver.normalizeCatalogueCheckpoint({ artistMbid: ARTIST, nextOffset: 1, totalCount: 2, complete: true }),
+    /Invalid catalogue checkpoint/,
+  );
 });
 
 test('unresolved eligible items become bounded tier D batch-bridge candidates', () => {
@@ -318,7 +468,7 @@ test('cache validation is fail-closed but does not mutate unknown future fields'
   assert.throws(() => resolver.validateCatalogueCache(duplicate), /Duplicate catalogue recording identity/);
 });
 
-test('invalid evidence documents and items fail closed', () => {
+test('invalid and duplicate evidence documents fail closed', () => {
   assert.throws(
     () => resolver.resolveCatalogueEvidence({ evidence: null, catalogueCache: cache([]) }),
     /Invalid catalogue evidence/,
@@ -326,6 +476,20 @@ test('invalid evidence documents and items fail closed', () => {
   const result = resolver.resolveFromCatalogue(null, cache([]));
   assert.equal(result.status, 'exception');
   assert.equal(result.reason, 'invalid_evidence_item');
+
+  const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()] });
+  evidence.items.push(structuredClone(evidence.items[0]));
+  assert.throws(() => resolver.validateEvidenceDocument(evidence), /Duplicate catalogue evidence item/);
+});
+
+test('invalid local result statuses cannot be treated as unresolved work', () => {
+  assert.throws(
+    () => resolver.validateLocalResults({
+      schemaVersion: 1,
+      results: [{ trackKey: 'synthetic-key', status: 'future_status' }],
+    }),
+    /Invalid catalogue resolution result/,
+  );
 });
 
 test('aggregate diagnostics expose counts only', () => {
