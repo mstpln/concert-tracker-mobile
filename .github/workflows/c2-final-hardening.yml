@@ -1,0 +1,160 @@
+name: Apply final C2 contract hardening
+
+on:
+  push:
+    branches: [feature/listening-catalogue-resolver-c2]
+    paths:
+      - .github/workflows/c2-final-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/listening-catalogue-resolver-c2
+          fetch-depth: 0
+      - name: Apply focused fail-closed corrections
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/listening-catalogue-resolver.js')
+          text = path.read_text()
+
+          old = """  if (!incoming || existing.recordingMbid !== incoming.recordingMbid
+    || inventoryLib.normalizeText(existing.title) !== inventoryLib.normalizeText(incoming.title)) {
+    throw new Error('Conflicting catalogue recording identity.');
+  }
+  const byRelease = new Map((existing.releases || []).map((release) => [releaseRowKey(release), clone(release)]));
+"""
+          new = """  if (!incoming || existing.recordingMbid !== incoming.recordingMbid
+    || inventoryLib.normalizeText(existing.title) !== inventoryLib.normalizeText(incoming.title)) {
+    throw new Error('Conflicting catalogue recording identity.');
+  }
+  const existingArtists = normalizedMbidList(existing.artistMbids).sort();
+  const incomingArtists = normalizedMbidList(incoming.artistMbids).sort();
+  if (!existingArtists.length || !incomingArtists.length
+    || existingArtists.join('\\n') !== incomingArtists.join('\\n')) {
+    throw new Error('Conflicting catalogue recording artist identity.');
+  }
+  const byRelease = new Map((existing.releases || []).map((release) => [releaseRowKey(release), clone(release)]));
+"""
+          if old not in text:
+              raise SystemExit('merge recording anchor missing')
+          text = text.replace(old, new, 1)
+
+          old = """  for (const item of evidence.items) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)
+      || !clean(item.trackKey) || !EVIDENCE_TIERS.has(item.evidenceTier)) throw new Error('Invalid catalogue evidence item.');
+    if (seen.has(item.trackKey)) throw new Error('Duplicate catalogue evidence item.');
+    seen.add(item.trackKey);
+  }
+"""
+          new = """  for (const item of evidence.items) {
+    const trackKey = typeof item?.trackKey === 'string' ? clean(item.trackKey) : null;
+    if (!item || typeof item !== 'object' || Array.isArray(item)
+      || !trackKey || item.trackKey !== trackKey || !EVIDENCE_TIERS.has(item.evidenceTier)) {
+      throw new Error('Invalid catalogue evidence item.');
+    }
+    if (seen.has(trackKey)) throw new Error('Duplicate catalogue evidence item.');
+    seen.add(trackKey);
+  }
+"""
+          if old not in text:
+              raise SystemExit('evidence validation anchor missing')
+          text = text.replace(old, new, 1)
+
+          old = """  for (const result of localResults.results) {
+    if (!result || typeof result !== 'object' || Array.isArray(result) || !clean(result.trackKey)
+      || !EVIDENCE_TIERS.has(result.evidenceTier) || !LOCAL_RESULT_STATUSES.has(result.status)) throw new Error('Invalid catalogue resolution result.');
+    if (seen.has(result.trackKey)) throw new Error('Duplicate catalogue resolution result.');
+    seen.add(result.trackKey);
+  }
+"""
+          new = """  for (const result of localResults.results) {
+    const trackKey = typeof result?.trackKey === 'string' ? clean(result.trackKey) : null;
+    if (!result || typeof result !== 'object' || Array.isArray(result) || !trackKey || result.trackKey !== trackKey
+      || !EVIDENCE_TIERS.has(result.evidenceTier) || !LOCAL_RESULT_STATUSES.has(result.status)) {
+      throw new Error('Invalid catalogue resolution result.');
+    }
+    if (seen.has(trackKey)) throw new Error('Duplicate catalogue resolution result.');
+    seen.add(trackKey);
+  }
+"""
+          if old not in text:
+              raise SystemExit('local result validation anchor missing')
+          text = text.replace(old, new, 1)
+
+          old = """  const authoritativeResults = localResults || currentLocalResults;
+  const limit = Number.isInteger(maxItems) ? Math.max(1, Math.min(MAX_BATCH_SIZE, maxItems)) : 25;
+"""
+          new = """  const authoritativeResults = localResults || currentLocalResults;
+  if (!Number.isInteger(maxItems) || maxItems < 1) throw new Error('Invalid batch size.');
+  const limit = Math.min(MAX_BATCH_SIZE, maxItems);
+"""
+          if old not in text:
+              raise SystemExit('batch size anchor missing')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+
+          test_path = Path('test/listening-catalogue-resolver-hardening.test.js')
+          tests = test_path.read_text()
+          anchor = """test('catalogue row merge preserves unknown fields while enriching compatible release context', () => {
+"""
+          addition = """test('repeated recording identity rejects contradictory artist membership', () => {
+  assert.throws(
+    () => resolver.mergeRecordingRows(
+      recording(),
+      recording({ artistMbids: [ARTIST, OTHER_ARTIST] }),
+    ),
+    /Conflicting catalogue recording artist identity/,
+  );
+});
+
+test('evidence and local result track keys must be canonical non-empty strings', () => {
+  const evidence = minimalEvidence('B');
+  evidence.items[0].trackKey = ' spotify:SyntheticSpotifyTrack1 ';
+  assert.throws(() => resolver.validateEvidenceDocument(evidence), /Invalid catalogue evidence item/);
+
+  const local = {
+    schemaVersion: 1,
+    results: [{ trackKey: 123, evidenceTier: 'B', status: 'unresolved', reason: 'catalogue_no_match' }],
+  };
+  assert.throws(() => resolver.validateLocalResults(local), /Invalid catalogue resolution result/);
+});
+
+test('batch bridge rejects non-positive or non-integer caller limits', () => {
+  const evidence = minimalEvidence('B');
+  const catalogueCache = completeCache([]);
+  for (const maxItems of [0, -1, 1.5, '1']) {
+    assert.throws(
+      () => resolver.planListenBrainzBatchBridge({ evidence, catalogueCache, maxItems }),
+      /Invalid batch size/,
+    );
+  }
+  assert.equal(
+    resolver.planListenBrainzBatchBridge({ evidence, catalogueCache, maxItems: 101 }).maxItems,
+    resolver.MAX_BATCH_SIZE,
+  );
+});
+
+"""
+          if anchor not in tests:
+              raise SystemExit('hardening test anchor missing')
+          tests = tests.replace(anchor, addition + anchor, 1)
+          test_path.write_text(tests)
+          PY
+      - name: Commit corrections and remove helper workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/c2-final-hardening.yml
+          git add scripts/listening-catalogue-resolver.js test/listening-catalogue-resolver-hardening.test.js
+          git commit -m 'fix: harden C2 resolver contracts'
+          git push origin HEAD:feature/listening-catalogue-resolver-c2
