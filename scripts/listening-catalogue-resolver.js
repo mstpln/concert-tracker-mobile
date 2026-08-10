@@ -11,6 +11,7 @@ const HELD_PROVIDER_STATUSES = new Set(['needs_review', 'retry', 'error', 'no_ma
 const KNOWN_PROVIDERS = ['spotify', 'musicbrainz', 'listenbrainz'];
 const LOCAL_RESULT_STATUSES = new Set(['complete', 'resolved', 'unresolved', 'ambiguous', 'exception']);
 const EVIDENCE_TIERS = new Set(['A', 'B', 'C', 'D', 'E']);
+const BRIDGE_UNRESOLVED_REASONS = new Set(['catalogue_no_match', 'catalogue_release_mismatch']);
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -337,6 +338,7 @@ function validateCatalogueCache(cache) {
         totalCount: artist.totalCount,
         complete: artist.complete,
       });
+      if (artist.sourceEntity !== 'release') throw new Error('Invalid catalogue source entity.');
     }
     if (!Array.isArray(artist.recordings)) throw new Error('Invalid catalogue recordings.');
     const seenRecordings = new Set();
@@ -465,6 +467,13 @@ function uniqueRecording(candidates) {
   return byMbid.size === 1 ? [...byMbid.values()][0] : null;
 }
 
+function catalogueSnapshotComplete(artistCatalogue) {
+  if (!artistCatalogue) return false;
+  const hasCheckpoint = ['nextOffset', 'totalCount', 'complete']
+    .some((field) => Object.prototype.hasOwnProperty.call(artistCatalogue, field));
+  return hasCheckpoint ? artistCatalogue.complete === true : true;
+}
+
 function resolveFromCatalogue(item, cache) {
   validateCatalogueCache(cache);
   if (!item || typeof item !== 'object' || Array.isArray(item)) return { status: 'exception', reason: 'invalid_evidence_item' };
@@ -484,7 +493,7 @@ function resolveFromCatalogue(item, cache) {
   }
   const artistCatalogue = cache.artists[artistMbid];
   if (!artistCatalogue) return { status: 'unresolved', reason: 'catalogue_missing' };
-  if (artistCatalogue.complete !== true) return { status: 'unresolved', reason: 'catalogue_incomplete' };
+  if (!catalogueSnapshotComplete(artistCatalogue)) return { status: 'unresolved', reason: 'catalogue_incomplete' };
 
   const titleCandidates = candidateRecordings(item, artistCatalogue);
   if (!titleCandidates.length) return { status: 'unresolved', reason: 'catalogue_no_match' };
@@ -557,7 +566,10 @@ function planListenBrainzBatchBridge({ evidence, localResults, maxItems = 25 } =
     if (!local || local.evidenceTier !== item.evidenceTier) { skipped.notUnresolvedLocally += 1; continue; }
     if (local.status === 'resolved') { skipped.resolvedLocally += 1; continue; }
     if (local.status === 'ambiguous') { skipped.ambiguous += 1; continue; }
-    if (local.status !== 'unresolved') { skipped.notUnresolvedLocally += 1; continue; }
+    if (local.status !== 'unresolved' || !BRIDGE_UNRESOLVED_REASONS.has(local.reason)) {
+      skipped.notUnresolvedLocally += 1;
+      continue;
+    }
     if (!['B', 'C'].includes(item.evidenceTier)
       || item.routingHoldReason
       || !inventoryLib.validMbid(item.trustedMusicbrainzArtistMbid)
@@ -609,6 +621,7 @@ module.exports = {
   KNOWN_PROVIDERS,
   LOCAL_RESULT_STATUSES,
   EVIDENCE_TIERS,
+  BRIDGE_UNRESOLVED_REASONS,
   releaseText,
   sourceReleaseMbids,
   spotifyTrackUrlFromId,
@@ -627,6 +640,7 @@ module.exports = {
   validateLocalResults,
   candidateRecordings,
   releaseMatchesEvidence,
+  catalogueSnapshotComplete,
   resolveFromCatalogue,
   resolveCatalogueEvidence,
   planListenBrainzBatchBridge,
