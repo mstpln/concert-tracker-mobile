@@ -220,10 +220,11 @@ test('durable terminal and retry states remain held from catalogue and bridge au
     const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()], trackIdentities });
     assert.equal(evidence.items[0].evidenceTier, 'E');
     assert.equal(evidence.items[0].routingHoldReason, `durable_identity_${status}`);
-    const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: cache([recording()]) });
+    const catalogueCache = cache([recording()]);
+    const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache });
     assert.equal(local.results[0].status, 'exception');
     assert.equal(local.results[0].reason, `durable_identity_${status}`);
-    const batch = resolver.planListenBrainzBatchBridge({ evidence, localResults: local });
+    const batch = resolver.planListenBrainzBatchBridge({ evidence, catalogueCache, localResults: local });
     assert.equal(batch.count, 0);
     assert.equal(batch.skipped.notUnresolvedLocally, 1);
     assert.deepEqual(trackIdentities, before);
@@ -479,40 +480,40 @@ test('unresolved eligible items become bounded tier D batch-bridge candidates', 
       event({ stableListenId: 'listen-2', spotifyTrackId: 'SyntheticSpotifyTrack2', recordingTitle: 'Second Song', releaseTitle: null }),
     ],
   });
-  const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: cache([]) });
-  const batch = resolver.planListenBrainzBatchBridge({ evidence, localResults: local, maxItems: 1 });
+  const catalogueCache = cache([]);
+  const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache });
+  const batch = resolver.planListenBrainzBatchBridge({ evidence, catalogueCache, localResults: local, maxItems: 1 });
   assert.equal(batch.count, 1);
   assert.equal(batch.items[0].evidenceTier, 'D');
   assert.equal(batch.items[0].trustedMusicbrainzArtistMbid, ARTIST);
   assert.equal(batch.skipped.overflow, 1);
 });
 
-test('batch bridge requires an explicit unresolved local catalogue result', () => {
+test('batch bridge recomputes current catalogue state and rejects stale supplied results', () => {
   const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()] });
-  assert.throws(
-    () => resolver.planListenBrainzBatchBridge({ evidence }),
-    /Invalid catalogue resolution results/,
-  );
+  const catalogueCache = cache([]);
+  const currentPlan = resolver.planListenBrainzBatchBridge({ evidence, catalogueCache });
+  assert.equal(currentPlan.count, 1);
 
-  const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: cache([]) });
+  const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache });
   local.results = [];
-  const batch = resolver.planListenBrainzBatchBridge({ evidence, localResults: local });
-  assert.equal(batch.count, 0);
-  assert.equal(batch.skipped.notUnresolvedLocally, 1);
+  assert.throws(
+    () => resolver.planListenBrainzBatchBridge({ evidence, catalogueCache, localResults: local }),
+    /Stale catalogue resolution results/,
+  );
 });
 
 test('locally resolved and ambiguous items are excluded from the ListenBrainz batch bridge', () => {
   const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()] });
-  const resolved = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: cache([recording()]) });
-  const resolvedBatch = resolver.planListenBrainzBatchBridge({ evidence, localResults: resolved });
+  const resolvedCache = cache([recording()]);
+  const resolved = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: resolvedCache });
+  const resolvedBatch = resolver.planListenBrainzBatchBridge({ evidence, catalogueCache: resolvedCache, localResults: resolved });
   assert.equal(resolvedBatch.count, 0);
   assert.equal(resolvedBatch.skipped.resolvedLocally, 1);
 
-  const ambiguous = resolver.resolveCatalogueEvidence({
-    evidence,
-    catalogueCache: cache([recording(), recording({ recordingMbid: RECORDING_2 })]),
-  });
-  const ambiguousBatch = resolver.planListenBrainzBatchBridge({ evidence, localResults: ambiguous });
+  const ambiguousCache = cache([recording(), recording({ recordingMbid: RECORDING_2 })]);
+  const ambiguous = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: ambiguousCache });
+  const ambiguousBatch = resolver.planListenBrainzBatchBridge({ evidence, catalogueCache: ambiguousCache, localResults: ambiguous });
   assert.equal(ambiguousBatch.count, 0);
   assert.equal(ambiguousBatch.skipped.ambiguous, 1);
 });
@@ -553,8 +554,9 @@ test('invalid local result statuses cannot be treated as unresolved work', () =>
 
 test('aggregate diagnostics expose counts only', () => {
   const evidence = resolver.buildCatalogueEvidence({ bands: [band()], events: [event()] });
-  const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache: cache([]) });
-  const batch = resolver.planListenBrainzBatchBridge({ evidence, localResults: local });
+  const catalogueCache = cache([]);
+  const local = resolver.resolveCatalogueEvidence({ evidence, catalogueCache });
+  const batch = resolver.planListenBrainzBatchBridge({ evidence, catalogueCache, localResults: local });
   const diagnostics = resolver.safeResolverDiagnostics({ evidence, localResults: local, batchPlan: batch });
   const serialized = JSON.stringify(diagnostics);
   assert.equal(diagnostics.tiers.B, 1);
