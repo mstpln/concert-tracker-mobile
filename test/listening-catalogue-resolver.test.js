@@ -73,22 +73,36 @@ function musicBrainzRecording(overrides = {}) {
     id: RECORDING,
     title: 'Exact Song',
     'artist-credit': [{ artist: { id: ARTIST, name: 'Synthetic Artist' } }],
-    releases: [{
-      id: RELEASE,
-      title: 'Exact Album',
-      'release-group': { id: RELEASE_GROUP, title: 'Exact Album' },
-      futureReleaseField: { keep: true },
-    }],
-    futureRecordingField: { keep: true },
     ...overrides,
   };
 }
 
-function musicBrainzPage({ offset = 0, total = 1, recordings = [musicBrainzRecording()] } = {}) {
+function musicBrainzRelease(overrides = {}) {
+  const recordings = overrides.recordings || [musicBrainzRecording()];
+  const release = {
+    id: RELEASE,
+    title: 'Exact Album',
+    'release-group': { id: RELEASE_GROUP, title: 'Exact Album' },
+    media: [{
+      position: 1,
+      tracks: recordings.map((value, index) => ({
+        id: `track-${index + 1}`,
+        position: index + 1,
+        recording: value,
+      })),
+    }],
+    futureReleaseField: { keep: true },
+    ...overrides,
+  };
+  delete release.recordings;
+  return release;
+}
+
+function musicBrainzPage({ offset = 0, total = 1, releases = [musicBrainzRelease()] } = {}) {
   return {
-    'recording-offset': offset,
-    'recording-count': total,
-    recordings,
+    'release-offset': offset,
+    'release-count': total,
+    releases,
     futurePageField: { keep: true },
   };
 }
@@ -319,48 +333,80 @@ test('trusted MusicBrainz artist boundary rejects same-title recordings by anoth
   assert.equal(result.results[0].reason, 'catalogue_no_match');
 });
 
-test('MusicBrainz catalogue pages normalize sequential pagination without provider side effects', () => {
-  const firstPayload = musicBrainzPage({ total: 2 });
+test('MusicBrainz catalogue pages normalize supported release-browse pagination without provider side effects', () => {
+  const firstPayload = musicBrainzPage({
+    total: 2,
+    releases: [musicBrainzRelease({
+      recordings: [
+        musicBrainzRecording(),
+        musicBrainzRecording({ id: RECORDING_2, title: 'Second Song' }),
+      ],
+    })],
+  });
   const before = structuredClone(firstPayload);
   const first = resolver.parseMusicBrainzCataloguePage({ artistMbid: ARTIST, payload: firstPayload, expectedOffset: 0 });
   assert.deepEqual(firstPayload, before);
+  assert.equal(first.sourceEntity, 'release');
+  assert.equal(first.releaseCount, 1);
+  assert.equal(first.recordings.length, 2);
   assert.equal(first.nextOffset, 1);
   assert.equal(first.totalCount, 2);
   assert.equal(first.complete, false);
-  assert.equal(first.recordings[0].recordingMbid, RECORDING);
   assert.equal(first.recordings[0].releases[0].releaseMbid, RELEASE);
 
   const initial = resolver.mergeCataloguePage(null, first);
   assert.equal(initial.artists[ARTIST].nextOffset, 1);
+  assert.equal(initial.artists[ARTIST].recordings.length, 2);
   assert.equal(initial.artists[ARTIST].complete, false);
 
-  const secondPayload = musicBrainzPage({
-    offset: 1,
-    total: 2,
-    recordings: [musicBrainzRecording({ id: RECORDING_2, title: 'Second Song', releases: [] })],
+  const secondRelease = musicBrainzRelease({
+    id: RELEASE_2,
+    title: 'Second Album',
+    'release-group': { id: RELEASE_GROUP },
+    recordings: [musicBrainzRecording()],
   });
-  const second = resolver.parseMusicBrainzCataloguePage({ artistMbid: ARTIST, payload: secondPayload, expectedOffset: 1 });
+  const second = resolver.parseMusicBrainzCataloguePage({
+    artistMbid: ARTIST,
+    payload: musicBrainzPage({ offset: 1, total: 2, releases: [secondRelease] }),
+    expectedOffset: 1,
+  });
   const completed = resolver.mergeCataloguePage(initial, second);
   assert.equal(completed.artists[ARTIST].recordings.length, 2);
+  assert.equal(completed.artists[ARTIST].recordings.find((row) => row.recordingMbid === RECORDING).releases.length, 2);
   assert.equal(completed.artists[ARTIST].nextOffset, 2);
   assert.equal(completed.artists[ARTIST].complete, true);
 });
 
-test('MusicBrainz catalogue pagination and artist boundaries fail closed', () => {
+test('MusicBrainz release browsing ignores valid other-artist tracks but fails closed on malformed provider rows', () => {
+  const mixed = resolver.parseMusicBrainzCataloguePage({
+    artistMbid: ARTIST,
+    payload: musicBrainzPage({ releases: [musicBrainzRelease({
+      recordings: [
+        musicBrainzRecording(),
+        musicBrainzRecording({ id: RECORDING_2, 'artist-credit': [{ artist: { id: OTHER_ARTIST } }] }),
+      ],
+    })] }),
+  });
+  assert.equal(mixed.recordings.length, 1);
+  assert.equal(mixed.recordings[0].recordingMbid, RECORDING);
+
+  assert.throws(
+    () => resolver.parseMusicBrainzCataloguePage({
+      artistMbid: ARTIST,
+      payload: musicBrainzPage({ releases: [musicBrainzRelease({ recordings: [{ id: RECORDING, title: 'Broken' }] })] }),
+    }),
+    /artist credit/,
+  );
+});
+
+test('MusicBrainz catalogue pagination and total-count drift fail closed', () => {
   assert.throws(
     () => resolver.parseMusicBrainzCataloguePage({ artistMbid: ARTIST, payload: musicBrainzPage({ offset: 1 }), expectedOffset: 0 }),
     /pagination/,
   );
   assert.throws(
-    () => resolver.parseMusicBrainzCataloguePage({ artistMbid: ARTIST, payload: musicBrainzPage({ total: 2, recordings: [] }) }),
+    () => resolver.parseMusicBrainzCataloguePage({ artistMbid: ARTIST, payload: musicBrainzPage({ total: 2, releases: [] }) }),
     /pagination/,
-  );
-  assert.throws(
-    () => resolver.parseMusicBrainzCataloguePage({
-      artistMbid: ARTIST,
-      payload: musicBrainzPage({ recordings: [musicBrainzRecording({ 'artist-credit': [{ artist: { id: OTHER_ARTIST } }] })] }),
-    }),
-    /does not credit requested artist/,
   );
 
   const first = resolver.parseMusicBrainzCataloguePage({ artistMbid: ARTIST, payload: musicBrainzPage({ total: 2 }) });
@@ -370,14 +416,37 @@ test('MusicBrainz catalogue pagination and artist boundaries fail closed', () =>
     payload: musicBrainzPage({
       offset: 1,
       total: 3,
-      recordings: [musicBrainzRecording({ id: RECORDING_2, title: 'Second Song', releases: [] })],
+      releases: [musicBrainzRelease({ id: RELEASE_2 })],
     }),
     expectedOffset: 1,
   });
   assert.throws(() => resolver.mergeCataloguePage(initial, changedTotal), /total count changed/);
 });
 
-test('catalogue and provider-page duplicate identities fail closed', () => {
+test('duplicate provider releases fail closed while repeated recordings across releases merge safely', () => {
+  assert.throws(
+    () => resolver.parseMusicBrainzCataloguePage({
+      artistMbid: ARTIST,
+      payload: musicBrainzPage({ total: 2, releases: [musicBrainzRelease(), musicBrainzRelease()] }),
+    }),
+    /Duplicate MusicBrainz release identity/,
+  );
+
+  const page = resolver.parseMusicBrainzCataloguePage({
+    artistMbid: ARTIST,
+    payload: musicBrainzPage({
+      total: 2,
+      releases: [
+        musicBrainzRelease(),
+        musicBrainzRelease({ id: RELEASE_2, title: 'Second Album' }),
+      ],
+    }),
+  });
+  assert.equal(page.recordings.length, 1);
+  assert.equal(page.recordings[0].releases.length, 2);
+});
+
+test('catalogue cache rejects duplicate recording and release rows', () => {
   const duplicateRelease = cache([recording({
     releases: [
       { releaseMbid: RELEASE, title: 'Exact Album' },
@@ -386,16 +455,8 @@ test('catalogue and provider-page duplicate identities fail closed', () => {
   })]);
   assert.throws(() => resolver.validateCatalogueCache(duplicateRelease), /Duplicate catalogue release identity/);
 
-  const duplicateProviderRelease = musicBrainzPage({ recordings: [musicBrainzRecording({
-    releases: [
-      { id: RELEASE, title: 'Exact Album' },
-      { id: RELEASE, title: 'Duplicate Album' },
-    ],
-  })] });
-  assert.throws(
-    () => resolver.parseMusicBrainzCataloguePage({ artistMbid: ARTIST, payload: duplicateProviderRelease }),
-    /Duplicate MusicBrainz release identity/,
-  );
+  const duplicateRecording = cache([recording(), recording()]);
+  assert.throws(() => resolver.validateCatalogueCache(duplicateRecording), /Duplicate catalogue recording identity/);
 });
 
 test('catalogue checkpoints reject inconsistent completion state', () => {
@@ -463,9 +524,6 @@ test('cache validation is fail-closed but does not mutate unknown future fields'
 
   const invalid = cache([recording({ recordingMbid: 'not-an-mbid' })]);
   assert.throws(() => resolver.validateCatalogueCache(invalid), /Invalid catalogue recording identity/);
-
-  const duplicate = cache([recording(), recording()]);
-  assert.throws(() => resolver.validateCatalogueCache(duplicate), /Duplicate catalogue recording identity/);
 });
 
 test('invalid and duplicate evidence documents fail closed', () => {
@@ -486,7 +544,7 @@ test('invalid local result statuses cannot be treated as unresolved work', () =>
   assert.throws(
     () => resolver.validateLocalResults({
       schemaVersion: 1,
-      results: [{ trackKey: 'synthetic-key', status: 'future_status' }],
+      results: [{ trackKey: 'synthetic-key', evidenceTier: 'B', status: 'future_status' }],
     }),
     /Invalid catalogue resolution result/,
   );
