@@ -141,12 +141,15 @@ function buildAlbumGroups({ events = [], bands = [], metadata = {} } = {}) {
     const knownRecord = knownAlbumId
       ? group.knownArtwork.find((record) => record.spotifyAlbumId === knownAlbumId) || null
       : null;
+    const representativeTrackId = knownAlbumId
+      ? trackIds.find((trackId) => known.get(trackId)?.spotifyAlbumId === knownAlbumId) || trackIds[0]
+      : trackIds[0];
     safe.push({
       key: group.key,
       localBandId: group.localBandId,
       normalizedReleaseTitle: group.normalizedReleaseTitle,
       trackIds,
-      representativeTrackId: trackIds[0],
+      representativeTrackId,
       knownAlbumId,
       knownRecord,
     });
