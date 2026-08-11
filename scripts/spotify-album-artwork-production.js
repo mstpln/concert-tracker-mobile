@@ -178,7 +178,7 @@ async function runAlbumArtwork({
     unsafeEvents: initialPlan.summary.unsafeEvents,
     reusedAlbumGroups: initialPlan.summary.reusableAlbumGroups,
     providerAlbumGroupsPlanned: providerGroups.length,
-    providerAlbumGroupsAttempted,
+    providerAlbumGroupsAttempted: providerGroupsAttempted,
     providerAlbumGroupsResolved,
     providerGroupsNoArtwork,
     representativeRecordsAdded,
