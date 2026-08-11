@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const resolver = require('../scripts/listening-catalogue-resolver');
 const acquisition = require('../scripts/listening-catalogue-acquisition');
 const persistence = require('../scripts/lib/listeningCataloguePersistence');
+const config = require('../scripts/lib/config');
 const {
   createMusicBrainzCatalogueAdapter,
   createListenBrainzBatchAdapter,
@@ -34,6 +35,18 @@ function page(payload, expectedOffset = 0) {
   return resolver.parseMusicBrainzCataloguePage({ artistMbid: ARTIST, payload, expectedOffset });
 }
 
+function partialArtist(artistMbid, startedAt = '2026-08-11T00:00:00.000Z') {
+  return {
+    artistMbid,
+    sourceEntity: 'release',
+    recordings: [],
+    releaseMbids: [],
+    coverageScopes: [],
+    scopeCheckpoints: {},
+    refreshStartedAt: startedAt,
+  };
+}
+
 test('C3 MusicBrainz adapter uses the two approved release browse scopes', async () => {
   const seen = [];
   const adapter = createMusicBrainzCatalogueAdapter({
@@ -51,7 +64,8 @@ test('C3 MusicBrainz adapter uses the two approved release browse scopes', async
   assert.equal(seen[0].url.searchParams.get('limit'), '100');
   assert.equal(seen[0].url.searchParams.get('offset'), '0');
   assert.equal(seen[0].url.searchParams.get('inc'), 'recordings release-groups artist-credits');
-  assert.match(seen[0].options.headers['User-Agent'], /LiveVault|BANDMARKR/i);
+  assert.match(seen[0].options.headers['User-Agent'], /^BANDMARKR\/112 /);
+  assert.equal(config.MUSICBRAINZ.minDelayMs, 2000);
 });
 
 test('C3 MusicBrainz adapter defers transient failures without hidden retry', async () => {
@@ -129,17 +143,18 @@ test('acquisition persists every safe checkpoint and stops on provider retry', a
 
 test('catalogue persistence retries one unrelated ETag conflict but rejects same-artist conflict', async () => {
   const now = Date.parse('2026-08-11T00:00:00Z');
-  let base = acquisition.startArtistRefresh(acquisition.emptyCatalogue(), ARTIST, now);
+  const base = acquisition.startArtistRefresh(acquisition.emptyCatalogue(), ARTIST, now);
   const next = acquisition.mergeScopePage(base, 'release_artist', page(releasePayload()), now);
   const otherArtist = '99999999-9999-4999-8999-999999999999';
   const latest = JSON.parse(JSON.stringify(base));
-  latest.artists[otherArtist] = { artistMbid: otherArtist, sourceEntity: 'release', recordings: [] };
+  latest.artists[otherArtist] = partialArtist(otherArtist);
   let writes = 0;
   const client = {
     async readJson() { return JSON.parse(JSON.stringify(latest)); },
     async writeJsonStrict(_path, value) {
       writes += 1;
       if (writes === 1) { const error = new Error('conflict'); error.code = 'ETAG_CONFLICT'; throw error; }
+      for (const key of Object.keys(latest)) delete latest[key];
       Object.assign(latest, JSON.parse(JSON.stringify(value)));
     },
   };
@@ -160,6 +175,43 @@ test('catalogue persistence retries one unrelated ETag conflict but rejects same
     (error) => error.code === 'CATALOGUE_ARTIST_CONFLICT',
   );
   assert.equal(attempts, 1);
+});
+
+test('integrated refresh carries unrelated ETag reconciliation through later checkpoints', async () => {
+  const otherArtist = '99999999-9999-4999-8999-999999999999';
+  let stored = acquisition.emptyCatalogue();
+  let firstWrite = true;
+  const client = {
+    async readJson() { return JSON.parse(JSON.stringify(stored)); },
+    async writeJsonStrict(_path, value) {
+      if (firstWrite) {
+        firstWrite = false;
+        stored.artists[otherArtist] = partialArtist(otherArtist);
+        const error = new Error('conflict');
+        error.code = 'ETAG_CONFLICT';
+        throw error;
+      }
+      stored = JSON.parse(JSON.stringify(value));
+    },
+  };
+  const provider = {
+    async releaseBrowse({ scope }) {
+      return scope === 'release_artist'
+        ? { kind: 'ok', data: releasePayload() }
+        : { kind: 'ok', data: releasePayload({ releaseMbid: RELEASE_B, recordingMbid: RECORDING_B, title: 'Track-only Song' }) };
+    },
+  };
+  const result = await persistence.refreshArtistCatalogue({
+    client,
+    artistMbid: ARTIST,
+    provider,
+    usage: { reserve: async () => true },
+    now: () => Date.parse('2026-08-11T00:00:00Z'),
+  });
+  assert.equal(result.kind, 'ok');
+  assert.ok(result.cache.artists[otherArtist]);
+  assert.ok(stored.artists[otherArtist]);
+  assert.equal(result.cache.artists[ARTIST].complete, true);
 });
 
 test('dormant ListenBrainz adapter is bounded and uses one authenticated POST', async () => {
