@@ -105,7 +105,7 @@ test('one known album artwork record makes the whole safe album group reusable w
   assert.equal(plan.summary.uniqueTracksInSafeGroups, 3);
 });
 
-test('materialization reuses album artwork for sibling tracks while preserving existing unknown fields', () => {
+test('representative persistence preserves unknown fields and writes only the exact looked-up track', () => {
   const group = core.buildAlbumGroups({
     bands,
     events: [event('TrackA'), event('TrackB')],
@@ -116,37 +116,37 @@ test('materialization reuses album artwork for sibling tracks while preserving e
     schemaVersion: 1,
     futureTopLevel: { keep: true },
     records: {
-      TrackB: {
-        ...metadataRecord('TrackB', 'Album123', null),
+      TrackA: {
+        ...metadataRecord('TrackA', null, null),
+        spotifyAlbumId: null,
+        spotifyAlbumUrl: null,
         futureField: 'keep-me',
       },
     },
   };
-  const output = core.materializeGroupRecords({
-    metadata,
-    group,
-    albumRecord: metadataRecord('TrackA'),
-  });
+  const output = core.mergeRepresentativeRecord(metadata, group, metadataRecord('TrackA'));
 
   assert.equal(output.futureTopLevel.keep, true);
   assert.equal(output.records.TrackA.spotifyAlbumId, 'Album123');
-  assert.equal(output.records.TrackB.spotifyAlbumId, 'Album123');
-  assert.equal(output.records.TrackB.artworkUrl, 'https://images.example.test/album.jpg');
-  assert.equal(output.records.TrackB.futureField, 'keep-me');
+  assert.equal(output.records.TrackA.artworkUrl, 'https://images.example.test/album.jpg');
+  assert.equal(output.records.TrackA.futureField, 'keep-me');
+  assert.equal(output.records.TrackA.albumGroupKey, group.key);
+  assert.equal(output.records.TrackA.source, 'spotify_exact_track_id');
+  assert.equal(output.records.TrackB, undefined);
 });
 
-test('materialization never overwrites a conflicting known album assignment', () => {
+test('representative persistence rejects a provider album that conflicts with already-known group identity', () => {
   const group = {
     key: 'album:test',
     representativeTrackId: 'TrackA',
+    knownAlbumId: 'KnownAlbum',
     trackIds: ['TrackA', 'TrackB'],
   };
-  const output = core.materializeGroupRecords({
-    metadata: { records: { TrackB: metadataRecord('TrackB', 'DifferentAlbum') } },
+  const output = core.mergeRepresentativeRecord(
+    { records: {} },
     group,
-    albumRecord: metadataRecord('TrackA', 'Album123'),
-  });
+    metadataRecord('TrackA', 'DifferentAlbum'),
+  );
 
-  assert.equal(output.records.TrackB.spotifyAlbumId, 'DifferentAlbum');
-  assert.equal(output.records.TrackA.spotifyAlbumId, 'Album123');
+  assert.equal(output, null);
 });
