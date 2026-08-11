@@ -202,7 +202,7 @@ function buildListenBrainzBatch({ plan, catalogueCache, localResults, maxItems =
     evidence: plan.evidence,
     catalogueCache,
     localResults,
-    maxItems: Math.min(MAX_LISTENBRAINZ_BATCH, maxItems),
+    maxItems: Math.min(LISTENBRAINZ_EXECUTION_ITEMS, maxItems),
   });
 }
 
