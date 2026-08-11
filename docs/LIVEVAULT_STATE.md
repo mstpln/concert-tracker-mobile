@@ -243,3 +243,14 @@ Review hardening preserves provider ownership and prevents partial catalogue sta
 The batch bridge recomputes current catalogue resolution before widening, so stale results from an older evidence tier or catalogue snapshot cannot be reused. Cache validation is performed once per evidence-resolution pass rather than once per item, while direct single-item resolution still validates its input cache. Ambiguous, missing, incomplete, partial-coverage, held and malformed states remain outside automatic widening.
 
 C2 changes only pure Node tooling, tests and documentation. It does not replace the Spotify-first v111 production entrypoint, call a live provider, add or write a production R2 catalogue object, change Worker allowlists, enable the planned six-hour maintenance schedule, modify production data, deploy, or authorize another historical backfill run. `APP_VERSION` and `CACHE_NAME_LITERAL` remain synchronized at v111, and `LIVEVAULT_BUILD_STATE.json` remains unchanged because its deterministic source facts have not changed.
+
+
+## Build C3 catalogue acquisition state
+
+This section supersedes the stale PR #104 review-state section above where the later facts differ. PR #104 merged successfully as `8774ec3a44d000023ef8f8becc1d601e8749d34d`; its C2 head was `861a023d3de8ddde0f146919f35b6f2ab35053d8`. C2 remains the merged production-inert catalogue resolver foundation.
+
+Build C3 is implemented on `feature/listening-catalogue-c3-v112` in PR #105. It adds safe provider adapters and durable catalogue-cache machinery around the merged C2 contract: exact MusicBrainz release browsing for both `release_artist` and `release_track_artist`, independent resumable scope checkpoints, deterministic multi-scope assembly, 30-day demand-driven freshness, the exact derived object `listening/musicbrainz-catalogue.json`, a 25 MiB absolute object ceiling plus structural limits, conditional ETag-safe persistence, exact data-maintenance-only Worker allowlisting, a dormant bounded authenticated ListenBrainz batch adapter, and aggregate-only diagnostics. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v112 and generated build state records v112.
+
+C3 does not reopen or migrate existing durable `needs_review`, `retry`, `error`, or `no_match` track/provider states. It does not alter immutable listening observations or user-owned/reviewed identity decisions. The current v111 historical backfill entrypoints are not connected to C3 and remain unauthorized for production use.
+
+C3 development and automated validation are synthetic/fake-backend only. No live MusicBrainz, ListenBrainz or Spotify call, production R2 read/write for the new catalogue, Worker deployment, production workflow, six-hour schedule activation or historical backfill execution is authorized by PR #105. Build C4 remains the separately authorized production activation/backfill slice.
