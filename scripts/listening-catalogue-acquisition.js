@@ -84,6 +84,7 @@ function validateDurableCatalogue(cache) {
   const entries = Object.entries(normalized.artists);
   if (entries.length > MAX_CATALOGUE_ARTISTS) throw new Error('Catalogue artist limit exceeded.');
   for (const [artistMbid, artist] of entries) {
+    if (artist.refreshStartedAt != null && !validDate(artist.refreshStartedAt)) throw new Error('Invalid catalogue refresh timestamp.');
     if (artist.scopeCheckpoints != null) {
       if (!artist.scopeCheckpoints || typeof artist.scopeCheckpoints !== 'object' || Array.isArray(artist.scopeCheckpoints)) {
         throw new Error('Invalid catalogue scope checkpoints.');
@@ -120,7 +121,8 @@ function validateDurableCatalogue(cache) {
       const fullyComplete = SUPPORTED_SCOPES.every((scope) => checkpoints[scope]?.complete === true);
       if (fullyComplete) {
         if (artist.complete !== true || artist.nextOffset !== artist.releaseMbids.length || artist.totalCount !== artist.releaseMbids.length
-          || !validDate(artist.refreshedAt) || !validDate(artist.freshUntil) || Date.parse(artist.freshUntil) <= Date.parse(artist.refreshedAt)) {
+          || !validDate(artist.refreshedAt) || !validDate(artist.freshUntil) || Date.parse(artist.freshUntil) <= Date.parse(artist.refreshedAt)
+          || artist.refreshStartedAt != null) {
           throw new Error('Invalid complete catalogue freshness state.');
         }
       } else if (artist.complete != null || artist.nextOffset != null || artist.totalCount != null || artist.refreshedAt != null || artist.freshUntil != null) {
@@ -185,6 +187,13 @@ function mergeScopePage(cache, scopeName, page, nowMs = Date.now()) {
   return base;
 }
 
+async function persistAndCarry(working, persistCheckpoint) {
+  const persisted = await persistCheckpoint(working);
+  if (persisted?.cache) return validateDurableCatalogue(persisted.cache);
+  if (persisted?.kind === resolver.CACHE_KIND) return validateDurableCatalogue(persisted);
+  return working;
+}
+
 async function acquireArtistCatalogue({
   cache,
   artistMbid,
@@ -201,7 +210,7 @@ async function acquireArtistCatalogue({
   let working = validateDurableCatalogue(cache);
   if (!working.artists[trustedArtist]?.scopeCheckpoints || !working.artists[trustedArtist]?.refreshStartedAt) {
     working = startArtistRefresh(working, trustedArtist, now());
-    await persistCheckpoint(working);
+    working = await persistAndCarry(working, persistCheckpoint);
   }
   let calls = 0;
   for (const scope of SUPPORTED_SCOPES) {
@@ -221,12 +230,12 @@ async function acquireArtistCatalogue({
       catch (error) {
         if (/total count changed/.test(error.message)) {
           working = startArtistRefresh(working, trustedArtist, now());
-          await persistCheckpoint(working);
+          working = await persistAndCarry(working, persistCheckpoint);
           return { kind: 'restart', reason: 'catalogue_total_changed', cache: working, calls, scope };
         }
         return { kind: 'error', reason: 'catalogue_merge_conflict', cache: working, calls, scope };
       }
-      await persistCheckpoint(working);
+      working = await persistAndCarry(working, persistCheckpoint);
     }
   }
   return { kind: 'ok', cache: working, calls };
@@ -259,6 +268,7 @@ module.exports = {
   artistNeedsRefresh,
   startArtistRefresh,
   mergeScopePage,
+  persistAndCarry,
   acquireArtistCatalogue,
   safeCatalogueDiagnostics,
 };
