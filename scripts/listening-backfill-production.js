@@ -177,9 +177,6 @@ async function runProductionBackfill({
       if (!lastPreflightSnapshot) throw new Error('Listening backfill usage reservation requires a successful preflight snapshot.');
       const allowed = await context.usage.reserve(provider);
       if (allowed !== true) return false;
-      // Quota persistence changes apiUsage.json. Revalidate every other
-      // mutable input against the same planned snapshot before the provider
-      // request so a concurrent band/metadata/identity change fails closed.
       await assertBandsCurrent();
       const stillApproved = await context.preflight(lastPreflightSnapshot);
       if (stillApproved !== true) throw new Error('Listening maintenance post-reservation preflight was not approved.');
@@ -187,9 +184,6 @@ async function runProductionBackfill({
     },
   };
   const guardedPersist = async (snapshot) => {
-    // A provider call can take long enough for band ownership or confirmed
-    // provider identity to change after the pre-request checks. Revalidate
-    // immediately before any derived/checkpoint persistence as well.
     await assertBandsCurrent();
     return context.persist(snapshot);
   };
@@ -218,10 +212,8 @@ async function runProductionBackfill({
 }
 
 if (require.main === module) {
-  runProductionBackfill().catch((error) => {
-    console.error(`Listening backfill stopped: ${error.message}`);
-    process.exitCode = 1;
-  });
+  console.error('This Spotify-first historical production entrypoint is retired. Use scripts/listening-catalogue-backfill-production.js for C4.');
+  process.exitCode = 1;
 }
 
 module.exports = {
