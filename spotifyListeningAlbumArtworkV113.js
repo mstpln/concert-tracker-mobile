@@ -13,7 +13,27 @@
     .replace(/\s+/g, ' ')
     .toLocaleLowerCase('en');
 
-  function uniqueBandNameMap(bandList = root.bands || []) {
+  function currentBands() {
+    try { if (typeof bands !== 'undefined' && Array.isArray(bands)) return bands; } catch (_) { /* global lexical may be absent */ }
+    return Array.isArray(root.bands) ? root.bands : [];
+  }
+
+  function currentEvents() {
+    try { if (typeof listeningEvents !== 'undefined' && Array.isArray(listeningEvents)) return listeningEvents; } catch (_) { /* global lexical may be absent */ }
+    return Array.isArray(root.listeningEvents) ? root.listeningEvents : [];
+  }
+
+  function replaceEvents(next) {
+    try {
+      if (typeof listeningEvents !== 'undefined') {
+        listeningEvents = next;
+        return;
+      }
+    } catch (_) { /* fall through to global property */ }
+    root.listeningEvents = next;
+  }
+
+  function uniqueBandNameMap(bandList = currentBands()) {
     const owners = new Map();
     for (const band of bandList || []) {
       const id = safeString(band?.id);
@@ -30,26 +50,32 @@
     return unique;
   }
 
-  function localBandId(event, bandMap = uniqueBandNameMap()) {
+  function knownBandIds(bandList = currentBands()) {
+    return new Set((bandList || []).map((band) => safeString(band?.id)).filter(Boolean));
+  }
+
+  function localBandId(event, bandMap = uniqueBandNameMap(), bandIds = knownBandIds()) {
     const explicit = safeString(event?.localBandId || event?.bandId);
-    if (explicit) return explicit;
+    if (explicit) return bandIds.has(explicit) ? explicit : null;
     return bandMap.get(normalizeText(event?.artistCreditName)) || null;
   }
 
-  function groupKey(event, bandMap = uniqueBandNameMap()) {
-    const bandId = localBandId(event, bandMap);
+  function groupKey(event, bandMap = uniqueBandNameMap(), bandIds = knownBandIds()) {
+    const bandId = localBandId(event, bandMap, bandIds);
     const release = normalizeText(event?.releaseTitle);
     if (!bandId || !release) return null;
     return `${bandId}\n${release}`;
   }
 
-  function buildGroups(document, events = root.listeningEvents || []) {
+  function buildGroups(document, events = currentEvents()) {
     const records = document?.records || {};
-    const bandMap = uniqueBandNameMap();
+    const bandList = currentBands();
+    const bandMap = uniqueBandNameMap(bandList);
+    const bandIds = knownBandIds(bandList);
     const groups = new Map();
     for (const event of events || []) {
       const trackId = safeString(event?.spotifyTrackId);
-      const key = groupKey(event, bandMap);
+      const key = groupKey(event, bandMap, bandIds);
       if (!key || !validSpotifyId(trackId)) continue;
       const group = groups.get(key) || { key, trackIds: new Set(), events: [], albumIds: new Set(), artworkRecords: [] };
       group.trackIds.add(trackId);
@@ -60,20 +86,22 @@
       if (validSpotifyId(albumId) && safeString(record?.artworkUrl)) group.artworkRecords.push(record);
       groups.set(key, group);
     }
-    return [...groups.values()].map((group) => ({
-      ...group,
-      trackIds: [...group.trackIds].sort(),
-      ambiguous: group.albumIds.size > 1,
-      albumId: group.albumIds.size === 1 ? [...group.albumIds][0] : null,
-      artworkRecord: group.albumIds.size === 1
-        ? group.artworkRecords.find((record) => safeString(record.spotifyAlbumId) === [...group.albumIds][0]) || null
-        : null,
-    }));
+    return [...groups.values()].map((group) => {
+      const albumId = group.albumIds.size === 1 ? [...group.albumIds][0] : null;
+      return {
+        ...group,
+        trackIds: [...group.trackIds].sort(),
+        ambiguous: group.albumIds.size > 1,
+        albumId,
+        artworkRecord: albumId
+          ? group.artworkRecords.find((record) => safeString(record.spotifyAlbumId) === albumId) || null
+          : null,
+      };
+    });
   }
 
-  function albumOrientedUnresolvedTrackIds(document, events = root.listeningEvents || []) {
-    const groups = buildGroups(document, events);
-    return groups
+  function albumOrientedUnresolvedTrackIds(document, events = currentEvents()) {
+    return buildGroups(document, events)
       .filter((group) => !group.ambiguous && !group.artworkRecord)
       .map((group) => {
         if (group.albumId) {
@@ -86,7 +114,7 @@
       .sort();
   }
 
-  function applyAlbumReuse(document, events = root.listeningEvents || []) {
+  function applyAlbumReuse(document, events = currentEvents()) {
     const records = document?.records || {};
     const groups = buildGroups(document, events);
     const reusable = new Map(groups
@@ -94,10 +122,12 @@
       .map((group) => [group.key, group]));
     if (!reusable.size) return 0;
 
-    const bandMap = uniqueBandNameMap();
+    const bandList = currentBands();
+    const bandMap = uniqueBandNameMap(bandList);
+    const bandIds = knownBandIds(bandList);
     let applied = 0;
-    root.listeningEvents = (root.listeningEvents || []).map((event) => {
-      const key = groupKey(event, bandMap);
+    const next = currentEvents().map((event) => {
+      const key = groupKey(event, bandMap, bandIds);
       const group = reusable.get(key);
       if (!group) return event;
       const own = records[safeString(event?.spotifyTrackId)] || null;
@@ -113,14 +143,17 @@
         spotifyMetadataFetchedAt: own?.fetchedAt || album.fetchedAt || event.spotifyMetadataFetchedAt || null,
       };
     });
+    replaceEvents(next);
     return applied;
   }
 
   function rerender() {
-    if (typeof root.currentScreen === 'undefined') return;
-    if (root.currentScreen === 'stats' && typeof root.renderStatsScreen === 'function') root.renderStatsScreen();
-    else if (root.currentScreen === 'top-bands' && typeof root.renderTopBandsScreen === 'function') root.renderTopBandsScreen();
-    else if (root.currentScreen === 'profile' && root.profileTab === 'listening' && typeof root.renderProfileScreen === 'function') root.renderProfileScreen(root.activeProfileBandId);
+    try {
+      if (typeof currentScreen === 'undefined') return;
+      if (currentScreen === 'stats' && typeof renderStatsScreen === 'function') renderStatsScreen();
+      else if (currentScreen === 'top-bands' && typeof renderTopBandsScreen === 'function') renderTopBandsScreen();
+      else if (currentScreen === 'profile' && typeof profileTab !== 'undefined' && profileTab === 'listening' && typeof renderProfileScreen === 'function') renderProfileScreen(activeProfileBandId);
+    } catch (_) { /* rendering remains owned by the existing app */ }
   }
 
   function patchMetadata(metadata = root.SpotifyListeningMetadataV99) {
@@ -147,7 +180,7 @@
           const local = await metadata.loadLocal?.();
           if (local) metadata.applyToEvents(local);
           rerender();
-        } catch (_) { /* existing exact-track behavior remains available */ }
+        } catch (_) { /* exact-track behavior remains available */ }
         return result;
       };
       wrapped.__liveVaultAlbumArtworkV113 = true;
@@ -162,7 +195,10 @@
 
   return {
     normalizeText,
+    currentBands,
+    currentEvents,
     uniqueBandNameMap,
+    knownBandIds,
     localBandId,
     groupKey,
     buildGroups,
