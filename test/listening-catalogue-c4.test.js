@@ -127,17 +127,63 @@ test('ListenBrainz widening happens only after authoritative catalogue exhaustio
   assert.equal(partialBatch.count, 0);
 });
 
-test('ListenBrainz batch mapping does not guess ambiguous duplicate text rows', () => {
+test('ListenBrainz batch mapping requires exact cardinality and unique correlation', () => {
   const batchPlan = {
     items: [
       { trackKey: 'a', artistName: 'Synthetic Artist', recordingName: 'Same Song', releaseName: 'Release A' },
       { trackKey: 'b', artistName: 'Synthetic Artist', recordingName: 'Same Song', releaseName: 'Release B' },
     ],
   };
-  const mapped = c4.mapListenBrainzBatch({ batchPlan, data: [{ artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song' }] });
-  assert.equal(mapped.size, 0);
-  const disambiguated = c4.mapListenBrainzBatch({ batchPlan, data: [{ artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song', release_name: 'Release B' }] });
-  assert.equal(disambiguated.get('b').release_name, 'Release B');
+  assert.throws(
+    () => c4.mapListenBrainzBatch({ batchPlan, data: [{ artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song' }] }),
+    /cardinality/,
+  );
+  assert.throws(
+    () => c4.mapListenBrainzBatch({ batchPlan, data: [
+      { artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song' },
+      { artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song', release_name: 'Release B' },
+    ] }),
+    /cannot be correlated uniquely/,
+  );
+  assert.throws(
+    () => c4.mapListenBrainzBatch({ batchPlan, data: [
+      { artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song', release_name: 'Release B' },
+      { artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song', release_name: 'Release B' },
+    ] }),
+    /more than once/,
+  );
+  const mapped = c4.mapListenBrainzBatch({ batchPlan, data: [
+    { artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song', release_name: 'Release B' },
+    { artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song', release_name: 'Release A' },
+  ] });
+  assert.equal(mapped.size, 2);
+  assert.equal(mapped.get('a').release_name, 'Release A');
+  assert.equal(mapped.get('b').release_name, 'Release B');
+});
+
+test('unmappable ListenBrainz response cannot create durable no-match or guessed identity', () => {
+  const missEvents = [
+    event('TrackOne', { recordingTitle: 'Missing Song', releaseTitle: 'Release A' }),
+    event('TrackTwo', { recordingTitle: 'Missing Song', releaseTitle: 'Release B' }),
+  ];
+  const plan = c4.buildC4Plan({ bands: [band()], events: missEvents });
+  const cache = completeCache();
+  const local = c4.currentLocalResults(plan, cache);
+  const batchPlan = c4.buildListenBrainzBatch({ plan, catalogueCache: cache, localResults: local });
+  assert.equal(batchPlan.count, 2);
+  const before = { kind: 'livevault-track-identities', schemaVersion: 1, updatedAt: null, records: {} };
+  assert.throws(
+    () => c4.applyListenBrainzBatch({
+      plan,
+      batchPlan,
+      data: [{ artist_credit_name: 'Synthetic Artist', recording_name: 'Missing Song' }],
+      trackIdentities: before,
+      now: '2026-08-11T01:00:00.000Z',
+    }),
+    /cardinality/,
+  );
+  assert.deepEqual(before.records, {});
+  assert.equal(before.updatedAt, null);
 });
 
 test('C4 aggregate diagnostics exclude track, artist, title and URL data', () => {
