@@ -163,39 +163,30 @@ function reusableAlbumRecord(group) {
   return record;
 }
 
-function materializeGroupRecords({ metadata = {}, group, albumRecord, fetchedAt = null } = {}) {
-  const output = {
+function exactRepresentativeRecord({ metadata = {}, group, record } = {}) {
+  if (!group?.key || !validSpotifyId(group?.representativeTrackId)) return null;
+  const normalized = normalizeMetadataRecord(group.representativeTrackId, record);
+  if (!normalized?.spotifyAlbumId || !normalized?.artworkUrl) return null;
+  if (group.knownAlbumId && group.knownAlbumId !== normalized.spotifyAlbumId) return null;
+  return {
+    ...(metadata?.records?.[group.representativeTrackId] || {}),
+    ...normalized,
+    albumGroupKey: group.key,
+  };
+}
+
+function mergeRepresentativeRecord(metadata = {}, group, record) {
+  const exact = exactRepresentativeRecord({ metadata, group, record });
+  if (!exact) return null;
+  return {
     ...(metadata || {}),
     kind: metadata?.kind || 'livevault-spotify-listening-metadata',
     schemaVersion: Number(metadata?.schemaVersion) || 1,
-    records: { ...(metadata?.records || {}) },
+    records: {
+      ...(metadata?.records || {}),
+      [group.representativeTrackId]: exact,
+    },
   };
-  if (!group || !Array.isArray(group.trackIds) || !albumRecord?.spotifyAlbumId || !albumRecord?.artworkUrl) return output;
-  const albumId = safeString(albumRecord.spotifyAlbumId);
-  if (!validSpotifyId(albumId)) return output;
-  const albumUrl = `https://open.spotify.com/album/${albumId}`;
-  const stamp = Number.isFinite(Date.parse(fetchedAt || albumRecord.fetchedAt))
-    ? new Date(fetchedAt || albumRecord.fetchedAt).toISOString()
-    : new Date().toISOString();
-
-  for (const trackId of group.trackIds) {
-    if (!validSpotifyId(trackId)) continue;
-    const existing = normalizeMetadataRecord(trackId, output.records[trackId]);
-    if (existing?.spotifyAlbumId && existing.spotifyAlbumId !== albumId) continue;
-    output.records[trackId] = {
-      ...(output.records[trackId] || {}),
-      spotifyTrackId: trackId,
-      spotifyTrackUrl: `https://open.spotify.com/track/${trackId}`,
-      spotifyAlbumId: albumId,
-      spotifyAlbumUrl: albumUrl,
-      artworkUrl: safeString(albumRecord.artworkUrl) || null,
-      fetchedAt: existing?.fetchedAt || stamp,
-      source: existing?.source || 'spotify_album_group_reuse',
-      albumGroupKey: group.key,
-      albumArtworkSeedTrackId: safeString(albumRecord.spotifyTrackId) || group.representativeTrackId,
-    };
-  }
-  return output;
 }
 
 function planAlbumArtwork({ events = [], bands = [], metadata = {} } = {}) {
@@ -233,6 +224,7 @@ module.exports = {
   normalizeMetadataRecord,
   buildAlbumGroups,
   reusableAlbumRecord,
-  materializeGroupRecords,
+  exactRepresentativeRecord,
+  mergeRepresentativeRecord,
   planAlbumArtwork,
 };
