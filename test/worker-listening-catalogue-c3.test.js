@@ -145,6 +145,33 @@ test('catalogue validator rejects forged coverage and malformed scope state', as
   assert.equal(response.status, 400);
 });
 
+test('catalogue validator enforces exact 30-day freshness and partial refresh checkpoints', async () => {
+  const worker = loadWorker();
+  const env = { ...envBase, BUCKET: bucket(null) };
+
+  const forgedFreshness = catalogue();
+  forgedFreshness.artists[ARTIST].freshUntil = '2026-10-11T00:00:00.000Z';
+  let response = await worker.fetch(request(env.DATA_MAINTENANCE_TOKEN, 'PUT', forgedFreshness, { 'Content-Type': 'application/json', 'If-None-Match': '*' }), env);
+  assert.equal(response.status, 400);
+
+  const partial = catalogue();
+  delete partial.artists[ARTIST].scopeCheckpoints.release_track_artist;
+  partial.artists[ARTIST].coverageScopes = ['release_artist'];
+  partial.artists[ARTIST].releaseMbids = [RELEASE_A];
+  partial.artists[ARTIST].recordings = [recording([release(RELEASE_A, 'Release A')])];
+  delete partial.artists[ARTIST].nextOffset;
+  delete partial.artists[ARTIST].totalCount;
+  delete partial.artists[ARTIST].complete;
+  delete partial.artists[ARTIST].refreshedAt;
+  delete partial.artists[ARTIST].freshUntil;
+  response = await worker.fetch(request(env.DATA_MAINTENANCE_TOKEN, 'PUT', partial, { 'Content-Type': 'application/json', 'If-None-Match': '*' }), env);
+  assert.equal(response.status, 400);
+
+  partial.artists[ARTIST].refreshStartedAt = '2026-08-11T00:00:00.000Z';
+  response = await worker.fetch(request(env.DATA_MAINTENANCE_TOKEN, 'PUT', partial, { 'Content-Type': 'application/json', 'If-None-Match': '*' }), env);
+  assert.equal(response.status, 200);
+});
+
 test('catalogue route enforces the 25 MiB ceiling before parsing', async () => {
   const worker = loadWorker();
   const env = { ...envBase, BUCKET: bucket(null) };

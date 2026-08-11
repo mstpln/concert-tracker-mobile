@@ -121,12 +121,13 @@ function validateDurableCatalogue(cache) {
       const fullyComplete = SUPPORTED_SCOPES.every((scope) => checkpoints[scope]?.complete === true);
       if (fullyComplete) {
         if (artist.complete !== true || artist.nextOffset !== artist.releaseMbids.length || artist.totalCount !== artist.releaseMbids.length
-          || !validDate(artist.refreshedAt) || !validDate(artist.freshUntil) || Date.parse(artist.freshUntil) <= Date.parse(artist.refreshedAt)
+          || !validDate(artist.refreshedAt) || !validDate(artist.freshUntil)
+          || Date.parse(artist.freshUntil) - Date.parse(artist.refreshedAt) !== CATALOGUE_FRESHNESS_MS
           || artist.refreshStartedAt != null) {
           throw new Error('Invalid complete catalogue freshness state.');
         }
-      } else if (artist.complete != null || artist.nextOffset != null || artist.totalCount != null || artist.refreshedAt != null || artist.freshUntil != null) {
-        throw new Error('Partial catalogue cannot claim complete freshness state.');
+      } else if (!validDate(artist.refreshStartedAt) || artist.complete != null || artist.nextOffset != null || artist.totalCount != null || artist.refreshedAt != null || artist.freshUntil != null) {
+        throw new Error('Partial catalogue must retain only its valid refresh checkpoint state.');
       }
     }
   }

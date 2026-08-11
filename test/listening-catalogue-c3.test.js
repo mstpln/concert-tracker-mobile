@@ -64,7 +64,7 @@ test('C3 MusicBrainz adapter uses the two approved release browse scopes', async
   assert.equal(seen[0].url.searchParams.get('limit'), '100');
   assert.equal(seen[0].url.searchParams.get('offset'), '0');
   assert.equal(seen[0].url.searchParams.get('inc'), 'recordings release-groups artist-credits');
-  assert.match(seen[0].options.headers['User-Agent'], /^BANDMARKR\/112 /);
+  assert.match(seen[0].options.headers['User-Agent'], /^TheLiveVault\/1\.0 /);
   assert.equal(config.MUSICBRAINZ.minDelayMs, 2000);
 });
 
@@ -232,6 +232,36 @@ test('dormant ListenBrainz adapter is bounded and uses one authenticated POST', 
   assert.deepEqual(body.recordings[0], { artist_name: 'Synthetic Artist', recording_name: 'Synthetic Song', release_name: 'Synthetic Release' });
   assert.equal((await adapter.lookupBatch({ items: Array.from({ length: MAX_LISTENBRAINZ_BATCH + 1 }, () => ({ artistName: 'A', recordingName: 'B' })) })).kind, 'error');
   assert.equal(calls, 1);
+});
+
+test('C3 rejects forged freshness windows and partial rows without a valid refresh checkpoint', () => {
+  const now = Date.parse('2026-08-11T00:00:00Z');
+  let cache = acquisition.startArtistRefresh(acquisition.emptyCatalogue(), ARTIST, now);
+  assert.throws(() => acquisition.validateDurableCatalogue({ ...cache, artists: { [ARTIST]: { ...cache.artists[ARTIST], refreshStartedAt: undefined } } }));
+
+  cache = acquisition.mergeScopePage(cache, 'release_artist', page(releasePayload()), now);
+  cache = acquisition.mergeScopePage(cache, 'release_track_artist', page(releasePayload({ releaseMbid: RELEASE_B, recordingMbid: RECORDING_B, title: 'Track-only Song' })), now);
+  const forged = structuredClone(cache);
+  forged.artists[ARTIST].freshUntil = '2026-10-11T00:00:00.000Z';
+  assert.throws(() => acquisition.validateDurableCatalogue(forged), /freshness state/);
+});
+
+test('dormant ListenBrainz adapter has a bounded timeout', async () => {
+  const adapter = createListenBrainzBatchAdapter({
+    tokenProvider: async () => 'synthetic-token',
+    timeoutMs: 5,
+    now: () => Date.parse('2026-08-11T00:00:00Z'),
+    fetchImpl: async (_url, options) => new Promise((resolve, reject) => {
+      options.signal.addEventListener('abort', () => {
+        const error = new Error('aborted');
+        error.name = 'AbortError';
+        reject(error);
+      }, { once: true });
+    }),
+  });
+  const result = await adapter.lookupBatch({ items: [{ artistName: 'Synthetic Artist', recordingName: 'Synthetic Song' }] });
+  assert.equal(result.kind, 'retry');
+  assert.equal(result.reason, 'listenbrainz_timeout');
 });
 
 test('C3 diagnostics are aggregate only', () => {

@@ -80,7 +80,7 @@ test('persisted MusicBrainz and ListenBrainz timestamps pace the first call of a
     async sleepImpl(ms) { sleeps.push(ms); clock += ms; },
   });
   assert.equal(await secondGate.reserve('listenbrainz'), true);
-  assert.deepEqual(sleeps, [600, 500]);
+  assert.deepEqual(sleeps, [1500, 500]);
 });
 
 test('finish writes aggregate maintenance diagnostics only', async () => {

@@ -13,7 +13,7 @@ C3 adds a release-browse adapter for the two C2-required coverage scopes:
 - `release_artist` -> MusicBrainz release browse by `artist=<trusted artist MBID>`;
 - `release_track_artist` -> MusicBrainz release browse by `track_artist=<trusted artist MBID>`.
 
-Requests use JSON, a meaningful BANDMARKR User-Agent, a maximum page size of 100, the release includes required by the C2 parser (`recordings`, `release-groups`, and `artist-credits`), the existing UsageTracker reservation boundary, and a conservative 2-second minimum MusicBrainz gap. There is no hidden generic retry. Network failures, timeouts, HTTP 429, and HTTP 503 return a retry/defer outcome and preserve the last durable safe checkpoint.
+Requests use JSON, the existing reviewed project User-Agent, a maximum page size of 100, the release includes required by the C2 parser (`recordings`, `release-groups`, and `artist-credits`), the existing UsageTracker reservation boundary, and a conservative 2-second minimum MusicBrainz gap. There is no hidden generic retry. Network failures, timeouts, HTTP 429, and HTTP 503 return a retry/defer outcome and preserve the last durable safe checkpoint.
 
 Every provider page is normalized by the merged C2 parser. C3 does not introduce a second provider-normalization contract.
 

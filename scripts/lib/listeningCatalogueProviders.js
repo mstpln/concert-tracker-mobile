@@ -7,6 +7,7 @@ const MUSICBRAINZ_RELEASE_BROWSE_LIMIT = 100;
 const MUSICBRAINZ_TRANSIENT_RETRY_MS = 30 * 60 * 1000;
 const LISTENBRAINZ_LOOKUP_URL = 'https://api.listenbrainz.org/1/metadata/lookup/';
 const MAX_LISTENBRAINZ_BATCH = 100;
+const LISTENBRAINZ_TIMEOUT_MS = 10000;
 const SUPPORTED_SCOPES = Object.freeze(['release_artist', 'release_track_artist']);
 
 function safeJson(response) {
@@ -75,8 +76,8 @@ function createMusicBrainzCatalogueAdapter({ fetchImpl = fetch, now = () => Date
   };
 }
 
-function createListenBrainzBatchAdapter({ fetchImpl = fetch, tokenProvider, now = () => Date.now() } = {}) {
-  if (typeof fetchImpl !== 'function') throw new Error('ListenBrainz batch adapter requires fetch.');
+function createListenBrainzBatchAdapter({ fetchImpl = fetch, tokenProvider, now = () => Date.now(), timeoutMs = LISTENBRAINZ_TIMEOUT_MS } = {}) {
+  if (typeof fetchImpl !== 'function' || !Number.isInteger(timeoutMs) || timeoutMs < 1) throw new Error('ListenBrainz batch adapter requires bounded fetch.');
   return {
     async lookupBatch({ items } = {}) {
       if (!Array.isArray(items) || items.length < 1 || items.length > MAX_LISTENBRAINZ_BATCH) {
@@ -94,15 +95,24 @@ function createListenBrainzBatchAdapter({ fetchImpl = fetch, tokenProvider, now 
       let token;
       try { token = String(await tokenProvider()).trim(); } catch { token = ''; }
       if (!token) return { kind: 'error', reason: 'listenbrainz_token_unavailable' };
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       let response;
       try {
         response = await fetchImpl(LISTENBRAINZ_LOOKUP_URL, {
           method: 'POST',
           headers: { Authorization: `Token ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
           body: JSON.stringify({ recordings }),
+          signal: controller.signal,
         });
-      } catch {
-        return { kind: 'retry', reason: 'listenbrainz_network_error', nextEligibleCheckAt: new Date(now() + 30 * 60 * 1000).toISOString() };
+      } catch (error) {
+        return {
+          kind: 'retry',
+          reason: error?.name === 'AbortError' ? 'listenbrainz_timeout' : 'listenbrainz_network_error',
+          nextEligibleCheckAt: new Date(now() + 30 * 60 * 1000).toISOString(),
+        };
+      } finally {
+        clearTimeout(timer);
       }
       if (response.status === 429 || response.status === 503) {
         const resetIn = Number(response.headers?.get?.('x-ratelimit-reset-in'));
@@ -123,6 +133,7 @@ module.exports = {
   MUSICBRAINZ_TRANSIENT_RETRY_MS,
   LISTENBRAINZ_LOOKUP_URL,
   MAX_LISTENBRAINZ_BATCH,
+  LISTENBRAINZ_TIMEOUT_MS,
   SUPPORTED_SCOPES,
   catalogueScopeParam,
   createMusicBrainzCatalogueAdapter,
