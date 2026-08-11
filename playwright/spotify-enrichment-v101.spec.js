@@ -85,7 +85,7 @@ test('v103 accepts relinked artwork metadata while preserving trusted identity a
       listenedDurationMs: 180000,
       recordingTitle: 'V103 Relinked Track',
       artistCreditName: 'Synthetic Artist',
-      releaseTitle: 'Synthetic QA Album',
+      releaseTitle: 'V103 Relinked Synthetic Album',
       spotifyTrackId: 'V103TrustedTrack123',
     }];
   });
@@ -148,7 +148,7 @@ test('v103 explains Development Mode quota exhaustion without suggesting reconne
       listenedDurationMs: 180000,
       recordingTitle: 'V103 Quota Track',
       artistCreditName: 'Synthetic Artist',
-      releaseTitle: 'Synthetic QA Album',
+      releaseTitle: 'V103 Quota Synthetic Album',
       spotifyTrackId: 'V103QuotaTrack123',
     }];
   });
