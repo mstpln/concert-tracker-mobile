@@ -313,10 +313,8 @@ async function runBulkBackfill({
 }
 
 if (require.main === module) {
-  runBulkBackfill().catch((error) => {
-    console.error(`Listening bulk backfill stopped: ${error.message}`);
-    process.exitCode = 1;
-  });
+  console.error('This Spotify-first historical bulk entrypoint is retired. Use scripts/listening-catalogue-backfill-production.js --full for C4.');
+  process.exitCode = 1;
 }
 
 module.exports = {
