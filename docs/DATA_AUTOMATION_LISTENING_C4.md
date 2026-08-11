@@ -80,9 +80,10 @@ For a C4 production lookup:
 
 - exactly one request item must be planned;
 - exactly one response row must be returned;
-- a missing, extra, malformed or non-object response row fails closed before any identity persistence;
+- a non-array response, missing or extra response row, or non-object row fails closed before any identity persistence;
 - the sole row is associated with the sole originating work item by construction, not by response position among multiple requests and not by comparing release text;
 - `listenbrainzOutcome()` still independently requires the trusted MusicBrainz artist MBID, valid provider MBIDs, and exact normalized artist/recording identity before a resolved result is accepted;
+- malformed identity fields inside an otherwise structurally valid response row remain a conservative provider `error` outcome under the existing validator; they never become a guessed resolution;
 - returned text that differs from the request does not become a guessed resolution; it remains `needs_review` under the existing identity-validation contract.
 
 The previous multi-item response-correlation helper is therefore no longer part of production execution. Durable holds, item quarantine, unknown-field preservation and fail-closed persistence semantics are unchanged.
@@ -141,7 +142,8 @@ C4 synthetic QA covers:
 - exactly one ListenBrainz work item per provider operation;
 - response association by sole originating request rather than multi-request text/order correlation;
 - the production-discovered returned-text mismatch remaining `needs_review` rather than becoming a guessed identity;
-- malformed/missing/extra ListenBrainz response rows failing before identity persistence;
+- structural/cardinality ListenBrainz response failures occurring before identity persistence;
+- malformed identity-field responses remaining conservative provider errors without guessed identity;
 - UsageTracker and provider-operation accounting once per one-item ListenBrainz lookup;
 - additive identity persistence and unknown-field preservation through the existing merge contract;
 - fixed proof scope of one artist / maximum two MusicBrainz page requests;
