@@ -60,6 +60,29 @@ async function persistCatalogue(client, { base, next, artistMbid } = {}) {
   return { cache: merged, conflicted: true };
 }
 
+async function refreshArtistCatalogue({ client, artistMbid, provider, usage, now = () => Date.now(), maxPages = 1000 } = {}) {
+  const trustedArtist = inventoryLib.validMbid(artistMbid);
+  if (!trustedArtist) throw new Error('Catalogue refresh requires a trusted artist MBID.');
+  const loaded = await loadCatalogue(client);
+  if (!acquisition.artistNeedsRefresh(loaded.cache, trustedArtist, now())) {
+    return { kind: 'fresh', cache: loaded.cache, calls: 0 };
+  }
+  let persistedBase = loaded.cache;
+  return acquisition.acquireArtistCatalogue({
+    cache: loaded.cache,
+    artistMbid: trustedArtist,
+    provider,
+    usage,
+    now,
+    maxPages,
+    persistCheckpoint: async (candidate) => {
+      const persisted = await persistCatalogue(client, { base: persistedBase, next: candidate, artistMbid: trustedArtist });
+      persistedBase = persisted.cache;
+      return persisted;
+    },
+  });
+}
+
 module.exports = {
   CATALOGUE_PATH,
   MAX_CATALOGUE_BYTES,
@@ -67,4 +90,5 @@ module.exports = {
   validatePersistableCatalogue,
   loadCatalogue,
   persistCatalogue,
+  refreshArtistCatalogue,
 };
