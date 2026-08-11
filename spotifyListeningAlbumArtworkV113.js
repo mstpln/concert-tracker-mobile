@@ -73,6 +73,7 @@
     const bandMap = uniqueBandNameMap(bandList);
     const bandIds = knownBandIds(bandList);
     const groups = new Map();
+    const trackGroupKeys = new Map();
     for (const event of events || []) {
       const trackId = safeString(event?.spotifyTrackId);
       const key = groupKey(event, bandMap, bandIds);
@@ -80,6 +81,9 @@
       const group = groups.get(key) || { key, trackIds: new Set(), events: [], albumIds: new Set(), artworkRecords: [] };
       group.trackIds.add(trackId);
       group.events.push(event);
+      const keys = trackGroupKeys.get(trackId) || new Set();
+      keys.add(key);
+      trackGroupKeys.set(trackId, keys);
       const record = records[trackId];
       const albumId = safeString(record?.spotifyAlbumId);
       if (validSpotifyId(albumId)) group.albumIds.add(albumId);
@@ -87,11 +91,19 @@
       groups.set(key, group);
     }
     return [...groups.values()].map((group) => {
-      const albumId = group.albumIds.size === 1 ? [...group.albumIds][0] : null;
+      const trackIds = [...group.trackIds].sort();
+      const crossGroupTrack = trackIds.some((trackId) => (trackGroupKeys.get(trackId)?.size || 0) > 1);
+      const ambiguous = crossGroupTrack || group.albumIds.size > 1;
+      const albumId = !ambiguous && group.albumIds.size === 1 ? [...group.albumIds][0] : null;
       return {
         ...group,
-        trackIds: [...group.trackIds].sort(),
-        ambiguous: group.albumIds.size > 1,
+        trackIds,
+        ambiguous,
+        ambiguityReason: crossGroupTrack
+          ? 'spotify_track_crosses_album_groups'
+          : group.albumIds.size > 1
+            ? 'conflicting_known_spotify_album_ids'
+            : null,
         albumId,
         artworkRecord: albumId
           ? group.artworkRecords.find((record) => safeString(record.spotifyAlbumId) === albumId) || null
