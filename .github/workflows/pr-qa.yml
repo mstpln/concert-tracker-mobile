@@ -12,6 +12,92 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  c4-finalize:
+    if: github.event.pull_request.head.ref == 'feature/listening-catalogue-c4-v112'
+    name: Finalize C4 branch continuity
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/listening-catalogue-c4-v112
+          fetch-depth: 0
+      - name: Apply approved C4 retirement and continuity changes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'scripts/listening-backfill-production.js',
+              "if (require.main === module) {\n  runProductionBackfill().catch((error) => {\n    console.error(`Listening backfill stopped: ${error.message}`);\n    process.exitCode = 1;\n  });\n}",
+              "if (require.main === module) {\n  console.error('This Spotify-first historical production entrypoint is retired. Use scripts/listening-catalogue-backfill-production.js for C4.');\n  process.exitCode = 1;\n}",
+          )
+          replace_once(
+              'scripts/listening-backfill-bulk.js',
+              "if (require.main === module) {\n  runBulkBackfill().catch((error) => {\n    console.error(`Listening bulk backfill stopped: ${error.message}`);\n    process.exitCode = 1;\n  });\n}",
+              "if (require.main === module) {\n  console.error('This Spotify-first historical bulk entrypoint is retired. Use scripts/listening-catalogue-backfill-production.js --full for C4.');\n  process.exitCode = 1;\n}",
+          )
+
+          state = Path('docs/LIVEVAULT_STATE.md')
+          text = state.read_text()
+          old = "Build C3 is implemented on `feature/listening-catalogue-c3-v112` in PR #105. It adds safe provider adapters and durable catalogue-cache machinery around the merged C2 contract: exact MusicBrainz release browsing for both `release_artist` and `release_track_artist`, independent resumable scope checkpoints, deterministic multi-scope assembly, 30-day demand-driven freshness, the exact derived object `listening/musicbrainz-catalogue.json`, a 25 MiB absolute object ceiling plus structural limits, conditional ETag-safe persistence, exact data-maintenance-only Worker allowlisting, a dormant bounded authenticated ListenBrainz batch adapter, and aggregate-only diagnostics. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v112 and generated build state records v112."
+          new = "Build C3 merged through PR #105 as merge commit `8c4e61b333db8681554edd849ecf5231d43efe18`; its reviewed head was `8c7bc95b18bbd4b97cb0258ae7b79ff65212758d`. It adds safe provider adapters and durable catalogue-cache machinery around the merged C2 contract: exact MusicBrainz release browsing for both `release_artist` and `release_track_artist`, independent resumable scope checkpoints, deterministic multi-scope assembly, 30-day demand-driven freshness, the exact derived object `listening/musicbrainz-catalogue.json`, a 25 MiB absolute object ceiling plus structural limits, conditional ETag-safe persistence, exact data-maintenance-only Worker allowlisting, a dormant bounded authenticated ListenBrainz batch adapter, and aggregate-only diagnostics. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v112 and generated build state records v112. The C3 merge did not authorize or run Worker deployment, provider calls, production R2 writes, schedules or historical backfill."
+          if text.count(old) != 1:
+              raise SystemExit('LIVEVAULT_STATE.md: stale C3 paragraph not found exactly once')
+          text = text.replace(old, new, 1)
+          text += """
+
+## Build C4 catalogue-first historical activation state
+
+C4 is implemented on `feature/listening-catalogue-c4-v112` in PR #106. It adds a new catalogue-first historical orchestrator and gated production CLI around the merged C2/C3 contracts. Historical work is grouped by trusted MusicBrainz artist, fresh/partial catalogues are reused or resumed, deterministic local C2 resolution runs before any widening, and ListenBrainz is bounded to authoritative catalogue exhaustion. Spotify is not called for core recording identity. Existing durable root/provider `needs_review`, `retry`, `error`, and `no_match` states remain held and immutable listening source observations are never rewritten.
+
+The C4 production CLI exposes three separately gated modes: `--plan-only` for aggregate read-only planning, `--proof` for the later one-artist/two-MusicBrainz-page infrastructure proof, and `--full` for one-command resumable historical processing with a 50,000-provider-operation emergency ceiling. The old Spotify-first historical production and bulk scripts remain importable for regression coverage but refuse direct CLI execution.
+
+C4 development and automated QA are synthetic/fake-backend only. Building or merging C4 does not authorize private production reads, Worker deployment, MusicBrainz/ListenBrainz/Spotify calls, catalogue or identity writes, schedules, workflows or historical processing. After merge the separately authorized production sequence remains: read-only plan -> inspect -> required Worker deployment plus one small live proof -> inspect -> full resumable run. The PWA shell and Worker code are unchanged, so v112 remains current.
+"""
+          state.write_text(text)
+
+          decisions = Path('docs/LIVEVAULT_DECISIONS.md')
+          decisions.write_text(decisions.read_text() + """
+
+## 2026-08-11 — C4 historical identity processing is catalogue-first and artist-reusable
+
+**Decision:** Historical recording-identity completion uses a new C4 orchestrator rather than the old Spotify-first track-step planner. C4 groups eligible tier B/C work by trusted MusicBrainz artist, reuses the merged C3 dual-scope catalogue, runs the merged C2 local resolver first, and widens only authoritative catalogue no-match/release-mismatch cases through bounded ListenBrainz batches. Spotify is excluded from the core recording-identity provider path. Existing durable root/provider `needs_review`, `retry`, `error`, and `no_match` states are not reopened.
+
+**Reason:** One authoritative artist catalogue can resolve many historical tracks without repeated Spotify/ISRC calls, while C2/C3 already provide conservative evidence boundaries, exact local matching, dual-scope completeness, resumable checkpoints and conditional persistence. Reusing those contracts reduces provider dependence and preserves prior review/retry ownership.
+
+**Consequence:** C4 resumability derives from durable catalogue checkpoints and track identities rather than a giant track cursor. The old Spotify-first historical CLIs refuse direct execution. The only C4 production entrypoint has separately authorized `--plan-only`, `--proof` and `--full` modes. The proof is fixed to one artist and at most two MusicBrainz page requests; full mode is one command with a 50,000-provider-operation runaway ceiling rather than a manual batch ladder. Provider-specific transient MusicBrainz/ListenBrainz failures defer that provider for the invocation; persistence, concurrency, integrity, configuration and usage-gate failures stop globally. Diagnostics remain aggregate-only.
+
+## 2026-08-11 — C4 production rollout remains separately authorized after merge
+
+**Decision:** C4 code review/merge is independent from production activation. The production order is read-only aggregate plan, inspect, separately authorized required Worker deployment plus one small live plumbing proof, inspect, then separately authorized full resumable historical backfill.
+
+**Reason:** The merged C3 Worker route has not yet been deliberately deployed or exercised against the new catalogue object, and code merge should not silently grant provider or data-write authority.
+
+**Consequence:** C4 development uses synthetic fixtures/fake Worker state only. No production read, provider call, Worker deployment, R2 write, schedule, workflow or historical backfill is authorized merely by branch creation, PR review or merge. `APP_VERSION` and `CACHE_NAME_LITERAL` stay at v112 because C4 changes only Node maintenance orchestration and continuity documentation.
+""")
+          PY
+      - name: Restore normal PR QA workflow and commit
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout origin/main -- .github/workflows/pr-qa.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add scripts/listening-backfill-production.js scripts/listening-backfill-bulk.js docs/LIVEVAULT_STATE.md docs/LIVEVAULT_DECISIONS.md .github/workflows/pr-qa.yml
+          git commit -m "Finalize C4 production boundaries and continuity"
+          git push origin HEAD:feature/listening-catalogue-c4-v112
+
   unit-and-safety:
     name: Unit and safety checks
     runs-on: ubuntu-latest
