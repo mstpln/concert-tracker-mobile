@@ -130,7 +130,7 @@ module.exports = {
     enabled: false,
     userAgent: 'TheLiveVault/1.0 (https://github.com/mstpln/concert-tracker-mobile; personal non-commercial project)',
     perRunCap: 5,
-    minDelayMs: 1100,
+    minDelayMs: 2000,
     timeoutMs: 10000,
     maxCandidates: 5,
     autoConfirmThreshold: 95,
