@@ -2,7 +2,6 @@
 
 const sourceReader = require('./spotify-artwork-backfill-source');
 const c4 = require('./listening-catalogue-backfill-c4');
-const resolver = require('./listening-catalogue-resolver');
 const cataloguePersistence = require('./lib/listeningCataloguePersistence');
 const { createListeningMaintenanceClient } = require('./lib/listeningMaintenanceClient');
 const { loadListeningMaintenanceContext } = require('./lib/listeningMaintenancePersistence');
@@ -41,6 +40,18 @@ function normalizeEndpoint(value) {
   const endpoint = String(value || '').trim().replace(/\/+$/, '');
   if (!/^https:\/\//i.test(endpoint)) throw new Error('CF_WORKER_ENDPOINT must be an HTTPS URL.');
   return endpoint;
+}
+
+function safeReason(value, fallback = 'unknown') {
+  return typeof value === 'string' && /^[a-z0-9_:-]{1,80}$/i.test(value) ? value : fallback;
+}
+
+function validDate(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function usageHaltReason(provider, reason) {
+  return `usage_blocked:${provider}:${safeReason(reason, 'usage_denied')}`;
 }
 
 function parseArgs(argv = []) {
@@ -164,8 +175,12 @@ function deferredReason(deferred) {
 }
 
 async function runProof({ client, context, base, guards, musicbrainzProvider, now = () => Date.now() } = {}) {
-  let currentIdentities = base.trackIdentities;
-  const plan = c4.buildC4Plan({ bands: base.bands, events: base.source.events, spotifyMetadata: base.spotifyMetadata, trackIdentities: currentIdentities });
+  const plan = c4.buildC4Plan({
+    bands: base.bands,
+    events: base.source.events,
+    spotifyMetadata: base.spotifyMetadata,
+    trackIdentities: base.trackIdentities,
+  });
   let loaded = await cataloguePersistence.loadCatalogue(client);
   const artistMbid = c4.nextCatalogueArtist({ plan, catalogueCache: loaded.cache, nowMs: now() });
   if (!artistMbid) throw new Error('C4 proof requires one eligible artist whose catalogue is missing, partial, or stale.');
@@ -189,12 +204,50 @@ async function runProof({ client, context, base, guards, musicbrainzProvider, no
   };
 
   const first = await cataloguePersistence.refreshArtistCatalogue({ client, artistMbid, provider, usage, now, maxPages: 1 });
-  if (first.kind === 'error') throw new Error(`C4 proof MusicBrainz failed: ${first.reason || 'provider_error'}`);
+  if (first.kind === 'paused' && first.reason !== 'page_cap') throw new Error(usageHaltReason('musicbrainz', first.reason));
+  if (first.kind === 'error') throw new Error(`C4 proof MusicBrainz failed: ${safeReason(first.reason, 'provider_error')}`);
+  if (first.kind === 'retry') {
+    return {
+      mode: 'c4-small-live-proof',
+      artistCount: 1,
+      musicbrainzPageCalls: providerCalls,
+      persistedCatalogueRereads: 0,
+      haltReason: 'provider_deferred:musicbrainz',
+      providerDeferral: {
+        provider: 'musicbrainz',
+        reason: safeReason(first.reason, 'provider_retry'),
+        ...(validDate(first.nextEligibleCheckAt) ? { nextEligibleCheckAt: first.nextEligibleCheckAt } : {}),
+      },
+      trackIdentityWrites: 0,
+      listenbrainzCalls: 0,
+      spotifyCalls: 0,
+    };
+  }
+
   loaded = await cataloguePersistence.loadCatalogue(client);
   const second = providerCalls < PROOF_MUSICBRAINZ_PAGE_CALLS
     ? await cataloguePersistence.refreshArtistCatalogue({ client, artistMbid, provider, usage, now, maxPages: 1 })
     : first;
-  if (second.kind === 'error') throw new Error(`C4 proof MusicBrainz failed: ${second.reason || 'provider_error'}`);
+  if (second.kind === 'paused' && second.reason !== 'page_cap') throw new Error(usageHaltReason('musicbrainz', second.reason));
+  if (second.kind === 'error') throw new Error(`C4 proof MusicBrainz failed: ${safeReason(second.reason, 'provider_error')}`);
+  if (second.kind === 'retry') {
+    return {
+      mode: 'c4-small-live-proof',
+      artistCount: 1,
+      musicbrainzPageCalls: providerCalls,
+      persistedCatalogueRereads: 1,
+      haltReason: 'provider_deferred:musicbrainz',
+      providerDeferral: {
+        provider: 'musicbrainz',
+        reason: safeReason(second.reason, 'provider_retry'),
+        ...(validDate(second.nextEligibleCheckAt) ? { nextEligibleCheckAt: second.nextEligibleCheckAt } : {}),
+      },
+      trackIdentityWrites: 0,
+      listenbrainzCalls: 0,
+      spotifyCalls: 0,
+    };
+  }
+
   loaded = await cataloguePersistence.loadCatalogue(client);
   const local = c4.currentLocalResults(plan, loaded.cache);
   return {
@@ -202,6 +255,7 @@ async function runProof({ client, context, base, guards, musicbrainzProvider, no
     artistCount: 1,
     musicbrainzPageCalls: providerCalls,
     persistedCatalogueRereads: 2,
+    haltReason: null,
     local: {
       resolved: Number(local.counts.resolved) || 0,
       unresolved: Number(local.counts.unresolved) || 0,
@@ -221,6 +275,7 @@ async function runFull({ client, context, base, guards, musicbrainzProvider, lis
   let localResolved = 0;
   const listenbrainzCounts = { resolved: 0, noMatch: 0, needsReview: 0, error: 0 };
   const providerCalls = { musicbrainz: 0, listenbrainz: 0 };
+  const providerDeferrals = {};
   const deferred = new Set();
   let haltReason = null;
 
@@ -244,16 +299,31 @@ async function runFull({ client, context, base, guards, musicbrainzProvider, lis
   }
 
   while (providerOperations < c4.MAX_PROVIDER_OPERATIONS) {
-    const plan = c4.buildC4Plan({ bands: base.bands, events: base.source.events, spotifyMetadata: base.spotifyMetadata, trackIdentities });
+    const plan = c4.buildC4Plan({
+      bands: base.bands,
+      events: base.source.events,
+      spotifyMetadata: base.spotifyMetadata,
+      trackIdentities,
+    });
     const local = c4.currentLocalResults(plan, catalogue);
-    const applied = c4.applyLocalResolutions({ plan, localResults: local, trackIdentities, now: new Date(now()).toISOString() });
+    const applied = c4.applyLocalResolutions({
+      plan,
+      localResults: local,
+      trackIdentities,
+      now: new Date(now()).toISOString(),
+    });
     if (applied.resolved > 0) {
       await persistIdentities(applied.trackIdentities);
       localResolved += applied.resolved;
       continue;
     }
 
-    const artistMbid = c4.nextCatalogueArtist({ plan, catalogueCache: catalogue, nowMs: now(), deferredProviders: [...deferred] });
+    const artistMbid = c4.nextCatalogueArtist({
+      plan,
+      catalogueCache: catalogue,
+      nowMs: now(),
+      deferredProviders: [...deferred],
+    });
     if (artistMbid) {
       const remaining = c4.MAX_PROVIDER_OPERATIONS - providerOperations;
       const provider = {
@@ -272,32 +342,48 @@ async function runFull({ client, context, base, guards, musicbrainzProvider, lis
         maxPages: Math.min(1000, remaining),
       });
       catalogue = result.cache || (await cataloguePersistence.loadCatalogue(client)).cache;
-      if (result.kind === 'retry' || (result.kind === 'paused' && result.reason === 'usage_denied')) {
+      if (result.kind === 'retry') {
         deferred.add('musicbrainz');
+        providerDeferrals.musicbrainz = {
+          reason: safeReason(result.reason, 'provider_retry'),
+          ...(validDate(result.nextEligibleCheckAt) ? { nextEligibleCheckAt: result.nextEligibleCheckAt } : {}),
+        };
+      } else if (result.kind === 'paused' && result.reason !== 'page_cap') {
+        haltReason = usageHaltReason('musicbrainz', result.reason);
+        break;
       } else if (result.kind === 'error') {
-        haltReason = `musicbrainz:${result.reason || 'provider_error'}`;
+        haltReason = `musicbrainz:${safeReason(result.reason, 'provider_error')}`;
         break;
       }
       continue;
     }
 
     const currentLocal = c4.currentLocalResults(plan, catalogue);
-    const batch = c4.buildListenBrainzBatch({ plan, catalogueCache: catalogue, localResults: currentLocal, maxItems: c4.MAX_LISTENBRAINZ_BATCH });
+    const batch = c4.buildListenBrainzBatch({
+      plan,
+      catalogueCache: catalogue,
+      localResults: currentLocal,
+      maxItems: c4.MAX_LISTENBRAINZ_BATCH,
+    });
     if (batch.count > 0 && !deferred.has('listenbrainz')) {
       const usage = guardedUsage('listenbrainz');
       if (!(await usage.reserve())) {
-        deferred.add('listenbrainz');
-        continue;
+        haltReason = usageHaltReason('listenbrainz', usage.blockReason());
+        break;
       }
       providerOperations += 1;
       providerCalls.listenbrainz += 1;
       const result = await listenbrainzProvider.lookupBatch({ items: batch.items });
       if (result.kind === 'retry') {
         deferred.add('listenbrainz');
+        providerDeferrals.listenbrainz = {
+          reason: safeReason(result.reason, 'provider_retry'),
+          ...(validDate(result.nextEligibleCheckAt) ? { nextEligibleCheckAt: result.nextEligibleCheckAt } : {}),
+        };
         continue;
       }
       if (result.kind !== 'ok') {
-        haltReason = `listenbrainz:${result.reason || 'provider_error'}`;
+        haltReason = `listenbrainz:${safeReason(result.reason, 'provider_error')}`;
         break;
       }
       const appliedBatch = c4.applyListenBrainzBatch({
@@ -308,11 +394,18 @@ async function runFull({ client, context, base, guards, musicbrainzProvider, lis
         now: new Date(now()).toISOString(),
       });
       await persistIdentities(appliedBatch.trackIdentities);
-      for (const key of Object.keys(listenbrainzCounts)) listenbrainzCounts[key] += Number(appliedBatch.counts[key]) || 0;
+      for (const key of Object.keys(listenbrainzCounts)) {
+        listenbrainzCounts[key] += Number(appliedBatch.counts[key]) || 0;
+      }
       continue;
     }
 
-    const pendingMusicbrainz = c4.nextCatalogueArtist({ plan, catalogueCache: catalogue, nowMs: now(), deferredProviders: [] });
+    const pendingMusicbrainz = c4.nextCatalogueArtist({
+      plan,
+      catalogueCache: catalogue,
+      nowMs: now(),
+      deferredProviders: [],
+    });
     if ((pendingMusicbrainz && deferred.has('musicbrainz')) || (batch.count > 0 && deferred.has('listenbrainz'))) {
       haltReason = deferredReason(deferred);
     }
@@ -323,6 +416,7 @@ async function runFull({ client, context, base, guards, musicbrainzProvider, lis
   return {
     mode: 'c4-full-resumable-backfill',
     providerOperations,
+    providerDeferrals,
     ...c4.aggregateRunDiagnostics({
       providerCalls,
       localResolved,
@@ -366,8 +460,11 @@ async function runProductionC4({
 
   const base = await loadBaseContext({ client, endpoint, token, fetchImpl, readAllSourceEvents });
   const context = await contextLoader(client, { bulk: true });
-  let currentTrackIdentities = context.trackIdentities;
-  if (!same(currentTrackIdentities, base.trackIdentities)) throw new Error('C4 identity state changed during initial load.');
+  const baseIdentities = c4.identityDocument(base.trackIdentities);
+  const contextIdentities = c4.identityDocument(context.trackIdentities);
+  if (!same(contextIdentities, baseIdentities)) throw new Error('C4 identity state changed during initial load.');
+  base.trackIdentities = baseIdentities;
+  let currentTrackIdentities = contextIdentities;
   const guards = makeSafetyGuards({
     client,
     endpoint,
@@ -420,14 +517,22 @@ module.exports = {
   FULL_CONFIRM_ENV,
   FULL_CONFIRMATION,
   PROOF_MUSICBRAINZ_PAGE_CALLS,
+  clone,
+  same,
+  requiredEnv,
+  normalizeEndpoint,
+  safeReason,
+  validDate,
+  usageHaltReason,
   parseArgs,
   usageText,
   assertPlanAuthorization,
   assertLiveAuthorization,
   safeSourceSummary,
   loadBaseContext,
-  makeSafetyGuards,
   runPlanOnly,
+  makeSafetyGuards,
+  deferredReason,
   runProof,
   runFull,
   runProductionC4,
