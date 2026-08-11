@@ -85,6 +85,7 @@ const SHELL_FILES = [
   './toplistStatsV96.js',
   './toplistV96.js',
   './spotifyListeningMetadataV99.js',
+  './spotifyListeningAlbumArtworkV113.js',
   './spotifyListeningMetadataV101.js',
   './trustedListeningV99.js',
   './dataLib.js',
