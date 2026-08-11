@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
 const production = require('../scripts/listening-catalogue-backfill-production');
 const acquisition = require('../scripts/listening-catalogue-acquisition');
 const resolver = require('../scripts/listening-catalogue-resolver');
@@ -33,6 +34,16 @@ function planEnv() {
     CF_WORKER_ENDPOINT: 'https://synthetic.invalid',
     DATA_MAINTENANCE_TOKEN: 'synthetic-token',
     [production.PRIVATE_READ_CONFIRM_ENV]: production.PRIVATE_READ_CONFIRMATION,
+  };
+}
+
+function liveEnv() {
+  return {
+    ...planEnv(),
+    [production.PROVIDER_CONFIRM_ENV]: production.PROVIDER_CONFIRMATION,
+    [production.WRITE_CONFIRM_ENV]: production.WRITE_CONFIRMATION,
+    [production.PROOF_CONFIRM_ENV]: production.PROOF_CONFIRMATION,
+    [production.FULL_CONFIRM_ENV]: production.FULL_CONFIRMATION,
   };
 }
 
@@ -114,17 +125,13 @@ test('plan-only requires private-read authorization and forbids write mode', () 
   assert.equal(production.assertPlanAuthorization({ mode: 'plan', execute: true, write: false }, planEnv()), undefined);
 });
 
-test('proof and full require independent provider, write and mode-specific authorizations', () => {
-  const env = {
-    [production.PROVIDER_CONFIRM_ENV]: production.PROVIDER_CONFIRMATION,
-    [production.WRITE_CONFIRM_ENV]: production.WRITE_CONFIRMATION,
-    [production.PROOF_CONFIRM_ENV]: production.PROOF_CONFIRMATION,
-    [production.FULL_CONFIRM_ENV]: production.FULL_CONFIRMATION,
-  };
+test('proof and full require private-read plus independent provider, write and mode-specific authorizations', () => {
+  const env = liveEnv();
   assert.doesNotThrow(() => production.assertLiveAuthorization({ mode: 'proof', execute: true, write: true }, env));
   assert.doesNotThrow(() => production.assertLiveAuthorization({ mode: 'full', execute: true, write: true }, env));
   assert.throws(() => production.assertLiveAuthorization({ mode: 'full', execute: true, write: false }, env), /both --execute and --write/);
   assert.throws(() => production.assertLiveAuthorization({ mode: 'proof', execute: true, write: true }, { ...env, [production.PROOF_CONFIRM_ENV]: '' }), /Refusing C4 proof/);
+  assert.throws(() => production.assertLiveAuthorization({ mode: 'full', execute: true, write: true }, { ...env, [production.PRIVATE_READ_CONFIRM_ENV]: '' }), /Refusing C4 private reads/);
 });
 
 test('plan-only performs private reads only and cannot call providers or writes', async () => {
@@ -210,4 +217,69 @@ test('ListenBrainz UsageTracker denial is a global full-run stop with zero Liste
   assert.equal(listenbrainzCalls, 0);
   assert.equal(result.haltReason, 'usage_blocked:listenbrainz:per_run_cap');
   assert.deepEqual(result.deferredProviders, []);
+});
+
+test('missing ListenBrainz configuration stops before usage reservation or provider call', async () => {
+  let usageReservations = 0;
+  let listenbrainzCalls = 0;
+  const context = {
+    usage: {
+      reserve: async () => { usageReservations += 1; return true; },
+      blockReason: () => null,
+    },
+    persistTrackIdentitiesOnly: async () => { throw new Error('identity write must not run'); },
+  };
+  await assert.rejects(() => production.runFull({
+    client: catalogueClient(completeMissCache()),
+    context,
+    base: baseContext(),
+    guards: safeGuards(),
+    musicbrainzProvider: { releaseBrowse: async () => { throw new Error('MusicBrainz must not run'); } },
+    listenbrainzProvider: { lookupBatch: async () => { listenbrainzCalls += 1; return { kind: 'ok', data: [] }; } },
+    assertProviderConfiguration: async (provider) => {
+      if (provider === 'listenbrainz') throw new Error('Missing required environment variable: LISTENBRAINZ_USER_TOKEN');
+      return true;
+    },
+    now: () => Date.parse('2026-08-11T01:00:00Z'),
+  }), /LISTENBRAINZ_USER_TOKEN/);
+  assert.equal(usageReservations, 0);
+  assert.equal(listenbrainzCalls, 0);
+});
+
+test('transient MusicBrainz failure defers that provider once and preserves resumability', async () => {
+  let providerCalls = 0;
+  const context = {
+    usage: { reserve: async () => true, blockReason: () => null },
+    persistTrackIdentitiesOnly: async () => { throw new Error('identity write must not run'); },
+  };
+  const result = await production.runFull({
+    client: catalogueClient(acquisition.emptyCatalogue()),
+    context,
+    base: baseContext(),
+    guards: safeGuards(),
+    musicbrainzProvider: {
+      releaseBrowse: async () => {
+        providerCalls += 1;
+        return { kind: 'retry', reason: 'http_503', nextEligibleCheckAt: '2026-08-11T01:30:00.000Z' };
+      },
+    },
+    listenbrainzProvider: { lookupBatch: async () => { throw new Error('ListenBrainz must not run'); } },
+    now: () => Date.parse('2026-08-11T01:00:00Z'),
+  });
+  assert.equal(providerCalls, 1);
+  assert.equal(result.haltReason, 'provider_deferred:musicbrainz');
+  assert.deepEqual(result.deferredProviders, ['musicbrainz']);
+  assert.deepEqual(result.providerDeferrals.musicbrainz, {
+    reason: 'http_503',
+    nextEligibleCheckAt: '2026-08-11T01:30:00.000Z',
+  });
+});
+
+test('old Spotify-first historical command-line entrypoints are retired', () => {
+  for (const script of ['../scripts/listening-backfill-production.js', '../scripts/listening-backfill-bulk.js']) {
+    const result = spawnSync(process.execPath, [require.resolve(script)], { encoding: 'utf8' });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Spotify-first historical/);
+    assert.match(result.stderr, /listening-catalogue-backfill-production\.js/);
+  }
 });
