@@ -11,6 +11,7 @@ const cataloguePersistence = require('../scripts/lib/listeningCataloguePersisten
 const ARTIST = '12345678-1234-4234-8234-123456789abc';
 const RELEASE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const RECORDING = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const RECORDING_TWO = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 
 function band() {
   return { id: 'band-1', name: 'Synthetic Artist', musicbrainz: { mbid: ARTIST, status: 'manual_confirmed' } };
@@ -244,6 +245,68 @@ test('missing ListenBrainz configuration stops before usage reservation or provi
   }), /LISTENBRAINZ_USER_TOKEN/);
   assert.equal(usageReservations, 0);
   assert.equal(listenbrainzCalls, 0);
+});
+
+test('full run accounts one ListenBrainz provider operation per unresolved work item', async () => {
+  let usageReservations = 0;
+  let listenbrainzCalls = 0;
+  let identityWrites = 0;
+  const persisted = [];
+  const context = {
+    usage: {
+      reserve: async (provider) => {
+        if (provider === 'listenbrainz') usageReservations += 1;
+        return true;
+      },
+      blockReason: () => null,
+    },
+    persistTrackIdentitiesOnly: async (next) => {
+      identityWrites += 1;
+      persisted.push(JSON.parse(JSON.stringify(next)));
+      return true;
+    },
+  };
+  const base = baseContext();
+  base.source.events = [
+    event({ stableListenId: 'listen-1', spotifyTrackId: 'SyntheticTrack1', recordingTitle: 'Missing Song One' }),
+    event({ stableListenId: 'listen-2', spotifyTrackId: 'SyntheticTrack2', recordingTitle: 'Missing Song Two' }),
+  ];
+  base.source.counts.totalEvents = 2;
+  base.source.counts.spotifyArchiveEvents = 2;
+
+  const result = await production.runFull({
+    client: catalogueClient(completeMissCache()),
+    context,
+    base,
+    guards: safeGuards(),
+    musicbrainzProvider: { releaseBrowse: async () => { throw new Error('fresh catalogue must prevent MusicBrainz calls'); } },
+    listenbrainzProvider: {
+      lookupBatch: async ({ items }) => {
+        listenbrainzCalls += 1;
+        assert.equal(items.length, 1);
+        const recordingMbid = listenbrainzCalls === 1 ? RECORDING : RECORDING_TWO;
+        return {
+          kind: 'ok',
+          data: [{
+            artist_credit_name: items[0].artistName,
+            recording_name: items[0].recordingName,
+            recording_mbid: recordingMbid,
+            artist_mbids: [ARTIST],
+          }],
+        };
+      },
+    },
+    now: () => Date.parse('2026-08-11T01:00:00Z'),
+  });
+
+  assert.equal(result.providerOperations, 2);
+  assert.equal(result.providerCalls.listenbrainz, 2);
+  assert.equal(result.listenbrainz.resolved, 2);
+  assert.equal(result.haltReason, null);
+  assert.equal(listenbrainzCalls, 2);
+  assert.equal(usageReservations, 2);
+  assert.equal(identityWrites, 2);
+  assert.equal(Object.keys(persisted.at(-1).records).length, 2);
 });
 
 test('transient MusicBrainz failure defers that provider once and preserves resumability', async () => {
