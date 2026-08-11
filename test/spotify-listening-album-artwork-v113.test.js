@@ -28,7 +28,7 @@ test('browser planner returns one representative trusted track per safe album gr
   assert.deepEqual(api.albumOrientedUnresolvedTrackIds({ records: {} }), ['TrackA', 'TrackC']);
 });
 
-test('known album artwork suppresses sibling track provider requests and is reused in memory', () => {
+test('known album artwork suppresses sibling requests without assigning inferred Spotify album identity', () => {
   globalThis.bands = [{ id: 'band-a', name: 'Synthetic Artist' }];
   globalThis.listeningEvents = [
     { localBandId: 'band-a', artistCreditName: 'Synthetic Artist', releaseTitle: 'Album One', spotifyTrackId: 'TrackA' },
@@ -51,9 +51,12 @@ test('known album artwork suppresses sibling track provider requests and is reus
 
   assert.deepEqual(api.albumOrientedUnresolvedTrackIds(document), []);
   assert.equal(api.applyAlbumReuse(document), 2);
-  assert.equal(globalThis.listeningEvents[1].spotifyAlbumId, 'Album123');
+  assert.equal(globalThis.listeningEvents[0].spotifyAlbumId, undefined);
+  assert.equal(globalThis.listeningEvents[1].spotifyAlbumId, undefined);
+  assert.equal(globalThis.listeningEvents[1].spotifyAlbumUrl, undefined);
   assert.equal(globalThis.listeningEvents[1].albumArtworkUrl, 'https://images.example.test/cover.jpg');
-  assert.equal(globalThis.listeningEvents[1].spotifyMetadataSource, 'spotify_album_group_reuse');
+  assert.equal(globalThis.listeningEvents[1].spotifyAlbumArtworkSource, 'spotify_album_group_reuse');
+  assert.equal(globalThis.listeningEvents[1].spotifyAlbumArtworkSeedTrackId, 'TrackA');
 });
 
 test('conflicting known album IDs fail closed and do not queue a guessed representative', () => {
