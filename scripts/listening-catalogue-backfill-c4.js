@@ -14,15 +14,6 @@ function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
-function clean(value) {
-  const text = String(value == null ? '' : value).trim();
-  return text || null;
-}
-
-function normalized(value) {
-  return inventoryLib.normalizeText(value) || null;
-}
-
 function identityDocument(value = null) {
   if (value == null) return { kind: 'livevault-track-identities', schemaVersion: 1, updatedAt: null, records: {} };
   if (!value || typeof value !== 'object' || Array.isArray(value)
@@ -133,17 +124,6 @@ function applyLocalResolutions({ plan, localResults, trackIdentities = null, now
   return { trackIdentities: identities, resolved };
 }
 
-function listenbrainzMatchCandidates(batchItems, row) {
-  const artist = normalized(row?.artist_credit_name);
-  const recording = normalized(row?.recording_name);
-  const release = normalized(row?.release_name);
-  if (!artist || !recording) return [];
-  const base = batchItems.filter((item) => normalized(item.artistName) === artist && normalized(item.recordingName) === recording);
-  if (base.length <= 1) return base;
-  if (!release) return [];
-  return base.filter((item) => normalized(item.releaseName) === release);
-}
-
 function mapListenBrainzBatch({ batchPlan, data } = {}) {
   if (!batchPlan || !Array.isArray(batchPlan.items) || batchPlan.items.length !== LISTENBRAINZ_EXECUTION_ITEMS) {
     throw new Error('C4 ListenBrainz execution requires exactly one planned work item.');
@@ -244,7 +224,6 @@ module.exports = {
   safePlanSummary,
   currentLocalResults,
   applyLocalResolutions,
-  listenbrainzMatchCandidates,
   mapListenBrainzBatch,
   applyListenBrainzBatch,
   buildListenBrainzBatch,
