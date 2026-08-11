@@ -55,6 +55,15 @@ test('duplicate local band names fail closed instead of text-mapping an album gr
   assert.equal(result.unsafeEvents, 1);
 });
 
+test('stale explicit local band IDs fail closed instead of creating an orphan album group', () => {
+  const source = { ...event('TrackA'), localBandId: 'deleted-band' };
+  const result = core.buildAlbumGroups({ bands, events: [source], metadata: { records: {} } });
+
+  assert.equal(result.groups.length, 0);
+  assert.equal(result.ambiguous.length, 0);
+  assert.equal(result.unsafeEvents, 1);
+});
+
 test('conflicting already-known Spotify album IDs quarantine the title group', () => {
   const result = core.buildAlbumGroups({
     bands,
@@ -70,6 +79,18 @@ test('conflicting already-known Spotify album IDs quarantine the title group', (
   assert.equal(result.groups.length, 0);
   assert.equal(result.ambiguous.length, 1);
   assert.equal(result.ambiguous[0].reason, 'conflicting_known_spotify_album_ids');
+});
+
+test('the same exact Spotify track crossing two album groups quarantines both groups', () => {
+  const result = core.buildAlbumGroups({
+    bands,
+    events: [event('TrackA', 'Album One'), event('TrackA', 'Album Two')],
+    metadata: { records: {} },
+  });
+
+  assert.equal(result.groups.length, 0);
+  assert.equal(result.ambiguous.length, 2);
+  assert.ok(result.ambiguous.every((group) => group.reason === 'spotify_track_crosses_album_groups'));
 });
 
 test('one known album artwork record makes the whole safe album group reusable without provider work', () => {
