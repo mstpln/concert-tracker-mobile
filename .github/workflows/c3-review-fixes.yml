@@ -1,0 +1,121 @@
+name: C3 review fixes
+
+on:
+  push:
+    branches:
+      - feature/listening-catalogue-c3-v112
+    paths:
+      - .github/workflows/c3-review-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feature/listening-catalogue-c3-v112
+          fetch-depth: 0
+      - name: Apply focused C3 review fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'scripts/lib/config.js',
+              "userAgent: 'BANDMARKR/112 (https://github.com/mstpln/concert-tracker-mobile; personal non-commercial project)',",
+              "userAgent: 'TheLiveVault/1.0 (https://github.com/mstpln/concert-tracker-mobile; personal non-commercial project)',",
+          )
+          replace_once(
+              'docs/DATA_AUTOMATION_LISTENING_C3.md',
+              'Requests use JSON, a meaningful BANDMARKR User-Agent, a maximum page size of 100,',
+              'Requests use JSON, the existing reviewed project User-Agent, a maximum page size of 100,',
+          )
+          replace_once(
+              'test/data-maintenance-foundation-v107.test.js',
+              "test('active app and service-worker version assignments remain synchronized at v111', () => {\n  const app = source('version.js').match(/^const APP_VERSION = '([^']+)';$/m)?.[1];\n  const cache = source('service-worker.js').match(/^const CACHE_NAME_LITERAL = '([^']+)';$/m)?.[1];\n  assert.equal(app, 'v111');\n  assert.equal(cache, 'v111');\n  assert.equal(app, cache);\n});",
+              "test('active app and service-worker version assignments remain synchronized at v112', () => {\n  const app = source('version.js').match(/^const APP_VERSION = '([^']+)';$/m)?.[1];\n  const cache = source('service-worker.js').match(/^const CACHE_NAME_LITERAL = '([^']+)';$/m)?.[1];\n  assert.equal(app, 'v112');\n  assert.equal(cache, 'v112');\n  assert.equal(app, cache);\n});",
+          )
+          replace_once(
+              'test/listening-maintenance-usage.test.js',
+              'assert.deepEqual(sleeps, [600, 500]);',
+              'assert.deepEqual(sleeps, [1500, 500]);',
+          )
+          replace_once(
+              'test/listening-catalogue-c3.test.js',
+              "assert.match(seen[0].options.headers['User-Agent'], /^BANDMARKR\\/112 /);",
+              "assert.match(seen[0].options.headers['User-Agent'], /^TheLiveVault\\/1\\.0 /);",
+          )
+
+          replace_once(
+              'scripts/listening-catalogue-acquisition.js',
+              "if (artist.complete !== true || artist.nextOffset !== artist.releaseMbids.length || artist.totalCount !== artist.releaseMbids.length\n          || !validDate(artist.refreshedAt) || !validDate(artist.freshUntil) || Date.parse(artist.freshUntil) <= Date.parse(artist.refreshedAt)\n          || artist.refreshStartedAt != null) {",
+              "if (artist.complete !== true || artist.nextOffset !== artist.releaseMbids.length || artist.totalCount !== artist.releaseMbids.length\n          || !validDate(artist.refreshedAt) || !validDate(artist.freshUntil)\n          || Date.parse(artist.freshUntil) - Date.parse(artist.refreshedAt) !== CATALOGUE_FRESHNESS_MS\n          || artist.refreshStartedAt != null) {",
+          )
+          replace_once(
+              'scripts/listening-catalogue-acquisition.js',
+              "} else if (artist.complete != null || artist.nextOffset != null || artist.totalCount != null || artist.refreshedAt != null || artist.freshUntil != null) {\n        throw new Error('Partial catalogue cannot claim complete freshness state.');",
+              "} else if (!validDate(artist.refreshStartedAt) || artist.complete != null || artist.nextOffset != null || artist.totalCount != null || artist.refreshedAt != null || artist.freshUntil != null) {\n        throw new Error('Partial catalogue must retain only its valid refresh checkpoint state.');",
+          )
+
+          replace_once(
+              'scripts/lib/listeningCatalogueProviders.js',
+              "const MAX_LISTENBRAINZ_BATCH = 100;\nconst SUPPORTED_SCOPES",
+              "const MAX_LISTENBRAINZ_BATCH = 100;\nconst LISTENBRAINZ_TIMEOUT_MS = 10000;\nconst SUPPORTED_SCOPES",
+          )
+          replace_once(
+              'scripts/lib/listeningCatalogueProviders.js',
+              "function createListenBrainzBatchAdapter({ fetchImpl = fetch, tokenProvider, now = () => Date.now() } = {}) {\n  if (typeof fetchImpl !== 'function') throw new Error('ListenBrainz batch adapter requires fetch.');",
+              "function createListenBrainzBatchAdapter({ fetchImpl = fetch, tokenProvider, now = () => Date.now(), timeoutMs = LISTENBRAINZ_TIMEOUT_MS } = {}) {\n  if (typeof fetchImpl !== 'function' || !Number.isInteger(timeoutMs) || timeoutMs < 1) throw new Error('ListenBrainz batch adapter requires bounded fetch.');",
+          )
+          replace_once(
+              'scripts/lib/listeningCatalogueProviders.js',
+              "      let response;\n      try {\n        response = await fetchImpl(LISTENBRAINZ_LOOKUP_URL, {\n          method: 'POST',\n          headers: { Authorization: `Token ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },\n          body: JSON.stringify({ recordings }),\n        });\n      } catch {\n        return { kind: 'retry', reason: 'listenbrainz_network_error', nextEligibleCheckAt: new Date(now() + 30 * 60 * 1000).toISOString() };\n      }",
+              "      const controller = new AbortController();\n      const timer = setTimeout(() => controller.abort(), timeoutMs);\n      let response;\n      try {\n        response = await fetchImpl(LISTENBRAINZ_LOOKUP_URL, {\n          method: 'POST',\n          headers: { Authorization: `Token ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },\n          body: JSON.stringify({ recordings }),\n          signal: controller.signal,\n        });\n      } catch (error) {\n        return {\n          kind: 'retry',\n          reason: error?.name === 'AbortError' ? 'listenbrainz_timeout' : 'listenbrainz_network_error',\n          nextEligibleCheckAt: new Date(now() + 30 * 60 * 1000).toISOString(),\n        };\n      } finally {\n        clearTimeout(timer);\n      }",
+          )
+          replace_once(
+              'scripts/lib/listeningCatalogueProviders.js',
+              "  MAX_LISTENBRAINZ_BATCH,\n  SUPPORTED_SCOPES,",
+              "  MAX_LISTENBRAINZ_BATCH,\n  LISTENBRAINZ_TIMEOUT_MS,\n  SUPPORTED_SCOPES,",
+          )
+
+          old_worker = "function musicbrainzCatalogueArtistIsValid(key,artist){const artistMbid=String(key||'').toLowerCase();if(!MUSICBRAINZ_MBID.test(artistMbid)||key!==artistMbid||!artist||typeof artist!=='object'||Array.isArray(artist)||artist.artistMbid!==artistMbid||artist.sourceEntity!=='release')return false;if(!artist.scopeCheckpoints||typeof artist.scopeCheckpoints!=='object'||Array.isArray(artist.scopeCheckpoints))return false;const scopeNames=Object.keys(artist.scopeCheckpoints);if(scopeNames.some((scope)=>!MUSICBRAINZ_CATALOGUE_SCOPES.includes(scope)))return false;const completed=[];const unionReleases=new Set();const expectedRecordings=new Map();for(const scopeName of scopeNames){const scope=artist.scopeCheckpoints[scopeName];if(!musicbrainzCatalogueScopeIsValid(scope,artistMbid))return false;if(scope.complete)completed.push(scopeName);for(const id of scope.releaseMbids)unionReleases.add(id.toLowerCase());for(const recording of scope.recordings)if(!addExpectedCatalogueRecording(expectedRecordings,recording))return false;}if(!Array.isArray(artist.coverageScopes)||artist.coverageScopes.length!==new Set(artist.coverageScopes).size||artist.coverageScopes.some((scope)=>!MUSICBRAINZ_CATALOGUE_SCOPES.includes(scope)))return false;if(JSON.stringify([...artist.coverageScopes].sort())!==JSON.stringify(completed.sort()))return false;if(!Array.isArray(artist.releaseMbids)||artist.releaseMbids.length!==unionReleases.size||artist.releaseMbids.some((id)=>!unionReleases.has(String(id).toLowerCase())))return false;if(!Array.isArray(artist.recordings)||artist.recordings.length!==expectedRecordings.size||artist.recordings.length>MAX_MUSICBRAINZ_RECORDINGS_PER_ARTIST)return false;const covered=new Set([...unionReleases]);const actualIds=new Set();for(const recording of artist.recordings){const id=String(recording?.recordingMbid||'').toLowerCase();if(actualIds.has(id)||!musicbrainzCatalogueRecordingIsValid(recording,artistMbid,covered)||!catalogueRecordingMatchesExpected(recording,expectedRecordings.get(id)))return false;actualIds.add(id);}const allComplete=MUSICBRAINZ_CATALOGUE_SCOPES.every((scope)=>artist.scopeCheckpoints[scope]?.complete===true);if(allComplete){if(artist.complete!==true||artist.nextOffset!==artist.releaseMbids.length||artist.totalCount!==artist.releaseMbids.length||!spotifyMetadataDateIsValid(artist.refreshedAt)||!spotifyMetadataDateIsValid(artist.freshUntil)||Date.parse(artist.freshUntil)<=Date.parse(artist.refreshedAt))return false;}else if(artist.complete!=null||artist.nextOffset!=null||artist.totalCount!=null||artist.refreshedAt!=null||artist.freshUntil!=null)return false;return true;}"
+          new_worker = "function musicbrainzCatalogueArtistIsValid(key,artist){const artistMbid=String(key||'').toLowerCase();if(!MUSICBRAINZ_MBID.test(artistMbid)||key!==artistMbid||!artist||typeof artist!=='object'||Array.isArray(artist)||artist.artistMbid!==artistMbid||artist.sourceEntity!=='release')return false;if(!artist.scopeCheckpoints||typeof artist.scopeCheckpoints!=='object'||Array.isArray(artist.scopeCheckpoints))return false;const scopeNames=Object.keys(artist.scopeCheckpoints);if(scopeNames.some((scope)=>!MUSICBRAINZ_CATALOGUE_SCOPES.includes(scope)))return false;const completed=[];const unionReleases=new Set();const expectedRecordings=new Map();for(const scopeName of scopeNames){const scope=artist.scopeCheckpoints[scopeName];if(!musicbrainzCatalogueScopeIsValid(scope,artistMbid))return false;if(scope.complete)completed.push(scopeName);for(const id of scope.releaseMbids)unionReleases.add(id.toLowerCase());for(const recording of scope.recordings)if(!addExpectedCatalogueRecording(expectedRecordings,recording))return false;}if(!Array.isArray(artist.coverageScopes)||artist.coverageScopes.length!==new Set(artist.coverageScopes).size||artist.coverageScopes.some((scope)=>!MUSICBRAINZ_CATALOGUE_SCOPES.includes(scope)))return false;if(JSON.stringify([...artist.coverageScopes].sort())!==JSON.stringify(completed.sort()))return false;if(!Array.isArray(artist.releaseMbids)||artist.releaseMbids.length!==unionReleases.size||artist.releaseMbids.some((id)=>!unionReleases.has(String(id).toLowerCase())))return false;if(!Array.isArray(artist.recordings)||artist.recordings.length!==expectedRecordings.size||artist.recordings.length>MAX_MUSICBRAINZ_RECORDINGS_PER_ARTIST)return false;const covered=new Set([...unionReleases]);const actualIds=new Set();for(const recording of artist.recordings){const id=String(recording?.recordingMbid||'').toLowerCase();if(actualIds.has(id)||!musicbrainzCatalogueRecordingIsValid(recording,artistMbid,covered)||!catalogueRecordingMatchesExpected(recording,expectedRecordings.get(id)))return false;actualIds.add(id);}const allComplete=MUSICBRAINZ_CATALOGUE_SCOPES.every((scope)=>artist.scopeCheckpoints[scope]?.complete===true);if(allComplete){if(artist.complete!==true||artist.nextOffset!==artist.releaseMbids.length||artist.totalCount!==artist.releaseMbids.length||!spotifyMetadataDateIsValid(artist.refreshedAt)||!spotifyMetadataDateIsValid(artist.freshUntil)||Date.parse(artist.freshUntil)-Date.parse(artist.refreshedAt)!==30*24*60*60*1000||artist.refreshStartedAt!=null)return false;}else if(!spotifyMetadataDateIsValid(artist.refreshStartedAt)||artist.refreshStartedAt==null||artist.complete!=null||artist.nextOffset!=null||artist.totalCount!=null||artist.refreshedAt!=null||artist.freshUntil!=null)return false;return true;}"
+          replace_once('worker.js', old_worker, new_worker)
+
+          marker = "test('C3 diagnostics are aggregate only', () => {"
+          insert = """test('C3 rejects forged freshness windows and partial rows without a valid refresh checkpoint', () => {\n  const now = Date.parse('2026-08-11T00:00:00Z');\n  let cache = acquisition.startArtistRefresh(acquisition.emptyCatalogue(), ARTIST, now);\n  assert.throws(() => acquisition.validateDurableCatalogue({ ...cache, artists: { [ARTIST]: { ...cache.artists[ARTIST], refreshStartedAt: undefined } } }));\n\n  cache = acquisition.mergeScopePage(cache, 'release_artist', page(releasePayload()), now);\n  cache = acquisition.mergeScopePage(cache, 'release_track_artist', page(releasePayload({ releaseMbid: RELEASE_B, recordingMbid: RECORDING_B, title: 'Track-only Song' })), now);\n  const forged = structuredClone(cache);\n  forged.artists[ARTIST].freshUntil = '2026-10-11T00:00:00.000Z';\n  assert.throws(() => acquisition.validateDurableCatalogue(forged), /freshness state/);\n});\n\ntest('dormant ListenBrainz adapter has a bounded timeout', async () => {\n  const adapter = createListenBrainzBatchAdapter({\n    tokenProvider: async () => 'synthetic-token',\n    timeoutMs: 5,\n    now: () => Date.parse('2026-08-11T00:00:00Z'),\n    fetchImpl: async (_url, options) => new Promise((resolve, reject) => {\n      options.signal.addEventListener('abort', () => {\n        const error = new Error('aborted');\n        error.name = 'AbortError';\n        reject(error);\n      }, { once: true });\n    }),\n  });\n  const result = await adapter.lookupBatch({ items: [{ artistName: 'Synthetic Artist', recordingName: 'Synthetic Song' }] });\n  assert.equal(result.kind, 'retry');\n  assert.equal(result.reason, 'listenbrainz_timeout');\n});\n\n""" + marker
+          replace_once('test/listening-catalogue-c3.test.js', marker, insert)
+
+          worker_marker = "test('catalogue route enforces the 25 MiB ceiling before parsing', async () => {"
+          worker_insert = """test('catalogue validator enforces exact 30-day freshness and partial refresh checkpoints', async () => {\n  const worker = loadWorker();\n  const env = { ...envBase, BUCKET: bucket(null) };\n\n  const forgedFreshness = catalogue();\n  forgedFreshness.artists[ARTIST].freshUntil = '2026-10-11T00:00:00.000Z';\n  let response = await worker.fetch(request(env.DATA_MAINTENANCE_TOKEN, 'PUT', forgedFreshness, { 'Content-Type': 'application/json', 'If-None-Match': '*' }), env);\n  assert.equal(response.status, 400);\n\n  const partial = catalogue();\n  delete partial.artists[ARTIST].scopeCheckpoints.release_track_artist;\n  partial.artists[ARTIST].coverageScopes = ['release_artist'];\n  partial.artists[ARTIST].releaseMbids = [RELEASE_A];\n  partial.artists[ARTIST].recordings = [recording([release(RELEASE_A, 'Release A')])];\n  delete partial.artists[ARTIST].nextOffset;\n  delete partial.artists[ARTIST].totalCount;\n  delete partial.artists[ARTIST].complete;\n  delete partial.artists[ARTIST].refreshedAt;\n  delete partial.artists[ARTIST].freshUntil;\n  response = await worker.fetch(request(env.DATA_MAINTENANCE_TOKEN, 'PUT', partial, { 'Content-Type': 'application/json', 'If-None-Match': '*' }), env);\n  assert.equal(response.status, 400);\n\n  partial.artists[ARTIST].refreshStartedAt = '2026-08-11T00:00:00.000Z';\n  response = await worker.fetch(request(env.DATA_MAINTENANCE_TOKEN, 'PUT', partial, { 'Content-Type': 'application/json', 'If-None-Match': '*' }), env);\n  assert.equal(response.status, 200);\n});\n\n""" + worker_marker
+          replace_once('test/worker-listening-catalogue-c3.test.js', worker_marker, worker_insert)
+          PY
+      - name: Run focused validation
+        shell: bash
+        run: |
+          npm ci
+          node --test test/listening-catalogue-c3.test.js test/worker-listening-catalogue-c3.test.js test/data-maintenance-foundation-v107.test.js test/listening-maintenance-adapters.test.js test/listening-maintenance-usage.test.js
+          node --check scripts/listening-catalogue-acquisition.js
+          node --check scripts/lib/listeningCatalogueProviders.js
+          node --check worker.js
+      - name: Commit focused fixes and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm .github/workflows/c3-review-fixes.yml
+          git add scripts/lib/config.js scripts/listening-catalogue-acquisition.js scripts/lib/listeningCatalogueProviders.js worker.js test/listening-catalogue-c3.test.js test/worker-listening-catalogue-c3.test.js test/data-maintenance-foundation-v107.test.js test/listening-maintenance-usage.test.js docs/DATA_AUTOMATION_LISTENING_C3.md
+          git commit -m "Fix C3 validation and freshness boundaries"
+          git push origin HEAD:feature/listening-catalogue-c3-v112
