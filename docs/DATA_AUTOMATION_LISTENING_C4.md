@@ -20,9 +20,10 @@ The C4 historical path is:
 6. Run the C2 local catalogue resolver against authoritative dual-scope catalogue state.
 7. Persist deterministic local recording resolutions through the existing additive `listening/track-identities.json` identity merge contract.
 8. Recompute current evidence after durable identity writes.
-9. Only for current tier B/C items whose authoritative catalogue route is exhausted with `catalogue_no_match` or `catalogue_release_mismatch`, plan a bounded ListenBrainz metadata batch through the C2 bridge planner.
-10. Accept ListenBrainz rows only when they map uniquely to a planned artist/recording request (using release text only to disambiguate duplicate artist/title requests) and then pass the row through the existing trusted-artist/exact-text ListenBrainz outcome validator.
-11. Persist accepted derived identity outcomes conditionally, recompute and continue.
+9. Only for current tier B/C items whose authoritative catalogue route is exhausted with `catalogue_no_match` or `catalogue_release_mismatch`, plan the next ListenBrainz metadata lookup through the C2 bridge planner.
+10. Execute exactly one widened work item per ListenBrainz provider operation. The returned row belongs to that sole originating request by construction; C4 never uses response order or returned display text to decide which work item the row belongs to.
+11. Pass that single returned row through the existing `listenbrainzOutcome()` trusted-artist and exact normalized artist/recording validator before any durable identity update. Provider text differences, trusted-artist mismatches or other identity conflicts remain conservative `needs_review`/error outcomes rather than guessed resolutions.
+12. Persist accepted derived identity outcomes conditionally, recompute and continue.
 
 Spotify is not a C4 core recording-identity provider. C4 makes zero Spotify provider calls for historical recording resolution. Existing exact Spotify IDs/metadata may remain stored evidence or presentation metadata, and the C2 zero-call URL helper remains unrelated to recording authority.
 
@@ -67,15 +68,24 @@ A partial two-page result is valid proof output and remains non-authoritative fo
 
 The later full run requires separate exact provider, derived-write and full-backfill authorizations plus `--execute --write`. One invocation keeps processing safe work without a manual 5/25/100/500/1000 ladder.
 
-The run repeatedly reconstructs C2 evidence, applies deterministic local results, refreshes the next required artist catalogue, and uses bounded ListenBrainz batches only after authoritative catalogue exhaustion. It stops when eligible work is exhausted, only deferred-provider work remains, a global safety condition occurs, or the 50,000-provider-operation emergency ceiling is reached.
+The run repeatedly reconstructs C2 evidence, applies deterministic local results, refreshes the next required artist catalogue, and uses one-item ListenBrainz lookups only after authoritative catalogue exhaustion. It stops when eligible work is exhausted, only deferred-provider work remains, a global safety condition occurs, or the 50,000-provider-operation emergency ceiling is reached.
 
-The 50,000 limit is a runaway guard, not an operator batching model.
+The 50,000 limit is a runaway guard, not an operator batching model. Each ListenBrainz lookup now consumes one provider operation and one UsageTracker reservation; no provider or UsageTracker limit is increased by this correction.
 
-## ListenBrainz batch acceptance
+## ListenBrainz single-item acceptance
 
-The C3 adapter permits at most 100 planned requests in one authenticated POST. C4 does not rely on response-array position as identity. Each returned row must uniquely correspond to one planned normalized artist/recording request. If several planned requests share artist/title, exact normalized release text may disambiguate when the returned row also contains release text. Otherwise the row is left unmapped rather than guessed.
+The C3 adapter remains capable of the provider's bounded metadata POST shape, but C4 production execution deliberately supplies exactly one planned work item per provider call. This removes the multi-request correlation problem discovered during the first live historical backfill: ListenBrainz does not guarantee that returned display text echoes submitted text exactly, and C4 does not rely on response-array position.
 
-A mapped row is still not authority by itself: it must pass the existing `listenbrainzOutcome()` trusted MusicBrainz artist and exact normalized artist/recording checks. Missing/unmapped rows become conservative no-match outcomes for those explicitly widened requests. Mismatches remain review/quarantine work and malformed evidence remains fail-closed.
+For a C4 production lookup:
+
+- exactly one request item must be planned;
+- exactly one response row must be returned;
+- a missing, extra, malformed or non-object response row fails closed before any identity persistence;
+- the sole row is associated with the sole originating work item by construction, not by response position among multiple requests and not by comparing release text;
+- `listenbrainzOutcome()` still independently requires the trusted MusicBrainz artist MBID, valid provider MBIDs, and exact normalized artist/recording identity before a resolved result is accepted;
+- returned text that differs from the request does not become a guessed resolution; it remains `needs_review` under the existing identity-validation contract.
+
+The previous multi-item response-correlation helper is therefore no longer part of production execution. Durable holds, item quarantine, unknown-field preservation and fail-closed persistence semantics are unchanged.
 
 ## Safety boundaries
 
@@ -115,6 +125,8 @@ After C4 is merged, production remains stopped. The separately authorized sequen
 2. **Required Worker deployment + one small live plumbing proof** — separately authorize deployment of the already-reviewed C3 Worker route if still required, then prove one artist / at most two MusicBrainz pages, catalogue creation/update, ETags, durable reread and resume.
 3. **Full resumable historical run** — only after the proof is inspected and separately authorized.
 
+The first live full-run attempts exposed a ListenBrainz multi-item correlation stop without writing the unsafe response. Production backfill remains paused while the focused v112 single-item correction is reviewed. Resuming production after that correction is merged requires a new, separate authorization.
+
 No repeated manual batch ladder is part of the rollout.
 
 ## Validation
@@ -126,7 +138,11 @@ C4 synthetic QA covers:
 - zero Spotify core calls;
 - local resolution only from authoritative dual-scope catalogue state;
 - bounded ListenBrainz widening only after authoritative exhaustion;
-- conservative non-positional ListenBrainz response mapping;
+- exactly one ListenBrainz work item per provider operation;
+- response association by sole originating request rather than multi-request text/order correlation;
+- the production-discovered returned-text mismatch remaining `needs_review` rather than becoming a guessed identity;
+- malformed/missing/extra ListenBrainz response rows failing before identity persistence;
+- UsageTracker and provider-operation accounting once per one-item ListenBrainz lookup;
 - additive identity persistence and unknown-field preservation through the existing merge contract;
 - fixed proof scope of one artist / maximum two MusicBrainz page requests;
 - read-only mode refusing writes and not constructing provider adapters;
