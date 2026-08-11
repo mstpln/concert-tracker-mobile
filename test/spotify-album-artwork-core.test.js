@@ -25,7 +25,7 @@ function metadataRecord(trackId, albumId = 'Album123', artworkUrl = 'https://ima
     spotifyTrackId: trackId,
     spotifyTrackUrl: `https://open.spotify.com/track/${trackId}`,
     spotifyAlbumId: albumId,
-    spotifyAlbumUrl: `https://open.spotify.com/album/${albumId}`,
+    spotifyAlbumUrl: albumId ? `https://open.spotify.com/album/${albumId}` : null,
     artworkUrl,
     fetchedAt: '2026-08-11T12:00:00.000Z',
     source: 'spotify_exact_track_id',
@@ -103,6 +103,19 @@ test('one known album artwork record makes the whole safe album group reusable w
   assert.equal(plan.reusable.length, 1);
   assert.equal(plan.provider.length, 0);
   assert.equal(plan.summary.uniqueTracksInSafeGroups, 3);
+});
+
+test('known album identity selects its exact track as the provider representative when artwork is missing', () => {
+  const plan = core.planAlbumArtwork({
+    bands,
+    events: [event('TrackA'), event('TrackB')],
+    metadata: { records: { TrackB: metadataRecord('TrackB', 'Album123', null) } },
+  });
+
+  assert.equal(plan.reusable.length, 0);
+  assert.equal(plan.provider.length, 1);
+  assert.equal(plan.provider[0].knownAlbumId, 'Album123');
+  assert.equal(plan.provider[0].representativeTrackId, 'TrackB');
 });
 
 test('representative persistence preserves unknown fields and writes only the exact looked-up track', () => {
