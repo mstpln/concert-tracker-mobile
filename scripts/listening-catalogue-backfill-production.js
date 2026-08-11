@@ -83,16 +83,21 @@ function usageText() {
   ].join('\n');
 }
 
-function assertPlanAuthorization(options, env) {
-  if (!options.execute) throw new Error('Refusing C4 private reads: --execute is required after read-only authorization.');
-  if (options.write) throw new Error('C4 --plan-only refuses --write.');
+function assertPrivateReadAuthorization(env) {
   if (String(env?.[PRIVATE_READ_CONFIRM_ENV] || '') !== PRIVATE_READ_CONFIRMATION) {
     throw new Error(`Refusing C4 private reads: ${PRIVATE_READ_CONFIRM_ENV} does not contain the required authorization value.`);
   }
 }
 
+function assertPlanAuthorization(options, env) {
+  if (!options.execute) throw new Error('Refusing C4 private reads: --execute is required after read-only authorization.');
+  if (options.write) throw new Error('C4 --plan-only refuses --write.');
+  assertPrivateReadAuthorization(env);
+}
+
 function assertLiveAuthorization(options, env) {
   if (!options.execute || !options.write) throw new Error('C4 live modes require both --execute and --write after separate authorization.');
+  assertPrivateReadAuthorization(env);
   if (String(env?.[PROVIDER_CONFIRM_ENV] || '') !== PROVIDER_CONFIRMATION) {
     throw new Error(`Refusing C4 providers: ${PROVIDER_CONFIRM_ENV} does not contain the required authorization value.`);
   }
@@ -268,7 +273,16 @@ async function runProof({ client, context, base, guards, musicbrainzProvider, no
   };
 }
 
-async function runFull({ client, context, base, guards, musicbrainzProvider, listenbrainzProvider, now = () => Date.now() } = {}) {
+async function runFull({
+  client,
+  context,
+  base,
+  guards,
+  musicbrainzProvider,
+  listenbrainzProvider,
+  assertProviderConfiguration = async () => true,
+  now = () => Date.now(),
+} = {}) {
   let trackIdentities = c4.identityDocument(base.trackIdentities);
   let catalogue = (await cataloguePersistence.loadCatalogue(client)).cache;
   let providerOperations = 0;
@@ -366,6 +380,7 @@ async function runFull({ client, context, base, guards, musicbrainzProvider, lis
       maxItems: c4.MAX_LISTENBRAINZ_BATCH,
     });
     if (batch.count > 0 && !deferred.has('listenbrainz')) {
+      await assertProviderConfiguration('listenbrainz');
       const usage = guardedUsage('listenbrainz');
       if (!(await usage.reserve())) {
         haltReason = usageHaltReason('listenbrainz', usage.blockReason());
@@ -476,23 +491,35 @@ async function runProductionC4({
     readManifest,
   });
   const musicbrainzProvider = musicbrainzProviderFactory({ fetchImpl, now });
-  const listenbrainzProvider = listenbrainzProviderFactory({
-    fetchImpl,
-    now,
-    tokenProvider: async () => requiredEnv(env, 'LISTENBRAINZ_USER_TOKEN'),
-  });
 
   let safe;
   if (options.mode === 'proof') {
     safe = await runProof({ client, context, base, guards, musicbrainzProvider, now });
   } else {
+    const listenbrainzProvider = listenbrainzProviderFactory({
+      fetchImpl,
+      now,
+      tokenProvider: async () => requiredEnv(env, 'LISTENBRAINZ_USER_TOKEN'),
+    });
     const originalPersist = context.persistTrackIdentitiesOnly;
     context.persistTrackIdentitiesOnly = async (next) => {
       const result = await originalPersist(next);
       if (result === true) currentTrackIdentities = clone(next);
       return result;
     };
-    safe = await runFull({ client, context, base, guards, musicbrainzProvider, listenbrainzProvider, now });
+    safe = await runFull({
+      client,
+      context,
+      base,
+      guards,
+      musicbrainzProvider,
+      listenbrainzProvider,
+      assertProviderConfiguration: async (provider) => {
+        if (provider === 'listenbrainz') requiredEnv(env, 'LISTENBRAINZ_USER_TOKEN');
+        return true;
+      },
+      now,
+    });
   }
   log(JSON.stringify(safe));
   return safe;
@@ -526,6 +553,7 @@ module.exports = {
   usageHaltReason,
   parseArgs,
   usageText,
+  assertPrivateReadAuthorization,
   assertPlanAuthorization,
   assertLiveAuthorization,
   safeSourceSummary,
