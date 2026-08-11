@@ -1,0 +1,47 @@
+name: C3 continuity finalize
+
+on:
+  push:
+    branches:
+      - feature/listening-catalogue-c3-v112
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feature/listening-catalogue-c3-v112
+
+      - name: Append C3 continuity and remove helper
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          state = Path('docs/LIVEVAULT_STATE.md')
+          text = state.read_text()
+          marker = '## Build C3 catalogue acquisition state'
+          if marker not in text:
+              text += '''\n\n## Build C3 catalogue acquisition state\n\nThis section supersedes the stale PR #104 review-state section above where the later facts differ. PR #104 merged successfully as `8774ec3a44d000023ef8f8becc1d601e8749d34d`; its C2 head was `861a023d3de8ddde0f146919f35b6f2ab35053d8`. C2 remains the merged production-inert catalogue resolver foundation.\n\nBuild C3 is implemented on `feature/listening-catalogue-c3-v112` in PR #105. It adds safe provider adapters and durable catalogue-cache machinery around the merged C2 contract: exact MusicBrainz release browsing for both `release_artist` and `release_track_artist`, independent resumable scope checkpoints, deterministic multi-scope assembly, 30-day demand-driven freshness, the exact derived object `listening/musicbrainz-catalogue.json`, a 25 MiB absolute object ceiling plus structural limits, conditional ETag-safe persistence, exact data-maintenance-only Worker allowlisting, a dormant bounded authenticated ListenBrainz batch adapter, and aggregate-only diagnostics. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v112 and generated build state records v112.\n\nC3 does not reopen or migrate existing durable `needs_review`, `retry`, `error`, or `no_match` track/provider states. It does not alter immutable listening observations or user-owned/reviewed identity decisions. The current v111 historical backfill entrypoints are not connected to C3 and remain unauthorized for production use.\n\nC3 development and automated validation are synthetic/fake-backend only. No live MusicBrainz, ListenBrainz or Spotify call, production R2 read/write for the new catalogue, Worker deployment, production workflow, six-hour schedule activation or historical backfill execution is authorized by PR #105. Build C4 remains the separately authorized production activation/backfill slice.\n'''
+              state.write_text(text)
+
+          decisions = Path('docs/LIVEVAULT_DECISIONS.md')
+          text = decisions.read_text()
+          marker = '## 2026-08-11 — C3 catalogue acquisition is durable, dual-scope and demand-driven'
+          if marker not in text:
+              text += '''\n\n## 2026-08-11 — C3 catalogue acquisition is durable, dual-scope and demand-driven\n\n**Decision:** Store the derived MusicBrainz catalogue only at `listening/musicbrainz-catalogue.json`, with a 25 MiB absolute serialized ceiling, finite structural limits, and independent resumable `release_artist` and `release_track_artist` checkpoints. Catalogue authority requires both scopes to complete and be assembled through the C2 conflict rules. Freshness is 30 days and demand-driven; a maintenance wake-up is not permission to refresh every artist.\n\n**Reason:** MusicBrainz whole-release and track-only artist appearances are complementary evidence streams, and partial/stale acquisition must never create false uniqueness or no-match authority. A bounded derived cache avoids repeated provider work while remaining rebuildable and separate from immutable listening source observations.\n\n**Consequence:** The data-maintenance role alone may GET/PUT the exact catalogue object through conditional ETag writes. A stale ETag may reconcile once only when the target artist row did not change; same-artist concurrency fails closed. Missing or malformed cache state is rebuilt rather than migrated destructively. Existing durable `needs_review`, `retry`, `error`, and `no_match` states remain held, unknown future fields and provider ownership boundaries are preserved, diagnostics stay aggregate-only, and C3 does not activate providers, schedules or historical backfill. C4 owns separately authorized production activation.\n'''
+              decisions.write_text(text)
+          PY
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm .github/workflows/c3-continuity-finalize.yml
+          git add docs/LIVEVAULT_STATE.md docs/LIVEVAULT_DECISIONS.md
+          git commit -m "Update C3 continuity records"
+          git push origin HEAD:feature/listening-catalogue-c3-v112
