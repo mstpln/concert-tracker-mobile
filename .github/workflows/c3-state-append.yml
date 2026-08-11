@@ -1,0 +1,38 @@
+name: C3 state append
+
+on:
+  push:
+    branches:
+      - feature/listening-catalogue-c3-v112
+    paths:
+      - .github/workflows/c3-state-append.yml
+
+permissions:
+  contents: write
+
+jobs:
+  append:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feature/listening-catalogue-c3-v112
+          fetch-depth: 0
+      - name: Append review hardening state
+        shell: bash
+        run: |
+          cat >> docs/LIVEVAULT_STATE.md <<'EOF'
+
+### C3 review hardening — 2026-08-11
+
+Review after the initial PR #105 validation closed the three stale expectation failures and tightened two catalogue authority boundaries. The existing reviewed MusicBrainz User-Agent is retained while catalogue acquisition keeps the conservative two-second project pacing. Complete catalogue state must prove an exact 30-day `refreshedAt`/`freshUntil` interval, incomplete state must retain a valid `refreshStartedAt` resumability marker, and the dormant ListenBrainz batch adapter has a bounded abort timeout. Node and Worker validators enforce the same freshness/checkpoint contract. Focused synthetic tests for these corrections passed before the final exact-head PR QA cycle.
+EOF
+      - name: Commit state and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm .github/workflows/c3-state-append.yml
+          git add docs/LIVEVAULT_STATE.md
+          git commit -m "Record C3 review hardening state"
+          git push origin HEAD:feature/listening-catalogue-c3-v112
