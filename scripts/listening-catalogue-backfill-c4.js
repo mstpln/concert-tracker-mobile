@@ -148,60 +148,45 @@ function mapListenBrainzBatch({ batchPlan, data } = {}) {
     throw new Error('Invalid C4 ListenBrainz batch plan.');
   }
   if (!Array.isArray(data)) throw new Error('Invalid C4 ListenBrainz batch response.');
+  if (data.length !== batchPlan.items.length) {
+    throw new Error('C4 ListenBrainz batch response cardinality cannot be correlated safely.');
+  }
   const mapped = new Map();
-  const conflictedTrackKeys = new Set();
-  let unmappedRowCount = 0;
-
   for (const row of data) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('Invalid C4 ListenBrainz batch response row.');
     const candidates = listenbrainzMatchCandidates(batchPlan.items, row);
     if (candidates.length !== 1) {
-      unmappedRowCount += 1;
-      continue;
+      throw new Error('C4 ListenBrainz response row cannot be correlated uniquely.');
     }
     const item = candidates[0];
-    if (conflictedTrackKeys.has(item.trackKey)) {
-      unmappedRowCount += 1;
-      continue;
-    }
     if (mapped.has(item.trackKey)) {
-      mapped.delete(item.trackKey);
-      conflictedTrackKeys.add(item.trackKey);
-      unmappedRowCount += 2;
-      continue;
+      throw new Error('C4 ListenBrainz response mapped more than once to one work item.');
     }
     mapped.set(item.trackKey, clone(row));
   }
-
-  const unresolvedTrackKeys = new Set(
-    batchPlan.items
-      .map((item) => item.trackKey)
-      .filter((trackKey) => !mapped.has(trackKey)),
-  );
-  return { mapped, unresolvedTrackKeys, unmappedRowCount };
+  if (mapped.size !== batchPlan.items.length) {
+    throw new Error('C4 ListenBrainz batch response did not uniquely cover every planned request.');
+  }
+  return mapped;
 }
 
 function applyListenBrainzBatch({ plan, batchPlan, data, trackIdentities = null, now = new Date().toISOString() } = {}) {
   if (!plan?.evidence) throw new Error('C4 ListenBrainz application requires current evidence.');
   const identities = identityDocument(trackIdentities);
-  const mapping = mapListenBrainzBatch({ batchPlan, data });
+  const mapped = mapListenBrainzBatch({ batchPlan, data });
   const evidenceByKey = new Map(plan.evidence.items.map((item) => [item.trackKey, item]));
   let resolved = 0;
   let noMatch = 0;
   let needsReview = 0;
   let error = 0;
-  let unresolved = 0;
 
   for (const requestItem of batchPlan.items) {
     const evidenceItem = evidenceByKey.get(requestItem.trackKey);
     if (!evidenceItem || evidenceItem.routingHoldReason || !['B', 'C'].includes(evidenceItem.evidenceTier)) {
       throw new Error('C4 ListenBrainz batch crossed the current evidence boundary.');
     }
-    const row = mapping.mapped.get(requestItem.trackKey);
-    if (!row) {
-      unresolved += 1;
-      continue;
-    }
+    const row = mapped.get(requestItem.trackKey);
+    if (!row) throw new Error('C4 ListenBrainz response lost a previously verified batch mapping.');
     const outcome = enrichment.listenbrainzOutcome({
       payload: row,
       artistName: requestItem.artistName,
@@ -221,11 +206,7 @@ function applyListenBrainzBatch({ plan, batchPlan, data, trackIdentities = null,
     else if (outcome.status === 'error') error += 1;
     else noMatch += 1;
   }
-  return {
-    trackIdentities: identities,
-    counts: { resolved, noMatch, needsReview, error, unresolved },
-    unmappedRowCount: mapping.unmappedRowCount,
-  };
+  return { trackIdentities: identities, counts: { resolved, noMatch, needsReview, error } };
 }
 
 function buildListenBrainzBatch({ plan, catalogueCache, localResults, maxItems = MAX_LISTENBRAINZ_BATCH } = {}) {
@@ -259,7 +240,6 @@ function aggregateRunDiagnostics({ providerCalls = {}, localResolved = 0, listen
       noMatch: Number(listenbrainz.noMatch) || 0,
       needsReview: Number(listenbrainz.needsReview) || 0,
       error: Number(listenbrainz.error) || 0,
-      unresolved: Number(listenbrainz.unresolved) || 0,
     },
     deferredProviders: [...new Set((deferredProviders || []).filter((provider) => PROVIDERS.includes(provider)))].sort(),
     haltReason: typeof haltReason === 'string' ? haltReason : null,
