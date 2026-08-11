@@ -254,3 +254,8 @@ Build C3 is implemented on `feature/listening-catalogue-c3-v112` in PR #105. It 
 C3 does not reopen or migrate existing durable `needs_review`, `retry`, `error`, or `no_match` track/provider states. It does not alter immutable listening observations or user-owned/reviewed identity decisions. The current v111 historical backfill entrypoints are not connected to C3 and remain unauthorized for production use.
 
 C3 development and automated validation are synthetic/fake-backend only. No live MusicBrainz, ListenBrainz or Spotify call, production R2 read/write for the new catalogue, Worker deployment, production workflow, six-hour schedule activation or historical backfill execution is authorized by PR #105. Build C4 remains the separately authorized production activation/backfill slice.
+
+
+### C3 review hardening - 2026-08-11
+
+Review after the initial PR #105 validation closed the three stale expectation failures and tightened two catalogue authority boundaries. The existing reviewed MusicBrainz User-Agent is retained while catalogue acquisition keeps the conservative two-second project pacing. Complete catalogue state must prove an exact 30-day refreshedAt/freshUntil interval, incomplete state must retain a valid refreshStartedAt resumability marker, and the dormant ListenBrainz batch adapter has a bounded abort timeout. Node and Worker validators enforce the same freshness/checkpoint contract. Focused synthetic tests for these corrections passed before the final exact-head PR QA cycle.
