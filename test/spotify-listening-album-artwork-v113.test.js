@@ -1,0 +1,103 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+function freshModule() {
+  delete require.cache[require.resolve('../spotifyListeningAlbumArtworkV113.js')];
+  return require('../spotifyListeningAlbumArtworkV113.js');
+}
+
+function resetGlobals() {
+  delete globalThis.SpotifyListeningAlbumArtworkV113;
+  delete globalThis.SpotifyListeningMetadataV99;
+  delete globalThis.bands;
+  delete globalThis.listeningEvents;
+}
+
+test.afterEach(resetGlobals);
+
+test('browser planner returns one representative trusted track per safe album group', () => {
+  globalThis.bands = [{ id: 'band-a', name: 'Synthetic Artist' }];
+  globalThis.listeningEvents = [
+    { localBandId: 'band-a', artistCreditName: 'Synthetic Artist', releaseTitle: 'Album One', spotifyTrackId: 'TrackA' },
+    { localBandId: 'band-a', artistCreditName: 'Synthetic Artist', releaseTitle: 'Album One', spotifyTrackId: 'TrackB' },
+    { localBandId: 'band-a', artistCreditName: 'Synthetic Artist', releaseTitle: 'Album Two', spotifyTrackId: 'TrackC' },
+  ];
+  const api = freshModule();
+  assert.deepEqual(api.albumOrientedUnresolvedTrackIds({ records: {} }), ['TrackA', 'TrackC']);
+});
+
+test('known album artwork suppresses sibling track provider requests and is reused in memory', () => {
+  globalThis.bands = [{ id: 'band-a', name: 'Synthetic Artist' }];
+  globalThis.listeningEvents = [
+    { localBandId: 'band-a', artistCreditName: 'Synthetic Artist', releaseTitle: 'Album One', spotifyTrackId: 'TrackA' },
+    { localBandId: 'band-a', artistCreditName: 'Synthetic Artist', releaseTitle: 'Album One', spotifyTrackId: 'TrackB' },
+  ];
+  const api = freshModule();
+  const document = {
+    records: {
+      TrackA: {
+        spotifyTrackId: 'TrackA',
+        spotifyTrackUrl: 'https://open.spotify.com/track/TrackA',
+        spotifyAlbumId: 'Album123',
+        spotifyAlbumUrl: 'https://open.spotify.com/album/Album123',
+        artworkUrl: 'https://images.example.test/cover.jpg',
+        fetchedAt: '2026-08-11T12:00:00.000Z',
+        source: 'spotify_exact_track_id',
+      },
+    },
+  };
+
+  assert.deepEqual(api.albumOrientedUnresolvedTrackIds(document), []);
+  assert.equal(api.applyAlbumReuse(document), 2);
+  assert.equal(globalThis.listeningEvents[1].spotifyAlbumId, 'Album123');
+  assert.equal(globalThis.listeningEvents[1].albumArtworkUrl, 'https://images.example.test/cover.jpg');
+  assert.equal(globalThis.listeningEvents[1].spotifyMetadataSource, 'spotify_album_group_reuse');
+});
+
+test('conflicting known album IDs fail closed and do not queue a guessed representative', () => {
+  globalThis.bands = [{ id: 'band-a', name: 'Synthetic Artist' }];
+  globalThis.listeningEvents = [
+    { localBandId: 'band-a', artistCreditName: 'Synthetic Artist', releaseTitle: 'Album One', spotifyTrackId: 'TrackA' },
+    { localBandId: 'band-a', artistCreditName: 'Synthetic Artist', releaseTitle: 'Album One', spotifyTrackId: 'TrackB' },
+  ];
+  const api = freshModule();
+  const document = {
+    records: {
+      TrackA: { spotifyTrackId: 'TrackA', spotifyAlbumId: 'AlbumOne', artworkUrl: 'https://images.example.test/one.jpg' },
+      TrackB: { spotifyTrackId: 'TrackB', spotifyAlbumId: 'AlbumTwo', artworkUrl: 'https://images.example.test/two.jpg' },
+    },
+  };
+
+  assert.deepEqual(api.albumOrientedUnresolvedTrackIds(document), []);
+  assert.equal(api.applyAlbumReuse(document), 0);
+});
+
+test('missing release title stays placeholder-only and never becomes a provider request', () => {
+  globalThis.bands = [{ id: 'band-a', name: 'Synthetic Artist' }];
+  globalThis.listeningEvents = [
+    { localBandId: 'band-a', artistCreditName: 'Synthetic Artist', releaseTitle: null, spotifyTrackId: 'TrackA' },
+  ];
+  const api = freshModule();
+  assert.deepEqual(api.albumOrientedUnresolvedTrackIds({ records: {} }), []);
+});
+
+test('patch replaces only queue/apply behavior while preserving the existing metadata document contract', () => {
+  globalThis.bands = [{ id: 'band-a', name: 'Synthetic Artist' }];
+  globalThis.listeningEvents = [];
+  let originalApplyCalls = 0;
+  const metadata = {
+    unresolvedTrackIds: () => ['legacy'],
+    applyToEvents: () => { originalApplyCalls += 1; return 4; },
+    existingFutureMethod: () => 'kept',
+  };
+  globalThis.SpotifyListeningMetadataV99 = metadata;
+  const api = freshModule();
+
+  assert.equal(api.patchMetadata(metadata), true);
+  assert.equal(metadata.existingFutureMethod(), 'kept');
+  assert.equal(metadata.applyToEvents({ records: {} }), 4);
+  assert.equal(originalApplyCalls, 1);
+  assert.equal(api.patchMetadata(metadata), false);
+});
