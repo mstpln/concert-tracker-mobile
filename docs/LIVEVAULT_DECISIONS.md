@@ -486,7 +486,7 @@
 
 **Reason:** The separately authorized long-running v111 backfill stopped after 97 persisted provider steps on `musicbrainz:error`. Under the old policy, a temporary provider outage could both halt the invocation and permanently remove that track from automatic retry.
 
-**Consequence:** A transient MusicBrainz result is persisted as `retry`. Legacy recovery derives `nextEligibleCheckAt` from the original `checkedAt` plus 30 minutes, preserves unrelated and unknown fields, and leaves incomplete or non-transient errors terminal. Any legacy correction is written through a strict identity-only conditional persistence step before provider usage is reserved or a provider call is made; concurrent identity changes abort the run. Spotify, ListenBrainz, 404 fallback, review quarantine and the focused diagnostic path remain unchanged. Later bulk outcome-policy decisions below supersede this entry's original process-wide stop consequence.
+**Consequence:** A transient MusicBrainz result is persisted as `retry`. Legacy recovery derives `nextEligibleCheckAt` from the original `checkedAt` plus 30 minutes, preserves unrelated and unknown fields, and leaves incomplete or non-transient errors terminal. Any legacy correction is written through a strict identity-only conditional persistence step before provider usage is reserved or external provider call is made; concurrent identity changes abort the run. Spotify, ListenBrainz, 404 fallback, review quarantine and the focused diagnostic path remain unchanged. Later bulk outcome-policy decisions below supersede this entry's original process-wide stop consequence.
 
 ## 2026-08-09 — Bulk transient retries defer a provider without blocking unrelated work
 
@@ -543,3 +543,11 @@
 **Reason:** The merged C3 Worker route has not yet been deliberately deployed or exercised against the new catalogue object, and code merge should not silently grant provider or data-write authority.
 
 **Consequence:** C4 development uses synthetic fixtures/fake Worker state only. No production read, provider call, Worker deployment, R2 write, schedule, workflow or historical backfill is authorized merely by branch creation, PR review or merge. `APP_VERSION` and `CACHE_NAME_LITERAL` stay at v112 because C4 changes only Node maintenance orchestration and continuity documentation.
+
+## 2026-08-11 — C4 ListenBrainz Tier-D execution is one work item per provider operation
+
+**Decision:** C4 production execution sends exactly one Tier-D unresolved work item in each ListenBrainz metadata lookup. The sole response row is associated with that sole originating request by construction. Returned display text or response-array order is never used to choose among multiple requests, while the existing `listenbrainzOutcome()` trusted-artist and exact normalized artist/recording validation remains mandatory before a resolution can be accepted.
+
+**Reason:** The first live C4 historical backfill reached a fail-closed stop because a real ListenBrainz response row could not be correlated uniquely to a multi-item request batch. A read-only inspection showed the planned request signatures themselves were unique, so the unsafe assumption was requiring provider-returned display text to echo submitted text closely enough for cross-request correlation. Single-item execution removes that correlation problem without weakening identity acceptance.
+
+**Consequence:** Each ListenBrainz work item consumes one provider operation and one existing UsageTracker reservation; provider limits are not increased. Missing, extra, malformed, conflicting or identity-mismatching responses remain fail-closed or item quarantine, and no positional multi-request matching or guessing is introduced. Durable holds, C2/C3 eligibility, catalogue authority, persistence/concurrency gates, unknown-field preservation and aggregate-only diagnostics remain unchanged. This is a focused v112 correction; production backfill stays paused until the correction is reviewed, merged, and separately re-authorized.
