@@ -127,56 +127,78 @@ test('ListenBrainz widening happens only after authoritative catalogue exhaustio
   assert.equal(partialBatch.count, 0);
 });
 
-test('ListenBrainz batch mapping requires exact cardinality and unique correlation', () => {
-  const batchPlan = {
-    items: [
-      { trackKey: 'a', artistName: 'Synthetic Artist', recordingName: 'Same Song', releaseName: 'Release A' },
-      { trackKey: 'b', artistName: 'Synthetic Artist', recordingName: 'Same Song', releaseName: 'Release B' },
-    ],
-  };
-  assert.throws(
-    () => c4.mapListenBrainzBatch({ batchPlan, data: [{ artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song' }] }),
-    /cardinality/,
-  );
-  assert.throws(
-    () => c4.mapListenBrainzBatch({ batchPlan, data: [
-      { artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song' },
-      { artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song', release_name: 'Release B' },
-    ] }),
-    /cannot be correlated uniquely/,
-  );
-  assert.throws(
-    () => c4.mapListenBrainzBatch({ batchPlan, data: [
-      { artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song', release_name: 'Release B' },
-      { artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song', release_name: 'Release B' },
-    ] }),
-    /more than once/,
-  );
-  const mapped = c4.mapListenBrainzBatch({ batchPlan, data: [
-    { artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song', release_name: 'Release B' },
-    { artist_credit_name: 'Synthetic Artist', recording_name: 'Same Song', release_name: 'Release A' },
-  ] });
-  assert.equal(mapped.size, 2);
-  assert.equal(mapped.get('a').release_name, 'Release A');
-  assert.equal(mapped.get('b').release_name, 'Release B');
-});
-
-test('unmappable ListenBrainz response cannot create durable no-match or guessed identity', () => {
+test('C4 plans at most one ListenBrainz work item per provider operation', () => {
   const missEvents = [
-    event('TrackOne', { recordingTitle: 'Missing Song', releaseTitle: 'Release A' }),
-    event('TrackTwo', { recordingTitle: 'Missing Song', releaseTitle: 'Release B' }),
+    event('TrackOne', { recordingTitle: 'Missing Song One', releaseTitle: 'Release A' }),
+    event('TrackTwo', { recordingTitle: 'Missing Song Two', releaseTitle: 'Release B' }),
   ];
   const plan = c4.buildC4Plan({ bands: [band()], events: missEvents });
   const cache = completeCache();
   const local = c4.currentLocalResults(plan, cache);
+  const batch = c4.buildListenBrainzBatch({ plan, catalogueCache: cache, localResults: local, maxItems: 100 });
+  assert.equal(c4.LISTENBRAINZ_EXECUTION_ITEMS, 1);
+  assert.equal(batch.count, 1);
+  assert.equal(batch.items.length, 1);
+});
+
+test('single-item ListenBrainz mapping is by originating request, not echoed text or response order', () => {
+  const batchPlan = {
+    items: [{ trackKey: 'a', artistName: 'Synthetic Artist', recordingName: 'Missing Song', releaseName: 'Release A' }],
+  };
+  const row = {
+    artist_credit_name: 'Provider Display Artist',
+    recording_name: 'Provider Display Recording',
+    release_name: 'Provider Display Release',
+  };
+  const mapped = c4.mapListenBrainzBatch({ batchPlan, data: [row] });
+  assert.equal(mapped.size, 1);
+  assert.deepEqual(mapped.get('a'), row);
+
+  assert.throws(
+    () => c4.mapListenBrainzBatch({ batchPlan: { items: [...batchPlan.items, { ...batchPlan.items[0], trackKey: 'b' }] }, data: [row, row] }),
+    /exactly one planned work item/,
+  );
+  assert.throws(() => c4.mapListenBrainzBatch({ batchPlan, data: [] }), /cardinality/);
+  assert.throws(() => c4.mapListenBrainzBatch({ batchPlan, data: [row, row] }), /cardinality/);
+});
+
+test('production-discovered ListenBrainz text mismatch becomes review, never guessed identity', () => {
+  const missEvent = event('TrackOne', { recordingTitle: 'Missing Song', releaseTitle: 'Release A' });
+  const plan = c4.buildC4Plan({ bands: [band()], events: [missEvent] });
+  const cache = completeCache();
+  const local = c4.currentLocalResults(plan, cache);
   const batchPlan = c4.buildListenBrainzBatch({ plan, catalogueCache: cache, localResults: local });
-  assert.equal(batchPlan.count, 2);
+  const applied = c4.applyListenBrainzBatch({
+    plan,
+    batchPlan,
+    data: [{
+      artist_credit_name: 'Provider Display Artist',
+      recording_name: 'Provider Display Recording',
+      recording_mbid: RECORDING,
+      artist_mbids: [ARTIST],
+    }],
+    now: '2026-08-11T01:00:00.000Z',
+  });
+  assert.deepEqual(applied.counts, { resolved: 0, noMatch: 0, needsReview: 1, error: 0 });
+  const identity = applied.trackIdentities.records['spotify:TrackOne'];
+  assert.equal(identity.status, 'needs_review');
+  assert.equal(identity.providers.listenbrainz.status, 'needs_review');
+  assert.equal(identity.providers.listenbrainz.reason, 'listenbrainz_identity_mismatch');
+  assert.equal(identity.musicbrainzRecordingId, undefined);
+});
+
+test('malformed single-item ListenBrainz response cannot create durable no-match or guessed identity', () => {
+  const missEvent = event('TrackOne', { recordingTitle: 'Missing Song', releaseTitle: 'Release A' });
+  const plan = c4.buildC4Plan({ bands: [band()], events: [missEvent] });
+  const cache = completeCache();
+  const local = c4.currentLocalResults(plan, cache);
+  const batchPlan = c4.buildListenBrainzBatch({ plan, catalogueCache: cache, localResults: local });
   const before = { kind: 'livevault-track-identities', schemaVersion: 1, updatedAt: null, records: {} };
   assert.throws(
     () => c4.applyListenBrainzBatch({
       plan,
       batchPlan,
-      data: [{ artist_credit_name: 'Synthetic Artist', recording_name: 'Missing Song' }],
+      data: [],
       trackIdentities: before,
       now: '2026-08-11T01:00:00.000Z',
     }),

@@ -6,20 +6,12 @@ const enrichment = require('./listening-enrichment-engine');
 const inventoryLib = require('./listening-inventory');
 
 const MAX_LISTENBRAINZ_BATCH = 100;
+const LISTENBRAINZ_EXECUTION_ITEMS = 1;
 const MAX_PROVIDER_OPERATIONS = 50000;
 const PROVIDERS = Object.freeze(['musicbrainz', 'listenbrainz']);
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
-}
-
-function clean(value) {
-  const text = String(value == null ? '' : value).trim();
-  return text || null;
-}
-
-function normalized(value) {
-  return inventoryLib.normalizeText(value) || null;
 }
 
 function identityDocument(value = null) {
@@ -132,42 +124,18 @@ function applyLocalResolutions({ plan, localResults, trackIdentities = null, now
   return { trackIdentities: identities, resolved };
 }
 
-function listenbrainzMatchCandidates(batchItems, row) {
-  const artist = normalized(row?.artist_credit_name);
-  const recording = normalized(row?.recording_name);
-  const release = normalized(row?.release_name);
-  if (!artist || !recording) return [];
-  const base = batchItems.filter((item) => normalized(item.artistName) === artist && normalized(item.recordingName) === recording);
-  if (base.length <= 1) return base;
-  if (!release) return [];
-  return base.filter((item) => normalized(item.releaseName) === release);
-}
-
 function mapListenBrainzBatch({ batchPlan, data } = {}) {
-  if (!batchPlan || !Array.isArray(batchPlan.items) || batchPlan.items.length < 1 || batchPlan.items.length > MAX_LISTENBRAINZ_BATCH) {
-    throw new Error('Invalid C4 ListenBrainz batch plan.');
+  if (!batchPlan || !Array.isArray(batchPlan.items) || batchPlan.items.length !== LISTENBRAINZ_EXECUTION_ITEMS) {
+    throw new Error('C4 ListenBrainz execution requires exactly one planned work item.');
   }
   if (!Array.isArray(data)) throw new Error('Invalid C4 ListenBrainz batch response.');
-  if (data.length !== batchPlan.items.length) {
-    throw new Error('C4 ListenBrainz batch response cardinality cannot be correlated safely.');
+  if (data.length !== LISTENBRAINZ_EXECUTION_ITEMS) {
+    throw new Error('C4 ListenBrainz single-item response cardinality cannot be correlated safely.');
   }
-  const mapped = new Map();
-  for (const row of data) {
-    if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('Invalid C4 ListenBrainz batch response row.');
-    const candidates = listenbrainzMatchCandidates(batchPlan.items, row);
-    if (candidates.length !== 1) {
-      throw new Error('C4 ListenBrainz response row cannot be correlated uniquely.');
-    }
-    const item = candidates[0];
-    if (mapped.has(item.trackKey)) {
-      throw new Error('C4 ListenBrainz response mapped more than once to one work item.');
-    }
-    mapped.set(item.trackKey, clone(row));
-  }
-  if (mapped.size !== batchPlan.items.length) {
-    throw new Error('C4 ListenBrainz batch response did not uniquely cover every planned request.');
-  }
-  return mapped;
+  const row = data[0];
+  if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('Invalid C4 ListenBrainz batch response row.');
+  const item = batchPlan.items[0];
+  return new Map([[item.trackKey, clone(row)]]);
 }
 
 function applyListenBrainzBatch({ plan, batchPlan, data, trackIdentities = null, now = new Date().toISOString() } = {}) {
@@ -214,7 +182,7 @@ function buildListenBrainzBatch({ plan, catalogueCache, localResults, maxItems =
     evidence: plan.evidence,
     catalogueCache,
     localResults,
-    maxItems: Math.min(MAX_LISTENBRAINZ_BATCH, maxItems),
+    maxItems: Math.min(LISTENBRAINZ_EXECUTION_ITEMS, maxItems),
   });
 }
 
@@ -248,6 +216,7 @@ function aggregateRunDiagnostics({ providerCalls = {}, localResolved = 0, listen
 
 module.exports = {
   MAX_LISTENBRAINZ_BATCH,
+  LISTENBRAINZ_EXECUTION_ITEMS,
   MAX_PROVIDER_OPERATIONS,
   PROVIDERS,
   identityDocument,
@@ -255,7 +224,6 @@ module.exports = {
   safePlanSummary,
   currentLocalResults,
   applyLocalResolutions,
-  listenbrainzMatchCandidates,
   mapListenBrainzBatch,
   applyListenBrainzBatch,
   buildListenBrainzBatch,
