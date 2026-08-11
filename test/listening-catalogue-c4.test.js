@@ -99,6 +99,19 @@ test('one authoritative artist catalogue resolves multiple historical track keys
   assert.equal(applied.trackIdentities.records['spotify:TrackTwo'].musicbrainzRecordingId, RECORDING);
 });
 
+test('one reusable catalogue can resolve more than 500 historical work items in one pass', () => {
+  const events = Array.from({ length: 601 }, (_, index) => event(`SyntheticTrack${index + 1}`));
+  const plan = c4.buildC4Plan({ bands: [band()], events });
+  assert.equal(plan.counts.catalogueArtists, 1);
+  assert.equal(plan.counts.catalogueEligibleTracks, 601);
+  const cache = completeCache();
+  const local = c4.currentLocalResults(plan, cache);
+  assert.equal(local.counts.resolved, 601);
+  const applied = c4.applyLocalResolutions({ plan, localResults: local, now: '2026-08-11T01:00:00.000Z' });
+  assert.equal(applied.resolved, 601);
+  assert.equal(Object.keys(applied.trackIdentities.records).length, 601);
+});
+
 test('ListenBrainz widening happens only after authoritative catalogue exhaustion', () => {
   const missEvent = event('TrackOne', { recordingTitle: 'Missing Song' });
   const plan = c4.buildC4Plan({ bands: [band()], events: [missEvent] });
