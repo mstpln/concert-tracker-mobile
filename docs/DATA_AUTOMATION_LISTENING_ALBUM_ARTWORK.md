@@ -19,8 +19,9 @@ The approved artwork path is therefore:
 3. group by trusted local band identity plus normalized release title;
 4. choose one exact trusted Spotify Track ID as the representative provider seed for an unresolved safe group;
 5. use the exact Spotify track response to obtain Spotify Album ID, album URL and artwork URL;
-6. reuse that album artwork across the safely matched group;
-7. preserve existing track-keyed metadata for backward compatibility.
+6. persist that response only on the exact representative Spotify Track ID;
+7. reuse that album artwork across the safely matched group in memory;
+8. preserve existing track-keyed metadata for backward compatibility.
 
 There is no Spotify title search and no MusicBrainz or ListenBrainz artwork fallback.
 
@@ -34,22 +35,23 @@ A group requires:
 
 Missing band identity, duplicate band-name ownership, stale explicit band IDs, missing release title, or malformed Spotify Track IDs stay outside automatic album enrichment.
 
-If existing track metadata inside one candidate group exposes more than one Spotify Album ID, the group is ambiguous and is not automatically enriched or reused.
+If existing track metadata inside one candidate group exposes more than one Spotify Album ID, the group is ambiguous and is not automatically enriched or reused. If the same exact Spotify Track ID appears under more than one album group, all affected groups also fail closed.
 
 Edition qualifiers in the source release title remain identity-significant because normalization only performs Unicode/diacritic normalization, case folding and whitespace normalization. It does not remove words such as deluxe, remaster, anniversary, live, expanded or edition.
 
-## Backward compatibility
+## Backward compatibility and provider ownership
 
 `listening/spotify-metadata.json` remains the existing track-keyed schema and path. No new production JSON object is introduced.
 
 Existing per-track records remain authoritative evidence for that exact track and are never deleted. Album reuse is additive:
 
 - in the browser, one known album/artwork record can decorate sibling listens in memory without rewriting immutable source events;
-- in maintenance tooling, one exact representative Spotify response can materialize compatible track-keyed metadata records for sibling tracks so existing UI and older clients continue to work;
-- unknown future metadata fields are preserved;
+- maintenance persists a new Spotify response only for the exact representative Track ID that was actually requested from Spotify;
+- sibling Track IDs do not receive fabricated `spotify_exact_track_id` records merely because they share a conservative album group;
+- unknown future metadata fields are preserved on the representative record;
 - an existing conflicting Spotify Album ID is never overwritten by group reuse.
 
-This keeps the current Top Tracks, Top Albums, Band Detail and Toplist rendering contracts compatible.
+This keeps the current Top Tracks, Top Albums, Band Detail and Toplist rendering contracts compatible while preserving provider ownership boundaries.
 
 ## Browser behavior
 
@@ -72,7 +74,7 @@ It reuses the existing private source reader, exact Spotify track endpoint, Usag
 
 For each unresolved safe album group it makes at most one exact-track metadata lookup. It never sends listening history, artist search text, album search text, MusicBrainz data or ListenBrainz data to Spotify.
 
-Existing known album artwork is materialized across safe sibling tracks without another Spotify lookup. Provider-acquired progress is conditionally persisted after each resolved group before moving on.
+Already-known compatible album artwork requires no new provider call and no sibling metadata write. A newly acquired representative record is conditionally persisted before another album group is processed. Current band ownership is rechecked before provider work and persistence so stale grouping stops safely.
 
 Real execution remains a separately authorized production action. This v113 implementation and automated QA do not authorize or perform provider calls or production writes.
 
