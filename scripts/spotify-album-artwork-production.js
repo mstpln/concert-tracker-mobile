@@ -16,6 +16,10 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function same(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function parseArgs(argv = []) {
   const options = { execute: false, write: false, cap: DEFAULT_CAP, delayMs: DEFAULT_DELAY_MS, market: DEFAULT_MARKET, help: false };
   for (let index = 0; index < argv.length; index += 1) {
@@ -41,6 +45,8 @@ function usageText() {
     '',
     'Historical artwork is grouped conservatively by trusted local band identity + normalized release title.',
     'Only one exact trusted Spotify track ID is used as the provider seed for each unresolved safe album group.',
+    'Only that exact representative track receives a new persisted Spotify metadata record.',
+    'Sibling listens reuse the album artwork in memory; source listening observations are never rewritten.',
     'MusicBrainz and ListenBrainz are never used by this artwork runner.',
     '',
     'Real execution remains separately authorized:',
@@ -60,20 +66,6 @@ function exactAlbumRecord(requestedTrackId, track, now) {
   return record;
 }
 
-function applyReusableGroups(metadata, reusable = []) {
-  let next = metadata;
-  let groupsApplied = 0;
-  let tracksMaterialized = 0;
-  for (const item of reusable) {
-    const before = Object.keys(next?.records || {}).length;
-    next = albumCore.materializeGroupRecords({ metadata: next, group: item.group, albumRecord: item.albumRecord });
-    const after = Object.keys(next?.records || {}).length;
-    groupsApplied += 1;
-    tracksMaterialized += Math.max(0, after - before);
-  }
-  return { metadata: next, groupsApplied, tracksMaterialized };
-}
-
 async function runAlbumArtwork({
   endpoint,
   workerToken,
@@ -86,54 +78,71 @@ async function runAlbumArtwork({
   usageFactory = () => UsageTracker.load(),
   now = () => new Date().toISOString(),
   sleepImpl = sleep,
+  loadSource = () => sourceReader.readAllSourceEvents({ endpoint, token: workerToken, fetchImpl }),
+  readBands = () => legacyRunner.workerGetJson({ endpoint, token: workerToken, pathname: 'bands.json', fetchImpl }),
+  readMetadata = () => legacyRunner.readRemoteMetadata({ endpoint, token: workerToken, fetchImpl }),
+  writeMetadata = ({ value, etag, missing }) => legacyRunner.workerPutJson({
+    endpoint,
+    token: workerToken,
+    pathname: 'listening/spotify-metadata.json',
+    value,
+    etag,
+    missing,
+    fetchImpl,
+  }),
+  getToken = () => legacyRunner.getSpotifyToken({ clientId, clientSecret, fetchImpl }),
+  fetchTrack = ({ id, token, market: trackMarket }) => legacyRunner.fetchSpotifyTrack({ id, token, market: trackMarket, fetchImpl }),
+  trackProviderCall = productionSafety.trackedSpotifyCall,
 } = {}) {
-  const source = await sourceReader.readAllSourceEvents({ endpoint, token: workerToken, fetchImpl });
-  const [bandsState, metadataState] = await Promise.all([
-    legacyRunner.workerGetJson({ endpoint, token: workerToken, pathname: 'bands.json', fetchImpl }),
-    legacyRunner.readRemoteMetadata({ endpoint, token: workerToken, fetchImpl }),
-  ]);
+  if (![loadSource, readBands, readMetadata, writeMetadata, getToken, fetchTrack, usageFactory].every((fn) => typeof fn === 'function')) {
+    throw new Error('Album artwork runner dependencies are incomplete.');
+  }
+
+  const source = await loadSource();
+  if (!source || !Array.isArray(source.events)) throw new Error('Private listening source reader returned invalid data.');
+  const [bandsState, metadataState] = await Promise.all([readBands(), readMetadata()]);
   const bands = validateBands(bandsState.value);
   let metadata = legacyRunner.validateMetadata(metadataState.metadata);
   let etag = metadataState.etag;
   let missing = metadataState.missing;
   const initialPlan = albumCore.planAlbumArtwork({ events: source.events, bands, metadata });
+  const providerGroups = initialPlan.provider.slice(0, Math.max(1, Math.min(MAX_CAP, Number(cap) || DEFAULT_CAP)));
 
-  const reused = applyReusableGroups(metadata, initialPlan.reusable);
-  metadata = reused.metadata;
   let providerGroupsAttempted = 0;
   let providerGroupsResolved = 0;
   let providerGroupsNoArtwork = 0;
-  let tracksMaterialized = reused.tracksMaterialized;
+  let representativeRecordsAdded = 0;
   let token = null;
   const usage = await usageFactory();
 
-  async function persist() {
-    metadata.updatedAt = now();
-    const result = await legacyRunner.workerPutJson({
-      endpoint,
-      token: workerToken,
-      pathname: 'listening/spotify-metadata.json',
-      value: metadata,
-      etag,
-      missing,
-      fetchImpl,
-    });
-    etag = result.etag;
-    missing = false;
+  async function assertBandsCurrent() {
+    const current = await readBands();
+    if (!Array.isArray(current?.value) || !same(current.value, bands)) {
+      throw new Error('Album artwork stopped safely because bands changed after planning. Reload before continuing.');
+    }
   }
 
-  if (reused.groupsApplied > 0) await persist();
+  async function persist() {
+    metadata.updatedAt = now();
+    await writeMetadata({ value: metadata, etag, missing });
+    const refreshed = await readMetadata();
+    metadata = legacyRunner.validateMetadata(refreshed.metadata);
+    etag = refreshed.etag;
+    missing = refreshed.missing;
+    if (!etag && !missing) throw new Error('Album artwork could not confirm the metadata ETag after persistence.');
+  }
 
-  const providerGroups = initialPlan.provider.slice(0, Math.max(1, Math.min(MAX_CAP, Number(cap) || DEFAULT_CAP)));
   if (providerGroups.length) {
-    token = await productionSafety.trackedSpotifyCall(usage, () => legacyRunner.getSpotifyToken({ clientId, clientSecret, fetchImpl }));
+    await assertBandsCurrent();
+    token = await trackProviderCall(usage, getToken);
   }
 
   for (let index = 0; index < providerGroups.length; index += 1) {
     if (index > 0) await sleepImpl(delayMs);
+    await assertBandsCurrent();
     const group = providerGroups[index];
     const requestedId = group.representativeTrackId;
-    const result = await productionSafety.trackedSpotifyCall(usage, () => legacyRunner.fetchSpotifyTrack({ id: requestedId, token, market, fetchImpl }));
+    const result = await trackProviderCall(usage, () => fetchTrack({ id: requestedId, token, market }));
     providerGroupsAttempted += 1;
 
     if (result.kind === 'not_found') continue;
@@ -150,18 +159,13 @@ async function runAlbumArtwork({
       throw new Error('Album-oriented Spotify artwork stopped safely because a provider album ID conflicts with already-known album identity.');
     }
 
-    metadata = {
-      ...metadata,
-      records: {
-        ...(metadata.records || {}),
-        [requestedId]: { ...(metadata.records?.[requestedId] || {}), ...record },
-      },
-    };
-    const before = Object.keys(metadata.records || {}).length;
-    metadata = albumCore.materializeGroupRecords({ metadata, group, albumRecord: record, fetchedAt: now() });
-    const after = Object.keys(metadata.records || {}).length;
-    tracksMaterialized += Math.max(0, after - before) + 1;
+    const next = albumCore.mergeRepresentativeRecord(metadata, group, record);
+    if (!next) throw new Error('Album-oriented Spotify artwork refused an unsafe representative metadata update.');
+    const existed = Boolean(metadata.records?.[requestedId]);
+    metadata = next;
     providerGroupsResolved += 1;
+    if (!existed) representativeRecordsAdded += 1;
+    await assertBandsCurrent();
     await persist();
   }
 
@@ -172,12 +176,12 @@ async function runAlbumArtwork({
     safeAlbumGroups: initialPlan.summary.safeAlbumGroups,
     ambiguousAlbumGroups: initialPlan.summary.ambiguousAlbumGroups,
     unsafeEvents: initialPlan.summary.unsafeEvents,
-    reusedAlbumGroups: reused.groupsApplied,
+    reusedAlbumGroups: initialPlan.summary.reusableAlbumGroups,
     providerAlbumGroupsPlanned: providerGroups.length,
     providerAlbumGroupsAttempted,
     providerAlbumGroupsResolved,
     providerGroupsNoArtwork,
-    tracksMaterialized,
+    representativeRecordsAdded,
     musicbrainzCalls: 0,
     listenbrainzCalls: 0,
   };
@@ -190,7 +194,7 @@ async function runProductionCli({ argv = process.argv.slice(2), env = process.en
     return { help: true };
   }
   productionSafety.assertProductionAuthorization(options, env);
-  if (!options.write) throw new Error('Album-oriented artwork execution requires --write so each resolved album group is durably checkpointed before continuing.');
+  if (!options.write) throw new Error('Album-oriented artwork execution requires --write so each resolved representative record is durably checkpointed before continuing.');
 
   const endpoint = productionSafety.normalizeEndpoint(productionSafety.requiredEnv(env, 'CF_WORKER_ENDPOINT'));
   const workerToken = productionSafety.requiredEnv(env, 'CF_WORKER_BROWSER_TOKEN');
@@ -228,7 +232,6 @@ module.exports = {
   usageText,
   validateBands,
   exactAlbumRecord,
-  applyReusableGroups,
   runAlbumArtwork,
   runProductionCli,
 };
