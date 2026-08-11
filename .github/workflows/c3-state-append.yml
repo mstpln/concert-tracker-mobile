@@ -21,12 +21,7 @@ jobs:
       - name: Append review hardening state
         shell: bash
         run: |
-          cat >> docs/LIVEVAULT_STATE.md <<'EOF'
-
-### C3 review hardening — 2026-08-11
-
-Review after the initial PR #105 validation closed the three stale expectation failures and tightened two catalogue authority boundaries. The existing reviewed MusicBrainz User-Agent is retained while catalogue acquisition keeps the conservative two-second project pacing. Complete catalogue state must prove an exact 30-day `refreshedAt`/`freshUntil` interval, incomplete state must retain a valid `refreshStartedAt` resumability marker, and the dormant ListenBrainz batch adapter has a bounded abort timeout. Node and Worker validators enforce the same freshness/checkpoint contract. Focused synthetic tests for these corrections passed before the final exact-head PR QA cycle.
-EOF
+          python3 -c "from pathlib import Path; p=Path('docs/LIVEVAULT_STATE.md'); p.write_text(p.read_text() + '\n\n### C3 review hardening - 2026-08-11\n\nReview after the initial PR #105 validation closed the three stale expectation failures and tightened two catalogue authority boundaries. The existing reviewed MusicBrainz User-Agent is retained while catalogue acquisition keeps the conservative two-second project pacing. Complete catalogue state must prove an exact 30-day refreshedAt/freshUntil interval, incomplete state must retain a valid refreshStartedAt resumability marker, and the dormant ListenBrainz batch adapter has a bounded abort timeout. Node and Worker validators enforce the same freshness/checkpoint contract. Focused synthetic tests for these corrections passed before the final exact-head PR QA cycle.\n')"
       - name: Commit state and remove temporary workflow
         shell: bash
         run: |
