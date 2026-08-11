@@ -74,6 +74,31 @@ test('conflicting known album IDs fail closed and do not queue a guessed represe
   assert.equal(api.applyAlbumReuse(document), 0);
 });
 
+test('the same exact Spotify track crossing album groups fails closed in the browser', () => {
+  globalThis.bands = [{ id: 'band-a', name: 'Synthetic Artist' }];
+  globalThis.listeningEvents = [
+    { localBandId: 'band-a', artistCreditName: 'Synthetic Artist', releaseTitle: 'Album One', spotifyTrackId: 'TrackA' },
+    { localBandId: 'band-a', artistCreditName: 'Synthetic Artist', releaseTitle: 'Album Two', spotifyTrackId: 'TrackA' },
+  ];
+  const api = freshModule();
+  const groups = api.buildGroups({ records: {} });
+
+  assert.equal(groups.length, 2);
+  assert.ok(groups.every((group) => group.ambiguous));
+  assert.ok(groups.every((group) => group.ambiguityReason === 'spotify_track_crosses_album_groups'));
+  assert.deepEqual(api.albumOrientedUnresolvedTrackIds({ records: {} }), []);
+  assert.equal(api.applyAlbumReuse({ records: {} }), 0);
+});
+
+test('stale explicit local band ID stays placeholder-only and never becomes a provider request', () => {
+  globalThis.bands = [{ id: 'band-a', name: 'Synthetic Artist' }];
+  globalThis.listeningEvents = [
+    { localBandId: 'deleted-band', artistCreditName: 'Synthetic Artist', releaseTitle: 'Album One', spotifyTrackId: 'TrackA' },
+  ];
+  const api = freshModule();
+  assert.deepEqual(api.albumOrientedUnresolvedTrackIds({ records: {} }), []);
+});
+
 test('missing release title stays placeholder-only and never becomes a provider request', () => {
   globalThis.bands = [{ id: 'band-a', name: 'Synthetic Artist' }];
   globalThis.listeningEvents = [
