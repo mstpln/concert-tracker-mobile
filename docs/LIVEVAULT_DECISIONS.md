@@ -520,7 +520,6 @@
 
 **Consequence:** C2 remains production-inert and treats held durable states, malformed/unknown provider state, provider-ownership conflicts and catalogue ambiguity as exception/review work. Its MusicBrainz page contract requires sequential offsets, stable totals, trusted artist credit, cumulative release-MBID coverage and release provenance. Automatic catalogue resolution or exhausted-catalogue widening additionally requires explicit coverage markers for both `release_artist` and `release_track_artist`; completing only one browse scope stays non-authoritative. The C2 parser does not manufacture those coverage markers from a single page stream. A locally constructed Spotify URL remains presentation-only evidence. Any C3/C4 rule that deliberately reconsiders an old held state must be explicit, tested, additive and preserve unknown fields and source observations. C3 still owns live MusicBrainz/ListenBrainz adapters, multi-scope catalogue assembly, production object limits, freshness/checkpoint persistence, conditional ETag writes, migration/rollback and Worker allowlisting; C4 owns separately authorized historical activation, and the six-hour schedule remains inactive until later approval.
 
-
 ## 2026-08-11 — C3 catalogue acquisition is durable, dual-scope and demand-driven
 
 **Decision:** Store the derived MusicBrainz catalogue only at `listening/musicbrainz-catalogue.json`, with a 25 MiB absolute serialized ceiling, finite structural limits, and independent resumable `release_artist` and `release_track_artist` checkpoints. Catalogue authority requires both scopes to complete and be assembled through the C2 conflict rules. Freshness is 30 days and demand-driven; a maintenance wake-up is not permission to refresh every artist.
@@ -528,3 +527,19 @@
 **Reason:** MusicBrainz whole-release and track-only artist appearances are complementary evidence streams, and partial/stale acquisition must never create false uniqueness or no-match authority. A bounded derived cache avoids repeated provider work while remaining rebuildable and separate from immutable listening source observations.
 
 **Consequence:** The data-maintenance role alone may GET/PUT the exact catalogue object through conditional ETag writes. A stale ETag may reconcile once only when the target artist row did not change; same-artist concurrency fails closed. Missing or malformed cache state is rebuilt rather than migrated destructively. Existing durable `needs_review`, `retry`, `error`, and `no_match` states remain held, unknown future fields and provider ownership boundaries are preserved, diagnostics stay aggregate-only, and C3 does not activate providers, schedules or historical backfill. C4 owns separately authorized production activation.
+
+## 2026-08-11 — C4 historical identity processing is catalogue-first and artist-reusable
+
+**Decision:** Historical recording-identity completion uses a new C4 orchestrator rather than the old Spotify-first track-step planner. C4 groups eligible tier B/C work by trusted MusicBrainz artist, reuses the merged C3 dual-scope catalogue, runs the merged C2 local resolver first, and widens only authoritative catalogue `catalogue_no_match` / `catalogue_release_mismatch` cases through bounded ListenBrainz batches. Spotify is excluded from the core recording-identity provider path. Existing durable root/provider `needs_review`, `retry`, `error`, and `no_match` states are not reopened.
+
+**Reason:** One authoritative artist catalogue can resolve many historical tracks without repeated Spotify/ISRC calls, while C2/C3 already provide conservative evidence boundaries, exact local matching, dual-scope completeness, resumable checkpoints and conditional persistence. Reusing those contracts reduces provider dependence and preserves prior review/retry ownership.
+
+**Consequence:** C4 resumability derives from durable catalogue checkpoints and track identities rather than a giant track cursor. The old Spotify-first historical CLIs refuse direct execution. The only C4 production entrypoint has separately authorized `--plan-only`, `--proof` and `--full` modes. The proof is fixed to one artist and at most two MusicBrainz page requests; full mode is one command with a 50,000-provider-operation runaway ceiling rather than a manual batch ladder. Provider-specific transient MusicBrainz/ListenBrainz failures defer that provider for the invocation; persistence, concurrency, integrity, configuration and UsageTracker failures stop globally. Diagnostics remain aggregate-only.
+
+## 2026-08-11 — C4 production rollout remains separately authorized after merge
+
+**Decision:** C4 code review/merge is independent from production activation. The production order is read-only aggregate plan, inspect, separately authorized required Worker deployment plus one small live plumbing proof, inspect, then separately authorized full resumable historical backfill.
+
+**Reason:** The merged C3 Worker route has not yet been deliberately deployed or exercised against the new catalogue object, and code merge should not silently grant provider or data-write authority.
+
+**Consequence:** C4 development uses synthetic fixtures/fake Worker state only. No production read, provider call, Worker deployment, R2 write, schedule, workflow or historical backfill is authorized merely by branch creation, PR review or merge. `APP_VERSION` and `CACHE_NAME_LITERAL` stay at v112 because C4 changes only Node maintenance orchestration and continuity documentation.
