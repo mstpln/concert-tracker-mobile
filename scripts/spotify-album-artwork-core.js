@@ -28,27 +28,34 @@ function albumGroupKey(localBandId, releaseTitle) {
   return `album:${digest}`;
 }
 
-function uniqueBandNameMap(bands = []) {
+function bandOwnershipIndex(bands = []) {
+  const byId = new Set();
   const owners = new Map();
   for (const band of bands || []) {
     const id = safeString(band?.id);
     const name = normalizeText(band?.name);
-    if (!id || !name) continue;
+    if (!id) continue;
+    byId.add(id);
+    if (!name) continue;
     const set = owners.get(name) || new Set();
     set.add(id);
     owners.set(name, set);
   }
-  const unique = new Map();
+  const byUniqueName = new Map();
   for (const [name, ids] of owners) {
-    if (ids.size === 1) unique.set(name, [...ids][0]);
+    if (ids.size === 1) byUniqueName.set(name, [...ids][0]);
   }
-  return unique;
+  return { byId, byUniqueName };
 }
 
-function mappedBandId(event, uniqueBands) {
+function uniqueBandNameMap(bands = []) {
+  return bandOwnershipIndex(bands).byUniqueName;
+}
+
+function mappedBandId(event, bandIndex) {
   const explicit = safeString(event?.localBandId || event?.bandId);
-  if (explicit) return explicit;
-  return uniqueBands.get(normalizeText(event?.artistCreditName)) || null;
+  if (explicit) return bandIndex.byId.has(explicit) ? explicit : null;
+  return bandIndex.byUniqueName.get(normalizeText(event?.artistCreditName)) || null;
 }
 
 function normalizeMetadataRecord(key, record) {
@@ -85,13 +92,14 @@ function metadataRecords(metadata = {}) {
 }
 
 function buildAlbumGroups({ events = [], bands = [], metadata = {} } = {}) {
-  const uniqueBands = uniqueBandNameMap(bands);
+  const bandIndex = bandOwnershipIndex(bands);
   const known = metadataRecords(metadata);
   const groups = new Map();
+  const trackGroupKeys = new Map();
   let unsafeEvents = 0;
 
   for (const event of events || []) {
-    const localBandId = mappedBandId(event, uniqueBands);
+    const localBandId = mappedBandId(event, bandIndex);
     const releaseTitle = safeString(event?.releaseTitle);
     const spotifyTrackId = safeString(event?.spotifyTrackId);
     const key = albumGroupKey(localBandId, releaseTitle);
@@ -108,6 +116,9 @@ function buildAlbumGroups({ events = [], bands = [], metadata = {} } = {}) {
       knownArtwork: [],
     };
     group.trackIds.add(spotifyTrackId);
+    const groupKeys = trackGroupKeys.get(spotifyTrackId) || new Set();
+    groupKeys.add(key);
+    trackGroupKeys.set(spotifyTrackId, groupKeys);
     const existing = known.get(spotifyTrackId);
     if (existing?.spotifyAlbumId) group.knownAlbumIds.add(existing.spotifyAlbumId);
     if (existing?.spotifyAlbumId && existing?.artworkUrl) group.knownArtwork.push(existing);
@@ -118,6 +129,10 @@ function buildAlbumGroups({ events = [], bands = [], metadata = {} } = {}) {
   const ambiguous = [];
   for (const group of groups.values()) {
     const trackIds = [...group.trackIds].sort();
+    if (trackIds.some((trackId) => (trackGroupKeys.get(trackId)?.size || 0) > 1)) {
+      ambiguous.push({ key: group.key, trackCount: trackIds.length, reason: 'spotify_track_crosses_album_groups' });
+      continue;
+    }
     if (group.knownAlbumIds.size > 1) {
       ambiguous.push({ key: group.key, trackCount: trackIds.length, reason: 'conflicting_known_spotify_album_ids' });
       continue;
@@ -212,6 +227,7 @@ module.exports = {
   validSpotifyId,
   normalizeText,
   albumGroupKey,
+  bandOwnershipIndex,
   uniqueBandNameMap,
   mappedBandId,
   normalizeMetadataRecord,
