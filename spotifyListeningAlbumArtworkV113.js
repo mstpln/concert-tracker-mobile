@@ -145,14 +145,14 @@
       const own = records[safeString(event?.spotifyTrackId)] || null;
       const album = group.artworkRecord;
       applied += 1;
+      if (own) return event;
       return {
         ...event,
-        spotifyAlbumId: group.albumId,
-        spotifyAlbumUrl: safeString(album.spotifyAlbumUrl) || `https://open.spotify.com/album/${group.albumId}`,
         albumArtworkUrl: album.artworkUrl,
         artworkPath: album.artworkUrl || event.artworkPath || null,
-        spotifyMetadataSource: own?.source || 'spotify_album_group_reuse',
-        spotifyMetadataFetchedAt: own?.fetchedAt || album.fetchedAt || event.spotifyMetadataFetchedAt || null,
+        spotifyAlbumArtworkSource: 'spotify_album_group_reuse',
+        spotifyAlbumArtworkSeedTrackId: safeString(album.spotifyTrackId) || null,
+        spotifyAlbumArtworkFetchedAt: album.fetchedAt || null,
       };
     });
     replaceEvents(next);
