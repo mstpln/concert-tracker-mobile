@@ -10,7 +10,13 @@ function createMusicbrainzScheduledGate({ musicbrainz, worker, config, now = () 
   async function scheduleFor(usage) {
     if (!schedulePromise) {
       schedulePromise = (async () => {
-        const bands = await worker.readJson('bands.json', []);
+        let bands;
+        try {
+          bands = await worker.readJson('bands.json', []);
+        } catch (error) {
+          usage?.note?.(`MusicBrainz scheduler state read failed — skipping MusicBrainz this run: ${error.message}`);
+          return { selected: [], selectedKeys: new Set(), selectedProviderKeys: new Set(), dueCount: 0, remainingCapacity: 0, duplicateIdentitySkips: 0, planError: 'state_read_failed' };
+        }
         const confirmed = (bands || []).filter(confirmedMbid);
         const countByMbid = new Map();
         for (const band of confirmed) {
