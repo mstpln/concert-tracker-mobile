@@ -12,6 +12,7 @@
   const AUTO_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
   let settingsUiPromise = null;
   let syncPromise = null;
+  let foregroundSyncObserved = false;
 
   function normalizeText(value) {
     return String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('en');
@@ -250,7 +251,7 @@
     wrapper.innerHTML = saved ? `
       <p class="section-label">ListenBrainz sync</p>
       <div class="settings-card">
-        <p class="settings-hint" style="margin-top:0">Connected as <strong data-listenbrainz-user></strong>. New listens are added to the private Listening Vault when the app opens and at most once every six hours while in use.</p>
+        <p class="settings-hint" style="margin-top:0">Connected as <strong data-listenbrainz-user></strong>. New listens sync when the app opens, when it returns to the foreground after six hours, and at most once every six hours while in use.</p>
         <div class="show-buttons" style="margin-top:8px">
           <button type="button" class="btn-primary" data-listenbrainz-sync-now>Sync now</button>
           <button type="button" class="btn-secondary" data-listenbrainz-disconnect>Disconnect</button>
@@ -331,17 +332,36 @@
     injectSettingsUi();
   }
 
-  async function autoSyncIfDue() {
-    if (root.__LIVEVAULT_QA_SYNTHETIC_LISTENING__ === true) return;
+  function isAutoSyncDue(lastSyncAt, nowMs = Date.now()) {
+    const lastSync = Date.parse(lastSyncAt || '') || 0;
+    return nowMs - lastSync >= AUTO_SYNC_INTERVAL_MS;
+  }
+
+  async function autoSyncIfDue({ nowMs = Date.now(), sync = syncNow } = {}) {
+    if (root.__LIVEVAULT_QA_SYNTHETIC_LISTENING__ === true) return false;
     const saved = connection();
-    if (!saved) return;
-    const lastSync = Date.parse(saved.lastSyncAt || '') || 0;
-    if (Date.now() - lastSync < AUTO_SYNC_INTERVAL_MS) return;
-    try { await syncNow(); } catch (_) { /* Settings exposes the next manual retry. */ }
+    if (!saved || !isAutoSyncDue(saved.lastSyncAt, nowMs)) return false;
+    try {
+      await sync();
+      return true;
+    } catch (_) {
+      return false; // Settings exposes the next manual retry.
+    }
+  }
+
+  function observeForegroundSync(syncCheck = autoSyncIfDue) {
+    if (foregroundSyncObserved || !root.document?.addEventListener) return false;
+    root.document.addEventListener('visibilitychange', () => {
+      if (root.document?.visibilityState !== 'visible') return;
+      void syncCheck();
+    });
+    foregroundSyncObserved = true;
+    return true;
   }
 
   function bootstrap() {
     observeSettings();
+    observeForegroundSync();
     root.setTimeout?.(autoSyncIfDue, 4000);
     root.setInterval?.(autoSyncIfDue, AUTO_SYNC_INTERVAL_MS);
   }
@@ -361,6 +381,9 @@
     saveConnection,
     clearConnection,
     syncNow,
+    isAutoSyncDue,
+    autoSyncIfDue,
+    observeForegroundSync,
     dedupeSettingsWrappers,
     bootstrap,
   };
