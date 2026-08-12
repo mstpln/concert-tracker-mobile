@@ -83,6 +83,20 @@ function seedFromConcerts(concerts = []) {
   return seeded;
 }
 
+function cachedForCity(city, country) {
+  const key = locationKey(city, country);
+  if (!key || !cache.has(key)) return null;
+  const coords = cache.get(key);
+  if (!coords) return null;
+  return {
+    latitude: coords.lat,
+    longitude: coords.lon,
+    timezone: coords.timezone,
+    distanceKm: haversineKm(config.HOME_LAT, config.HOME_LON, coords.lat, coords.lon),
+    researchGeocodeProvider: PROVIDER,
+  };
+}
+
 function clearCache() {
   cache.clear();
 }
@@ -123,13 +137,7 @@ async function geocodeCity(city, country, { fetchImpl = globalThis.fetch, timeou
 async function locationForCity(city, country, options) {
   const coords = await geocodeCity(city, country, options);
   if (!coords) return null;
-  return {
-    latitude: coords.lat,
-    longitude: coords.lon,
-    timezone: coords.timezone,
-    distanceKm: haversineKm(config.HOME_LAT, config.HOME_LON, coords.lat, coords.lon),
-    researchGeocodeProvider: PROVIDER,
-  };
+  return cachedForCity(city, country);
 }
 
 async function distanceKmForCity(city, country, options) {
@@ -145,6 +153,7 @@ module.exports = {
   locationKey,
   exactLocation,
   seedFromConcerts,
+  cachedForCity,
   clearCache,
   geocodeCity,
   locationForCity,
