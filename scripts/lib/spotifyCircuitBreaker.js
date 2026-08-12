@@ -8,12 +8,14 @@
 
 const RATE_LIMIT_FALLBACK_MS = 30 * 60 * 1000;
 const QUOTA_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const RETRY_AFTER_SAFETY_MS = 1000;
 const USAGE_PATCH = Symbol.for('bandmarkr.dab6.spotifyUsageCircuit');
 const MODULE_PATCH = Symbol.for('bandmarkr.dab6.spotifyModuleCircuit');
 const VALID_REASONS = new Set(['rate_limited', 'quota_exceeded']);
 
 function validDateMs(value) {
-  const parsed = Date.parse(value);
+  if (value == null || value === '') return null;
+  const parsed = Date.parse(String(value));
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -48,22 +50,46 @@ function ensureSpotifyUsageState(usage) {
   return usage.state.spotify;
 }
 
+function parseRetryAfterBlockedUntil(value, nowMs) {
+  if (value == null || value === '') return null;
+  const normalizedNow = safeNowMs(nowMs);
+  const seconds = typeof value === 'number'
+    ? value
+    : (/^\s*\d+(?:\.\d+)?\s*$/.test(String(value)) ? Number(value) : NaN);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return normalizedNow + Math.ceil(seconds * 1000) + RETRY_AFTER_SAFETY_MS;
+  }
+  const absolute = validDateMs(value);
+  return absolute != null && absolute > normalizedNow ? absolute + RETRY_AFTER_SAFETY_MS : null;
+}
+
+function retryBlockedUntil(outcome, nowMs) {
+  const normalizedNow = safeNowMs(nowMs);
+  for (const value of [outcome?.retryAfterSeconds, outcome?.retryAfter]) {
+    const blockedUntil = parseRetryAfterBlockedUntil(value, normalizedNow);
+    if (blockedUntil != null) return blockedUntil;
+  }
+  return normalizedNow + RATE_LIMIT_FALLBACK_MS;
+}
+
 function openCircuit(spotifyState, reason, blockedUntilMs, nowMs) {
-  const previous = spotifyState.circuit && typeof spotifyState.circuit === 'object' && !Array.isArray(spotifyState.circuit)
-    ? spotifyState.circuit
-    : {};
-  const openedAt = new Date(nowMs).toISOString();
-  const blockedUntil = new Date(blockedUntilMs).toISOString();
+  const checked = circuitValidation(spotifyState.circuit);
+  if (!checked.valid) throw new Error('Spotify circuit state is invalid; refusing to overwrite it.');
+  const previous = checked.circuit || {};
+  const previousBlockedUntilMs = previous.status === 'open' ? validDateMs(previous.blockedUntil) : null;
+  const active = previous.status === 'open' && previousBlockedUntilMs > nowMs;
+  const nextBlockedUntilMs = active ? Math.max(previousBlockedUntilMs, blockedUntilMs) : blockedUntilMs;
+  const nextReason = active && previous.reason === 'quota_exceeded' ? 'quota_exceeded' : reason;
   const next = {
     ...previous,
     status: 'open',
-    reason,
-    openedAt,
-    blockedUntil,
+    reason: nextReason,
+    openedAt: active ? previous.openedAt : new Date(nowMs).toISOString(),
+    blockedUntil: new Date(nextBlockedUntilMs).toISOString(),
   };
   const changed = JSON.stringify(previous) !== JSON.stringify(next);
   spotifyState.circuit = next;
-  return { changed, reason, blockedUntil };
+  return { changed, reason: next.reason, blockedUntil: next.blockedUntil };
 }
 
 function closeExpiredCircuit(spotifyState, nowMs) {
@@ -80,24 +106,25 @@ function closeExpiredCircuit(spotifyState, nowMs) {
   return { changed: true };
 }
 
-function retryBlockedUntil(outcome, nowMs) {
-  const explicitDate = validDateMs(outcome?.nextEligibleCheckAt);
-  if (explicitDate != null && explicitDate > nowMs) return explicitDate;
-  const rawSeconds = outcome?.retryAfterSeconds ?? outcome?.retryAfter;
-  const seconds = Number(rawSeconds);
-  if (Number.isFinite(seconds) && seconds > 0) return nowMs + Math.ceil(seconds * 1000) + 1000;
-  return nowMs + RATE_LIMIT_FALLBACK_MS;
-}
-
 function textLooksRateLimited(value) {
   return typeof value === 'string' && (/(?:^|[^0-9])429(?:[^0-9]|$)/.test(value) || /http_429/i.test(value));
 }
 
-function spotifyCircuitSignalFromResult(result, { successKinds = [] } = {}) {
-  if (typeof result === 'string' && result) return { type: 'success' };
+function textLooksQuotaExceeded(value) {
+  return typeof value === 'string' && /(?:spotify[_ -]?)?quota[_ -]?exceeded/i.test(value);
+}
+
+function spotifyCircuitSignalFromResult(result, { successKinds = [], allowSuccess = true } = {}) {
+  if (typeof result === 'string' && result) return allowSuccess ? { type: 'success' } : null;
   if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
-  const reason = result.reason || result.error || result.identity?.errorCategory || null;
-  if (result.kind === 'quota_exceeded' || reason === 'spotify_quota_exceeded' || result.quotaExceeded === true) {
+  const reason = result.reason || result.error || result.errorCode || result.code || result.identity?.errorCategory || null;
+  if (
+    result.kind === 'quota_exceeded'
+    || result.quotaExceeded === true
+    || textLooksQuotaExceeded(reason)
+    || textLooksQuotaExceeded(result.errorCode)
+    || textLooksQuotaExceeded(result.code)
+  ) {
     return { type: 'quota' };
   }
   if (result.status === 429 || result.kind === 'rate_limited' || textLooksRateLimited(reason)) {
@@ -105,16 +132,29 @@ function spotifyCircuitSignalFromResult(result, { successKinds = [] } = {}) {
       type: 'rate_limit',
       retryAfterSeconds: result.retryAfterSeconds,
       retryAfter: result.retryAfter,
-      nextEligibleCheckAt: result.nextEligibleCheckAt || result.identity?.nextEligibleCheckAt || null,
     };
   }
-  if (successKinds.includes(result.kind)) return { type: 'success' };
+  if (allowSuccess && successKinds.includes(result.kind)) return { type: 'success' };
   return null;
 }
 
 function spotifyCircuitSignalFromError(error) {
-  const message = error?.message || error?.code || '';
-  return textLooksRateLimited(message) ? { type: 'rate_limit' } : null;
+  if (!error) return null;
+  if (
+    error.quotaExceeded === true
+    || textLooksQuotaExceeded(error.code)
+    || textLooksQuotaExceeded(error.errorCode)
+    || textLooksQuotaExceeded(error.message)
+  ) return { type: 'quota' };
+  const message = error.message || error.code || '';
+  if (Number(error.status) === 429 || textLooksRateLimited(message)) {
+    return {
+      type: 'rate_limit',
+      retryAfterSeconds: error.retryAfterSeconds,
+      retryAfter: error.retryAfter,
+    };
+  }
+  return null;
 }
 
 function reportSpotifyCircuitSignal(usage, signal, { nowMs = Date.now() } = {}) {
@@ -129,6 +169,24 @@ function reportSpotifyCircuitSignal(usage, signal, { nowMs = Date.now() } = {}) 
   }
   if (signal.type === 'success') return closeExpiredCircuit(spotifyState, currentMs);
   return { changed: false };
+}
+
+async function applyAndPersistSpotifyCircuitSignal(usage, signal, { nowMs = Date.now() } = {}) {
+  if (!signal) return { changed: false };
+  const result = typeof usage?.reportSpotifyCircuitSignal === 'function'
+    ? usage.reportSpotifyCircuitSignal(signal)
+    : reportSpotifyCircuitSignal(usage, signal, { nowMs });
+  if (!result.changed) return result;
+  if (typeof usage?.save !== 'function') throw new Error('Spotify circuit changed but UsageTracker.save() is unavailable.');
+  try {
+    await usage.save();
+  } catch (error) {
+    const wrapped = new Error(`Spotify circuit state could not be persisted: ${error.message}`);
+    wrapped.code = 'SPOTIFY_CIRCUIT_SAVE_FAILED';
+    wrapped.cause = error;
+    throw wrapped;
+  }
+  return result;
 }
 
 function installUsageTrackerSpotifyCircuit(UsageTracker, { now = () => Date.now() } = {}) {
@@ -156,12 +214,18 @@ function installUsageTrackerSpotifyCircuit(UsageTracker, { now = () => Date.now(
   return true;
 }
 
-function reportModuleResult(usage, result, successKinds) {
+function spotifyCallsThisRun(usage) {
+  const value = Number(usage?.state?.spotify?.callsThisRun);
+  return Number.isFinite(value) ? value : null;
+}
+
+async function reportModuleResult(usage, result, successKinds, callsBefore) {
   if (!usage) return;
-  const signal = spotifyCircuitSignalFromResult(result, { successKinds });
+  const callsAfter = spotifyCallsThisRun(usage);
+  const allowSuccess = callsBefore != null && callsAfter != null && callsAfter > callsBefore;
+  const signal = spotifyCircuitSignalFromResult(result, { successKinds, allowSuccess });
   if (!signal) return;
-  if (typeof usage.reportSpotifyCircuitSignal === 'function') usage.reportSpotifyCircuitSignal(signal);
-  else reportSpotifyCircuitSignal(usage, signal);
+  await applyAndPersistSpotifyCircuitSignal(usage, signal);
 }
 
 function installSpotifyModuleCircuit(spotify) {
@@ -177,8 +241,9 @@ function installSpotifyModuleCircuit(spotify) {
   const originalMatchPredictedSong = spotify.matchPredictedSong;
 
   spotify.searchTrackOutcome = async function dab6SearchTrackOutcome(songTitle, bandName, usage, options) {
+    const callsBefore = spotifyCallsThisRun(usage);
     const result = await originalSearchTrackOutcome(songTitle, bandName, usage, options);
-    reportModuleResult(usage, result, ['ok', 'no_match']);
+    await reportModuleResult(usage, result, ['ok', 'no_match'], callsBefore);
     return result;
   };
 
@@ -188,26 +253,30 @@ function installSpotifyModuleCircuit(spotify) {
   };
 
   spotify.resolveArtistIdentity = async function dab6ResolveArtistIdentity(args) {
+    const callsBefore = spotifyCallsThisRun(args?.usage);
     const result = await originalResolveArtistIdentity(args);
-    reportModuleResult(args?.usage, result, []);
+    await reportModuleResult(args?.usage, result, ['confirmed', 'no_match', 'needs_review'], callsBefore);
     return result;
   };
 
   spotify.listArtistReleases = async function dab6ListArtistReleases(artistId, usage, options) {
+    const callsBefore = spotifyCallsThisRun(usage);
     const result = await originalListArtistReleases(artistId, usage, options);
-    reportModuleResult(usage, result, ['ok']);
+    await reportModuleResult(usage, result, ['ok'], callsBefore);
     return result;
   };
 
   spotify.getReleaseTracks = async function dab6GetReleaseTracks(releaseId, usage, options) {
+    const callsBefore = spotifyCallsThisRun(usage);
     const result = await originalGetReleaseTracks(releaseId, usage, options);
-    reportModuleResult(usage, result, ['ok']);
+    await reportModuleResult(usage, result, ['ok'], callsBefore);
     return result;
   };
 
   spotify.matchPredictedSong = async function dab6MatchPredictedSong(song, spotifyArtistId, usage, options) {
+    const callsBefore = spotifyCallsThisRun(usage);
     const result = await originalMatchPredictedSong(song, spotifyArtistId, usage, options);
-    reportModuleResult(usage, result, ['ok', 'no_match']);
+    await reportModuleResult(usage, result, ['ok', 'no_match'], callsBefore);
     return result;
   };
   return true;
@@ -216,13 +285,16 @@ function installSpotifyModuleCircuit(spotify) {
 module.exports = {
   RATE_LIMIT_FALLBACK_MS,
   QUOTA_COOLDOWN_MS,
+  RETRY_AFTER_SAFETY_MS,
   validDateMs,
   circuitValidation,
   spotifyCircuitBlockReason,
+  parseRetryAfterBlockedUntil,
   retryBlockedUntil,
   spotifyCircuitSignalFromResult,
   spotifyCircuitSignalFromError,
   reportSpotifyCircuitSignal,
+  applyAndPersistSpotifyCircuitSignal,
   installUsageTrackerSpotifyCircuit,
   installSpotifyModuleCircuit,
 };
