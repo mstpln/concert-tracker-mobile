@@ -88,6 +88,21 @@ test('DAB5 respects MusicBrainz capacity already consumed earlier in the run', (
   assert.equal(plan.selected.length, 2);
 });
 
+test('DAB5 fails closed when planner time or capacity state is invalid', () => {
+  const b = band('unsafe');
+  const invalidTime = planMusicbrainzResearch([b], { now: 'not-a-date', perRunCap: 5, metadataRefreshDays: 90, releaseRefreshDays: 7 });
+  assert.equal(invalidTime.remainingCapacity, 0);
+  assert.deepEqual(invalidTime.selected, []);
+
+  const invalidCap = planMusicbrainzResearch([b], { now: NOW, perRunCap: 'not-a-number', metadataRefreshDays: 90, releaseRefreshDays: 7 });
+  assert.equal(invalidCap.remainingCapacity, 0);
+  assert.deepEqual(invalidCap.selected, []);
+
+  const invalidUsage = planMusicbrainzResearch([b], { now: NOW, perRunCap: 5, callsAlreadyUsed: -1, metadataRefreshDays: 90, releaseRefreshDays: 7 });
+  assert.equal(invalidUsage.remainingCapacity, 0);
+  assert.deepEqual(invalidUsage.selected, []);
+});
+
 test('DAB5 retains old complete release state without polling a recent marker-less baseline', () => {
   const recent = band('recent', {
     musicbrainz: { metadata: { artistName: 'Known', lastSuccessfulAt: iso(1) } },
@@ -99,6 +114,16 @@ test('DAB5 retains old complete release state without polling a recent marker-le
   });
   const plan = planMusicbrainzResearch([recent, old], { now: NOW, perRunCap: 5, metadataRefreshDays: 90, releaseRefreshDays: 7 });
   assert.deepEqual(plan.selected.map((task) => task.key), ['old:release']);
+});
+
+test('DAB5 does not inherit a legacy three-day complete release marker', () => {
+  const legacy = band('legacy', {
+    musicbrainz: { metadata: { artistName: 'Known', lastSuccessfulAt: iso(1) } },
+    structuredResearch: { releases: { musicbrainz: { status: 'complete', lastSuccessfulAt: iso(4), nextEligibleCheckAt: iso(1), knownKeys: [] } } },
+  });
+  const plan = planMusicbrainzResearch([legacy], { now: NOW, perRunCap: 5, metadataRefreshDays: 90, releaseRefreshDays: 7 });
+  assert.equal(plan.dueCount, 0);
+  assert.deepEqual(plan.selected, []);
 });
 
 test('DAB5 scheduled gate executes only selected provider operations and keeps later bands eligible', async () => {
@@ -161,7 +186,7 @@ test('DAB5 scheduler state-read failure skips provider work without failing the 
   assert.deepEqual(await gate.fetchReleaseGroups('mbid-any', usage), { kind: 'skipped', reason: 'dab5_not_scheduled' });
   assert.equal(providerCalls, 0);
   assert.equal(notes.length, 1);
-  assert.match(notes[0], /scheduler state read failed/);
+  assert.match(notes[0], /scheduler state unavailable/);
 });
 
 test('DAB5 production preload wires the gate and no longer forces three-day MusicBrainz polling', () => {
