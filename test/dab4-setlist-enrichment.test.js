@@ -39,13 +39,13 @@ function concert(extra = {}) {
   };
 }
 
-test('DAB4 setlist 404 is a trustworthy no-match outcome', async () => {
+test('DAB4 setlist 404 remains retryable instead of becoming durable absence', async () => {
   const calls = usage();
   const outcome = await setlistfm.findSetlistOutcomeForShow(concert(), calls, {
     artistMbid: 'mbid-1',
     fetchImpl: async () => ({ ok: false, status: 404 }),
   });
-  assert.deepEqual(outcome, { kind: 'no_match', reason: 'not_found' });
+  assert.deepEqual(outcome, { kind: 'error', status: 404 });
   assert.equal(calls.setlistCalls, 1);
 });
 
