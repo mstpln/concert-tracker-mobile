@@ -115,11 +115,37 @@ test('ListenBrainz auto sync does no work while fresh and runs once when due', a
   }
 });
 
-test('foreground resume rechecks ListenBrainz only after the document becomes visible', () => {
+test('foreground resume rechecks ListenBrainz only after the document becomes visible', async () => {
+  const previousDocument = globalThis.document;
+  const listeners = new Map();
+  const document = {
+    visibilityState: 'hidden',
+    addEventListener(type, listener) { listeners.set(type, listener); },
+  };
+  globalThis.document = document;
+  let checks = 0;
+  try {
+    assert.equal(listenbrainz.observeForegroundSync(async () => { checks += 1; }), true);
+    const listener = listeners.get('visibilitychange');
+    assert.equal(typeof listener, 'function');
+
+    listener();
+    await Promise.resolve();
+    assert.equal(checks, 0);
+
+    document.visibilityState = 'visible';
+    listener();
+    await Promise.resolve();
+    assert.equal(checks, 1);
+
+    assert.equal(listenbrainz.observeForegroundSync(async () => { checks += 1; }), false);
+    assert.equal(listeners.size, 1);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+
   const source = fs.readFileSync('listenbrainzSync.js', 'utf8');
-  assert.match(source, /addEventListener\('visibilitychange'/);
-  assert.match(source, /visibilityState !== 'visible'/);
-  assert.match(source, /void syncCheck\(\)/);
   assert.match(source, /observeForegroundSync\(\);/);
 });
 
