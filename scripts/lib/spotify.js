@@ -65,77 +65,99 @@ function artistMatches(candidateArtists, bandName, spotifyArtistId = null) {
   });
 }
 
-async function searchTrack(songTitle, bandName, usage, { spotifyArtistId = null, fetchImpl = fetch, getToken = getAppToken } = {}) {
-  if (!usage.canCallSpotify()) return null;
-  const token = await getToken(usage, fetchImpl);
+// DAB4 structured outcome for the historical setlist linker. Only a real
+// `ok` or `no_match` may become spotifyChecked. Provider/transport/quota
+// trouble stays `error`/`skipped` so the song remains eligible next run.
+async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId = null, fetchImpl = fetch, getToken = getAppToken } = {}) {
+  if (!usage.canCallSpotify()) return { kind: 'skipped', reason: 'usage_cap' };
+  let token;
+  try {
+    token = await getToken(usage, fetchImpl);
+  } catch (error) {
+    usage.note(`Spotify token lookup failed for "${songTitle}" / "${bandName}": ${error.message}`);
+    return { kind: 'error', error: error.message || 'token_error' };
+  }
   const q = `track:"${songTitle.replace(/"/g, '')}" artist:"${bandName.replace(/"/g, '')}"`;
   const url = `${config.SPOTIFY.searchUrl}?type=track&limit=5&q=${encodeURIComponent(q)}`;
 
+  if (!usage.canCallSpotify()) return { kind: 'skipped', reason: 'usage_cap' };
   await usage.recordSpotifyCall();
   let res;
   try {
     res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
   } catch (e) {
     usage.note(`Spotify search failed for "${songTitle}" / "${bandName}": ${e.message}`);
-    return null;
+    return { kind: 'error', error: e.message || 'network_error' };
   }
 
   if (res.status === 429) {
-    const retryAfter = Number(res.headers.get('retry-after')) || 2;
+    const retryAfter = Number(res.headers?.get?.('retry-after')) || 2;
     usage.note(`Spotify rate-limited — waiting ${retryAfter}s`);
     await sleep((retryAfter + 1) * 1000);
     try {
-      if (!usage.canCallSpotify()) return null;
+      if (!usage.canCallSpotify()) return { kind: 'skipped', reason: 'usage_cap' };
       await usage.recordSpotifyCall();
       res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
     } catch (e) {
       usage.note(`Spotify search retry failed for "${songTitle}": ${e.message}`);
-      return null;
+      return { kind: 'error', error: e.message || 'network_error' };
     }
   }
   if (!res.ok) {
     usage.note(`Spotify search returned ${res.status} for "${songTitle}" / "${bandName}"`);
-    return null;
+    return { kind: 'error', status: res.status };
   }
 
   let data;
   try {
     data = await res.json();
   } catch (e) {
-    return null;
+    return { kind: 'error', error: 'invalid_json' };
   }
-  const items = data?.tracks?.items || [];
-  const candidates = items.filter((t) => artistMatches(t.artists, bandName, spotifyArtistId));
-  if (candidates.length === 0) return null;
+  if (!Array.isArray(data?.tracks?.items)) return { kind: 'error', error: 'invalid_response' };
+  const candidates = data.tracks.items.filter((t) => artistMatches(t.artists, bandName, spotifyArtistId));
+  if (candidates.length === 0) return { kind: 'no_match' };
 
   // Most-popular version wins — the agreed default when a song has multiple
   // Spotify recordings (studio, live, remaster), rather than always
   // preferring the studio original.
   candidates.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-  return candidates[0]?.external_urls?.spotify || null;
+  const urlValue = candidates[0]?.external_urls?.spotify;
+  return typeof urlValue === 'string' && urlValue ? { kind: 'ok', url: urlValue } : { kind: 'error', error: 'missing_track_url' };
 }
 
-// Mutates each non-cover, not-yet-checked song in `songs` in place, setting
-// spotifyUrl when a confident match is found. Always sets spotifyChecked —
-// success or not — so a song with genuinely no good match isn't re-queried
-// forever; same "attempt once, don't retry endlessly" shape as setlist.fm's
-// per-concert setlistCheckedAt. Returns how many links were newly added.
-async function resolveSongLinks(songs, bandName, usage, { spotifyArtistId = null } = {}) {
+// Preserve the historical URL-or-null helper contract for unrelated callers.
+async function searchTrack(songTitle, bandName, usage, options = {}) {
+  const outcome = await searchTrackOutcome(songTitle, bandName, usage, options);
+  return outcome.kind === 'ok' ? outcome.url : null;
+}
+
+// Mutates only trustworthy outcomes. Successful matches and definitive
+// no-matches become spotifyChecked; transient/provider/quota failures leave
+// the current and remaining songs untouched so a later run can retry them.
+async function resolveSongLinks(songs, bandName, usage, { spotifyArtistId = null, search = searchTrackOutcome } = {}) {
   let added = 0;
   for (const song of songs) {
     if (song.isCover || song.spotifyChecked) continue;
     if (!usage.canCallSpotify()) break;
+    let outcome;
     try {
-      const url = await searchTrack(song.name, bandName, usage, { spotifyArtistId });
-      song.spotifyChecked = true;
-      if (url) {
-        song.spotifyUrl = url;
-        added += 1;
-      }
+      outcome = await search(song.name, bandName, usage, { spotifyArtistId });
     } catch (e) {
       usage.note(`Spotify lookup failed for "${song.name}" (${bandName}): ${e.message}`);
-      song.spotifyChecked = true;
+      break;
     }
+    if (outcome?.kind === 'ok') {
+      song.spotifyChecked = true;
+      song.spotifyUrl = outcome.url;
+      added += 1;
+      continue;
+    }
+    if (outcome?.kind === 'no_match') {
+      song.spotifyChecked = true;
+      continue;
+    }
+    break;
   }
   return added;
 }
@@ -253,4 +275,4 @@ async function matchPredictedSong(song, spotifyArtistId, usage, { bandName = '',
   return { kind: 'no_match' };
 }
 
-module.exports = { resolveSongLinks, searchTrack, resolveArtistIdentity, listArtistReleases, getReleaseTracks, spotifyIdentity, retryableIdentity, spotifyReviewCandidates, artistMatches, predictedTrackCandidate, predictedTrackFields, matchPredictedSong };
+module.exports = { resolveSongLinks, searchTrack, searchTrackOutcome, resolveArtistIdentity, listArtistReleases, getReleaseTracks, spotifyIdentity, retryableIdentity, spotifyReviewCandidates, artistMatches, predictedTrackCandidate, predictedTrackFields, matchPredictedSong };
