@@ -148,6 +148,7 @@ async function resolveSongLinks(songs, bandName, usage, { spotifyArtistId = null
       break;
     }
     if (outcome?.kind === 'ok') {
+      if (typeof outcome.url !== 'string' || !outcome.url.trim()) break;
       song.spotifyChecked = true;
       song.spotifyUrl = outcome.url;
       added += 1;
