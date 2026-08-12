@@ -20,6 +20,13 @@ function normalizeText(value) {
     .toLocaleLowerCase('en');
 }
 
+function listenTime(value) {
+  const text = safeString(value);
+  if (!text) return 0;
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function albumGroupKey(localBandId, releaseTitle) {
   const bandId = safeString(localBandId);
   const release = normalizeText(releaseTitle);
@@ -114,7 +121,16 @@ function buildAlbumGroups({ events = [], bands = [], metadata = {} } = {}) {
       trackIds: new Set(),
       knownAlbumIds: new Set(),
       knownArtwork: [],
+      listenCount: 0,
+      latestListenedAt: null,
+      latestListenTime: 0,
     };
+    group.listenCount += 1;
+    const eventListenTime = listenTime(event?.listenedAt);
+    if (eventListenTime > group.latestListenTime) {
+      group.latestListenTime = eventListenTime;
+      group.latestListenedAt = safeString(event?.listenedAt) || null;
+    }
     group.trackIds.add(spotifyTrackId);
     const groupKeys = trackGroupKeys.get(spotifyTrackId) || new Set();
     groupKeys.add(key);
@@ -152,10 +168,16 @@ function buildAlbumGroups({ events = [], bands = [], metadata = {} } = {}) {
       representativeTrackId,
       knownAlbumId,
       knownRecord,
+      listenCount: group.listenCount,
+      latestListenedAt: group.latestListenedAt,
+      latestListenTime: group.latestListenTime,
     });
   }
 
-  safe.sort((a, b) => b.trackIds.length - a.trackIds.length || a.key.localeCompare(b.key));
+  safe.sort((a, b) => b.latestListenTime - a.latestListenTime
+    || b.listenCount - a.listenCount
+    || b.trackIds.length - a.trackIds.length
+    || a.key.localeCompare(b.key));
   ambiguous.sort((a, b) => b.trackCount - a.trackCount || a.key.localeCompare(b.key));
   return { groups: safe, ambiguous, unsafeEvents };
 }
@@ -220,6 +242,7 @@ function planAlbumArtwork({ events = [], bands = [], metadata = {} } = {}) {
 module.exports = {
   validSpotifyId,
   normalizeText,
+  listenTime,
   albumGroupKey,
   bandOwnershipIndex,
   uniqueBandNameMap,

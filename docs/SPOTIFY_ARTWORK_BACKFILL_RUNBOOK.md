@@ -1,6 +1,6 @@
 # Spotify album artwork maintenance runbook
 
-This runbook is for the private listening-artwork maintenance operation used by v113. It is not an app feature, it does not run automatically, and it must not be used until the intended private-data/provider/write scope has been explicitly authorized.
+This runbook is for the private listening-artwork maintenance operation used by v114. It is not an app feature, it does not run automatically, and it must not be used until the intended private-data/provider/write scope has been explicitly authorized.
 
 ## Supported entrypoint
 
@@ -11,6 +11,19 @@ It reads the verified private listening source, groups unresolved listens conser
 Sibling listens reuse compatible album artwork in memory. Source listening observations are never rewritten. MusicBrainz and ListenBrainz are not used by this artwork runner.
 
 Do not create or use a GitHub Actions workflow for this production maintenance operation. Private listening reads require the browser credential and must stay in a trusted local environment. The repository automation role is intentionally not the execution path for private listening maintenance.
+
+## Album-group priority
+
+Safe unresolved album groups are deterministic and cumulative rather than bulk-backfilled. Provider work is ordered by:
+
+1. most recent valid `listenedAt` observed for the album group;
+2. highest total listen count for the album group;
+3. highest number of distinct trusted Spotify Track IDs in the album group;
+4. stable album-group key as the final deterministic tie-breaker.
+
+This makes newly or recently listened albums eligible first on later maintenance runs. When recency is equal, albums listened to more often are preferred, then albums represented by more distinct tracks. Missing or malformed listening timestamps do not make an otherwise safe event unsafe; those groups simply rank behind groups with valid listening timestamps.
+
+Already reusable album groups are removed from the provider queue before the cap is applied, so the limited provider budget is spent only on unresolved safe groups.
 
 ## Secret handling
 
@@ -33,7 +46,7 @@ Production writes to `listening/spotify-metadata.json` additionally require:
 
 `I_AUTHORIZE_PRODUCTION_SPOTIFY_METADATA_WRITES`
 
-The runner also requires both `--execute` and `--write`. There is no provider-only staging mode in the v113 album-oriented entrypoint; each resolved representative record is durably checkpointed through a conditional metadata write before another album group is processed.
+The runner also requires both `--execute` and `--write`. There is no provider-only staging mode in the v114 album-oriented entrypoint; each resolved representative record is durably checkpointed through a conditional metadata write before another album group is processed.
 
 ## Before any live invocation
 
@@ -46,7 +59,7 @@ The runner also requires both `--execute` and `--write`. There is no provider-on
 
 ## Controlled production invocation
 
-For the first production proof, use a deliberately small cap:
+For a deliberately small controlled invocation:
 
 ```text
 node scripts/spotify-album-artwork-production.js --execute --write --cap 3 --delay-ms 1000 --market SE
@@ -63,6 +76,7 @@ Before provider work it:
 - reads and validates the private listening source;
 - reads the current `bands.json` and `listening/spotify-metadata.json`;
 - creates the conservative album-oriented plan;
+- orders unresolved safe groups by recent listening, then total listens, then distinct-track coverage;
 - limits provider work to the approved cap;
 - rechecks current band ownership before provider work and before each persistence step.
 
@@ -131,4 +145,4 @@ Then verify the affected artwork in the production app on the relevant listening
 
 ## Scheduling boundary
 
-Do not add scheduling until the controlled production proof has succeeded and the desired cadence has been explicitly approved. Any future scheduled design must preserve the private-listening credential boundary rather than moving private reads into a generic GitHub automation role by assumption.
+The controlled production proof succeeded before v114. Scheduling remains a separate implementation decision because any scheduled design must preserve the private-listening credential boundary rather than moving private reads into a generic GitHub automation role by assumption. The v114 ranking is designed so that a future bounded schedule can accumulate artwork over time without requiring a bulk backfill.
