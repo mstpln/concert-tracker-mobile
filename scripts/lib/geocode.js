@@ -1,16 +1,16 @@
 'use strict';
 // Geocoding helper used only for Tavily/Groq concert-discovery fallback.
-// Ticketmaster events already carry coordinates.  Scheduled research uses
-// Open-Meteo rather than the public Nominatim service because Nominatim's
-// policy strongly discourages periodic bulk geocoding and restricts regular
-// scripts to four requests per minute.  Open-Meteo is already the project's
-// browser weather geocoder and supports this bounded non-commercial use.
+// Ticketmaster events already carry coordinates. Scheduled research uses
+// Open-Meteo rather than the public Nominatim service. Successful Open-Meteo
+// city/country results are stored additively on discovered concert records;
+// future runs seed this cache from those records before making provider calls.
 
 const { haversineKm } = require('./util');
 const config = require('./config');
 
 const GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 const REQUEST_TIMEOUT_MS = 10000;
+const PROVIDER = 'open-meteo';
 const cache = new Map();
 
 function normalize(value) {
@@ -20,6 +20,12 @@ function normalize(value) {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+}
+
+function locationKey(city, country) {
+  const cityKey = normalize(city);
+  const countryKey = normalize(country);
+  return cityKey && countryKey ? `${cityKey}|${countryKey}` : null;
 }
 
 function isoCountryCode(value) {
@@ -45,18 +51,47 @@ function exactLocation(data, city, country) {
     return normalize(candidate?.country) === countryKey;
   });
   if (matches.length !== 1) return null;
+  const match = matches[0];
   return {
-    lat: finiteCoordinate(matches[0].latitude),
-    lon: finiteCoordinate(matches[0].longitude),
+    lat: finiteCoordinate(match.latitude),
+    lon: finiteCoordinate(match.longitude),
+    timezone: typeof match.timezone === 'string' && match.timezone.trim() ? match.timezone.trim() : null,
   };
+}
+
+function cachedLocation(value) {
+  const lat = finiteCoordinate(value?.latitude ?? value?.lat);
+  const lon = finiteCoordinate(value?.longitude ?? value?.lon ?? value?.lng);
+  if (lat === null || lon === null) return null;
+  return {
+    lat,
+    lon,
+    timezone: typeof value?.timezone === 'string' && value.timezone.trim() ? value.timezone.trim() : null,
+  };
+}
+
+function seedFromConcerts(concerts = []) {
+  let seeded = 0;
+  for (const concert of Array.isArray(concerts) ? concerts : []) {
+    if (concert?.researchGeocodeProvider !== PROVIDER) continue;
+    const key = locationKey(concert.city, concert.country);
+    const coords = cachedLocation(concert);
+    if (!key || !coords || cache.has(key)) continue;
+    cache.set(key, coords);
+    seeded += 1;
+  }
+  return seeded;
+}
+
+function clearCache() {
+  cache.clear();
 }
 
 async function geocodeCity(city, country, { fetchImpl = globalThis.fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   const cityText = String(city || '').trim();
   const countryText = String(country || '').trim();
-  if (!cityText || !countryText || typeof fetchImpl !== 'function') return null;
-
-  const key = `${normalize(cityText)}|${normalize(countryText)}`;
+  const key = locationKey(cityText, countryText);
+  if (!key || typeof fetchImpl !== 'function') return null;
   if (cache.has(key)) return cache.get(key);
 
   const url = new URL(GEOCODE_URL);
@@ -74,32 +109,44 @@ async function geocodeCity(city, country, { fetchImpl = globalThis.fetch, timeou
       timer = setTimeout(() => controller.abort(), timeoutMs);
     }
     const response = await fetchImpl(url.toString(), controller ? { signal: controller.signal } : undefined);
-    if (!response?.ok) {
-      cache.set(key, null);
-      return null;
-    }
+    if (!response?.ok) return null;
     const result = exactLocation(await response.json(), cityText, countryText);
-    cache.set(key, result);
+    if (result) cache.set(key, result);
     return result;
   } catch (_) {
-    cache.set(key, null);
     return null;
   } finally {
     if (timer) clearTimeout(timer);
   }
 }
 
-async function distanceKmForCity(city, country, options) {
+async function locationForCity(city, country, options) {
   const coords = await geocodeCity(city, country, options);
   if (!coords) return null;
-  return haversineKm(config.HOME_LAT, config.HOME_LON, coords.lat, coords.lon);
+  return {
+    latitude: coords.lat,
+    longitude: coords.lon,
+    timezone: coords.timezone,
+    distanceKm: haversineKm(config.HOME_LAT, config.HOME_LON, coords.lat, coords.lon),
+    researchGeocodeProvider: PROVIDER,
+  };
+}
+
+async function distanceKmForCity(city, country, options) {
+  const location = await locationForCity(city, country, options);
+  return location?.distanceKm ?? null;
 }
 
 module.exports = {
   GEOCODE_URL,
   REQUEST_TIMEOUT_MS,
+  PROVIDER,
   normalize,
+  locationKey,
   exactLocation,
+  seedFromConcerts,
+  clearCache,
   geocodeCity,
+  locationForCity,
   distanceKmForCity,
 };
