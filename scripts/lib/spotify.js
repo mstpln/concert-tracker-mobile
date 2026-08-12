@@ -17,6 +17,9 @@ const config = require('./config');
 const { sleep } = require('./util');
 const { normalizeTitle } = require('./predictedSetlist');
 
+const SETLIST_TRACK_NO_MATCH_REASON = 'no_artist_match';
+const MAX_429_RETRY_AFTER_SECONDS = 30;
+
 function basicAuthHeader() {
   const id = process.env[config.SPOTIFY.clientIdEnv];
   const secret = process.env[config.SPOTIFY.clientSecretEnv];
@@ -45,97 +48,133 @@ async function getAppToken(usage = null, fetchImpl = fetch) {
   });
   if (!res.ok) throw new Error(`Spotify token request failed: HTTP ${res.status}`);
   const data = await res.json();
+  if (typeof data?.access_token !== 'string' || !data.access_token.trim()) throw new Error('Spotify token response was missing an access token');
   cachedToken = { accessToken: data.access_token, expiresAt: Date.now() + (data.expires_in || 3600) * 1000 };
   return cachedToken.accessToken;
 }
 
+function normalizeArtistMatchText(value) {
+  return String(value || '')
+    .toLocaleLowerCase('en')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
 // Same normalize-and-loosely-compare approach as setlistfm.js's venueMatches
 // — a false negative here throws away a perfectly good link, so it's
-// deliberately forgiving. A false positive is guarded against separately by
-// only ever trusting Spotify's own top-ranked, popularity-sorted result
-// among artist-matched candidates, never just the literal first hit.
+// deliberately forgiving. When no confirmed Spotify artist ID is available,
+// an empty normalized band identity now fails closed instead of accepting an
+// arbitrary provider result; Unicode letters/numbers remain matchable.
 function artistMatches(candidateArtists, bandName, spotifyArtistId = null) {
   if (spotifyArtistId) return (candidateArtists || []).some((artist) => artist?.id === spotifyArtistId);
-  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-  const target = norm(bandName);
-  if (!target) return true;
+  const target = normalizeArtistMatchText(bandName);
+  if (!target) return false;
   return (candidateArtists || []).some((a) => {
-    const n = norm(a?.name);
+    const n = normalizeArtistMatchText(a?.name);
     return !!n && (n === target || n.includes(target) || target.includes(n));
   });
 }
 
-async function searchTrack(songTitle, bandName, usage, { spotifyArtistId = null, fetchImpl = fetch, getToken = getAppToken } = {}) {
-  if (!usage.canCallSpotify()) return null;
-  const token = await getToken(usage, fetchImpl);
+// DAB4 structured outcome for the historical setlist linker. Only a real
+// `ok` or provider-derived `no_match` may become spotifyChecked.
+async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId = null, fetchImpl = fetch, getToken = getAppToken, sleepImpl = sleep } = {}) {
+  if (!usage.canCallSpotify()) return { kind: 'skipped', reason: 'usage_cap' };
+  let token;
+  try {
+    token = await getToken(usage, fetchImpl);
+  } catch (error) {
+    usage.note(`Spotify token lookup failed for "${songTitle}" / "${bandName}": ${error.message}`);
+    return { kind: 'error', error: error.message || 'token_error' };
+  }
+  if (typeof token !== 'string' || !token.trim()) return { kind: 'error', error: 'invalid_token' };
   const q = `track:"${songTitle.replace(/"/g, '')}" artist:"${bandName.replace(/"/g, '')}"`;
   const url = `${config.SPOTIFY.searchUrl}?type=track&limit=5&q=${encodeURIComponent(q)}`;
 
+  if (!usage.canCallSpotify()) return { kind: 'skipped', reason: 'usage_cap' };
   await usage.recordSpotifyCall();
   let res;
   try {
     res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
   } catch (e) {
     usage.note(`Spotify search failed for "${songTitle}" / "${bandName}": ${e.message}`);
-    return null;
+    return { kind: 'error', error: e.message || 'network_error' };
   }
 
   if (res.status === 429) {
-    const retryAfter = Number(res.headers.get('retry-after')) || 2;
+    const rawRetryAfter = Number(res.headers?.get?.('retry-after'));
+    const retryAfter = Number.isFinite(rawRetryAfter) && rawRetryAfter > 0 ? rawRetryAfter : 2;
+    if (retryAfter > MAX_429_RETRY_AFTER_SECONDS) {
+      usage.note(`Spotify rate-limited with Retry-After ${retryAfter}s — deferring without retry`);
+      return { kind: 'error', status: 429, retryAfter };
+    }
     usage.note(`Spotify rate-limited — waiting ${retryAfter}s`);
-    await sleep((retryAfter + 1) * 1000);
+    await sleepImpl((retryAfter + 1) * 1000);
     try {
-      if (!usage.canCallSpotify()) return null;
+      if (!usage.canCallSpotify()) return { kind: 'skipped', reason: 'usage_cap' };
       await usage.recordSpotifyCall();
       res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
     } catch (e) {
       usage.note(`Spotify search retry failed for "${songTitle}": ${e.message}`);
-      return null;
+      return { kind: 'error', error: e.message || 'network_error' };
     }
   }
   if (!res.ok) {
     usage.note(`Spotify search returned ${res.status} for "${songTitle}" / "${bandName}"`);
-    return null;
+    return { kind: 'error', status: res.status };
   }
 
   let data;
   try {
     data = await res.json();
   } catch (e) {
-    return null;
+    return { kind: 'error', error: 'invalid_json' };
   }
-  const items = data?.tracks?.items || [];
-  const candidates = items.filter((t) => artistMatches(t.artists, bandName, spotifyArtistId));
-  if (candidates.length === 0) return null;
+  if (!Array.isArray(data?.tracks?.items)) return { kind: 'error', error: 'invalid_response' };
+  const candidates = data.tracks.items.filter((t) => artistMatches(t.artists, bandName, spotifyArtistId));
+  if (candidates.length === 0) return { kind: 'no_match', reason: SETLIST_TRACK_NO_MATCH_REASON };
 
   // Most-popular version wins — the agreed default when a song has multiple
   // Spotify recordings (studio, live, remaster), rather than always
   // preferring the studio original.
   candidates.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-  return candidates[0]?.external_urls?.spotify || null;
+  const urlValue = candidates[0]?.external_urls?.spotify;
+  return typeof urlValue === 'string' && urlValue ? { kind: 'ok', url: urlValue } : { kind: 'error', error: 'missing_track_url' };
 }
 
-// Mutates each non-cover, not-yet-checked song in `songs` in place, setting
-// spotifyUrl when a confident match is found. Always sets spotifyChecked —
-// success or not — so a song with genuinely no good match isn't re-queried
-// forever; same "attempt once, don't retry endlessly" shape as setlist.fm's
-// per-concert setlistCheckedAt. Returns how many links were newly added.
-async function resolveSongLinks(songs, bandName, usage, { spotifyArtistId = null } = {}) {
+// Preserve the historical URL-or-null helper contract for unrelated callers.
+async function searchTrack(songTitle, bandName, usage, options = {}) {
+  const outcome = await searchTrackOutcome(songTitle, bandName, usage, options);
+  return outcome.kind === 'ok' ? outcome.url : null;
+}
+
+// Mutates only trustworthy outcomes. Successful matches and definitive
+// no-matches become spotifyChecked; transient/provider/quota failures leave
+// the current and remaining songs untouched so a later run can retry them.
+async function resolveSongLinks(songs, bandName, usage, { spotifyArtistId = null, search = searchTrackOutcome } = {}) {
   let added = 0;
   for (const song of songs) {
     if (song.isCover || song.spotifyChecked) continue;
     if (!usage.canCallSpotify()) break;
+    let outcome;
     try {
-      const url = await searchTrack(song.name, bandName, usage, { spotifyArtistId });
-      song.spotifyChecked = true;
-      if (url) {
-        song.spotifyUrl = url;
-        added += 1;
-      }
+      outcome = await search(song.name, bandName, usage, { spotifyArtistId });
     } catch (e) {
       usage.note(`Spotify lookup failed for "${song.name}" (${bandName}): ${e.message}`);
-      song.spotifyChecked = true;
+      break;
     }
+    if (outcome?.kind === 'ok') {
+      if (typeof outcome.url !== 'string' || !outcome.url.trim()) break;
+      song.spotifyChecked = true;
+      song.spotifyUrl = outcome.url;
+      added += 1;
+      continue;
+    }
+    if (outcome?.kind === 'no_match' && outcome.reason === SETLIST_TRACK_NO_MATCH_REASON) {
+      song.spotifyChecked = true;
+      continue;
+    }
+    break;
   }
   return added;
 }
@@ -253,4 +292,4 @@ async function matchPredictedSong(song, spotifyArtistId, usage, { bandName = '',
   return { kind: 'no_match' };
 }
 
-module.exports = { resolveSongLinks, searchTrack, resolveArtistIdentity, listArtistReleases, getReleaseTracks, spotifyIdentity, retryableIdentity, spotifyReviewCandidates, artistMatches, predictedTrackCandidate, predictedTrackFields, matchPredictedSong };
+module.exports = { resolveSongLinks, searchTrack, searchTrackOutcome, resolveArtistIdentity, listArtistReleases, getReleaseTracks, spotifyIdentity, retryableIdentity, spotifyReviewCandidates, artistMatches, predictedTrackCandidate, predictedTrackFields, matchPredictedSong };

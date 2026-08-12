@@ -337,7 +337,6 @@ async function processSetlistInsights({
   log(`Live-performance insights: ${diagnostics.eligible} eligible, ${diagnostics.processed} processed, ${diagnostics.ready} ready, ${diagnostics.insufficient} insufficient, ${diagnostics.generated} insights generated, ${diagnostics.historyArtistsRequested} artist histories, ${diagnostics.setlistfmRequests} setlist.fm requests.`);
   return { enabled: true, updates: updates.length, concerts: merged, diagnostics };
 }
-
 const TICKETMASTER_CONCERT_FIELD_ALLOWLIST = [
   'venue', 'city', 'country', 'time', 'distanceKm', 'venueAddress', 'ticketUrl',
   'ticketRetailerVerified', 'sourceProvider', 'providerEventId', 'providerAttractionId', 'artistMatchMethod',
@@ -450,15 +449,47 @@ function mergeTicketmasterConcertUpgrades(latestConcerts, upgrades) {
   return latestConcerts.map((concert) => byId.has(concert.id) ? upgradeExistingConcertWithTicketmaster(concert, byId.get(concert.id)) : concert);
 }
 
+function setlistSongIdentity(song) {
+  return `${String(song?.name || '').trim().toLocaleLowerCase()}|${!!song?.isEncore}|${!!song?.isCover}`;
+}
+
+function mergePipelineSetlist(latestSetlist, currentSetlist) {
+  if (!latestSetlist) return currentSetlist || latestSetlist;
+  if (!currentSetlist) return latestSetlist;
+  const latestSongs = latestSetlist.songs;
+  const currentSongs = currentSetlist.songs;
+  if (!Array.isArray(latestSongs) || !Array.isArray(currentSongs) || latestSongs.length !== currentSongs.length) return latestSetlist;
+  if (latestSongs.some((song, index) => setlistSongIdentity(song) !== setlistSongIdentity(currentSongs[index]))) return latestSetlist;
+  const songs = latestSongs.map((latestSong, index) => {
+    const currentSong = currentSongs[index];
+    if (latestSong?.spotifyChecked || !currentSong?.spotifyChecked) return latestSong;
+    const mergedSong = { ...latestSong, spotifyChecked: true };
+    if (!mergedSong.spotifyUrl && typeof currentSong.spotifyUrl === 'string' && currentSong.spotifyUrl) mergedSong.spotifyUrl = currentSong.spotifyUrl;
+    return mergedSong;
+  });
+  return { ...latestSetlist, songs };
+}
+
+function latestCheckedAt(latestValue, currentValue) {
+  const latestMs = Date.parse(latestValue);
+  const currentMs = Date.parse(currentValue);
+  if (!Number.isFinite(currentMs)) return latestValue;
+  if (!Number.isFinite(latestMs) || currentMs > latestMs) return currentValue;
+  return latestValue;
+}
+
 function mergePipelineConcertFields(latestConcerts, currentConcerts, updatedIds) {
   const currentById = new Map((currentConcerts || []).map((concert) => [concert.id, concert]));
   return latestConcerts.map((concert) => {
     if (!updatedIds?.has(concert.id)) return concert;
     const current = currentById.get(concert.id);
     if (!current) return concert;
-    const patch = { setlistCheckedAt: current.setlistCheckedAt };
-    if (current.setlist) patch.setlist = current.setlist;
-    return { ...concert, ...patch };
+    const merged = { ...concert };
+    const checkedAt = latestCheckedAt(concert.setlistCheckedAt, current.setlistCheckedAt);
+    if (checkedAt !== undefined) merged.setlistCheckedAt = checkedAt;
+    if (!concert.setlist && current.setlist) merged.setlist = current.setlist;
+    else if (concert.setlist && current.setlist) merged.setlist = mergePipelineSetlist(concert.setlist, current.setlist);
+    return merged;
   });
 }
 
@@ -469,8 +500,8 @@ function finalConcertWritePayload(concerts, newConcerts, { latestConcerts = conc
   return [...merged, ...(newConcerts || []).filter((concert) => !existingIds.has(concert.id))];
 }
 
-function concertWriteRequired({ newConcerts = [], ticketmasterUpgrades = [], setlistChecksAttempted = 0, spotifyConcertsProcessed = 0 } = {}) {
-  return newConcerts.length > 0 || ticketmasterUpgrades.length > 0 || setlistChecksAttempted > 0 || spotifyConcertsProcessed > 0;
+function concertWriteRequired({ newConcerts = [], ticketmasterUpgrades = [], pipelineUpdates = 0, setlistChecksAttempted = 0, spotifyConcertsProcessed = 0 } = {}) {
+  return newConcerts.length > 0 || ticketmasterUpgrades.length > 0 || pipelineUpdates > 0 || setlistChecksAttempted > 0 || spotifyConcertsProcessed > 0;
 }
 
 function predictionDiagnostics(concerts, bands, usage, now) {
@@ -1009,18 +1040,16 @@ async function main() {
     try {
       const band = bandsById.get(c.bandId);
       const artistMbid = structuredEnabled && confirmedMbid(band) ? band.musicbrainz.mbid : null;
-      const result = await setlistfm.findSetlistForShow(c, usage, { artistMbid });
-      c.setlistCheckedAt = new Date().toISOString();
+      const outcome = await setlistfm.findSetlistOutcomeForShow(c, usage, { artistMbid });
+      const applied = setlistfm.applySetlistOutcome(c, outcome);
+      if (!applied.changed) continue;
       pipelineUpdatedIds.add(c.id);
-      if (result) {
-        c.setlist = result;
+      if (applied.found) {
         setlistsAdded += 1;
         newlyAddedSetlistIds.add(c.id);
       }
     } catch (e) {
       usage.note(`setlist.fm lookup failed for "${c.bandName}" (${c.date}): ${e.message}`);
-      c.setlistCheckedAt = new Date().toISOString();
-      pipelineUpdatedIds.add(c.id);
     }
   }
 
@@ -1044,8 +1073,9 @@ async function main() {
     try {
       const band = bandsById.get(c.bandId);
       const spotifyArtistId = structuredEnabled && ['confirmed', 'manual_confirmed'].includes(band?.musicbrainz?.spotify?.status) ? band.musicbrainz.spotify.id : null;
+      const beforeSongs = JSON.stringify(c.setlist.songs);
       spotifyLinksAdded += await spotify.resolveSongLinks(c.setlist.songs, c.bandName, usage, { spotifyArtistId });
-      pipelineUpdatedIds.add(c.id);
+      if (JSON.stringify(c.setlist.songs) !== beforeSongs) pipelineUpdatedIds.add(c.id);
     } catch (e) {
       usage.note(`Spotify song-link resolution failed for "${c.bandName}" (${c.date}): ${e.message}`);
     }
@@ -1055,7 +1085,7 @@ async function main() {
   // (newConcerts), any setlist/setlistCheckedAt fields just filled in on
   // existing records, and any spotifyUrl/spotifyChecked fields just filled
   // in on setlist songs — a single PUT rather than three separate ones.
-  if (concertWriteRequired({ newConcerts, ticketmasterUpgrades: [...ticketmasterUpgrades.values()], setlistChecksAttempted, spotifyConcertsProcessed })) {
+  if (concertWriteRequired({ newConcerts, ticketmasterUpgrades: [...ticketmasterUpgrades.values()], pipelineUpdates: pipelineUpdatedIds.size })) {
     const latestConcerts = await worker.readJson('concerts.json', []);
     concerts = finalConcertWritePayload(concerts, newConcerts, {
       latestConcerts,

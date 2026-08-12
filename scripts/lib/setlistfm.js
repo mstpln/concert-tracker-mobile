@@ -3,18 +3,17 @@
 // API for real per-show setlists (song list, encore markers, cover-song
 // tags). Unlike the Ticketmaster/Tavily/Groq tour-date and news pipeline,
 // this needs no search step or LLM extraction at all: setlist.fm returns
-// the setlist directly as JSON for a given artist+date, so a match is
-// either found or it isn't — the whole lookup is a single request.
+// the setlist directly as JSON for a given artist+date.
 //
 // Coverage is crowd-sourced (fans submit setlists after a show), so older
-// or smaller/obscure shows may simply have nothing logged yet. A "not
-// found" is expected and not an error — see research.js's
-// setlistCheckedAt/re-check-window handling, which re-tries periodically
-// rather than either giving up permanently or hammering the API on every
-// run for a show that's unlikely to ever get one.
+// or smaller/obscure shows may simply have nothing logged yet. DAB4 keeps
+// genuine no-result outcomes distinct from provider/transport failure so
+// callers only advance the 30-day checked marker after a trustworthy result.
 
 const config = require('./config');
 const { usefulEarlierSetlists } = require('./setlistInsights');
+
+const TRUSTED_NO_MATCH_REASONS = new Set(['empty_results', 'empty_setlist']);
 
 function apiKey() {
   const k = process.env[config.SETLISTFM.apiKeyEnv];
@@ -36,6 +35,16 @@ function normalizeEventDate(value) {
   if (match) { [, day, month, year] = match; } else { match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text); if (!match) return null; [, year, month, day] = match; }
   const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
   return date.getUTCFullYear() === Number(year) && date.getUTCMonth() === Number(month) - 1 && date.getUTCDate() === Number(day) ? `${year}-${month}-${day}` : null;
+}
+
+function normalizeIdentityText(value) {
+  return String(value || '')
+    .toLocaleLowerCase('en')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 // Flattens setlist.fm's nested sets.set[].song[] shape into the flat
@@ -63,13 +72,9 @@ function normalizeSetlist(raw) {
   };
 }
 
-// Safety net, not the primary lookup key: setlist.fm's artist+date search
-// can occasionally return more than one result if a band played twice in
-// one day (rare, but real — festival sets across two stages). Loose
-// substring match against the venue name already on file for this concert;
-// falls back to "don't reject" if either side is missing, since a false
-// negative here (discarding a real match) is worse than a rare false
-// positive.
+// Historical helper contract used by prediction/insight callers: venue is a
+// safety net, not the primary identity key, so missing provider venue text
+// does not reject an otherwise usable record.
 function venueMatches(setlistVenueName, expectedVenue) {
   if (!expectedVenue) return true;
   const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -79,8 +84,35 @@ function venueMatches(setlistVenueName, expectedVenue) {
   return a === b || a.includes(b) || b.includes(a);
 }
 
-// Artist history is deliberately MBID-only.  The result is compacted before
-// returning so callers never persist a provider payload.
+// The DAB4 per-show write path is deliberately stricter than the legacy
+// helper above. A persisted actual setlist must have affirmative venue
+// evidence whenever this concert already has a venue.
+function strictVenueMatches(setlistVenueName, expectedVenue) {
+  if (!expectedVenue) return true;
+  const a = normalizeIdentityText(setlistVenueName);
+  const b = normalizeIdentityText(expectedVenue);
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+function candidateMatchesShow(candidate, concert, artistMbid = null, { requireReturnedDate = true } = {}) {
+  if (!candidate || !concert) return false;
+  if (requireReturnedDate && normalizeEventDate(candidate.eventDate) !== concert.date) return false;
+  if (artistMbid) {
+    if (candidate?.artist?.mbid !== artistMbid) return false;
+  } else {
+    const candidateArtist = normalizeIdentityText(candidate?.artist?.name);
+    const expectedArtist = normalizeIdentityText(concert.bandName);
+    if (!candidateArtist || !expectedArtist || candidateArtist !== expectedArtist) return false;
+  }
+  return strictVenueMatches(candidate?.venue?.name, concert.venue);
+}
+
+// Artist history is deliberately MBID-only. The result is compacted before
+// returning so callers never persist a provider payload. Preserve the
+// established history contract where provider 404 means an exhausted/empty
+// history; DAB4's stricter 404 treatment applies only to the actual-show
+// search path below.
 async function findRecentSetlistsForArtist(artistMbid, usage, { fetchImpl = fetch } = {}) {
   if (!artistMbid || !usage.canCallSetlistfm()) return { kind: 'skipped' };
   await usage.recordSetlistfmCall();
@@ -124,14 +156,13 @@ async function findHistoricalSetlistsForArtist(artistMbid, usage, { beforeDate, 
   return { kind: 'ok', setlists, reachedBeforeDate, providerExhausted, historyComplete: providerExhausted || usefulCount >= config.SETLIST_INSIGHTS.minimumUsefulPriorSetlists, usefulEarlierCount: usefulCount, pagesFetched };
 }
 
-// Returns a normalized { songs, tourName, url } object for the given
-// concert, or null if no setlist is on file yet (or the lookup failed/was
-// skipped) — callers treat null as "nothing to add this time", never as
-// an error to surface to the user.
-async function findSetlistForShow(concert, usage, { artistMbid = null, fetchImpl = fetch } = {}) {
+// Returns a structured outcome. Only `found` and `no_match` are trustworthy
+// provider outcomes that may advance the caller's recheck marker. `error` and
+// `skipped` remain retryable and must not be persisted as absence.
+async function findSetlistOutcomeForShow(concert, usage, { artistMbid = null, fetchImpl = fetch, requireReturnedDate = true } = {}) {
   if (!usage.canCallSetlistfm()) {
     usage.note(`setlist.fm per-run/daily cap reached — skipping "${concert.bandName}" (${concert.date})`);
-    return null;
+    return { kind: 'skipped', reason: 'usage_cap' };
   }
   await usage.recordSetlistfmCall();
 
@@ -148,12 +179,14 @@ async function findSetlistForShow(concert, usage, { artistMbid = null, fetchImpl
     });
   } catch (e) {
     usage.note(`setlist.fm request failed for "${concert.bandName}" (${concert.date}): ${e.message}`);
-    return null;
+    return { kind: 'error', error: e.message || 'network_error' };
   }
-  if (res.status === 404) return null; // setlist.fm's documented "no results" response
+  // setlist.fm does not document this search-path 404 as a definitive
+  // no-setlist signal, so treat it like every other HTTP failure and retry
+  // on a later scheduled run rather than advancing the 30-day marker.
   if (!res.ok) {
     usage.note(`setlist.fm returned ${res.status} for "${concert.bandName}" (${concert.date})`);
-    return null;
+    return { kind: 'error', status: res.status };
   }
 
   let data;
@@ -161,18 +194,40 @@ async function findSetlistForShow(concert, usage, { artistMbid = null, fetchImpl
     data = await res.json();
   } catch (e) {
     usage.note(`setlist.fm returned unparseable JSON for "${concert.bandName}" (${concert.date}): ${e.message}`);
-    return null;
+    return { kind: 'error', error: 'invalid_json' };
   }
-  const candidates = data?.setlist || [];
-  if (candidates.length === 0) return null;
+  if (!Array.isArray(data?.setlist)) return { kind: 'error', error: 'invalid_response' };
+  const candidates = data.setlist;
+  if (candidates.length === 0) return { kind: 'no_match', reason: 'empty_results' };
 
-  // An MBID lookup is only trustworthy when setlist.fm returns that same
-  // artist.  Never fall back to a different artist from this response.
-  const identityCandidates = artistMbid ? candidates.filter((s) => s?.artist?.mbid === artistMbid) : candidates;
-  const match = identityCandidates.find((s) => venueMatches(s?.venue?.name, concert.venue)) || identityCandidates[0];
-  if (!match) return null;
-  const normalized = normalizeSetlist(match);
-  return normalized.songs.length > 0 ? normalized : null;
+  const matching = candidates.filter((candidate) => candidateMatchesShow(candidate, concert, artistMbid, { requireReturnedDate }));
+  if (matching.length === 0) return { kind: 'error', error: 'show_identity_conflict' };
+  if (matching.length > 1) return { kind: 'error', error: 'ambiguous_show_match' };
+  const normalized = normalizeSetlist(matching[0]);
+  return normalized.songs.length > 0
+    ? { kind: 'found', setlist: normalized }
+    : { kind: 'no_match', reason: 'empty_setlist' };
 }
 
-module.exports = { findSetlistForShow, findRecentSetlistsForArtist, findHistoricalSetlistsForArtist, usefulEarlierCount, normalizeEventDate, normalizeSetlist, venueMatches };
+function applySetlistOutcome(concert, outcome, checkedAt = new Date().toISOString()) {
+  if (!concert || !outcome) return { changed: false, found: false };
+  if (outcome.kind === 'found') {
+    if (!outcome.setlist || !Array.isArray(outcome.setlist.songs) || outcome.setlist.songs.length === 0) return { changed: false, found: false };
+    concert.setlist = outcome.setlist;
+    concert.setlistCheckedAt = checkedAt;
+    return { changed: true, found: true };
+  }
+  if (outcome.kind !== 'no_match' || !TRUSTED_NO_MATCH_REASONS.has(outcome.reason)) return { changed: false, found: false };
+  concert.setlistCheckedAt = checkedAt;
+  return { changed: true, found: false };
+}
+
+// Keep the historical object-or-null helper tolerant of provider fixtures
+// that omit eventDate. The scheduled DAB4 write path calls the structured
+// outcome directly and keeps requireReturnedDate=true.
+async function findSetlistForShow(concert, usage, options = {}) {
+  const outcome = await findSetlistOutcomeForShow(concert, usage, { ...options, requireReturnedDate: false });
+  return outcome.kind === 'found' ? outcome.setlist : null;
+}
+
+module.exports = { findSetlistForShow, findSetlistOutcomeForShow, applySetlistOutcome, findRecentSetlistsForArtist, findHistoricalSetlistsForArtist, usefulEarlierCount, normalizeEventDate, normalizeSetlist, venueMatches, candidateMatchesShow };
