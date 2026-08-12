@@ -164,10 +164,11 @@ async function findSetlistOutcomeForShow(concert, usage, { artistMbid = null, fe
   if (candidates.length === 0) return { kind: 'no_match', reason: 'empty_results' };
 
   // An MBID lookup is only trustworthy when setlist.fm returns that same
-  // artist. Never fall back to a different artist from this response.
+  // artist. Never turn contradictory provider identity into durable absence.
   const identityCandidates = artistMbid ? candidates.filter((s) => s?.artist?.mbid === artistMbid) : candidates;
+  if (artistMbid && identityCandidates.length === 0) return { kind: 'error', error: 'artist_identity_conflict' };
   const match = identityCandidates.find((s) => venueMatches(s?.venue?.name, concert.venue)) || identityCandidates[0];
-  if (!match) return { kind: 'no_match', reason: 'identity_mismatch' };
+  if (!match) return { kind: 'error', error: 'invalid_candidate' };
   const normalized = normalizeSetlist(match);
   return normalized.songs.length > 0
     ? { kind: 'found', setlist: normalized }
