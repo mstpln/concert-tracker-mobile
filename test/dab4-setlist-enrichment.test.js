@@ -121,6 +121,16 @@ test('DAB4 only trustworthy setlist outcomes advance checked state and user fiel
   assert.deepEqual(setlistfm.applySetlistOutcome(failureConcert, { kind: 'error', status: 503 }, checkedAt), { changed: false, found: false });
   assert.deepEqual(failureConcert, beforeFailure);
 
+  const malformedFoundConcert = concert();
+  const beforeMalformedFound = structuredClone(malformedFoundConcert);
+  assert.deepEqual(setlistfm.applySetlistOutcome(malformedFoundConcert, { kind: 'found' }, checkedAt), { changed: false, found: false });
+  assert.deepEqual(malformedFoundConcert, beforeMalformedFound);
+
+  const emptyFoundConcert = concert();
+  const beforeEmptyFound = structuredClone(emptyFoundConcert);
+  assert.deepEqual(setlistfm.applySetlistOutcome(emptyFoundConcert, { kind: 'found', setlist: { songs: [] } }, checkedAt), { changed: false, found: false });
+  assert.deepEqual(emptyFoundConcert, beforeEmptyFound);
+
   const noMatchConcert = concert();
   assert.deepEqual(setlistfm.applySetlistOutcome(noMatchConcert, { kind: 'no_match' }, checkedAt), { changed: true, found: false });
   assert.equal(noMatchConcert.setlistCheckedAt, checkedAt);
@@ -157,6 +167,21 @@ test('DAB4 Spotify search distinguishes real no-match from transient provider fa
   assert.equal(malformed.error, 'invalid_response');
 });
 
+test('DAB4 Spotify 429 retry is bounded and remains retryable', async () => {
+  const calls = usage();
+  let providerCalls = 0;
+  const outcome = await spotify.searchTrackOutcome('Song', 'Example Band', calls, {
+    getToken: async () => 'synthetic-token',
+    fetchImpl: async () => {
+      providerCalls += 1;
+      return { ok: false, status: 429, headers: { get: () => '-1' } };
+    },
+  });
+  assert.deepEqual(outcome, { kind: 'error', status: 429 });
+  assert.equal(providerCalls, 2);
+  assert.equal(calls.spotifyCalls, 2);
+});
+
 test('DAB4 Spotify usage skip makes zero provider calls and stays retryable', async () => {
   let tokenCalled = false;
   let providerCalled = false;
@@ -187,6 +212,19 @@ test('DAB4 Spotify no-match becomes checked while provider error stays unchecked
   assert.equal(songs[2].spotifyChecked, undefined);
 });
 
+test('DAB4 Spotify malformed success stays unchecked and stops the pass', async () => {
+  const songs = [{ name: 'Malformed', isCover: false }, { name: 'Later Song', isCover: false }];
+  let calls = 0;
+  const added = await spotify.resolveSongLinks(songs, 'Example Band', usage(), {
+    search: async () => { calls += 1; return { kind: 'ok' }; },
+  });
+  assert.equal(added, 0);
+  assert.equal(calls, 1);
+  assert.equal(songs[0].spotifyChecked, undefined);
+  assert.equal(songs[0].spotifyUrl, undefined);
+  assert.equal(songs[1].spotifyChecked, undefined);
+});
+
 test('DAB4 Spotify preserves successful partial progress before a transient stop', async () => {
   const songs = [{ name: 'Matched', isCover: false }, { name: 'Fails', isCover: false }, { name: 'Cover', isCover: true }];
   const outcomes = [{ kind: 'ok', url: 'https://open.spotify.com/track/synthetic' }, { kind: 'error', error: 'network' }];
@@ -201,11 +239,9 @@ test('DAB4 Spotify preserves successful partial progress before a transient stop
   assert.equal(songs[2].spotifyChecked, undefined);
 });
 
-test('DAB4 concert write gate can depend on actual enrichment mutations', () => {
+test('DAB4 concert write gate uses trusted mutations at the production call site', () => {
   assert.equal(concertWriteRequired({ pipelineUpdates: 0 }), false);
   assert.equal(concertWriteRequired({ pipelineUpdates: 1 }), true);
-  assert.equal(concertWriteRequired({ setlistChecksAttempted: 1 }), true);
-  assert.equal(concertWriteRequired({ spotifyConcertsProcessed: 1 }), true);
 });
 
 test('DAB4 scheduled research is wired to structured setlist outcomes and mutation-only writes', () => {
