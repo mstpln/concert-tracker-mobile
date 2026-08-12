@@ -58,25 +58,29 @@ function metadataTask(band, nowMs, refreshDays) {
   };
 }
 
-function releaseTask(band, nowMs, releaseMonitoringEnabled) {
+function releaseTask(band, nowMs, releaseMonitoringEnabled, refreshDays) {
   if (!releaseMonitoringEnabled) return null;
   const baseline = band.structuredResearch?.releases?.musicbrainz || {};
   const status = baseline.status || 'not_started';
   const nextEligible = validTime(baseline.nextEligibleCheckAt);
   const lastSuccess = validTime(baseline.lastSuccessfulAt);
+  const lastAttempt = validTime(baseline.lastAttemptedAt);
   const unfinished = status !== 'complete' || !!baseline.continuation;
 
   if (nextEligible != null && nextEligible > nowMs) return null;
 
-  // A completed baseline with no due marker is retained state, not an
-  // invitation to poll on every workflow run. Older records get one refresh
-  // only when their stored success is old enough to be due under config.
-  if (!unfinished && nextEligible == null) return null;
+  let dueAt = nextEligible;
+  if (dueAt == null && unfinished) dueAt = lastAttempt ?? lastSuccess ?? 0;
+  if (dueAt == null) {
+    const refreshMs = Math.max(0, Number(refreshDays) || 0) * DAY;
+    dueAt = lastSuccess == null ? 0 : lastSuccess + refreshMs;
+  }
+  if (dueAt > nowMs) return null;
 
   return {
     key: taskKey(band.id, 'release'), bandId: band.id, kind: 'release',
     priority: unfinished ? 0 : 1,
-    dueAt: nextEligible ?? lastSuccess ?? validTime(baseline.lastAttemptedAt) ?? 0,
+    dueAt,
     reason: unfinished ? (status === 'not_started' ? 'release_bootstrap' : 'release_continuation_or_retry') : 'release_retained_due',
   };
 }
@@ -94,6 +98,7 @@ function planMusicbrainzResearch(bands, {
   perRunCap = 5,
   callsAlreadyUsed = 0,
   metadataRefreshDays = 90,
+  releaseRefreshDays = 7,
   releaseMonitoringEnabled = true,
 } = {}) {
   const nowMs = validTime(now) ?? Date.now();
@@ -104,7 +109,7 @@ function planMusicbrainzResearch(bands, {
     if (!confirmedMbid(band) || !band?.id) continue;
     const metadata = metadataTask(band, nowMs, metadataRefreshDays);
     if (metadata) due.push(metadata);
-    const release = releaseTask(band, nowMs, releaseMonitoringEnabled);
+    const release = releaseTask(band, nowMs, releaseMonitoringEnabled, releaseRefreshDays);
     if (release) due.push(release);
   }
 
