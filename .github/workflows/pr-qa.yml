@@ -26,7 +26,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Unit tests
-        run: npm run test
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          npm run test 2>&1 | tee test-results/unit-tests.log
       - name: JavaScript syntax
         run: npm run qa:syntax
       - name: Version and cache synchronization
