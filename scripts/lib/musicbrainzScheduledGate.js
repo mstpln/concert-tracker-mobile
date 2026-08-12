@@ -2,6 +2,10 @@
 
 const { planMusicbrainzResearch, confirmedMbid } = require('./musicbrainzResearchSchedule');
 
+function emptySchedule(reason) {
+  return { selected: [], selectedKeys: new Set(), selectedProviderKeys: new Set(), dueCount: 0, remainingCapacity: 0, duplicateIdentitySkips: 0, planError: reason };
+}
+
 function createMusicbrainzScheduledGate({ musicbrainz, worker, config, now = () => new Date().toISOString() }) {
   const originalMetadata = musicbrainz.fetchArtistMetadata;
   const originalReleases = musicbrainz.fetchReleaseGroups;
@@ -13,11 +17,15 @@ function createMusicbrainzScheduledGate({ musicbrainz, worker, config, now = () 
         let bands;
         try {
           bands = await worker.readJson('bands.json', []);
-        } catch (error) {
-          usage?.note?.(`MusicBrainz scheduler state read failed — skipping MusicBrainz this run: ${error.message}`);
-          return { selected: [], selectedKeys: new Set(), selectedProviderKeys: new Set(), dueCount: 0, remainingCapacity: 0, duplicateIdentitySkips: 0, planError: 'state_read_failed' };
+        } catch {
+          usage?.note?.('MusicBrainz scheduler state unavailable — skipping MusicBrainz this run.');
+          return emptySchedule('state_read_failed');
         }
-        const confirmed = (bands || []).filter(confirmedMbid);
+        if (!Array.isArray(bands)) {
+          usage?.note?.('MusicBrainz scheduler state invalid — skipping MusicBrainz this run.');
+          return emptySchedule('invalid_state');
+        }
+        const confirmed = bands.filter(confirmedMbid);
         const countByMbid = new Map();
         for (const band of confirmed) {
           const mbid = band.musicbrainz.mbid;
