@@ -80,14 +80,18 @@ function releaseTask(band, nowMs, releaseMonitoringEnabled, refreshDays) {
   const lastSuccess = validTime(baseline.lastSuccessfulAt);
   const lastAttempt = validTime(baseline.lastAttemptedAt);
   const unfinished = status !== 'complete' || !!baseline.continuation;
+  const refreshMs = Math.max(0, Number(refreshDays) || 0) * DAY;
 
-  if (nextEligible != null && nextEligible > nowMs) return null;
-
-  let dueAt = nextEligible;
-  if (dueAt == null && unfinished) dueAt = lastAttempt ?? lastSuccess ?? 0;
-  if (dueAt == null) {
-    const refreshMs = Math.max(0, Number(refreshDays) || 0) * DAY;
-    dueAt = lastSuccess == null ? 0 : lastSuccess + refreshMs;
+  let dueAt;
+  if (unfinished) {
+    if (nextEligible != null && nextEligible > nowMs) return null;
+    dueAt = nextEligible ?? lastAttempt ?? lastSuccess ?? 0;
+  } else {
+    const retainedDueAt = lastSuccess == null ? 0 : lastSuccess + refreshMs;
+    // Older scheduled builds persisted a three-day marker for both providers.
+    // A complete MusicBrainz baseline must still respect DAB5's retained
+    // interval, while a later explicit marker remains a valid deferral.
+    dueAt = nextEligible == null ? retainedDueAt : Math.max(retainedDueAt, nextEligible);
   }
   if (dueAt > nowMs) return null;
 
@@ -116,9 +120,16 @@ function planMusicbrainzResearch(bands, {
   releaseRefreshDays = 7,
   releaseMonitoringEnabled = true,
 } = {}) {
-  const nowMs = validTime(now) ?? Date.now();
-  const remaining = Math.max(0, Math.floor(Number(perRunCap) || 0) - Math.max(0, Math.floor(Number(callsAlreadyUsed) || 0)));
+  const nowMs = validTime(now);
+  const cap = Number(perRunCap);
+  const used = Number(callsAlreadyUsed);
+  const capacityValid = Number.isFinite(cap) && cap >= 0 && Number.isFinite(used) && used >= 0;
+  const remaining = capacityValid ? Math.max(0, Math.floor(cap) - Math.floor(used)) : 0;
   const due = [];
+
+  if (nowMs == null) {
+    return { selected: [], selectedKeys: new Set(), dueCount: 0, remainingCapacity: 0 };
+  }
 
   for (const band of bands || []) {
     if (!confirmedMbid(band) || !band?.id) continue;
