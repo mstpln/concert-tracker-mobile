@@ -176,10 +176,16 @@ async function findSetlistOutcomeForShow(concert, usage, { artistMbid = null, fe
 }
 
 function applySetlistOutcome(concert, outcome, checkedAt = new Date().toISOString()) {
-  if (!concert || !outcome || !['found', 'no_match'].includes(outcome.kind)) return { changed: false, found: false };
+  if (!concert || !outcome) return { changed: false, found: false };
+  if (outcome.kind === 'found') {
+    if (!outcome.setlist || !Array.isArray(outcome.setlist.songs) || outcome.setlist.songs.length === 0) return { changed: false, found: false };
+    concert.setlist = outcome.setlist;
+    concert.setlistCheckedAt = checkedAt;
+    return { changed: true, found: true };
+  }
+  if (outcome.kind !== 'no_match') return { changed: false, found: false };
   concert.setlistCheckedAt = checkedAt;
-  if (outcome.kind === 'found' && outcome.setlist) concert.setlist = outcome.setlist;
-  return { changed: true, found: outcome.kind === 'found' && !!outcome.setlist };
+  return { changed: true, found: false };
 }
 
 // Keep the historical object-or-null contract for unrelated callers/tests.
