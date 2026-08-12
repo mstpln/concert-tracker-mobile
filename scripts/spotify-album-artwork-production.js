@@ -179,7 +179,7 @@ async function runAlbumArtwork({
     reusedAlbumGroups: initialPlan.summary.reusableAlbumGroups,
     providerAlbumGroupsPlanned: providerGroups.length,
     providerAlbumGroupsAttempted: providerGroupsAttempted,
-    providerAlbumGroupsResolved,
+    providerAlbumGroupsResolved: providerGroupsResolved,
     providerGroupsNoArtwork,
     representativeRecordsAdded,
     musicbrainzCalls: 0,
