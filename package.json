@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "engines": { "node": ">=20 <21" },
   "scripts": {
-    "test": "node --test test/*.test.js",
+    "test": "mkdir -p test-results; node --test test/*.test.js > test-results/node-test.log 2>&1; status=$?; cat test-results/node-test.log; exit $status",
     "test:unit": "node --test test/*.test.js",
     "qa:syntax": "node scripts/qa-syntax.js",
     "qa:version": "node scripts/qa-version.js",
