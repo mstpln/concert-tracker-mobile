@@ -146,7 +146,6 @@ async function findSetlistOutcomeForShow(concert, usage, { artistMbid = null, fe
     usage.note(`setlist.fm request failed for "${concert.bandName}" (${concert.date}): ${e.message}`);
     return { kind: 'error', error: e.message || 'network_error' };
   }
-  if (res.status === 404) return { kind: 'no_match', reason: 'not_found' };
   if (!res.ok) {
     usage.note(`setlist.fm returned ${res.status} for "${concert.bandName}" (${concert.date})`);
     return { kind: 'error', status: res.status };
