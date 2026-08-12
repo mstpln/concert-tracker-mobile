@@ -112,21 +112,25 @@ test('DAB5 scheduled gate executes only selected provider operations and keeps l
   assert.equal(new Set(calls.map((value) => value.split(':')[1])).size, config.MUSICBRAINZ.perRunCap);
   assert.ok(calls.includes('metadata:mbid-b5'));
   assert.ok(!calls.includes('metadata:mbid-b6'));
-  assert.ok(notes.some((note) => /MusicBrainz scheduler: 12 due task\(s\), 5 selected/.test(note)));
+  assert.ok(notes.some((note) => /MusicBrainz scheduler: 12 safe due task\(s\), 5 selected/.test(note)));
 });
 
-test('DAB5 duplicate trusted MBIDs fail closed instead of spending a scheduled slot ambiguously', async () => {
-  const bands = [band('one'), band('two', { musicbrainz: { mbid: 'mbid-one' } })];
-  let calls = 0;
+test('DAB5 duplicate trusted MBIDs fail closed without consuming safe planner capacity', async () => {
+  const bands = [
+    band('one'),
+    band('two', { musicbrainz: { mbid: 'mbid-one' } }),
+    ...Array.from({ length: 5 }, (_, index) => band(`safe${index + 1}`)),
+  ];
+  const calls = [];
   const musicbrainz = {
-    fetchArtistMetadata: async () => { calls++; return { kind: 'ok', metadata: {} }; },
-    fetchReleaseGroups: async () => { calls++; return { kind: 'ok', releaseGroups: [], count: 0, offset: 0 }; },
+    fetchArtistMetadata: async (mbid) => { calls.push(mbid); return { kind: 'ok', metadata: {} }; },
+    fetchReleaseGroups: async () => { throw new Error('release should not be selected before first-pass metadata'); },
   };
   const usage = { state: { musicbrainz: { callsThisRun: 0 } }, note() {} };
   const gate = createMusicbrainzScheduledGate({ musicbrainz, worker: { readJson: async () => bands }, config, now: () => NOW });
-  const result = await gate.fetchArtistMetadata('mbid-one', usage);
-  assert.deepEqual(result, { kind: 'skipped', reason: 'dab5_not_scheduled' });
-  assert.equal(calls, 0);
+  assert.deepEqual(await gate.fetchArtistMetadata('mbid-one', usage), { kind: 'skipped', reason: 'dab5_not_scheduled' });
+  for (let index = 1; index <= 5; index++) await gate.fetchArtistMetadata(`mbid-safe${index}`, usage);
+  assert.deepEqual(calls, ['mbid-safe1', 'mbid-safe2', 'mbid-safe3', 'mbid-safe4', 'mbid-safe5']);
 });
 
 test('DAB5 production preload wires the gate and no longer forces three-day MusicBrainz polling', () => {
