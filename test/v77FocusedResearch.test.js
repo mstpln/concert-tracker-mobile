@@ -126,6 +126,8 @@ test('Ticketmaster cap covers the current library with retry and growth headroom
 test('Ticketmaster pacing stays below the stricter published two-per-second guidance', () => {
   assert.ok(config.TICKETMASTER.minDelayMs >= 600);
   assert.ok(1000 / config.TICKETMASTER.minDelayMs < 2);
+  const usageTrackerSource = fs.readFileSync(path.join('scripts', 'lib', 'usageTracker.js'), 'utf8');
+  assert.match(usageTrackerSource, /recordTicketmasterCall\(\)[\s\S]*config\.TICKETMASTER\.minDelayMs/);
 });
 
 test('visible alert labels are Concerts and Releases everywhere', () => {
