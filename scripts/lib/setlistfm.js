@@ -95,9 +95,9 @@ function strictVenueMatches(setlistVenueName, expectedVenue) {
   return a === b || a.includes(b) || b.includes(a);
 }
 
-function candidateMatchesShow(candidate, concert, artistMbid = null) {
+function candidateMatchesShow(candidate, concert, artistMbid = null, { requireReturnedDate = true } = {}) {
   if (!candidate || !concert) return false;
-  if (normalizeEventDate(candidate.eventDate) !== concert.date) return false;
+  if (requireReturnedDate && normalizeEventDate(candidate.eventDate) !== concert.date) return false;
   if (artistMbid) {
     if (candidate?.artist?.mbid !== artistMbid) return false;
   } else {
@@ -159,7 +159,7 @@ async function findHistoricalSetlistsForArtist(artistMbid, usage, { beforeDate, 
 // Returns a structured outcome. Only `found` and `no_match` are trustworthy
 // provider outcomes that may advance the caller's recheck marker. `error` and
 // `skipped` remain retryable and must not be persisted as absence.
-async function findSetlistOutcomeForShow(concert, usage, { artistMbid = null, fetchImpl = fetch } = {}) {
+async function findSetlistOutcomeForShow(concert, usage, { artistMbid = null, fetchImpl = fetch, requireReturnedDate = true } = {}) {
   if (!usage.canCallSetlistfm()) {
     usage.note(`setlist.fm per-run/daily cap reached — skipping "${concert.bandName}" (${concert.date})`);
     return { kind: 'skipped', reason: 'usage_cap' };
@@ -200,7 +200,7 @@ async function findSetlistOutcomeForShow(concert, usage, { artistMbid = null, fe
   const candidates = data.setlist;
   if (candidates.length === 0) return { kind: 'no_match', reason: 'empty_results' };
 
-  const matching = candidates.filter((candidate) => candidateMatchesShow(candidate, concert, artistMbid));
+  const matching = candidates.filter((candidate) => candidateMatchesShow(candidate, concert, artistMbid, { requireReturnedDate }));
   if (matching.length === 0) return { kind: 'error', error: 'show_identity_conflict' };
   if (matching.length > 1) return { kind: 'error', error: 'ambiguous_show_match' };
   const normalized = normalizeSetlist(matching[0]);
@@ -222,10 +222,11 @@ function applySetlistOutcome(concert, outcome, checkedAt = new Date().toISOStrin
   return { changed: true, found: false };
 }
 
-// Keep the historical object-or-null contract for unrelated callers/tests.
-// DAB4's scheduled enrichment path uses findSetlistOutcomeForShow directly.
+// Keep the historical object-or-null helper tolerant of provider fixtures
+// that omit eventDate. The scheduled DAB4 write path calls the structured
+// outcome directly and keeps requireReturnedDate=true.
 async function findSetlistForShow(concert, usage, options = {}) {
-  const outcome = await findSetlistOutcomeForShow(concert, usage, options);
+  const outcome = await findSetlistOutcomeForShow(concert, usage, { ...options, requireReturnedDate: false });
   return outcome.kind === 'found' ? outcome.setlist : null;
 }
 
