@@ -8,7 +8,7 @@ process.env.SETLISTFM_API_KEY = 'synthetic-setlist-key';
 
 const setlistfm = require('../scripts/lib/setlistfm');
 const spotify = require('../scripts/lib/spotify');
-const { concertWriteRequired } = require('../scripts/research');
+const { concertWriteRequired, finalConcertWritePayload } = require('../scripts/research');
 
 function usage({ setlist = true, spotifyAllowed = true } = {}) {
   return {
@@ -59,19 +59,25 @@ test('DAB4 setlist search 404 remains retryable instead of becoming durable abse
   assert.equal(calls.setlistCalls, 1);
 });
 
-test('DAB4 setlist history 404 responses remain provider errors', async () => {
+test('DAB4 preserves established history 404 contracts outside actual-show enrichment', async () => {
   const recent = await setlistfm.findRecentSetlistsForArtist('mbid-1', usage(), {
     fetchImpl: async () => ({ ok: false, status: 404 }),
   });
-  assert.deepEqual(recent, { kind: 'error', status: 404 });
+  assert.deepEqual(recent, { kind: 'ok', setlists: [] });
 
   const historical = await setlistfm.findHistoricalSetlistsForArtist('mbid-1', usage(), {
     beforeDate: '2026-07-01',
     fetchImpl: async () => ({ ok: false, status: 404 }),
   });
-  assert.equal(historical.kind, 'error');
-  assert.equal(historical.status, 404);
+  assert.equal(historical.kind, 'ok');
+  assert.equal(historical.providerExhausted, true);
+  assert.equal(historical.historyComplete, true);
   assert.equal(historical.pagesFetched, 1);
+});
+
+test('DAB4 preserves the legacy loose venue helper but actual-show matching requires venue evidence', () => {
+  assert.equal(setlistfm.venueMatches('', 'Example Hall'), true);
+  assert.equal(setlistfm.candidateMatchesShow(providerSetlist({ venue: {} }), concert(), 'mbid-1'), false);
 });
 
 test('DAB4 setlist empty success is no-match but malformed success is retryable error', async () => {
@@ -298,6 +304,62 @@ test('DAB4 Spotify preserves successful partial progress before a transient stop
   assert.equal(songs[0].spotifyUrl, 'https://open.spotify.com/track/synthetic');
   assert.equal(songs[1].spotifyChecked, undefined);
   assert.equal(songs[2].spotifyChecked, undefined);
+});
+
+test('DAB4 latest-read concert merge preserves newer setlist data and only adds compatible Spotify fields', () => {
+  const stale = concert({
+    setlistCheckedAt: '2026-08-12T12:00:00.000Z',
+    setlist: {
+      tourName: 'Old Tour',
+      songs: [
+        { name: 'Own Song', isEncore: false, isCover: false, spotifyChecked: true, spotifyUrl: 'https://open.spotify.com/track/stale' },
+        { name: 'Second Song', isEncore: false, isCover: false, spotifyChecked: true },
+      ],
+    },
+  });
+  const latest = concert({
+    setlistCheckedAt: '2026-08-12T13:00:00.000Z',
+    notes: 'newer user note',
+    unknownFutureField: { keep: 'newer' },
+    setlist: {
+      tourName: 'New Tour',
+      futureSetlistField: { keep: true },
+      songs: [
+        { name: 'Own Song', isEncore: false, isCover: false, spotifyChecked: true, spotifyUrl: 'https://open.spotify.com/track/newer', futureSongField: 1 },
+        { name: 'Second Song', isEncore: false, isCover: false, futureSongField: 2 },
+      ],
+    },
+  });
+  const [merged] = finalConcertWritePayload([stale], [], {
+    latestConcerts: [latest],
+    pipelineUpdatedIds: new Set([stale.id]),
+  });
+  assert.equal(merged.notes, 'newer user note');
+  assert.deepEqual(merged.unknownFutureField, { keep: 'newer' });
+  assert.equal(merged.setlistCheckedAt, '2026-08-12T13:00:00.000Z');
+  assert.equal(merged.setlist.tourName, 'New Tour');
+  assert.deepEqual(merged.setlist.futureSetlistField, { keep: true });
+  assert.equal(merged.setlist.songs[0].spotifyUrl, 'https://open.spotify.com/track/newer');
+  assert.equal(merged.setlist.songs[0].futureSongField, 1);
+  assert.equal(merged.setlist.songs[1].spotifyChecked, true);
+  assert.equal(merged.setlist.songs[1].futureSongField, 2);
+});
+
+test('DAB4 latest-read concert merge fails closed when setlist song identity changed concurrently', () => {
+  const stale = concert({
+    setlistCheckedAt: '2026-08-12T12:00:00.000Z',
+    setlist: { songs: [{ name: 'Own Song', isEncore: false, isCover: false, spotifyChecked: true }] },
+  });
+  const latest = concert({
+    setlistCheckedAt: '2026-08-12T13:00:00.000Z',
+    setlist: { songs: [{ name: 'Different Song', isEncore: false, isCover: false, futureSongField: true }] },
+  });
+  const [merged] = finalConcertWritePayload([stale], [], {
+    latestConcerts: [latest],
+    pipelineUpdatedIds: new Set([stale.id]),
+  });
+  assert.deepEqual(merged.setlist, latest.setlist);
+  assert.equal(merged.setlistCheckedAt, latest.setlistCheckedAt);
 });
 
 test('DAB4 concert write gate uses trusted mutations at the production call site', () => {
