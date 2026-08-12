@@ -72,10 +72,22 @@ function normalizeSetlist(raw) {
   };
 }
 
-// Safety net, not the primary lookup key: setlist.fm's artist+date search
-// can occasionally return more than one result if a band played twice in
-// one day (rare, but real — festival sets across two stages).
+// Historical helper contract used by prediction/insight callers: venue is a
+// safety net, not the primary identity key, so missing provider venue text
+// does not reject an otherwise usable record.
 function venueMatches(setlistVenueName, expectedVenue) {
+  if (!expectedVenue) return true;
+  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const a = norm(setlistVenueName);
+  const b = norm(expectedVenue);
+  if (!a || !b) return true;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+// The DAB4 per-show write path is deliberately stricter than the legacy
+// helper above. A persisted actual setlist must have affirmative venue
+// evidence whenever this concert already has a venue.
+function strictVenueMatches(setlistVenueName, expectedVenue) {
   if (!expectedVenue) return true;
   const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
   const a = norm(setlistVenueName);
@@ -92,11 +104,14 @@ function candidateMatchesShow(candidate, concert, artistMbid = null) {
   } else if (normalizeIdentityText(candidate?.artist?.name) !== normalizeIdentityText(concert.bandName)) {
     return false;
   }
-  return venueMatches(candidate?.venue?.name, concert.venue);
+  return strictVenueMatches(candidate?.venue?.name, concert.venue);
 }
 
 // Artist history is deliberately MBID-only. The result is compacted before
-// returning so callers never persist a provider payload.
+// returning so callers never persist a provider payload. Preserve the
+// established history contract where provider 404 means an exhausted/empty
+// history; DAB4's stricter 404 treatment applies only to the actual-show
+// search path below.
 async function findRecentSetlistsForArtist(artistMbid, usage, { fetchImpl = fetch } = {}) {
   if (!artistMbid || !usage.canCallSetlistfm()) return { kind: 'skipped' };
   await usage.recordSetlistfmCall();
@@ -104,6 +119,7 @@ async function findRecentSetlistsForArtist(artistMbid, usage, { fetchImpl = fetc
   let res;
   try { res = await fetchImpl(url, { headers: { 'x-api-key': apiKey(), Accept: 'application/json' } }); }
   catch (error) { usage.note(`setlist.fm artist history failed: ${error.message}`); return { kind: 'error', error: error.message }; }
+  if (res.status === 404) return { kind: 'ok', setlists: [] };
   if (!res.ok) return { kind: 'error', status: res.status };
   try {
     const data = await res.json();
@@ -124,6 +140,7 @@ async function findHistoricalSetlistsForArtist(artistMbid, usage, { beforeDate, 
     let res; pagesFetched++;
     try { res = await fetchImpl(`${config.SETLISTFM.baseUrl}/artist/${encodeURIComponent(artistMbid)}/setlists?p=${page}`, { headers: { 'x-api-key': apiKey(), Accept: 'application/json' } }); }
     catch (error) { usage.note(`setlist.fm insight history failed: ${error.message}`); return { kind: 'error', setlists, reachedBeforeDate, pagesFetched }; }
+    if (res.status === 404) return { kind: 'ok', setlists, reachedBeforeDate, providerExhausted: true, historyComplete: true, usefulEarlierCount: usefulEarlierCount(setlists, beforeDate), pagesFetched };
     if (!res.ok) return { kind: 'error', status: res.status, setlists, reachedBeforeDate, pagesFetched };
     let data; try { data = await res.json(); } catch { return { kind: 'error', setlists, reachedBeforeDate, pagesFetched }; }
     if (!Array.isArray(data?.setlist)) return { kind: 'error', setlists, reachedBeforeDate, pagesFetched };
@@ -163,6 +180,9 @@ async function findSetlistOutcomeForShow(concert, usage, { artistMbid = null, fe
     usage.note(`setlist.fm request failed for "${concert.bandName}" (${concert.date}): ${e.message}`);
     return { kind: 'error', error: e.message || 'network_error' };
   }
+  // setlist.fm does not document this search-path 404 as a definitive
+  // no-setlist signal, so treat it like every other HTTP failure and retry
+  // on a later scheduled run rather than advancing the 30-day marker.
   if (!res.ok) {
     usage.note(`setlist.fm returned ${res.status} for "${concert.bandName}" (${concert.date})`);
     return { kind: 'error', status: res.status };
