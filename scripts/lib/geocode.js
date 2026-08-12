@@ -2,7 +2,7 @@
 // Geocoding helper used only for Tavily/Groq concert-discovery fallback.
 // Ticketmaster events already carry coordinates. Scheduled research uses
 // Open-Meteo rather than the public Nominatim service. Successful Open-Meteo
-// city/country results are stored additively on discovered concert records;
+// city/country results are stored as namespaced derived research evidence;
 // future runs seed this cache from those records before making provider calls.
 
 const { haversineKm } = require('./util');
@@ -72,9 +72,11 @@ function cachedLocation(value) {
 function seedFromConcerts(concerts = []) {
   let seeded = 0;
   for (const concert of Array.isArray(concerts) ? concerts : []) {
-    if (concert?.researchGeocodeProvider !== PROVIDER) continue;
+    const evidence = concert?.researchGeocode;
+    if (evidence?.provider !== PROVIDER) continue;
+    if (normalize(evidence.city) !== normalize(concert.city) || normalize(evidence.country) !== normalize(concert.country)) continue;
     const key = locationKey(concert.city, concert.country);
-    const coords = cachedLocation(concert);
+    const coords = cachedLocation(evidence);
     if (!key || !coords || cache.has(key)) continue;
     cache.set(key, coords);
     seeded += 1;
@@ -88,10 +90,14 @@ function cachedForCity(city, country) {
   const coords = cache.get(key);
   if (!coords) return null;
   return {
-    latitude: coords.lat,
-    longitude: coords.lon,
     distanceKm: haversineKm(config.HOME_LAT, config.HOME_LON, coords.lat, coords.lon),
-    researchGeocodeProvider: PROVIDER,
+    researchGeocode: {
+      provider: PROVIDER,
+      city: String(city || '').trim(),
+      country: String(country || '').trim(),
+      latitude: coords.lat,
+      longitude: coords.lon,
+    },
   };
 }
 
