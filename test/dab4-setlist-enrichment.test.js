@@ -8,6 +8,7 @@ process.env.SETLISTFM_API_KEY = 'synthetic-setlist-key';
 
 const setlistfm = require('../scripts/lib/setlistfm');
 const spotify = require('../scripts/lib/spotify');
+const { concertWriteRequired } = require('../scripts/research');
 
 function usage({ setlist = true, spotifyAllowed = true } = {}) {
   return {
@@ -78,6 +79,22 @@ test('DAB4 setlist network, HTTP, and usage-cap failures remain retryable', asyn
   });
   assert.equal(blocked.kind, 'skipped');
   assert.equal(providerCalled, false);
+});
+
+test('DAB4 contradictory MBID results remain retryable instead of becoming durable absence', async () => {
+  const outcome = await setlistfm.findSetlistOutcomeForShow(concert(), usage(), {
+    artistMbid: 'expected-mbid',
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ setlist: [{
+        artist: { mbid: 'different-mbid' },
+        venue: { name: 'Example Hall' },
+        sets: { set: [{ song: [{ name: 'Wrong Artist Song' }] }] },
+      }] }),
+    }),
+  });
+  assert.deepEqual(outcome, { kind: 'error', error: 'artist_identity_conflict' });
 });
 
 test('DAB4 matching setlist outcome is normalized and trusted', async () => {
@@ -184,9 +201,18 @@ test('DAB4 Spotify preserves successful partial progress before a transient stop
   assert.equal(songs[2].spotifyChecked, undefined);
 });
 
-test('DAB4 scheduled research is wired to structured setlist outcomes', () => {
+test('DAB4 concert write gate can depend on actual enrichment mutations', () => {
+  assert.equal(concertWriteRequired({ pipelineUpdates: 0 }), false);
+  assert.equal(concertWriteRequired({ pipelineUpdates: 1 }), true);
+  assert.equal(concertWriteRequired({ setlistChecksAttempted: 1 }), true);
+  assert.equal(concertWriteRequired({ spotifyConcertsProcessed: 1 }), true);
+});
+
+test('DAB4 scheduled research is wired to structured setlist outcomes and mutation-only writes', () => {
   const source = fs.readFileSync('scripts/research.js', 'utf8');
   assert.match(source, /findSetlistOutcomeForShow\(c, usage, \{ artistMbid \}\)/);
   assert.match(source, /applySetlistOutcome\(c, outcome\)/);
   assert.doesNotMatch(source, /findSetlistForShow\(c, usage, \{ artistMbid \}\)/);
+  assert.match(source, /pipelineUpdates: pipelineUpdatedIds\.size/);
+  assert.doesNotMatch(source, /concertWriteRequired\(\{ newConcerts, ticketmasterUpgrades: \[\.\.\.ticketmasterUpgrades\.values\(\)\], setlistChecksAttempted, spotifyConcertsProcessed \}\)/);
 });
