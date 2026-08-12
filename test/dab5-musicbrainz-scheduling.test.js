@@ -133,6 +133,27 @@ test('DAB5 duplicate trusted MBIDs fail closed without consuming safe planner ca
   assert.deepEqual(calls, ['mbid-safe1', 'mbid-safe2', 'mbid-safe3', 'mbid-safe4', 'mbid-safe5']);
 });
 
+test('DAB5 scheduler state-read failure skips provider work without failing the research caller', async () => {
+  let providerCalls = 0;
+  const notes = [];
+  const musicbrainz = {
+    fetchArtistMetadata: async () => { providerCalls++; return { kind: 'ok' }; },
+    fetchReleaseGroups: async () => { providerCalls++; return { kind: 'ok' }; },
+  };
+  const usage = { state: { musicbrainz: { callsThisRun: 0 } }, note: (value) => notes.push(value) };
+  const gate = createMusicbrainzScheduledGate({
+    musicbrainz,
+    worker: { readJson: async () => { throw new Error('synthetic read failure'); } },
+    config,
+    now: () => NOW,
+  });
+  assert.deepEqual(await gate.fetchArtistMetadata('mbid-any', usage), { kind: 'skipped', reason: 'dab5_not_scheduled' });
+  assert.deepEqual(await gate.fetchReleaseGroups('mbid-any', usage), { kind: 'skipped', reason: 'dab5_not_scheduled' });
+  assert.equal(providerCalls, 0);
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /scheduler state read failed/);
+});
+
 test('DAB5 production preload wires the gate and no longer forces three-day MusicBrainz polling', () => {
   const source = fs.readFileSync('scripts/preloadStructuredRun.js', 'utf8');
   assert.match(source, /installMusicbrainzScheduledGate/);
