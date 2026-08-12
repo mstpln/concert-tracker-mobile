@@ -551,3 +551,11 @@
 **Reason:** The first live C4 historical backfill reached a fail-closed stop because a real ListenBrainz response row could not be correlated uniquely to a multi-item request batch. A read-only inspection showed the planned request signatures themselves were unique, so the unsafe assumption was requiring provider-returned display text to echo submitted text closely enough for cross-request correlation. Single-item execution removes that correlation problem without weakening identity acceptance.
 
 **Consequence:** Each ListenBrainz work item consumes one provider operation and one existing UsageTracker reservation; provider limits are not increased. Missing, extra, malformed, conflicting or identity-mismatching responses remain fail-closed or item quarantine, and no positional multi-request matching or guessing is introduced. Durable holds, C2/C3 eligibility, catalogue authority, persistence/concurrency gates, unknown-field preservation and aggregate-only diagnostics remain unchanged. This is a focused v112 correction; production backfill stays paused until the correction is reviewed, merged, and separately re-authorized.
+
+## 2026-08-12 — Listening artwork accumulates by recent and important albums
+
+**Decision:** Album-oriented Spotify artwork maintenance is cumulative rather than a bulk-backfill objective. Among unresolved safe album groups, provider work ranks the most recent valid `listenedAt` first, then total listen count, then distinct trusted Spotify Track IDs, with the stable album-group key as the final deterministic tie-breaker. Already reusable album groups are excluded before the provider cap is applied.
+
+**Reason:** A bounded future maintenance schedule should make newly listened albums useful quickly while gradually improving the historical library, without spending provider budget on artwork that is already reusable.
+
+**Consequence:** Missing or malformed listening timestamps rank behind valid timestamps without making an otherwise safe event unsafe. Existing album grouping, ambiguity quarantine, exact-track provider seeding, provider ownership, pacing, UsageTracker accounting, production authorization, conditional writes and source-observation immutability remain unchanged. Scheduling is still a separate design and must preserve the private-listening credential boundary rather than defaulting to GitHub Actions.
