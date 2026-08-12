@@ -145,7 +145,7 @@
       const own = records[safeString(event?.spotifyTrackId)] || null;
       const album = group.artworkRecord;
       applied += 1;
-      if (own) return event;
+      if (safeString(own?.artworkUrl)) return event;
       return {
         ...event,
         albumArtworkUrl: album.artworkUrl,
