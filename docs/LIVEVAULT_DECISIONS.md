@@ -567,3 +567,11 @@
 **Reason:** Ticketmaster's current official developer materials publish inconsistent request-rate guidance: the Discovery API documentation states 5 requests per second while the developer FAQ states 2 requests per second. BANDMARKR should remain below the stricter published figure rather than relying on the more permissive page.
 
 **Consequence:** Current Ticketmaster event-search and attraction-identity paths inherit approximately 1.67 request starts per second without changing research coverage, provider caps, storage, or user-visible behavior. The pacing regression must exercise the real shared gate rather than only inspect source text. This Node-only DAB2 change does not require a new PWA version beyond v115 and does not authorize a production workflow or provider run.
+
+## 2026-08-12 — Scheduled Tavily geocoding uses provider-owned Open-Meteo evidence
+
+**Decision:** Keep focused Tavily/Groq concert discovery on the 1st and 15th with its adaptive band backoff, but replace the scheduled public Nominatim geocoder with Open-Meteo Geocoding. Persist successful scheduled coordinates only as namespaced `researchGeocode` evidence on the discovered concert; keep `distanceKm` as the existing derived distance field.
+
+**Reason:** The public Nominatim service discourages periodic application use and the recurring workflow needs persistent cache reuse across GitHub runs. A provider-owned namespace avoids confusing research-derived city-centre coordinates with Ticketmaster, user-owned or future coordinate fields.
+
+**Consequence:** Later focused runs may seed the geocoding cache only from valid `researchGeocode.provider === 'open-meteo'` records whose stored city/country still match the concert. Ambiguous, wrong-country, malformed, provider-failure and timeout outcomes create no durable location evidence and remain retryable. Browser weather behavior, the M/W/F structured research workflow, Tavily/Groq cadence/backoff, stable IDs, user fields and v115 PWA/build facts remain unchanged. This decision does not authorize a production workflow or provider run.

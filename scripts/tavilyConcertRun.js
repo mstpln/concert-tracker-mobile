@@ -3,6 +3,7 @@
 const worker = require('./lib/workerClient');
 const { UsageTracker } = require('./lib/usageTracker');
 const policy = require('./lib/tavilyConcertPolicy');
+const geocode = require('./lib/geocode');
 const { slugify, todayIso } = require('./lib/util');
 const { fetchTourDatesViaTavily, reconcileConcertCandidate } = require('./research');
 
@@ -32,6 +33,12 @@ function applyRoutingUpdates(latestBands, updates) {
   });
 }
 
+function attachResearchGeocode(candidate) {
+  if (!candidate || candidate.distanceKm == null) return candidate;
+  const cached = geocode.cachedForCity(candidate.city, candidate.country);
+  return cached ? { ...candidate, ...cached } : candidate;
+}
+
 async function main() {
   console.log('Live Vault focused Tavily concert research starting...');
   const [bands, storedConcerts, usage] = await Promise.all([
@@ -40,6 +47,7 @@ async function main() {
     UsageTracker.load(),
   ]);
   sharedUsage = usage;
+  geocode.seedFromConcerts(storedConcerts);
   const due = policy.dueBands(bands, storedConcerts, Date.now());
   const additions = [];
   const routingUpdates = [];
@@ -65,7 +73,9 @@ async function main() {
       usage.note(`Focused Tavily concert search failed for "${band.name}": ${error.message}`);
     }
 
-    const upcomingCandidates = candidates.filter((candidate) => candidate.date && candidate.date >= todayIso());
+    const upcomingCandidates = candidates
+      .filter((candidate) => candidate.date && candidate.date >= todayIso())
+      .map(attachResearchGeocode);
     observed += upcomingCandidates.length;
     for (const candidate of upcomingCandidates) {
       const reconciliation = reconcileConcertCandidate(storedConcerts, additions, candidate);
@@ -128,4 +138,4 @@ if (require.main === module) main().catch(async (error) => {
   process.exitCode = 1;
 });
 
-module.exports = { uniqueConcert, applyRoutingUpdates, main };
+module.exports = { uniqueConcert, applyRoutingUpdates, attachResearchGeocode, main };
