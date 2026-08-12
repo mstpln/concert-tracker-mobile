@@ -39,7 +39,17 @@ function concert(extra = {}) {
   };
 }
 
-test('DAB4 setlist 404 remains retryable instead of becoming durable absence', async () => {
+function providerSetlist(extra = {}) {
+  return {
+    eventDate: '01-07-2026',
+    artist: { mbid: 'mbid-1', name: 'Example Band' },
+    venue: { name: 'Example Hall' },
+    sets: { set: [{ song: [{ name: 'Own Song' }] }] },
+    ...extra,
+  };
+}
+
+test('DAB4 setlist search 404 remains retryable instead of becoming durable absence', async () => {
   const calls = usage();
   const outcome = await setlistfm.findSetlistOutcomeForShow(concert(), calls, {
     artistMbid: 'mbid-1',
@@ -49,11 +59,26 @@ test('DAB4 setlist 404 remains retryable instead of becoming durable absence', a
   assert.equal(calls.setlistCalls, 1);
 });
 
+test('DAB4 setlist history 404 responses remain provider errors', async () => {
+  const recent = await setlistfm.findRecentSetlistsForArtist('mbid-1', usage(), {
+    fetchImpl: async () => ({ ok: false, status: 404 }),
+  });
+  assert.deepEqual(recent, { kind: 'error', status: 404 });
+
+  const historical = await setlistfm.findHistoricalSetlistsForArtist('mbid-1', usage(), {
+    beforeDate: '2026-07-01',
+    fetchImpl: async () => ({ ok: false, status: 404 }),
+  });
+  assert.equal(historical.kind, 'error');
+  assert.equal(historical.status, 404);
+  assert.equal(historical.pagesFetched, 1);
+});
+
 test('DAB4 setlist empty success is no-match but malformed success is retryable error', async () => {
   const empty = await setlistfm.findSetlistOutcomeForShow(concert(), usage(), {
     fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ setlist: [] }) }),
   });
-  assert.equal(empty.kind, 'no_match');
+  assert.deepEqual(empty, { kind: 'no_match', reason: 'empty_results' });
 
   const malformed = await setlistfm.findSetlistOutcomeForShow(concert(), usage(), {
     fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ unexpected: [] }) }),
@@ -81,34 +106,37 @@ test('DAB4 setlist network, HTTP, and usage-cap failures remain retryable', asyn
   assert.equal(providerCalled, false);
 });
 
-test('DAB4 contradictory MBID results remain retryable instead of becoming durable absence', async () => {
-  const outcome = await setlistfm.findSetlistOutcomeForShow(concert(), usage(), {
-    artistMbid: 'expected-mbid',
-    fetchImpl: async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ setlist: [{
-        artist: { mbid: 'different-mbid' },
-        venue: { name: 'Example Hall' },
-        sets: { set: [{ song: [{ name: 'Wrong Artist Song' }] }] },
-      }] }),
-    }),
+test('DAB4 returned setlist identity must match artist, date, and venue', async () => {
+  for (const candidate of [
+    providerSetlist({ artist: { mbid: 'different-mbid', name: 'Different Band' } }),
+    providerSetlist({ eventDate: '02-07-2026' }),
+    providerSetlist({ venue: { name: 'Different Hall' } }),
+  ]) {
+    const outcome = await setlistfm.findSetlistOutcomeForShow(concert(), usage(), {
+      artistMbid: 'mbid-1',
+      fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ setlist: [candidate] }) }),
+    });
+    assert.deepEqual(outcome, { kind: 'error', error: 'show_identity_conflict' });
+  }
+
+  const noMbid = await setlistfm.findSetlistOutcomeForShow(concert(), usage(), {
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ setlist: [providerSetlist({ artist: { name: 'Different Band' } })] }) }),
   });
-  assert.deepEqual(outcome, { kind: 'error', error: 'artist_identity_conflict' });
+  assert.deepEqual(noMbid, { kind: 'error', error: 'show_identity_conflict' });
+});
+
+test('DAB4 multiple exact returned shows are ambiguous and remain retryable', async () => {
+  const outcome = await setlistfm.findSetlistOutcomeForShow(concert(), usage(), {
+    artistMbid: 'mbid-1',
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ setlist: [providerSetlist(), providerSetlist()] }) }),
+  });
+  assert.deepEqual(outcome, { kind: 'error', error: 'ambiguous_show_match' });
 });
 
 test('DAB4 matching setlist outcome is normalized and trusted', async () => {
   const outcome = await setlistfm.findSetlistOutcomeForShow(concert(), usage(), {
     artistMbid: 'mbid-1',
-    fetchImpl: async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ setlist: [{
-        artist: { mbid: 'mbid-1' },
-        venue: { name: 'Example Hall' },
-        sets: { set: [{ song: [{ name: 'Own Song' }] }] },
-      }] }),
-    }),
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ setlist: [providerSetlist()] }) }),
   });
   assert.equal(outcome.kind, 'found');
   assert.deepEqual(outcome.setlist.songs, [{ name: 'Own Song', isEncore: false, isCover: false }]);
@@ -126,13 +154,13 @@ test('DAB4 only trustworthy setlist outcomes advance checked state and user fiel
   assert.deepEqual(setlistfm.applySetlistOutcome(malformedFoundConcert, { kind: 'found' }, checkedAt), { changed: false, found: false });
   assert.deepEqual(malformedFoundConcert, beforeMalformedFound);
 
-  const emptyFoundConcert = concert();
-  const beforeEmptyFound = structuredClone(emptyFoundConcert);
-  assert.deepEqual(setlistfm.applySetlistOutcome(emptyFoundConcert, { kind: 'found', setlist: { songs: [] } }, checkedAt), { changed: false, found: false });
-  assert.deepEqual(emptyFoundConcert, beforeEmptyFound);
+  const malformedNoMatchConcert = concert();
+  const beforeMalformedNoMatch = structuredClone(malformedNoMatchConcert);
+  assert.deepEqual(setlistfm.applySetlistOutcome(malformedNoMatchConcert, { kind: 'no_match' }, checkedAt), { changed: false, found: false });
+  assert.deepEqual(malformedNoMatchConcert, beforeMalformedNoMatch);
 
   const noMatchConcert = concert();
-  assert.deepEqual(setlistfm.applySetlistOutcome(noMatchConcert, { kind: 'no_match' }, checkedAt), { changed: true, found: false });
+  assert.deepEqual(setlistfm.applySetlistOutcome(noMatchConcert, { kind: 'no_match', reason: 'empty_results' }, checkedAt), { changed: true, found: false });
   assert.equal(noMatchConcert.setlistCheckedAt, checkedAt);
   assert.equal(noMatchConcert.notes, 'user note');
   assert.equal(noMatchConcert.ticketPrice, 450);
@@ -151,7 +179,7 @@ test('DAB4 Spotify search distinguishes real no-match from transient provider fa
     getToken: async () => 'synthetic-token',
     fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ tracks: { items: [] } }) }),
   });
-  assert.equal(noMatch.kind, 'no_match');
+  assert.deepEqual(noMatch, { kind: 'no_match', reason: 'no_artist_match' });
 
   const http = await spotify.searchTrackOutcome('Song', 'Example Band', usage(), {
     getToken: async () => 'synthetic-token',
@@ -167,11 +195,23 @@ test('DAB4 Spotify search distinguishes real no-match from transient provider fa
   assert.equal(malformed.error, 'invalid_response');
 });
 
-test('DAB4 Spotify 429 retry is bounded and remains retryable', async () => {
+test('DAB4 Spotify malformed token fails before track search', async () => {
+  let providerCalled = false;
+  const outcome = await spotify.searchTrackOutcome('Song', 'Example Band', usage(), {
+    getToken: async () => '',
+    fetchImpl: async () => { providerCalled = true; throw new Error('must not run'); },
+  });
+  assert.deepEqual(outcome, { kind: 'error', error: 'invalid_token' });
+  assert.equal(providerCalled, false);
+});
+
+test('DAB4 Spotify 429 retry is bounded and invalid delay uses conservative fallback', async () => {
   const calls = usage();
   let providerCalls = 0;
+  const waits = [];
   const outcome = await spotify.searchTrackOutcome('Song', 'Example Band', calls, {
     getToken: async () => 'synthetic-token',
+    sleepImpl: async (ms) => waits.push(ms),
     fetchImpl: async () => {
       providerCalls += 1;
       return { ok: false, status: 429, headers: { get: () => '-1' } };
@@ -180,6 +220,25 @@ test('DAB4 Spotify 429 retry is bounded and remains retryable', async () => {
   assert.deepEqual(outcome, { kind: 'error', status: 429 });
   assert.equal(providerCalls, 2);
   assert.equal(calls.spotifyCalls, 2);
+  assert.deepEqual(waits, [3000]);
+});
+
+test('DAB4 Spotify long Retry-After defers without sleeping or retrying', async () => {
+  const calls = usage();
+  let providerCalls = 0;
+  let slept = false;
+  const outcome = await spotify.searchTrackOutcome('Song', 'Example Band', calls, {
+    getToken: async () => 'synthetic-token',
+    sleepImpl: async () => { slept = true; },
+    fetchImpl: async () => {
+      providerCalls += 1;
+      return { ok: false, status: 429, headers: { get: () => '120' } };
+    },
+  });
+  assert.deepEqual(outcome, { kind: 'error', status: 429, retryAfter: 120 });
+  assert.equal(providerCalls, 1);
+  assert.equal(calls.spotifyCalls, 1);
+  assert.equal(slept, false);
 });
 
 test('DAB4 Spotify usage skip makes zero provider calls and stays retryable', async () => {
@@ -197,7 +256,7 @@ test('DAB4 Spotify usage skip makes zero provider calls and stays retryable', as
 test('DAB4 Spotify no-match becomes checked while provider error stays unchecked', async () => {
   const songs = [{ name: 'No Match', isCover: false }, { name: 'Provider Error', isCover: false }, { name: 'Later Song', isCover: false }];
   const outcomes = [
-    { kind: 'no_match' },
+    { kind: 'no_match', reason: 'no_artist_match' },
     { kind: 'error', status: 503 },
     { kind: 'ok', url: 'https://open.spotify.com/track/should-not-run' },
   ];
@@ -212,17 +271,19 @@ test('DAB4 Spotify no-match becomes checked while provider error stays unchecked
   assert.equal(songs[2].spotifyChecked, undefined);
 });
 
-test('DAB4 Spotify malformed success stays unchecked and stops the pass', async () => {
-  const songs = [{ name: 'Malformed', isCover: false }, { name: 'Later Song', isCover: false }];
-  let calls = 0;
-  const added = await spotify.resolveSongLinks(songs, 'Example Band', usage(), {
-    search: async () => { calls += 1; return { kind: 'ok' }; },
-  });
-  assert.equal(added, 0);
-  assert.equal(calls, 1);
-  assert.equal(songs[0].spotifyChecked, undefined);
-  assert.equal(songs[0].spotifyUrl, undefined);
-  assert.equal(songs[1].spotifyChecked, undefined);
+test('DAB4 Spotify malformed success and no-match stay unchecked and stop the pass', async () => {
+  for (const malformed of [{ kind: 'ok' }, { kind: 'no_match' }]) {
+    const songs = [{ name: 'Malformed', isCover: false }, { name: 'Later Song', isCover: false }];
+    let calls = 0;
+    const added = await spotify.resolveSongLinks(songs, 'Example Band', usage(), {
+      search: async () => { calls += 1; return malformed; },
+    });
+    assert.equal(added, 0);
+    assert.equal(calls, 1);
+    assert.equal(songs[0].spotifyChecked, undefined);
+    assert.equal(songs[0].spotifyUrl, undefined);
+    assert.equal(songs[1].spotifyChecked, undefined);
+  }
 });
 
 test('DAB4 Spotify preserves successful partial progress before a transient stop', async () => {
