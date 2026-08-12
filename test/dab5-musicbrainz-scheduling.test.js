@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
 const config = require('../scripts/lib/config');
+const structured = require('../scripts/lib/structuredResearch');
 const { planMusicbrainzResearch } = require('../scripts/lib/musicbrainzResearchSchedule');
 const { createMusicbrainzScheduledGate } = require('../scripts/lib/musicbrainzScheduledGate');
 
@@ -124,6 +125,19 @@ test('DAB5 does not inherit a legacy three-day complete release marker', () => {
   const plan = planMusicbrainzResearch([legacy], { now: NOW, perRunCap: 5, metadataRefreshDays: 90, releaseRefreshDays: 7 });
   assert.equal(plan.dueCount, 0);
   assert.deepEqual(plan.selected, []);
+});
+
+test('DAB5 persists separate retained intervals for MusicBrainz and Spotify releases', () => {
+  const musicbrainz = structured.updateProviderBaseline(
+    structured.providerBaseline({}, 'musicbrainz'), [], { complete: true, now: NOW },
+  );
+  const spotify = structured.updateProviderBaseline(
+    structured.providerBaseline({}, 'spotify'), [], { complete: true, now: NOW },
+  );
+  assert.equal(musicbrainz.nextEligibleCheckAt, future(config.STRUCTURED_RESEARCH.musicbrainzReleaseRefreshDays));
+  assert.equal(spotify.nextEligibleCheckAt, future(config.STRUCTURED_RESEARCH.spotifyReleaseRefreshDays));
+  assert.deepEqual(Object.getOwnPropertySymbols(musicbrainz), []);
+  assert.deepEqual(Object.getOwnPropertySymbols(spotify), []);
 });
 
 test('DAB5 scheduled gate executes only selected provider operations and keeps later bands eligible', async () => {
