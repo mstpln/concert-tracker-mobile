@@ -12,6 +12,7 @@ const { canonicalReleaseId } = require('./releaseLifecycle');
 const EXCLUDED = /\b(compilation|live|remix|dj-mix|mixtape|audiobook|interview|spoken word|bootleg|promotion|promotional|reissue|remaster(?:ed)?|deluxe|expanded|anniversary|tribute|karaoke|appears on)\b/i;
 const EDITION_SUFFIX = /\s*[\[(](?:deluxe|expanded|anniversary|remaster(?:ed)?|reissue|clean|explicit|\d{4}\s+edition)[^\])]*[\])]\s*$/i;
 const DAY = 86400000;
+const PROVIDER_BASELINE_KIND = Symbol('providerBaselineKind');
 
 function isoAfter(ms, now = Date.now()) { return new Date(now + ms).toISOString(); }
 function safeArray(value) { return Array.isArray(value) ? value : []; }
@@ -86,13 +87,24 @@ function mergeLifecycleReleases(existing, observations, now = new Date().toISOSt
 }
 function blankProviderBaseline() { return { status: 'not_started', knownKeys: [], continuation: null, lastAttemptedAt: null, lastSuccessfulAt: null, nextEligibleCheckAt: null, errorCategory: null }; }
 function releaseState(band) { return band.structuredResearch?.releases || { musicbrainz: blankProviderBaseline(), spotify: blankProviderBaseline(), knownAlerts: [] }; }
-function providerBaseline(state, provider) { return { ...blankProviderBaseline(), ...(state?.[provider] || {}) }; }
+function providerBaseline(state, provider) {
+  const baseline = { ...blankProviderBaseline(), ...(state?.[provider] || {}) };
+  // Provider identity is execution context, not stored data. Keep it
+  // non-enumerable so updateProviderBaseline can choose the provider-specific
+  // retained interval without adding an internal marker to bands.json.
+  Object.defineProperty(baseline, PROVIDER_BASELINE_KIND, { value: provider, enumerable: false });
+  return baseline;
+}
 function completeBaseline(existing, observations, { complete, now = new Date().toISOString(), errorCategory = null, continuation = null } = {}) {
+  const provider = existing?.[PROVIDER_BASELINE_KIND];
+  const retainedRefreshDays = provider === 'spotify'
+    ? config.STRUCTURED_RESEARCH.spotifyReleaseRefreshDays
+    : config.STRUCTURED_RESEARCH.musicbrainzReleaseRefreshDays;
   const prior = { ...blankProviderBaseline(), ...(existing || {}) };
   const known = [...new Set([...safeArray(prior.knownKeys), ...observations.map(releaseKey)])];
   return { ...prior, status: complete ? 'complete' : (errorCategory ? (errorCategory === 'unavailable' ? 'unsupported' : 'temporarily_unavailable') : 'in_progress'),
     knownKeys: known, continuation: complete ? null : continuation, lastAttemptedAt: now, lastSuccessfulAt: errorCategory ? prior.lastSuccessfulAt : now,
-    nextEligibleCheckAt: errorCategory ? isoAfter(config.STRUCTURED_RESEARCH.temporaryErrorRetryHours * 3600000, Date.parse(now)) : isoAfter(config.STRUCTURED_RESEARCH.musicbrainzReleaseRefreshDays * DAY, Date.parse(now)), errorCategory };
+    nextEligibleCheckAt: errorCategory ? isoAfter(config.STRUCTURED_RESEARCH.temporaryErrorRetryHours * 3600000, Date.parse(now)) : isoAfter(retainedRefreshDays * DAY, Date.parse(now)), errorCategory };
 }
 function updateProviderBaseline(existing, observations, options) { return completeBaseline(existing, observations, options); }
 function newReleasesAfterBaseline(baseline, observations) {
