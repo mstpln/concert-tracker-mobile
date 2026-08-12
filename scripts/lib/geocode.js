@@ -33,9 +33,13 @@ function isoCountryCode(value) {
   return /^[A-Za-z]{2}$/.test(text) ? text.toUpperCase() : null;
 }
 
-function finiteCoordinate(value) {
+function finiteCoordinate(value, kind) {
+  if (value === null || value === undefined || value === '') return null;
   const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
+  if (!Number.isFinite(numeric)) return null;
+  if (kind === 'lat' && (numeric < -90 || numeric > 90)) return null;
+  if (kind === 'lon' && (numeric < -180 || numeric > 180)) return null;
+  return numeric;
 }
 
 function exactLocation(data, city, country) {
@@ -44,8 +48,8 @@ function exactLocation(data, city, country) {
   const inputCountryCode = isoCountryCode(country);
   const candidates = Array.isArray(data?.results) ? data.results : [];
   const matches = candidates.filter((candidate) => {
-    const lat = finiteCoordinate(candidate?.latitude);
-    const lon = finiteCoordinate(candidate?.longitude);
+    const lat = finiteCoordinate(candidate?.latitude, 'lat');
+    const lon = finiteCoordinate(candidate?.longitude, 'lon');
     if (lat === null || lon === null || normalize(candidate?.name) !== cityKey) return false;
     if (inputCountryCode) return String(candidate?.country_code || '').toUpperCase() === inputCountryCode;
     return normalize(candidate?.country) === countryKey;
@@ -53,21 +57,16 @@ function exactLocation(data, city, country) {
   if (matches.length !== 1) return null;
   const match = matches[0];
   return {
-    lat: finiteCoordinate(match.latitude),
-    lon: finiteCoordinate(match.longitude),
-    timezone: typeof match.timezone === 'string' && match.timezone.trim() ? match.timezone.trim() : null,
+    lat: finiteCoordinate(match.latitude, 'lat'),
+    lon: finiteCoordinate(match.longitude, 'lon'),
   };
 }
 
 function cachedLocation(value) {
-  const lat = finiteCoordinate(value?.latitude ?? value?.lat);
-  const lon = finiteCoordinate(value?.longitude ?? value?.lon ?? value?.lng);
+  const lat = finiteCoordinate(value?.latitude ?? value?.lat, 'lat');
+  const lon = finiteCoordinate(value?.longitude ?? value?.lon ?? value?.lng, 'lon');
   if (lat === null || lon === null) return null;
-  return {
-    lat,
-    lon,
-    timezone: typeof value?.timezone === 'string' && value.timezone.trim() ? value.timezone.trim() : null,
-  };
+  return { lat, lon };
 }
 
 function seedFromConcerts(concerts = []) {
@@ -91,7 +90,6 @@ function cachedForCity(city, country) {
   return {
     latitude: coords.lat,
     longitude: coords.lon,
-    timezone: coords.timezone,
     distanceKm: haversineKm(config.HOME_LAT, config.HOME_LON, coords.lat, coords.lon),
     researchGeocodeProvider: PROVIDER,
   };
