@@ -1,12 +1,16 @@
-# Spotify artwork backfill runbook
+# Spotify album artwork maintenance runbook
 
-This runbook is for the one-time private listening-artwork maintenance operation. It is not an app feature, it does not run automatically, and it must not be used until the intended private-data/provider/write scope has been explicitly authorized.
+This runbook is for the private listening-artwork maintenance operation used by v113. It is not an app feature, it does not run automatically, and it must not be used until the intended private-data/provider/write scope has been explicitly authorized.
 
 ## Supported entrypoint
 
-Use `scripts/spotify-artwork-backfill-production.js` for any real execution. It wraps the tested backfill engine with the project's `UsageTracker`, reads the verified private listening archive plus all verified ListenBrainz incrementals, and uses conditional writes for `listening/spotify-metadata.json`.
+Use `scripts/spotify-album-artwork-production.js` for any real execution.
 
-Do not create a GitHub Actions workflow for this maintenance operation. The existing automation role is intentionally forbidden from private listening objects. The lower-level `scripts/spotify-artwork-backfill.js` module is not a production CLI and refuses direct execution; this prevents accidentally bypassing the production authorization and UsageTracker wrapper.
+It reads the verified private listening source, groups unresolved listens conservatively by trusted local BANDMARKR band identity plus normalized release title, chooses at most one exact trusted Spotify Track ID per unresolved safe album group, obtains Spotify album identity/artwork from that exact-track response, and conditionally writes only the representative track's metadata to `listening/spotify-metadata.json`.
+
+Sibling listens reuse compatible album artwork in memory. Source listening observations are never rewritten. MusicBrainz and ListenBrainz are not used by this artwork runner.
+
+Do not create or use a GitHub Actions workflow for this production maintenance operation. Private listening reads require the browser credential and must stay in a trusted local environment. The repository automation role is intentionally not the execution path for private listening maintenance.
 
 ## Secret handling
 
@@ -19,86 +23,112 @@ The production entrypoint reads these environment variables:
 - `SPOTIFY_CLIENT_ID`
 - `SPOTIFY_CLIENT_SECRET`
 - `LIVEVAULT_BACKFILL_CONFIRM`
-- `LIVEVAULT_BACKFILL_WRITE_CONFIRM` only when `--write` is requested
+- `LIVEVAULT_BACKFILL_WRITE_CONFIRM`
 
-The runner maps the already-authorized local Worker credential to the existing `UsageTracker` client only inside the process. It does not commit or print the credential.
-
-Private production listening reads, live Spotify backfill calls, and the required provider-usage accounting write to `apiUsage.json` require this confirmation value:
+Private production listening reads, live Spotify calls, and required provider-usage accounting writes require this confirmation value:
 
 `I_AUTHORIZE_PRIVATE_LISTENING_READS_LIVE_SPOTIFY_CALLS_AND_PROVIDER_USAGE_WRITES`
 
-A production write to `listening/spotify-metadata.json` is a separate authorization and additionally requires:
+Production writes to `listening/spotify-metadata.json` additionally require:
 
 `I_AUTHORIZE_PRODUCTION_SPOTIFY_METADATA_WRITES`
 
-Setting the first value does not authorize `--write`.
+The runner also requires both `--execute` and `--write`. There is no provider-only staging mode in the v113 album-oriented entrypoint; each resolved representative record is durably checkpointed through a conditional metadata write before another album group is processed.
 
 ## Before any live invocation
 
-1. Confirm PR review and tests are green on the exact commit being used.
-2. Confirm the Spotify Development Mode quota is available; do not repeatedly probe while `QUOTA_EXCEEDED` is known to be active.
-3. Confirm `.livevault-maintenance/` is ignored by Git. The supported production entrypoint refuses checkpoint paths outside that directory.
-4. Confirm the private Worker credential and Spotify application credentials exist only in the local secret environment.
-5. Confirm the approved request cap. The initial production cap is 25 track requests per invocation and the hard code ceiling is 100.
-6. Confirm whether the invocation is provider-only staging or is also separately authorized to write `listening/spotify-metadata.json`.
+1. Confirm the exact merged `main` commit and that the relevant PR validation was green.
+2. Confirm Spotify Development Mode quota is available; do not repeatedly probe while quota exhaustion is known to be active.
+3. Confirm the Worker browser credential and Spotify application credentials exist only in the trusted local environment.
+4. Confirm the approved album-group cap for this invocation.
+5. Confirm this invocation is separately authorized to read private listening data, call Spotify, update provider-usage accounting and write production listening metadata.
+6. Confirm no other production data-writing maintenance is running concurrently.
 
-## Inventory-only dry run
+## Controlled production invocation
 
-The separate network-free dry-run tool remains the safest first check because it consumes fictional/local input and cannot call Spotify or production storage:
-
-```text
-node scripts/spotify-artwork-backfill-dry-run.js --events <synthetic-events.json> --metadata <synthetic-metadata.json>
-```
-
-Production inventory requires reading private production listening data and therefore remains a production action even when no Spotify call or listening-metadata write is made.
-
-## Provider-only controlled invocation
-
-After explicit authorization for private production listening reads, live Spotify calls, and the required `apiUsage.json` accounting write, but without production listening-metadata-write authorization, set the required values in the trusted local environment and use the production entrypoint without `--write`:
+For the first production proof, use a deliberately small cap:
 
 ```text
-node scripts/spotify-artwork-backfill-production.js --execute --cap 25
+node scripts/spotify-album-artwork-production.js --execute --write --cap 3 --delay-ms 1000 --market SE
 ```
 
-Successful provider results are staged in the ignored local checkpoint. They are not written to `listening/spotify-metadata.json` until a later separately authorized `--write` invocation. A fully staged logical batch is deliberately not expanded into a fresh provider batch until its staged metadata has been synchronized, preventing local accumulation and accidental repeated work.
+The runner enforces a minimum 1,000 ms delay between album-group track requests. The default cap is 25 album groups and the code hard ceiling is 100, but a smaller cap should be used for controlled tests.
 
-## Controlled invocation with metadata synchronization
+Each invocation is manual and separately authorized. Do not automatically repeat a failed or completed invocation.
 
-Only after separate explicit authorization to write production listening metadata, set the write-confirmation value in the trusted local environment and use:
+## What the runner does
 
-```text
-node scripts/spotify-artwork-backfill-production.js --execute --write --cap 25
-```
+Before provider work it:
 
-The runner rereads the latest metadata and uses ETag/create-only conditions. An ETag conflict fails closed. Staged provider results remain in the local checkpoint so Spotify does not need to be called again merely because synchronization failed.
+- reads and validates the private listening source;
+- reads the current `bands.json` and `listening/spotify-metadata.json`;
+- creates the conservative album-oriented plan;
+- limits provider work to the approved cap;
+- rechecks current band ownership before provider work and before each persistence step.
+
+For each selected safe unresolved album group it:
+
+1. uses one exact trusted Spotify Track ID as the representative provider seed;
+2. records the provider operation through `UsageTracker` before the request;
+3. requests the exact Spotify track at the configured market;
+4. requires a usable Spotify Album ID and HTTPS artwork URL before creating metadata;
+5. refuses a provider album identity that conflicts with already-known album identity;
+6. preserves unknown future metadata fields and provider ownership boundaries;
+7. conditionally persists the representative record to `listening/spotify-metadata.json`;
+8. rereads metadata after persistence to confirm the new ETag before continuing.
+
+No sibling Track IDs receive fabricated provider records.
 
 ## Quota and error behavior
 
-- `QUOTA_EXCEEDED`: stop immediately. The current track remains pending.
-- ordinary HTTP 429: stop and report the provider rate-limit state; do not loop indefinitely.
-- 401/403: stop; do not guess that reconnecting the user account will fix application-credential behavior.
-- 404: classify that trusted ID as terminal-not-found so later quota windows do not spend another request on it.
-- malformed 200 response: fail closed; do not create metadata.
-- Worker ETag conflict: fail closed; reread on the next controlled invocation.
-- invalid/corrupt private checkpoint: fail closed before provider work; checkpoint fields are normalized through an allowlist before use.
-- process interruption: completed provider results already checkpointed remain staged and are not re-requested.
+- Provider-usage guard refusal: stop before another Spotify request.
+- Provider-usage accounting save failure: stop before the corresponding provider request.
+- Spotify 429/rate-limit result: stop safely according to the existing exact-track request behavior; do not loop automatically.
+- Spotify quota exhaustion: stop; do not repeatedly probe.
+- 401/403 or other provider errors: stop safely; do not guess or silently retry.
+- Exact 404/not found: leave that album group unresolved for this invocation without writing guessed metadata.
+- Successful response without usable album artwork: write nothing for that group.
+- Conflicting known/provider album identity: stop safely before the unsafe metadata update.
+- `bands.json` changed after planning: stop safely and reload before continuing.
+- Worker conditional-write or confirmation failure: stop safely; do not overwrite stale production metadata.
 
 ## Source and identity rules
 
-The production source reader verifies exact content-addressed path shape, SHA-256 and manifest counts for the immutable Spotify archive and every ListenBrainz incremental object before planning work. A manifest path that does not match its declared content hash fails closed.
+The source reader verifies the private archive/incrementals before planning work. Only valid exact trusted Spotify Track IDs are sent to Spotify. Listening payloads, timestamps, artist search text and album search text are not sent to Spotify by this runner.
 
-Only valid trusted `spotifyTrackId` values are sent to Spotify. No titles, artist names, timestamps or listening payloads are sent to the provider.
+Album grouping is conservative:
 
-When Spotify relinks requested ID `A` to returned ID `B`, metadata stays keyed by `A`. Album/artwork may come from the returned Track object; `B` is retained only as derived provider audit metadata.
+- a current trusted local BANDMARKR band is required;
+- a non-empty release title is required;
+- edition qualifiers remain identity-significant;
+- ambiguous band ownership fails closed;
+- conflicting existing Spotify Album IDs fail closed;
+- the same exact Spotify Track ID crossing multiple album groups fails closed.
 
 ## Usage accounting
 
-Every real Spotify token/track provider operation in the supported production entrypoint is guarded through the existing project `UsageTracker` before the request is made. The maintenance cap of 25/100 and 1,000 ms track pacing are additional limits; they do not replace the project-level provider accounting.
+Every real Spotify token/track provider operation in this entrypoint is guarded through the existing project `UsageTracker` before the request is made. The album-group cap and 1,000 ms pacing are additional limits; they do not replace project-level provider accounting.
 
-The usage state is saved on both successful and failed invocations, so a provider-only backfill invocation necessarily writes the aggregate provider counters in production `apiUsage.json`. No track IDs or credentials are added to that file.
+Aggregate provider usage may therefore change even if no artwork record is ultimately written. Track IDs, credentials and private listening payloads are not added to `apiUsage.json`.
 
-## Completion
+## Verification after a controlled run
 
-Repeat only by explicit manual invocation across available Spotify quota windows. Completion requires all unique trusted Spotify IDs to be either present in metadata or classified terminal-not-found, with no source-event edits and no unresolved staged records in the checkpoint.
+Record the aggregate summary returned by the runner:
 
-After final verification, the private checkpoint may be archived or deleted locally. It must never be committed.
+- source events;
+- safe album groups;
+- ambiguous album groups;
+- unsafe events;
+- album groups already reusable without a provider call;
+- provider album groups planned and attempted;
+- provider album groups resolved;
+- groups with no usable artwork;
+- representative records added;
+- MusicBrainz calls (must be 0);
+- ListenBrainz calls (must be 0).
+
+Then verify the affected artwork in the production app on the relevant listening surfaces. Do not expose private track/listening details in public logs or PR text.
+
+## Scheduling boundary
+
+Do not add scheduling until the controlled production proof has succeeded and the desired cadence has been explicitly approved. Any future scheduled design must preserve the private-listening credential boundary rather than moving private reads into a generic GitHub automation role by assumption.
