@@ -559,3 +559,11 @@
 **Reason:** A bounded future maintenance schedule should make newly listened albums useful quickly while gradually improving the historical library, without spending provider budget on artwork that is already reusable.
 
 **Consequence:** Missing or malformed listening timestamps rank behind valid timestamps without making an otherwise safe event unsafe. Existing album grouping, ambiguity quarantine, exact-track provider seeding, provider ownership, pacing, UsageTracker accounting, production authorization, conditional writes and source-observation immutability remain unchanged. Scheduling is still a separate design and must preserve the private-listening credential boundary rather than defaulting to GitHub Actions.
+
+## 2026-08-12 — Ticketmaster research uses the stricter published pacing guidance
+
+**Decision:** Keep the existing Monday/Wednesday/Friday structured research cadence, Ticketmaster per-run cap of 650, and daily safety backstop, while requiring at least 600 ms between Ticketmaster request starts through the shared `UsageTracker.recordTicketmasterCall()` gate.
+
+**Reason:** Ticketmaster's current official developer materials publish inconsistent request-rate guidance: the Discovery API documentation states 5 requests per second while the developer FAQ states 2 requests per second. BANDMARKR should remain below the stricter published figure rather than relying on the more permissive page.
+
+**Consequence:** Current Ticketmaster event-search and attraction-identity paths inherit approximately 1.67 request starts per second without changing research coverage, provider caps, storage, or user-visible behavior. The pacing regression must exercise the real shared gate rather than only inspect source text. This Node-only DAB2 change does not require a new PWA version beyond v115 and does not authorize a production workflow or provider run.
