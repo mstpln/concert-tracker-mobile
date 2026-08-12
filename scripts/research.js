@@ -449,15 +449,47 @@ function mergeTicketmasterConcertUpgrades(latestConcerts, upgrades) {
   return latestConcerts.map((concert) => byId.has(concert.id) ? upgradeExistingConcertWithTicketmaster(concert, byId.get(concert.id)) : concert);
 }
 
+function setlistSongIdentity(song) {
+  return `${String(song?.name || '').trim().toLocaleLowerCase()}|${!!song?.isEncore}|${!!song?.isCover}`;
+}
+
+function mergePipelineSetlist(latestSetlist, currentSetlist) {
+  if (!latestSetlist) return currentSetlist || latestSetlist;
+  if (!currentSetlist) return latestSetlist;
+  const latestSongs = latestSetlist.songs;
+  const currentSongs = currentSetlist.songs;
+  if (!Array.isArray(latestSongs) || !Array.isArray(currentSongs) || latestSongs.length !== currentSongs.length) return latestSetlist;
+  if (latestSongs.some((song, index) => setlistSongIdentity(song) !== setlistSongIdentity(currentSongs[index]))) return latestSetlist;
+  const songs = latestSongs.map((latestSong, index) => {
+    const currentSong = currentSongs[index];
+    if (latestSong?.spotifyChecked || !currentSong?.spotifyChecked) return latestSong;
+    const mergedSong = { ...latestSong, spotifyChecked: true };
+    if (!mergedSong.spotifyUrl && typeof currentSong.spotifyUrl === 'string' && currentSong.spotifyUrl) mergedSong.spotifyUrl = currentSong.spotifyUrl;
+    return mergedSong;
+  });
+  return { ...latestSetlist, songs };
+}
+
+function latestCheckedAt(latestValue, currentValue) {
+  const latestMs = Date.parse(latestValue);
+  const currentMs = Date.parse(currentValue);
+  if (!Number.isFinite(currentMs)) return latestValue;
+  if (!Number.isFinite(latestMs) || currentMs > latestMs) return currentValue;
+  return latestValue;
+}
+
 function mergePipelineConcertFields(latestConcerts, currentConcerts, updatedIds) {
   const currentById = new Map((currentConcerts || []).map((concert) => [concert.id, concert]));
   return latestConcerts.map((concert) => {
     if (!updatedIds?.has(concert.id)) return concert;
     const current = currentById.get(concert.id);
     if (!current) return concert;
-    const patch = { setlistCheckedAt: current.setlistCheckedAt };
-    if (current.setlist) patch.setlist = current.setlist;
-    return { ...concert, ...patch };
+    const merged = { ...concert };
+    const checkedAt = latestCheckedAt(concert.setlistCheckedAt, current.setlistCheckedAt);
+    if (checkedAt !== undefined) merged.setlistCheckedAt = checkedAt;
+    if (!concert.setlist && current.setlist) merged.setlist = current.setlist;
+    else if (concert.setlist && current.setlist) merged.setlist = mergePipelineSetlist(concert.setlist, current.setlist);
+    return merged;
   });
 }
 
