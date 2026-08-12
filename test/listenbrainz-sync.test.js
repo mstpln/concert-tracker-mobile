@@ -74,6 +74,55 @@ test('fetches only newer listens and uses bounded paging', async () => {
   assert.match(calls[0], /min_ts=1785751200/);
 });
 
+test('ListenBrainz auto-sync due gate keeps the existing six-hour boundary', () => {
+  const lastSync = Date.parse('2026-08-12T00:00:00.000Z');
+  const saved = new Date(lastSync).toISOString();
+  assert.equal(listenbrainz.isAutoSyncDue(saved, lastSync + listenbrainz.AUTO_SYNC_INTERVAL_MS - 1), false);
+  assert.equal(listenbrainz.isAutoSyncDue(saved, lastSync + listenbrainz.AUTO_SYNC_INTERVAL_MS), true);
+});
+
+test('ListenBrainz auto sync does no work while fresh and runs once when due', async () => {
+  const previousStorage = globalThis.localStorage;
+  const previousQa = globalThis.__LIVEVAULT_QA_SYNTHETIC_LISTENING__;
+  const lastSync = Date.parse('2026-08-12T00:00:00.000Z');
+  let stored = JSON.stringify({
+    token: 'synthetic-token',
+    userName: 'synthetic-user',
+    lastSyncAt: new Date(lastSync).toISOString(),
+  });
+  globalThis.localStorage = {
+    getItem: () => stored,
+    setItem: (_key, value) => { stored = value; },
+  };
+  delete globalThis.__LIVEVAULT_QA_SYNTHETIC_LISTENING__;
+  let calls = 0;
+  try {
+    assert.equal(await listenbrainz.autoSyncIfDue({
+      nowMs: lastSync + listenbrainz.AUTO_SYNC_INTERVAL_MS - 1,
+      sync: async () => { calls += 1; },
+    }), false);
+    assert.equal(calls, 0);
+    assert.equal(await listenbrainz.autoSyncIfDue({
+      nowMs: lastSync + listenbrainz.AUTO_SYNC_INTERVAL_MS,
+      sync: async () => { calls += 1; },
+    }), true);
+    assert.equal(calls, 1);
+  } finally {
+    if (previousStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = previousStorage;
+    if (previousQa === undefined) delete globalThis.__LIVEVAULT_QA_SYNTHETIC_LISTENING__;
+    else globalThis.__LIVEVAULT_QA_SYNTHETIC_LISTENING__ = previousQa;
+  }
+});
+
+test('foreground resume rechecks ListenBrainz only after the document becomes visible', () => {
+  const source = fs.readFileSync('listenbrainzSync.js', 'utf8');
+  assert.match(source, /addEventListener\('visibilitychange'/);
+  assert.match(source, /visibilityState !== 'visible'/);
+  assert.match(source, /void syncCheck\(\)/);
+  assert.match(source, /observeForegroundSync\(\);/);
+});
+
 test('builds deterministic month-scoped incremental payloads', () => {
   globalThis.LiveVaultSpotifyHistory = { sanitizeEvent: historyV2.sanitizeEvent };
   const payload = incremental.buildPayload('2026-08', [{
