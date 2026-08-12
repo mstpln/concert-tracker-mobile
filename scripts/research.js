@@ -468,8 +468,8 @@ function finalConcertWritePayload(concerts, newConcerts, { latestConcerts = conc
   return [...merged, ...(newConcerts || []).filter((concert) => !existingIds.has(concert.id))];
 }
 
-function concertWriteRequired({ newConcerts = [], ticketmasterUpgrades = [], setlistChecksAttempted = 0, spotifyConcertsProcessed = 0 } = {}) {
-  return newConcerts.length > 0 || ticketmasterUpgrades.length > 0 || setlistChecksAttempted > 0 || spotifyConcertsProcessed > 0;
+function concertWriteRequired({ newConcerts = [], ticketmasterUpgrades = [], pipelineUpdates = 0, setlistChecksAttempted = 0, spotifyConcertsProcessed = 0 } = {}) {
+  return newConcerts.length > 0 || ticketmasterUpgrades.length > 0 || pipelineUpdates > 0 || setlistChecksAttempted > 0 || spotifyConcertsProcessed > 0;
 }
 
 function predictionDiagnostics(concerts, bands, usage, now) {
@@ -1041,8 +1041,9 @@ async function main() {
     try {
       const band = bandsById.get(c.bandId);
       const spotifyArtistId = structuredEnabled && ['confirmed', 'manual_confirmed'].includes(band?.musicbrainz?.spotify?.status) ? band.musicbrainz.spotify.id : null;
+      const beforeSongs = JSON.stringify(c.setlist.songs);
       spotifyLinksAdded += await spotify.resolveSongLinks(c.setlist.songs, c.bandName, usage, { spotifyArtistId });
-      pipelineUpdatedIds.add(c.id);
+      if (JSON.stringify(c.setlist.songs) !== beforeSongs) pipelineUpdatedIds.add(c.id);
     } catch (e) {
       usage.note(`Spotify song-link resolution failed for "${c.bandName}" (${c.date}): ${e.message}`);
     }
@@ -1052,7 +1053,7 @@ async function main() {
   // (newConcerts), any setlist/setlistCheckedAt fields just filled in on
   // existing records, and any spotifyUrl/spotifyChecked fields just filled
   // in on setlist songs — a single PUT rather than three separate ones.
-  if (concertWriteRequired({ newConcerts, ticketmasterUpgrades: [...ticketmasterUpgrades.values()], setlistChecksAttempted, spotifyConcertsProcessed })) {
+  if (concertWriteRequired({ newConcerts, ticketmasterUpgrades: [...ticketmasterUpgrades.values()], pipelineUpdates: pipelineUpdatedIds.size })) {
     const latestConcerts = await worker.readJson('concerts.json', []);
     concerts = finalConcertWritePayload(concerts, newConcerts, {
       latestConcerts,
