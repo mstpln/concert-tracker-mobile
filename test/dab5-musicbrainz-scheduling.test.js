@@ -127,17 +127,23 @@ test('DAB5 does not inherit a legacy three-day complete release marker', () => {
   assert.deepEqual(plan.selected, []);
 });
 
-test('DAB5 persists separate retained intervals for MusicBrainz and Spotify releases', () => {
-  const musicbrainz = structured.updateProviderBaseline(
-    structured.providerBaseline({}, 'musicbrainz'), [], { complete: true, now: NOW },
-  );
-  const spotify = structured.updateProviderBaseline(
-    structured.providerBaseline({}, 'spotify'), [], { complete: true, now: NOW },
-  );
-  assert.equal(musicbrainz.nextEligibleCheckAt, future(config.STRUCTURED_RESEARCH.musicbrainzReleaseRefreshDays));
-  assert.equal(spotify.nextEligibleCheckAt, future(config.STRUCTURED_RESEARCH.spotifyReleaseRefreshDays));
-  assert.deepEqual(Object.getOwnPropertySymbols(musicbrainz), []);
-  assert.deepEqual(Object.getOwnPropertySymbols(spotify), []);
+test('DAB5 persists separate retained intervals for MusicBrainz and scheduled Spotify releases', () => {
+  const originalSpotifyDays = config.STRUCTURED_RESEARCH.spotifyReleaseRefreshDays;
+  config.STRUCTURED_RESEARCH.spotifyReleaseRefreshDays = 3;
+  try {
+    const musicbrainz = structured.updateProviderBaseline(
+      structured.providerBaseline({}, 'musicbrainz'), [], { complete: true, now: NOW },
+    );
+    const spotify = structured.updateProviderBaseline(
+      structured.providerBaseline({}, 'spotify'), [], { complete: true, now: NOW },
+    );
+    assert.equal(musicbrainz.nextEligibleCheckAt, future(config.STRUCTURED_RESEARCH.musicbrainzReleaseRefreshDays));
+    assert.equal(spotify.nextEligibleCheckAt, future(3));
+    assert.deepEqual(Object.getOwnPropertySymbols(musicbrainz), []);
+    assert.deepEqual(Object.getOwnPropertySymbols(spotify), []);
+  } finally {
+    config.STRUCTURED_RESEARCH.spotifyReleaseRefreshDays = originalSpotifyDays;
+  }
 });
 
 test('DAB5 scheduled gate executes only selected provider operations and keeps later bands eligible', async () => {
