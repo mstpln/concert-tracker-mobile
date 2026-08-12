@@ -13,6 +13,8 @@
 const config = require('./config');
 const { usefulEarlierSetlists } = require('./setlistInsights');
 
+const TRUSTED_NO_MATCH_REASONS = new Set(['empty_results', 'empty_setlist']);
+
 function apiKey() {
   const k = process.env[config.SETLISTFM.apiKeyEnv];
   if (!k) throw new Error(`Missing required environment variable: ${config.SETLISTFM.apiKeyEnv}`);
@@ -33,6 +35,16 @@ function normalizeEventDate(value) {
   if (match) { [, day, month, year] = match; } else { match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text); if (!match) return null; [, year, month, day] = match; }
   const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
   return date.getUTCFullYear() === Number(year) && date.getUTCMonth() === Number(month) - 1 && date.getUTCDate() === Number(day) ? `${year}-${month}-${day}` : null;
+}
+
+function normalizeIdentityText(value) {
+  return String(value || '')
+    .toLocaleLowerCase('en')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 // Flattens setlist.fm's nested sets.set[].song[] shape into the flat
@@ -62,21 +74,28 @@ function normalizeSetlist(raw) {
 
 // Safety net, not the primary lookup key: setlist.fm's artist+date search
 // can occasionally return more than one result if a band played twice in
-// one day (rare, but real — festival sets across two stages). Loose
-// substring match against the venue name already on file for this concert;
-// falls back to "don't reject" if either side is missing, since a false
-// negative here (discarding a real match) is worse than a rare false
-// positive.
+// one day (rare, but real — festival sets across two stages).
 function venueMatches(setlistVenueName, expectedVenue) {
   if (!expectedVenue) return true;
   const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
   const a = norm(setlistVenueName);
   const b = norm(expectedVenue);
-  if (!a || !b) return true;
+  if (!a || !b) return false;
   return a === b || a.includes(b) || b.includes(a);
 }
 
-// Artist history is deliberately MBID-only.  The result is compacted before
+function candidateMatchesShow(candidate, concert, artistMbid = null) {
+  if (!candidate || !concert) return false;
+  if (normalizeEventDate(candidate.eventDate) !== concert.date) return false;
+  if (artistMbid) {
+    if (candidate?.artist?.mbid !== artistMbid) return false;
+  } else if (normalizeIdentityText(candidate?.artist?.name) !== normalizeIdentityText(concert.bandName)) {
+    return false;
+  }
+  return venueMatches(candidate?.venue?.name, concert.venue);
+}
+
+// Artist history is deliberately MBID-only. The result is compacted before
 // returning so callers never persist a provider payload.
 async function findRecentSetlistsForArtist(artistMbid, usage, { fetchImpl = fetch } = {}) {
   if (!artistMbid || !usage.canCallSetlistfm()) return { kind: 'skipped' };
@@ -85,7 +104,6 @@ async function findRecentSetlistsForArtist(artistMbid, usage, { fetchImpl = fetc
   let res;
   try { res = await fetchImpl(url, { headers: { 'x-api-key': apiKey(), Accept: 'application/json' } }); }
   catch (error) { usage.note(`setlist.fm artist history failed: ${error.message}`); return { kind: 'error', error: error.message }; }
-  if (res.status === 404) return { kind: 'ok', setlists: [] };
   if (!res.ok) return { kind: 'error', status: res.status };
   try {
     const data = await res.json();
@@ -105,10 +123,9 @@ async function findHistoricalSetlistsForArtist(artistMbid, usage, { beforeDate, 
     await usage.recordSetlistfmCall();
     let res; pagesFetched++;
     try { res = await fetchImpl(`${config.SETLISTFM.baseUrl}/artist/${encodeURIComponent(artistMbid)}/setlists?p=${page}`, { headers: { 'x-api-key': apiKey(), Accept: 'application/json' } }); }
-    catch (error) { usage.note(`setlist.fm insight history failed: ${error.message}`); return { kind: 'error', setlists, reachedBeforeDate }; }
-    if (res.status === 404) return { kind: 'ok', setlists, reachedBeforeDate, providerExhausted: true, historyComplete: true, usefulEarlierCount: usefulEarlierCount(setlists, beforeDate), pagesFetched };
-    if (!res.ok) return { kind: 'error', status: res.status, setlists, reachedBeforeDate };
-    let data; try { data = await res.json(); } catch { return { kind: 'error', setlists, reachedBeforeDate }; }
+    catch (error) { usage.note(`setlist.fm insight history failed: ${error.message}`); return { kind: 'error', setlists, reachedBeforeDate, pagesFetched }; }
+    if (!res.ok) return { kind: 'error', status: res.status, setlists, reachedBeforeDate, pagesFetched };
+    let data; try { data = await res.json(); } catch { return { kind: 'error', setlists, reachedBeforeDate, pagesFetched }; }
     if (!Array.isArray(data?.setlist)) return { kind: 'error', setlists, reachedBeforeDate, pagesFetched };
     const compact = data.setlist.map((raw) => ({ id: raw.id || null, eventDate: normalizeEventDate(raw.eventDate), venue: { id: raw.venue?.id || null, name: raw.venue?.name || null }, tourName: raw.tour?.name || null, songs: normalizeSetlist(raw).songs }));
     setlists.push(...compact);
@@ -162,13 +179,10 @@ async function findSetlistOutcomeForShow(concert, usage, { artistMbid = null, fe
   const candidates = data.setlist;
   if (candidates.length === 0) return { kind: 'no_match', reason: 'empty_results' };
 
-  // An MBID lookup is only trustworthy when setlist.fm returns that same
-  // artist. Never turn contradictory provider identity into durable absence.
-  const identityCandidates = artistMbid ? candidates.filter((s) => s?.artist?.mbid === artistMbid) : candidates;
-  if (artistMbid && identityCandidates.length === 0) return { kind: 'error', error: 'artist_identity_conflict' };
-  const match = identityCandidates.find((s) => venueMatches(s?.venue?.name, concert.venue)) || identityCandidates[0];
-  if (!match) return { kind: 'error', error: 'invalid_candidate' };
-  const normalized = normalizeSetlist(match);
+  const matching = candidates.filter((candidate) => candidateMatchesShow(candidate, concert, artistMbid));
+  if (matching.length === 0) return { kind: 'error', error: 'show_identity_conflict' };
+  if (matching.length > 1) return { kind: 'error', error: 'ambiguous_show_match' };
+  const normalized = normalizeSetlist(matching[0]);
   return normalized.songs.length > 0
     ? { kind: 'found', setlist: normalized }
     : { kind: 'no_match', reason: 'empty_setlist' };
@@ -182,7 +196,7 @@ function applySetlistOutcome(concert, outcome, checkedAt = new Date().toISOStrin
     concert.setlistCheckedAt = checkedAt;
     return { changed: true, found: true };
   }
-  if (outcome.kind !== 'no_match') return { changed: false, found: false };
+  if (outcome.kind !== 'no_match' || !TRUSTED_NO_MATCH_REASONS.has(outcome.reason)) return { changed: false, found: false };
   concert.setlistCheckedAt = checkedAt;
   return { changed: true, found: false };
 }
@@ -194,4 +208,4 @@ async function findSetlistForShow(concert, usage, options = {}) {
   return outcome.kind === 'found' ? outcome.setlist : null;
 }
 
-module.exports = { findSetlistForShow, findSetlistOutcomeForShow, applySetlistOutcome, findRecentSetlistsForArtist, findHistoricalSetlistsForArtist, usefulEarlierCount, normalizeEventDate, normalizeSetlist, venueMatches };
+module.exports = { findSetlistForShow, findSetlistOutcomeForShow, applySetlistOutcome, findRecentSetlistsForArtist, findHistoricalSetlistsForArtist, usefulEarlierCount, normalizeEventDate, normalizeSetlist, venueMatches, candidateMatchesShow };
