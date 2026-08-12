@@ -174,6 +174,13 @@ async function findSetlistOutcomeForShow(concert, usage, { artistMbid = null, fe
     : { kind: 'no_match', reason: 'empty_setlist' };
 }
 
+function applySetlistOutcome(concert, outcome, checkedAt = new Date().toISOString()) {
+  if (!concert || !outcome || !['found', 'no_match'].includes(outcome.kind)) return { changed: false, found: false };
+  concert.setlistCheckedAt = checkedAt;
+  if (outcome.kind === 'found' && outcome.setlist) concert.setlist = outcome.setlist;
+  return { changed: true, found: outcome.kind === 'found' && !!outcome.setlist };
+}
+
 // Keep the historical object-or-null contract for unrelated callers/tests.
 // DAB4's scheduled enrichment path uses findSetlistOutcomeForShow directly.
 async function findSetlistForShow(concert, usage, options = {}) {
@@ -181,4 +188,4 @@ async function findSetlistForShow(concert, usage, options = {}) {
   return outcome.kind === 'found' ? outcome.setlist : null;
 }
 
-module.exports = { findSetlistForShow, findSetlistOutcomeForShow, findRecentSetlistsForArtist, findHistoricalSetlistsForArtist, usefulEarlierCount, normalizeEventDate, normalizeSetlist, venueMatches };
+module.exports = { findSetlistForShow, findSetlistOutcomeForShow, applySetlistOutcome, findRecentSetlistsForArtist, findHistoricalSetlistsForArtist, usefulEarlierCount, normalizeEventDate, normalizeSetlist, venueMatches };
