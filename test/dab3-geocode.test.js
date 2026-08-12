@@ -31,10 +31,14 @@ test('DAB3 scheduled geocoder uses Open-Meteo and exact city-country matching', 
   assert.equal(requestedUrl.searchParams.get('count'), '10');
   assert.equal(requestedUrl.searchParams.get('language'), 'en');
   assert.equal(requestedUrl.searchParams.has('countryCode'), false);
-  assert.equal(location.researchGeocodeProvider, 'open-meteo');
-  assert.equal(location.latitude, 55.6761);
-  assert.equal(location.longitude, 12.5683);
+  assert.equal(location.researchGeocode.provider, 'open-meteo');
+  assert.equal(location.researchGeocode.latitude, 55.6761);
+  assert.equal(location.researchGeocode.longitude, 12.5683);
+  assert.equal(location.researchGeocode.city, 'Copenhagen');
+  assert.equal(location.researchGeocode.country, 'Denmark');
   assert.ok(Number.isFinite(location.distanceKm));
+  assert.equal('latitude' in location, false);
+  assert.equal('longitude' in location, false);
 });
 
 test('DAB3 country-code inputs are sent to Open-Meteo and wrong-country results fail closed', async () => {
@@ -77,25 +81,38 @@ test('DAB3 reuses one successful city lookup during a run', async () => {
   assert.deepEqual(second, first);
 });
 
-test('DAB3 seeds a future run only from persisted Open-Meteo geocodes', async () => {
+test('DAB3 seeds a future run only from matching namespaced Open-Meteo evidence', async () => {
   const seeded = geocode.seedFromConcerts([
-    { city: 'Copenhagen', country: 'Denmark', latitude: 55.6761, longitude: 12.5683, researchGeocodeProvider: 'open-meteo' },
-    { city: 'Berlin', country: 'Germany', latitude: 52.52, longitude: 13.405, sourceProvider: 'ticketmaster' },
-    { city: 'Bad Data', country: 'Denmark', latitude: null, longitude: 12.5, researchGeocodeProvider: 'open-meteo' },
+    {
+      city: 'Copenhagen', country: 'Denmark',
+      researchGeocode: { provider: 'open-meteo', city: 'Copenhagen', country: 'Denmark', latitude: 55.6761, longitude: 12.5683 },
+    },
+    {
+      city: 'Berlin', country: 'Germany',
+      researchGeocode: { provider: 'ticketmaster', city: 'Berlin', country: 'Germany', latitude: 52.52, longitude: 13.405 },
+    },
+    {
+      city: 'Oslo', country: 'Norway',
+      researchGeocode: { provider: 'open-meteo', city: 'Bergen', country: 'Norway', latitude: 60.39, longitude: 5.32 },
+    },
+    {
+      city: 'Bad Data', country: 'Denmark',
+      researchGeocode: { provider: 'open-meteo', city: 'Bad Data', country: 'Denmark', latitude: null, longitude: 12.5 },
+    },
   ]);
   assert.equal(seeded, 1);
 
   let calls = 0;
   const cached = await geocode.locationForCity('Copenhagen', 'Denmark', { fetchImpl: async () => { calls += 1; throw new Error('should not run'); } });
   assert.equal(calls, 0);
-  assert.equal(cached.latitude, 55.6761);
-  assert.equal(cached.researchGeocodeProvider, 'open-meteo');
+  assert.equal(cached.researchGeocode.latitude, 55.6761);
+  assert.equal(cached.researchGeocode.provider, 'open-meteo');
 
-  const ticketmasterLocation = geocode.cachedForCity('Berlin', 'Germany');
-  assert.equal(ticketmasterLocation, null);
+  assert.equal(geocode.cachedForCity('Berlin', 'Germany'), null);
+  assert.equal(geocode.cachedForCity('Oslo', 'Norway'), null);
 });
 
-test('DAB3 focused runner persists the successful cached geocode on a new Tavily candidate', async () => {
+test('DAB3 focused runner persists namespaced geocode evidence on a new Tavily candidate', async () => {
   await geocode.locationForCity('Copenhagen', 'Denmark', {
     fetchImpl: async () => response({ results: [{ name: 'Copenhagen', country: 'Denmark', latitude: 55.6761, longitude: 12.5683 }] }),
   });
@@ -107,9 +124,11 @@ test('DAB3 focused runner persists the successful cached geocode on a new Tavily
     country: 'Denmark',
     distanceKm: 520,
   });
-  assert.equal(candidate.latitude, 55.6761);
-  assert.equal(candidate.longitude, 12.5683);
-  assert.equal(candidate.researchGeocodeProvider, 'open-meteo');
+  assert.equal(candidate.researchGeocode.provider, 'open-meteo');
+  assert.equal(candidate.researchGeocode.latitude, 55.6761);
+  assert.equal(candidate.researchGeocode.longitude, 12.5683);
+  assert.equal('latitude' in candidate, false);
+  assert.equal('longitude' in candidate, false);
   assert.ok(Number.isFinite(candidate.distanceKm));
 });
 
