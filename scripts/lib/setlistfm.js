@@ -41,8 +41,8 @@ function normalizeIdentityText(value) {
   return String(value || '')
     .toLocaleLowerCase('en')
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()
     .replace(/\s+/g, ' ');
 }
@@ -89,9 +89,8 @@ function venueMatches(setlistVenueName, expectedVenue) {
 // evidence whenever this concert already has a venue.
 function strictVenueMatches(setlistVenueName, expectedVenue) {
   if (!expectedVenue) return true;
-  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-  const a = norm(setlistVenueName);
-  const b = norm(expectedVenue);
+  const a = normalizeIdentityText(setlistVenueName);
+  const b = normalizeIdentityText(expectedVenue);
   if (!a || !b) return false;
   return a === b || a.includes(b) || b.includes(a);
 }
@@ -101,8 +100,10 @@ function candidateMatchesShow(candidate, concert, artistMbid = null) {
   if (normalizeEventDate(candidate.eventDate) !== concert.date) return false;
   if (artistMbid) {
     if (candidate?.artist?.mbid !== artistMbid) return false;
-  } else if (normalizeIdentityText(candidate?.artist?.name) !== normalizeIdentityText(concert.bandName)) {
-    return false;
+  } else {
+    const candidateArtist = normalizeIdentityText(candidate?.artist?.name);
+    const expectedArtist = normalizeIdentityText(concert.bandName);
+    if (!candidateArtist || !expectedArtist || candidateArtist !== expectedArtist) return false;
   }
   return strictVenueMatches(candidate?.venue?.name, concert.venue);
 }
@@ -139,10 +140,10 @@ async function findHistoricalSetlistsForArtist(artistMbid, usage, { beforeDate, 
     await usage.recordSetlistfmCall();
     let res; pagesFetched++;
     try { res = await fetchImpl(`${config.SETLISTFM.baseUrl}/artist/${encodeURIComponent(artistMbid)}/setlists?p=${page}`, { headers: { 'x-api-key': apiKey(), Accept: 'application/json' } }); }
-    catch (error) { usage.note(`setlist.fm insight history failed: ${error.message}`); return { kind: 'error', setlists, reachedBeforeDate, pagesFetched }; }
+    catch (error) { usage.note(`setlist.fm insight history failed: ${error.message}`); return { kind: 'error', setlists, reachedBeforeDate }; }
     if (res.status === 404) return { kind: 'ok', setlists, reachedBeforeDate, providerExhausted: true, historyComplete: true, usefulEarlierCount: usefulEarlierCount(setlists, beforeDate), pagesFetched };
-    if (!res.ok) return { kind: 'error', status: res.status, setlists, reachedBeforeDate, pagesFetched };
-    let data; try { data = await res.json(); } catch { return { kind: 'error', setlists, reachedBeforeDate, pagesFetched }; }
+    if (!res.ok) return { kind: 'error', status: res.status, setlists, reachedBeforeDate };
+    let data; try { data = await res.json(); } catch { return { kind: 'error', setlists, reachedBeforeDate }; }
     if (!Array.isArray(data?.setlist)) return { kind: 'error', setlists, reachedBeforeDate, pagesFetched };
     const compact = data.setlist.map((raw) => ({ id: raw.id || null, eventDate: normalizeEventDate(raw.eventDate), venue: { id: raw.venue?.id || null, name: raw.venue?.name || null }, tourName: raw.tour?.name || null, songs: normalizeSetlist(raw).songs }));
     setlists.push(...compact);
