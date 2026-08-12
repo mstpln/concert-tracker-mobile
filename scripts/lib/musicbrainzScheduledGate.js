@@ -1,6 +1,6 @@
 'use strict';
 
-const { planMusicbrainzResearch } = require('./musicbrainzResearchSchedule');
+const { planMusicbrainzResearch, confirmedMbid } = require('./musicbrainzResearchSchedule');
 
 function createMusicbrainzScheduledGate({ musicbrainz, worker, config, now = () => new Date().toISOString() }) {
   const originalMetadata = musicbrainz.fetchArtistMetadata;
@@ -23,8 +23,8 @@ function createMusicbrainzScheduledGate({ musicbrainz, worker, config, now = () 
         const confirmedById = new Map();
         const countByMbid = new Map();
         for (const band of bands || []) {
-          const mbid = band?.musicbrainz?.mbid;
-          if (!mbid) continue;
+          if (!confirmedMbid(band)) continue;
+          const mbid = band.musicbrainz.mbid;
           confirmedById.set(band.id, mbid);
           countByMbid.set(mbid, (countByMbid.get(mbid) || 0) + 1);
         }
