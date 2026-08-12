@@ -337,7 +337,6 @@ async function processSetlistInsights({
   log(`Live-performance insights: ${diagnostics.eligible} eligible, ${diagnostics.processed} processed, ${diagnostics.ready} ready, ${diagnostics.insufficient} insufficient, ${diagnostics.generated} insights generated, ${diagnostics.historyArtistsRequested} artist histories, ${diagnostics.setlistfmRequests} setlist.fm requests.`);
   return { enabled: true, updates: updates.length, concerts: merged, diagnostics };
 }
-
 const TICKETMASTER_CONCERT_FIELD_ALLOWLIST = [
   'venue', 'city', 'country', 'time', 'distanceKm', 'venueAddress', 'ticketUrl',
   'ticketRetailerVerified', 'sourceProvider', 'providerEventId', 'providerAttractionId', 'artistMatchMethod',
@@ -1009,18 +1008,16 @@ async function main() {
     try {
       const band = bandsById.get(c.bandId);
       const artistMbid = structuredEnabled && confirmedMbid(band) ? band.musicbrainz.mbid : null;
-      const result = await setlistfm.findSetlistForShow(c, usage, { artistMbid });
-      c.setlistCheckedAt = new Date().toISOString();
+      const outcome = await setlistfm.findSetlistOutcomeForShow(c, usage, { artistMbid });
+      const applied = setlistfm.applySetlistOutcome(c, outcome);
+      if (!applied.changed) continue;
       pipelineUpdatedIds.add(c.id);
-      if (result) {
-        c.setlist = result;
+      if (applied.found) {
         setlistsAdded += 1;
         newlyAddedSetlistIds.add(c.id);
       }
     } catch (e) {
       usage.note(`setlist.fm lookup failed for "${c.bandName}" (${c.date}): ${e.message}`);
-      c.setlistCheckedAt = new Date().toISOString();
-      pipelineUpdatedIds.add(c.id);
     }
   }
 
