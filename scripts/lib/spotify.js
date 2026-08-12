@@ -17,6 +17,9 @@ const config = require('./config');
 const { sleep } = require('./util');
 const { normalizeTitle } = require('./predictedSetlist');
 
+const SETLIST_TRACK_NO_MATCH_REASON = 'no_artist_match';
+const MAX_429_RETRY_AFTER_SECONDS = 30;
+
 function basicAuthHeader() {
   const id = process.env[config.SPOTIFY.clientIdEnv];
   const secret = process.env[config.SPOTIFY.clientSecretEnv];
@@ -45,6 +48,7 @@ async function getAppToken(usage = null, fetchImpl = fetch) {
   });
   if (!res.ok) throw new Error(`Spotify token request failed: HTTP ${res.status}`);
   const data = await res.json();
+  if (typeof data?.access_token !== 'string' || !data.access_token.trim()) throw new Error('Spotify token response was missing an access token');
   cachedToken = { accessToken: data.access_token, expiresAt: Date.now() + (data.expires_in || 3600) * 1000 };
   return cachedToken.accessToken;
 }
@@ -66,9 +70,8 @@ function artistMatches(candidateArtists, bandName, spotifyArtistId = null) {
 }
 
 // DAB4 structured outcome for the historical setlist linker. Only a real
-// `ok` or `no_match` may become spotifyChecked. Provider/transport/quota
-// trouble stays `error`/`skipped` so the song remains eligible next run.
-async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId = null, fetchImpl = fetch, getToken = getAppToken } = {}) {
+// `ok` or provider-derived `no_match` may become spotifyChecked.
+async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId = null, fetchImpl = fetch, getToken = getAppToken, sleepImpl = sleep } = {}) {
   if (!usage.canCallSpotify()) return { kind: 'skipped', reason: 'usage_cap' };
   let token;
   try {
@@ -77,6 +80,7 @@ async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId 
     usage.note(`Spotify token lookup failed for "${songTitle}" / "${bandName}": ${error.message}`);
     return { kind: 'error', error: error.message || 'token_error' };
   }
+  if (typeof token !== 'string' || !token.trim()) return { kind: 'error', error: 'invalid_token' };
   const q = `track:"${songTitle.replace(/"/g, '')}" artist:"${bandName.replace(/"/g, '')}"`;
   const url = `${config.SPOTIFY.searchUrl}?type=track&limit=5&q=${encodeURIComponent(q)}`;
 
@@ -91,9 +95,14 @@ async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId 
   }
 
   if (res.status === 429) {
-    const retryAfter = Number(res.headers?.get?.('retry-after')) || 2;
+    const rawRetryAfter = Number(res.headers?.get?.('retry-after'));
+    const retryAfter = Number.isFinite(rawRetryAfter) && rawRetryAfter > 0 ? rawRetryAfter : 2;
+    if (retryAfter > MAX_429_RETRY_AFTER_SECONDS) {
+      usage.note(`Spotify rate-limited with Retry-After ${retryAfter}s — deferring without retry`);
+      return { kind: 'error', status: 429, retryAfter };
+    }
     usage.note(`Spotify rate-limited — waiting ${retryAfter}s`);
-    await sleep((retryAfter + 1) * 1000);
+    await sleepImpl((retryAfter + 1) * 1000);
     try {
       if (!usage.canCallSpotify()) return { kind: 'skipped', reason: 'usage_cap' };
       await usage.recordSpotifyCall();
@@ -116,7 +125,7 @@ async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId 
   }
   if (!Array.isArray(data?.tracks?.items)) return { kind: 'error', error: 'invalid_response' };
   const candidates = data.tracks.items.filter((t) => artistMatches(t.artists, bandName, spotifyArtistId));
-  if (candidates.length === 0) return { kind: 'no_match' };
+  if (candidates.length === 0) return { kind: 'no_match', reason: SETLIST_TRACK_NO_MATCH_REASON };
 
   // Most-popular version wins — the agreed default when a song has multiple
   // Spotify recordings (studio, live, remaster), rather than always
@@ -154,7 +163,7 @@ async function resolveSongLinks(songs, bandName, usage, { spotifyArtistId = null
       added += 1;
       continue;
     }
-    if (outcome?.kind === 'no_match') {
+    if (outcome?.kind === 'no_match' && outcome.reason === SETLIST_TRACK_NO_MATCH_REASON) {
       song.spotifyChecked = true;
       continue;
     }
