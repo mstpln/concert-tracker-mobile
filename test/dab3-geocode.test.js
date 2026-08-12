@@ -28,7 +28,7 @@ test('DAB3 scheduled geocoder uses Open-Meteo and exact city-country matching', 
   assert.equal(requestedUrl.origin, 'https://geocoding-api.open-meteo.com');
   assert.equal(requestedUrl.pathname, '/v1/search');
   assert.equal(requestedUrl.searchParams.get('name'), 'Copenhagen');
-  assert.equal(requestedUrl.searchParams.get('count'), '10');
+  assert.equal(requestedUrl.searchParams.get('count'), '100');
   assert.equal(requestedUrl.searchParams.get('language'), 'en');
   assert.equal(requestedUrl.searchParams.has('countryCode'), false);
   assert.equal(location.researchGeocode.provider, 'open-meteo');
@@ -81,6 +81,20 @@ test('DAB3 reuses one successful city lookup during a run', async () => {
   assert.deepEqual(second, first);
 });
 
+test('DAB3 enforces a conservative Open-Meteo request-start gap', async () => {
+  const starts = [];
+  const fetchImpl = async () => {
+    starts.push(Date.now());
+    const name = starts.length === 1 ? 'Copenhagen' : 'Aarhus';
+    return response({ results: [{ name, country: 'Denmark', latitude: 55.6761, longitude: 12.5683 }] });
+  };
+
+  await geocode.locationForCity('Copenhagen', 'Denmark', { fetchImpl });
+  await geocode.locationForCity('Aarhus', 'Denmark', { fetchImpl });
+  assert.equal(starts.length, 2);
+  assert.ok(starts[1] - starts[0] >= geocode.MIN_GAP_MS - 5);
+});
+
 test('DAB3 seeds a future run only from matching namespaced Open-Meteo evidence', async () => {
   const seeded = geocode.seedFromConcerts([
     {
@@ -110,6 +124,34 @@ test('DAB3 seeds a future run only from matching namespaced Open-Meteo evidence'
 
   assert.equal(geocode.cachedForCity('Berlin', 'Germany'), null);
   assert.equal(geocode.cachedForCity('Oslo', 'Norway'), null);
+});
+
+test('DAB3 conflicting persisted Open-Meteo evidence is not seeded by array order', async () => {
+  const seeded = geocode.seedFromConcerts([
+    {
+      city: 'Springfield', country: 'United States',
+      researchGeocode: { provider: 'open-meteo', city: 'Springfield', country: 'United States', latitude: 39.78, longitude: -89.64 },
+    },
+    {
+      city: 'Springfield', country: 'United States',
+      researchGeocode: { provider: 'open-meteo', city: 'Springfield', country: 'United States', latitude: 44.05, longitude: -123.02 },
+    },
+  ]);
+  assert.equal(seeded, 0);
+  assert.equal(geocode.cachedForCity('Springfield', 'United States'), null);
+
+  let calls = 0;
+  const result = await geocode.locationForCity('Springfield', 'United States', {
+    fetchImpl: async () => {
+      calls += 1;
+      return response({ results: [
+        { name: 'Springfield', country: 'United States', latitude: 39.78, longitude: -89.64 },
+        { name: 'Springfield', country: 'United States', latitude: 44.05, longitude: -123.02 },
+      ] });
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(result, null);
 });
 
 test('DAB3 focused runner persists namespaced geocode evidence on a new Tavily candidate', async () => {
