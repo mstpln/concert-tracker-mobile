@@ -5,7 +5,9 @@
 // keeps its existing cadence; MusicBrainz work is selected only when a stored
 // task is actually due. Bootstrap/incomplete work comes first, then the
 // oldest retained refreshes. Selection favors bands with no task selected
-// yet before spending a second slot on the same band.
+// yet before spending a second slot on the same band, and equal-age work
+// favors the band with the oldest overall MusicBrainz activity so fairness
+// carries across separate workflow runs without another durable cursor.
 
 const TRUSTED_STATUSES = new Set(['confirmed', 'manual_confirmed', 'auto_confirmed']);
 const DAY = 86400000;
@@ -22,6 +24,18 @@ function confirmedMbid(band) {
 
 function taskKey(bandId, kind) {
   return `${bandId}:${kind}`;
+}
+
+function bandActivityAt(band) {
+  const metadata = band?.musicbrainz?.metadata || {};
+  const release = band?.structuredResearch?.releases?.musicbrainz || {};
+  const values = [
+    metadata.lastAttemptedAt,
+    metadata.lastSuccessfulAt,
+    release.lastAttemptedAt,
+    release.lastSuccessfulAt,
+  ].map(validTime).filter((value) => value != null);
+  return values.length ? Math.max(...values) : 0;
 }
 
 function metadataTask(band, nowMs, refreshDays) {
@@ -89,6 +103,7 @@ function compareTasks(a, b, selectedPerBand = new Map()) {
   return a.priority - b.priority
     || (selectedPerBand.get(a.bandId) || 0) - (selectedPerBand.get(b.bandId) || 0)
     || a.dueAt - b.dueAt
+    || (a.bandActivityAt || 0) - (b.bandActivityAt || 0)
     || String(a.bandId).localeCompare(String(b.bandId))
     || a.kind.localeCompare(b.kind);
 }
@@ -107,10 +122,11 @@ function planMusicbrainzResearch(bands, {
 
   for (const band of bands || []) {
     if (!confirmedMbid(band) || !band?.id) continue;
+    const activity = bandActivityAt(band);
     const metadata = metadataTask(band, nowMs, metadataRefreshDays);
-    if (metadata) due.push(metadata);
+    if (metadata) due.push({ ...metadata, bandActivityAt: activity });
     const release = releaseTask(band, nowMs, releaseMonitoringEnabled, releaseRefreshDays);
-    if (release) due.push(release);
+    if (release) due.push({ ...release, bandActivityAt: activity });
   }
 
   const remainingTasks = [...due];
@@ -131,4 +147,4 @@ function planMusicbrainzResearch(bands, {
   };
 }
 
-module.exports = { TRUSTED_STATUSES, confirmedMbid, taskKey, metadataTask, releaseTask, planMusicbrainzResearch };
+module.exports = { TRUSTED_STATUSES, confirmedMbid, taskKey, bandActivityAt, metadataTask, releaseTask, planMusicbrainzResearch };
