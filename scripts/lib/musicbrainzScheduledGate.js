@@ -11,7 +11,16 @@ function createMusicbrainzScheduledGate({ musicbrainz, worker, config, now = () 
     if (!schedulePromise) {
       schedulePromise = (async () => {
         const bands = await worker.readJson('bands.json', []);
-        const plan = planMusicbrainzResearch(bands, {
+        const confirmed = (bands || []).filter(confirmedMbid);
+        const countByMbid = new Map();
+        for (const band of confirmed) {
+          const mbid = band.musicbrainz.mbid;
+          countByMbid.set(mbid, (countByMbid.get(mbid) || 0) + 1);
+        }
+        const duplicateMbids = new Set([...countByMbid].filter(([, count]) => count > 1).map(([mbid]) => mbid));
+        const schedulableBands = confirmed.filter((band) => !duplicateMbids.has(band.musicbrainz.mbid));
+
+        const plan = planMusicbrainzResearch(schedulableBands, {
           now: now(),
           perRunCap: config.MUSICBRAINZ.perRunCap,
           callsAlreadyUsed: Number(usage?.state?.musicbrainz?.callsThisRun || 0),
@@ -20,27 +29,10 @@ function createMusicbrainzScheduledGate({ musicbrainz, worker, config, now = () 
           releaseMonitoringEnabled: config.STRUCTURED_RESEARCH.structuredReleaseMonitoringEnabled,
         });
 
-        const confirmedById = new Map();
-        const countByMbid = new Map();
-        for (const band of bands || []) {
-          if (!confirmedMbid(band)) continue;
-          const mbid = band.musicbrainz.mbid;
-          confirmedById.set(band.id, mbid);
-          countByMbid.set(mbid, (countByMbid.get(mbid) || 0) + 1);
-        }
-
-        const selected = new Set();
-        let duplicateIdentitySkips = 0;
-        for (const task of plan.selected) {
-          const mbid = confirmedById.get(task.bandId);
-          if (!mbid || countByMbid.get(mbid) !== 1) {
-            duplicateIdentitySkips += 1;
-            continue;
-          }
-          selected.add(`${mbid}:${task.kind}`);
-        }
-        usage?.note?.(`MusicBrainz scheduler: ${plan.dueCount} due task(s), ${selected.size} selected, ${duplicateIdentitySkips} duplicate-identity task(s) skipped.`);
-        return { ...plan, selectedProviderKeys: selected, duplicateIdentitySkips };
+        const mbidById = new Map(schedulableBands.map((band) => [band.id, band.musicbrainz.mbid]));
+        const selected = new Set(plan.selected.map((task) => `${mbidById.get(task.bandId)}:${task.kind}`));
+        usage?.note?.(`MusicBrainz scheduler: ${plan.dueCount} safe due task(s), ${selected.size} selected, ${duplicateMbids.size} duplicate trusted MBID(s) excluded.`);
+        return { ...plan, selectedProviderKeys: selected, duplicateIdentitySkips: duplicateMbids.size };
       })();
     }
     return schedulePromise;
