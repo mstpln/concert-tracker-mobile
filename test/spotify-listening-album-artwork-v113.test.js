@@ -59,6 +59,35 @@ test('known album artwork suppresses sibling requests without assigning inferred
   assert.equal(globalThis.listeningEvents[1].spotifyAlbumArtworkSeedTrackId, 'TrackA');
 });
 
+test('known album artwork fills an exact sibling metadata record that is missing artwork', () => {
+  globalThis.bands = [{ id: 'band-a', name: 'Synthetic Artist' }];
+  globalThis.listeningEvents = [
+    { localBandId: 'band-a', artistCreditName: 'Synthetic Artist', releaseTitle: 'Album One', spotifyTrackId: 'TrackA' },
+    { localBandId: 'band-a', artistCreditName: 'Synthetic Artist', releaseTitle: 'Album One', spotifyTrackId: 'TrackB' },
+  ];
+  const api = freshModule();
+  const document = {
+    records: {
+      TrackA: {
+        spotifyTrackId: 'TrackA',
+        spotifyAlbumId: 'Album123',
+        artworkUrl: 'https://images.example.test/cover.jpg',
+        fetchedAt: '2026-08-11T12:00:00.000Z',
+      },
+      TrackB: {
+        spotifyTrackId: 'TrackB',
+        spotifyAlbumId: 'Album123',
+        artworkUrl: null,
+      },
+    },
+  };
+
+  assert.equal(api.applyAlbumReuse(document), 2);
+  assert.equal(globalThis.listeningEvents[1].albumArtworkUrl, 'https://images.example.test/cover.jpg');
+  assert.equal(globalThis.listeningEvents[1].spotifyAlbumArtworkSource, 'spotify_album_group_reuse');
+  assert.equal(globalThis.listeningEvents[1].spotifyAlbumArtworkSeedTrackId, 'TrackA');
+});
+
 test('conflicting known album IDs fail closed and do not queue a guessed representative', () => {
   globalThis.bands = [{ id: 'band-a', name: 'Synthetic Artist' }];
   globalThis.listeningEvents = [
