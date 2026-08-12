@@ -7,7 +7,10 @@
 // particular changes these with little notice, so re-verify against
 // console.groq.com/docs/rate-limits and console.groq.com/docs/deprecations
 // before relying on this comment if it's been a while):
-//   Ticketmaster Discovery API — 5,000 requests/day, 5 requests/sec.
+//   Ticketmaster Discovery API — official documentation is inconsistent:
+//                                 the Discovery docs say 5 requests/sec,
+//                                 while the developer FAQ says 2/sec. BANDMARKR
+//                                 therefore paces below the stricter figure.
 //   Tavily Search API          — 1,000 credits/month (1 credit per search
 //                                 by default), free plan, no card required.
 //   Groq (openai/gpt-oss-120b) — free tier: 30 req/min, 1,000 req/day,
@@ -50,7 +53,9 @@ module.exports = {
     // Sized for the complete current band library plus identity resolution,
     // retries and growth headroom, while remaining far below the daily tier.
     perRunCap: 650,
-    minDelayMs: 300, // stays well under 5 req/sec
+    // ~1.67 request starts/sec: below Ticketmaster's stricter published
+    // 2 requests/sec guidance as well as the separate 5 requests/sec docs.
+    minDelayMs: 600,
   },
 
   TAVILY: {

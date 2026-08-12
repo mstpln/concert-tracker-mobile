@@ -8,6 +8,7 @@ const path = require('node:path');
 const policy = require('../scripts/lib/tavilyConcertPolicy');
 const { cleanupReleaseFeed } = require('../scripts/lib/releaseFeedPolicy');
 const config = require('../scripts/lib/config');
+const { UsageTracker, freshState } = require('../scripts/lib/usageTracker');
 
 function at(iso) { return Date.parse(iso); }
 
@@ -121,6 +122,20 @@ test('focused workflows separate structured providers from Tavily web research a
 test('Ticketmaster cap covers the current library with retry and growth headroom', () => {
   assert.equal(config.TICKETMASTER.perRunCap, 650);
   assert.ok(config.TICKETMASTER.perRunCap < config.TICKETMASTER.freeTierDailyLimit);
+});
+
+test('Ticketmaster pacing gate enforces the stricter published two-per-second guidance', async () => {
+  assert.ok(config.TICKETMASTER.minDelayMs >= 600);
+  assert.ok(1000 / config.TICKETMASTER.minDelayMs < 2);
+
+  const usage = new UsageTracker(freshState());
+  await usage.recordTicketmasterCall();
+  const firstReservationAt = usage._lastTicketmasterCallAt;
+  await usage.recordTicketmasterCall();
+
+  assert.ok(usage._lastTicketmasterCallAt - firstReservationAt >= config.TICKETMASTER.minDelayMs);
+  assert.equal(usage.state.ticketmaster.callsThisRun, 2);
+  assert.equal(usage.state.ticketmaster.callsToday, 2);
 });
 
 test('visible alert labels are Concerts and Releases everywhere', () => {
