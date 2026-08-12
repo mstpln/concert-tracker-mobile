@@ -53,18 +53,25 @@ async function getAppToken(usage = null, fetchImpl = fetch) {
   return cachedToken.accessToken;
 }
 
+function normalizeArtistMatchText(value) {
+  return String(value || '')
+    .toLocaleLowerCase('en')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
 // Same normalize-and-loosely-compare approach as setlistfm.js's venueMatches
 // — a false negative here throws away a perfectly good link, so it's
-// deliberately forgiving. A false positive is guarded against separately by
-// only ever trusting Spotify's own top-ranked, popularity-sorted result
-// among artist-matched candidates, never just the literal first hit.
+// deliberately forgiving. When no confirmed Spotify artist ID is available,
+// an empty normalized band identity now fails closed instead of accepting an
+// arbitrary provider result; Unicode letters/numbers remain matchable.
 function artistMatches(candidateArtists, bandName, spotifyArtistId = null) {
   if (spotifyArtistId) return (candidateArtists || []).some((artist) => artist?.id === spotifyArtistId);
-  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-  const target = norm(bandName);
-  if (!target) return true;
+  const target = normalizeArtistMatchText(bandName);
+  if (!target) return false;
   return (candidateArtists || []).some((a) => {
-    const n = norm(a?.name);
+    const n = normalizeArtistMatchText(a?.name);
     return !!n && (n === target || n.includes(target) || target.includes(n));
   });
 }
