@@ -124,7 +124,7 @@ async function findHistoricalSetlistsForArtist(artistMbid, usage, { beforeDate, 
 // Returns a structured outcome. Only `found` and `no_match` are trustworthy
 // provider outcomes that may advance the caller's recheck marker. `error` and
 // `skipped` remain retryable and must not be persisted as absence.
-async function findSetlistForShow(concert, usage, { artistMbid = null, fetchImpl = fetch } = {}) {
+async function findSetlistOutcomeForShow(concert, usage, { artistMbid = null, fetchImpl = fetch } = {}) {
   if (!usage.canCallSetlistfm()) {
     usage.note(`setlist.fm per-run/daily cap reached — skipping "${concert.bandName}" (${concert.date})`);
     return { kind: 'skipped', reason: 'usage_cap' };
@@ -174,4 +174,11 @@ async function findSetlistForShow(concert, usage, { artistMbid = null, fetchImpl
     : { kind: 'no_match', reason: 'empty_setlist' };
 }
 
-module.exports = { findSetlistForShow, findRecentSetlistsForArtist, findHistoricalSetlistsForArtist, usefulEarlierCount, normalizeEventDate, normalizeSetlist, venueMatches };
+// Keep the historical object-or-null contract for unrelated callers/tests.
+// DAB4's scheduled enrichment path uses findSetlistOutcomeForShow directly.
+async function findSetlistForShow(concert, usage, options = {}) {
+  const outcome = await findSetlistOutcomeForShow(concert, usage, options);
+  return outcome.kind === 'found' ? outcome.setlist : null;
+}
+
+module.exports = { findSetlistForShow, findSetlistOutcomeForShow, findRecentSetlistsForArtist, findHistoricalSetlistsForArtist, usefulEarlierCount, normalizeEventDate, normalizeSetlist, venueMatches };
