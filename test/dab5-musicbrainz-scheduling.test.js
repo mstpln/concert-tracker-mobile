@@ -43,6 +43,16 @@ test('DAB5 gives first-pass slots to distinct bands before a second task for one
   assert.ok(plan.selected.every((task) => task.priority === 0));
 });
 
+test('DAB5 equal-age bootstrap work favors the band with older overall MusicBrainz activity across runs', () => {
+  const alreadyServed = band('a-already-served', {
+    musicbrainz: { metadata: { artistName: 'Known', lastSuccessfulAt: iso(0) } },
+  });
+  const untouched = band('z-untouched');
+  const plan = planMusicbrainzResearch([alreadyServed, untouched], { now: NOW, perRunCap: 1, metadataRefreshDays: 90, releaseRefreshDays: 7 });
+  assert.equal(plan.selected[0].bandId, 'z-untouched');
+  assert.equal(plan.selected[0].kind, 'metadata');
+});
+
 test('DAB5 unfinished work outranks routine retained refreshes', () => {
   const unfinished = band('unfinished', {
     musicbrainz: { metadata: { artistName: 'Known', lastSuccessfulAt: iso(1) } },
