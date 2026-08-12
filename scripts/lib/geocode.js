@@ -5,13 +5,17 @@
 // city/country results are stored as namespaced derived research evidence;
 // future runs seed this cache from those records before making provider calls.
 
-const { haversineKm } = require('./util');
+const { haversineKm, sleep } = require('./util');
 const config = require('./config');
 
 const GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 const REQUEST_TIMEOUT_MS = 10000;
+// Open-Meteo's free API currently documents 600 calls/minute. This caps
+// request starts at about 400/minute so compliance does not depend on latency.
+const MIN_GAP_MS = 150;
 const PROVIDER = 'open-meteo';
 const cache = new Map();
+let lastCallAt = 0;
 
 function normalize(value) {
   return String(value || '')
@@ -69,15 +73,33 @@ function cachedLocation(value) {
   return { lat, lon };
 }
 
+function sameCoordinates(first, second) {
+  return first?.lat === second?.lat && first?.lon === second?.lon;
+}
+
 function seedFromConcerts(concerts = []) {
-  let seeded = 0;
+  const discovered = new Map();
+  const conflicts = new Set();
   for (const concert of Array.isArray(concerts) ? concerts : []) {
     const evidence = concert?.researchGeocode;
     if (evidence?.provider !== PROVIDER) continue;
     if (normalize(evidence.city) !== normalize(concert.city) || normalize(evidence.country) !== normalize(concert.country)) continue;
     const key = locationKey(concert.city, concert.country);
     const coords = cachedLocation(evidence);
-    if (!key || !coords || cache.has(key)) continue;
+    if (!key || !coords || conflicts.has(key)) continue;
+    if (!discovered.has(key)) {
+      discovered.set(key, coords);
+      continue;
+    }
+    if (!sameCoordinates(discovered.get(key), coords)) {
+      discovered.delete(key);
+      conflicts.add(key);
+    }
+  }
+
+  let seeded = 0;
+  for (const [key, coords] of discovered) {
+    if (cache.has(key)) continue;
     cache.set(key, coords);
     seeded += 1;
   }
@@ -103,6 +125,13 @@ function cachedForCity(city, country) {
 
 function clearCache() {
   cache.clear();
+  lastCallAt = 0;
+}
+
+async function waitForProviderSlot() {
+  const gap = Date.now() - lastCallAt;
+  if (lastCallAt && gap < MIN_GAP_MS) await sleep(MIN_GAP_MS - gap);
+  lastCallAt = Date.now();
 }
 
 async function geocodeCity(city, country, { fetchImpl = globalThis.fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
@@ -114,7 +143,9 @@ async function geocodeCity(city, country, { fetchImpl = globalThis.fetch, timeou
 
   const url = new URL(GEOCODE_URL);
   url.searchParams.set('name', cityText);
-  url.searchParams.set('count', '10');
+  // The API supports up to 100 results. Requesting the maximum strengthens
+  // the fail-closed ambiguity check instead of assuming the top ten are unique.
+  url.searchParams.set('count', '100');
   url.searchParams.set('language', 'en');
   const countryCode = isoCountryCode(countryText);
   if (countryCode) url.searchParams.set('countryCode', countryCode);
@@ -122,6 +153,7 @@ async function geocodeCity(city, country, { fetchImpl = globalThis.fetch, timeou
   let timer = null;
   let controller = null;
   try {
+    await waitForProviderSlot();
     if (typeof AbortController === 'function' && Number.isFinite(timeoutMs) && timeoutMs > 0) {
       controller = new AbortController();
       timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -152,6 +184,7 @@ async function distanceKmForCity(city, country, options) {
 module.exports = {
   GEOCODE_URL,
   REQUEST_TIMEOUT_MS,
+  MIN_GAP_MS,
   PROVIDER,
   normalize,
   locationKey,
