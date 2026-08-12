@@ -2,15 +2,23 @@
 
 // Loaded with Node's -r flag before scripts/research.js. It keeps the
 // existing mature structured pipeline intact while disabling every Tavily
-// route for this more frequent run and narrowing release alerts to actual
-// Spotify catalogue releases.
+// route for this more frequent run, narrowing release alerts to actual
+// Spotify catalogue releases, and gating MusicBrainz to a small fair queue
+// of due work rather than band-order polling.
 const config = require('./lib/config');
 const releasePlan = require('./lib/releaseAlertPlan');
 const releaseLifecycle = require('./lib/releaseLifecycle');
+const musicbrainz = require('./lib/musicbrainz');
+const worker = require('./lib/workerClient');
+const { installMusicbrainzScheduledGate } = require('./lib/musicbrainzScheduledGate');
 
 config.STRUCTURED_RESEARCH.targetedTavilyRoutingEnabled = false;
-config.STRUCTURED_RESEARCH.musicbrainzReleaseRefreshDays = 3;
+// Spotify remains the frequent catalogue source. MusicBrainz retains the
+// base configured refresh interval and is additionally bounded by DAB5's
+// demand/fair scheduler below.
 config.STRUCTURED_RESEARCH.spotifyReleaseRefreshDays = 3;
+
+installMusicbrainzScheduledGate({ musicbrainz, worker, config });
 
 function fullDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
