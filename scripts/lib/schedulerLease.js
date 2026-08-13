@@ -15,7 +15,7 @@ function validDateMs(value) {
 }
 
 function leaseValidation(value) {
-  if (value === undefined) return { valid: true, lease: null };
+  if (value == null) return { valid: true, lease: null };
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { valid: false, lease: null };
   if (value.schemaVersion !== LEASE_SCHEMA_VERSION) return { valid: false, lease: null };
   if (typeof value.leaseId !== 'string' || !value.leaseId.trim()) return { valid: false, lease: null };
@@ -112,9 +112,7 @@ async function releaseSchedulerLease(handle, { maxConflictRetries = 1 } = {}) {
   for (let attempt = 0; attempt <= maxConflictRetries; attempt += 1) {
     const state = await handle.client.readJson('apiUsage.json', {});
     const lease = assertUsageRoot(state);
-    if (!lease) {
-      throw schedulerLeaseStateError('Scheduler lease disappeared before release; ownership can no longer be proven.', 'SCHEDULER_LEASE_LOST');
-    }
+    if (!lease) return false;
     if (lease.leaseId !== handle.leaseId) {
       throw schedulerLeaseStateError('Scheduler lease ownership changed before release; refusing to clear another run\'s lease.', 'SCHEDULER_LEASE_LOST');
     }
