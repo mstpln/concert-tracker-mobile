@@ -4,6 +4,8 @@
 // links keep working in local QA, external links must use HTTPS, and every
 // new-tab link is isolated from the opener and referrer.
 (function (global) {
+  const ARTIST_ENRICHMENT_RETRY_DELAY_MS = 24 * 60 * 60 * 1000;
+
   function baseUrl() {
     return global.location?.href || 'https://livevault.invalid/';
   }
@@ -45,9 +47,32 @@
     disableExcelExport(root);
   }
 
+  function preparePendingArtistEnrichment(band, now = new Date().toISOString()) {
+    if (!band || typeof band !== 'object' || !band._enriching || band.artistEnrichment) return band;
+    const parsed = Date.parse(now);
+    const delay = Number(global.ProviderIdentityState?.artistEnrichment?.RETRY_DELAY_MS) || ARTIST_ENRICHMENT_RETRY_DELAY_MS;
+    band.artistEnrichment = {
+      status: 'retryable',
+      lastAttemptedAt: now,
+      nextEligibleCheckAt: new Date((Number.isFinite(parsed) ? parsed : Date.now()) + delay).toISOString(),
+      errorCategory: 'pending_enrichment',
+    };
+    return band;
+  }
+
+  function checkpointManualBandAdds() {
+    let rows;
+    try { rows = bands; } catch (_) { return; }
+    if (!Array.isArray(rows) || rows.__gau3CheckpointedPush) return;
+    const originalPush = rows.push.bind(rows);
+    Object.defineProperty(rows, '__gau3CheckpointedPush', { value: true, enumerable: false });
+    rows.push = (...items) => originalPush(...items.map((item) => preparePendingArtistEnrichment(item)));
+  }
+
   function init(documentRef = global.document) {
     if (!documentRef?.documentElement) return;
     hardenTree(documentRef);
+    checkpointManualBandAdds();
     documentRef.addEventListener('click', (event) => {
       const anchor = event.target?.closest?.('a');
       if (!anchor) return;
@@ -68,7 +93,7 @@
     observer.observe(documentRef.documentElement, { childList: true, subtree: true });
   }
 
-  const api = { safeExternalUrl, hardenAnchor, hardenTree, disableExcelExport, init };
+  const api = { safeExternalUrl, hardenAnchor, hardenTree, disableExcelExport, preparePendingArtistEnrichment, checkpointManualBandAdds, init };
   global.LiveVaultSecurity = api;
   if (typeof module !== 'undefined') module.exports = api;
 
