@@ -59,6 +59,12 @@ test('GAU2 does not invent provider usage or a verified core connection', () => 
   assert.doesNotMatch(source, /Core Live Vault data:<\/strong> Connected/);
 });
 
+test('GAU2 leaves existing listening maintenance controls usable', () => {
+  assert.doesNotMatch(css, /data-canonical-activation/);
+  assert.doesNotMatch(css, /data-v104-listening-identity/);
+  assert.doesNotMatch(css, /data-v99-spotify-listening-metadata/);
+});
+
 test('GAU2 assets and v118 shell are wired', () => {
   assert.match(index, /gau2SettingsV118\.css/);
   assert.match(index, /gau2SettingsV118\.js/);
@@ -68,8 +74,5 @@ test('GAU2 assets and v118 shell are wired', () => {
   assert.match(qaBuild, /gau2SettingsV118\.js/);
   assert.match(version, /APP_VERSION = 'v118'/);
   assert.match(sw, /CACHE_NAME_LITERAL = 'v118'/);
-  assert.match(css, /data-canonical-activation/);
-  assert.match(css, /data-v104-listening-identity/);
-  assert.match(css, /data-v99-spotify-listening-metadata/);
   assert.match(css, /gau2-status\.is-failed/);
 });
