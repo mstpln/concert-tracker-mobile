@@ -205,10 +205,23 @@
   }
 
   function concertListeningWindow(concert, isPast, now = new Date()) {
-    const end = isPast ? parseDate(`${concert?.date || ''}T00:00:00Z`) : parseDate(now);
-    if (!end) return null;
-    const start = shiftUtcMonths(end, -3);
-    return { startMs: start.getTime(), endMs: end.getTime() + (isPast ? 0 : 1) };
+    const nowAt = parseDate(now);
+    if (!nowAt) return null;
+    if (!isPast) {
+      const start = shiftUtcMonths(nowAt, -6);
+      return { startMs: start.getTime(), endMs: nowAt.getTime() + 1 };
+    }
+
+    const concertAt = parseDate(`${concert?.date || ''}T00:00:00Z`);
+    if (!concertAt) return null;
+    const start = shiftUtcMonths(concertAt, -3);
+    const fixedEndDate = shiftUtcMonths(concertAt, 3);
+    const fixedEndExclusive = new Date(fixedEndDate.getTime());
+    fixedEndExclusive.setUTCDate(fixedEndExclusive.getUTCDate() + 1);
+    return {
+      startMs: start.getTime(),
+      endMs: Math.min(nowAt.getTime() + 1, fixedEndExclusive.getTime()),
+    };
   }
 
   function concertListeningAggregate(concert, isPast, now = new Date(), listens = []) {

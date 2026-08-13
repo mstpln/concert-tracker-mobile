@@ -63,6 +63,7 @@ let spotifyAuthMessage = '';
 // browser-local display choices, never stored with the user's concert data.
 let settingsTab = 'research';
 let settingsExpandedTool = null;
+let myConcertsRenderedDateKey = null;
 
 const el = (id) => document.getElementById(id);
 
@@ -795,6 +796,7 @@ function renderVenueDetailScreen(key) {
 /* ---------------- My Concerts tab ---------------- */
 
 function renderMyConcertsScreen() {
+  myConcertsRenderedDateKey = dlCurrentDate().toDateString();
   const container = el('screen-myconcerts');
   // Same guard as renderConcertsScreen: a concert whose band was removed via
   // the My Bands trash button has no matching entry in `bands` anymore (band
@@ -986,6 +988,11 @@ function countdownCardHtml(nextConcert) {
 // just miss silently on every other screen, which is cheaper than hooking
 // start/stop into every place the tab can be entered or left.
 function tickCountdownCard() {
+  const currentDateKey = dlCurrentDate().toDateString();
+  if (currentScreen === 'main' && currentTab === 'myconcerts' && myConcertsRenderedDateKey && currentDateKey !== myConcertsRenderedDateKey) {
+    renderMyConcertsScreen();
+    return;
+  }
   const card = el('countdown-card');
   if (!card || card.dataset.today === 'true') return;
   const target = new Date(card.dataset.target);
