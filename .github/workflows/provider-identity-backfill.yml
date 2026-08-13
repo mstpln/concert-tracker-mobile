@@ -39,4 +39,4 @@ jobs:
           TICKETMASTER_API_KEY: ${{ secrets.TICKETMASTER_API_KEY }}
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
-        run: node scripts/provider-identity-backfill.js
+        run: node scripts/run-with-scheduler-lease.js provider-identity-backfill -- node scripts/provider-identity-backfill.js
