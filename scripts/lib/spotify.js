@@ -91,6 +91,11 @@ function normalizeArtistMatchText(value) {
     .replace(/[^\p{L}\p{N}]+/gu, '');
 }
 
+// Same normalize-and-loosely-compare approach as setlistfm.js's venueMatches
+// — a false negative here throws away a perfectly good link, so it's
+// deliberately forgiving. When no confirmed Spotify artist ID is available,
+// an empty normalized band identity now fails closed instead of accepting an
+// arbitrary provider result; Unicode letters/numbers remain matchable.
 function artistMatches(candidateArtists, bandName, spotifyArtistId = null) {
   if (spotifyArtistId) return (candidateArtists || []).some((artist) => artist?.id === spotifyArtistId);
   const target = normalizeArtistMatchText(bandName);
@@ -101,6 +106,8 @@ function artistMatches(candidateArtists, bandName, spotifyArtistId = null) {
   });
 }
 
+// DAB4 structured outcome for the historical setlist linker. Only a real
+// `ok` or provider-derived `no_match` may become spotifyChecked.
 async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId = null, fetchImpl = fetch, getToken = getAppToken, sleepImpl = sleep } = {}) {
   if (!usage.canCallSpotify()) return { kind: 'skipped', reason: 'usage_cap' };
   let token;
@@ -152,7 +159,6 @@ async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId 
   }
   if (!res.ok) {
     usage.note(`Spotify search returned ${res.status} for "${songTitle}" / "${bandName}"`);
-    if (res.status === 429) return spotify429Outcome(res);
     return { kind: 'error', status: res.status };
   }
 
@@ -165,16 +171,24 @@ async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId 
   if (!Array.isArray(data?.tracks?.items)) return { kind: 'error', error: 'invalid_response' };
   const candidates = data.tracks.items.filter((t) => artistMatches(t.artists, bandName, spotifyArtistId));
   if (candidates.length === 0) return { kind: 'no_match', reason: SETLIST_TRACK_NO_MATCH_REASON };
+
+  // Most-popular version wins — the agreed default when a song has multiple
+  // Spotify recordings (studio, live, remaster), rather than always
+  // preferring the studio original.
   candidates.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
   const urlValue = candidates[0]?.external_urls?.spotify;
   return typeof urlValue === 'string' && urlValue ? { kind: 'ok', url: urlValue } : { kind: 'error', error: 'missing_track_url' };
 }
 
+// Preserve the historical URL-or-null helper contract for unrelated callers.
 async function searchTrack(songTitle, bandName, usage, options = {}) {
   const outcome = await searchTrackOutcome(songTitle, bandName, usage, options);
   return outcome.kind === 'ok' ? outcome.url : null;
 }
 
+// Mutates only trustworthy outcomes. Successful matches and definitive
+// no-matches become spotifyChecked; transient/provider/quota failures leave
+// the current and remaining songs untouched so a later run can retry them.
 async function resolveSongLinks(songs, bandName, usage, { spotifyArtistId = null, search = searchTrackOutcome } = {}) {
   let added = 0;
   for (const song of songs) {
@@ -294,6 +308,9 @@ async function getReleaseTracks(releaseId, usage, options = {}) {
 
 const UNSUITABLE_TRACK = /\b(live|acoustic|remix|demo|karaoke|tribute|cover|instrumental)\b/i;
 
+// This is intentionally stricter than the legacy historical-setlist linker:
+// predictions already have a confirmed Spotify artist ID, so accepting a
+// merely similar title would create an unsafe future playlist candidate.
 function predictedTrackCandidate(track, song, spotifyArtistId) {
   if (!track || !artistMatches(track.artists, '', spotifyArtistId)) return false;
   if (normalizeTitle(track.name) !== normalizeTitle(song.name)) return false;
