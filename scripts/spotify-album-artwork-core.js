@@ -107,6 +107,29 @@ function terminalSuppression(metadata, group) {
   return item;
 }
 
+function mergeTerminalSuppression(metadata = {}, group, reason, suppressedAt) {
+  if (!group?.key || !validSpotifyId(group?.representativeTrackId)) return null;
+  if (!['exact_track_not_found', 'exact_track_has_no_usable_artwork'].includes(reason)) return null;
+  const timestamp = safeString(suppressedAt);
+  if (!timestamp || !Number.isFinite(Date.parse(timestamp))) return null;
+  return {
+    ...(metadata || {}),
+    kind: metadata?.kind || 'livevault-spotify-listening-metadata',
+    schemaVersion: Number(metadata?.schemaVersion) || 1,
+    records: { ...(metadata?.records || {}) },
+    albumArtworkSuppressions: {
+      ...(metadata?.albumArtworkSuppressions || {}),
+      [group.key]: {
+        ...(metadata?.albumArtworkSuppressions?.[group.key] || {}),
+        albumGroupKey: group.key,
+        representativeTrackId: group.representativeTrackId,
+        reason,
+        suppressedAt: new Date(Date.parse(timestamp)).toISOString(),
+      },
+    },
+  };
+}
+
 function buildAlbumGroups({ events = [], bands = [], metadata = {} } = {}) {
   const bandIndex = bandOwnershipIndex(bands);
   const known = metadataRecords(metadata);
@@ -268,6 +291,7 @@ module.exports = {
   mappedBandId,
   normalizeMetadataRecord,
   terminalSuppression,
+  mergeTerminalSuppression,
   buildAlbumGroups,
   reusableAlbumRecord,
   exactRepresentativeRecord,
