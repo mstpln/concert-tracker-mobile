@@ -159,6 +159,7 @@ test('production wrapper wires source, checkpoint and usage accounting without e
     async save() { this.saveCalls += 1; },
   };
   let captured = null;
+  let leaseOwner = null;
   const env = {
     LIVEVAULT_BACKFILL_CONFIRM: production.PRODUCTION_EXECUTION_CONFIRMATION,
     CF_WORKER_ENDPOINT: 'https://worker.invalid',
@@ -173,6 +174,7 @@ test('production wrapper wires source, checkpoint and usage accounting without e
       fetchImpl: async () => { throw new Error('network must be controlled by injected runner'); },
       log: (value) => logs.push(String(value)),
       usageFactory: async () => usage,
+      withLeaseImpl: async (options, operation) => { leaseOwner = options.owner; return operation(); },
       runBackfillImpl: async (options) => {
         captured = options;
         assert.equal(options.cap, 5);
@@ -193,6 +195,7 @@ test('production wrapper wires source, checkpoint and usage accounting without e
     });
     assert.equal(summary.planned, 5);
     assert.ok(captured);
+    assert.equal(leaseOwner, 'spotify-artwork-maintenance');
     assert.equal(usage.saveCalls, 1);
     assert.equal(process.env.CF_WORKER_ENDPOINT, 'https://worker.invalid');
     assert.equal(process.env.CF_WORKER_TOKEN, 'private-worker-token');
