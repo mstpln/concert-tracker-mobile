@@ -27,9 +27,10 @@
   const esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   const finite = (value) => Number.isFinite(Number(value));
   const count = (value) => Math.max(0, finite(value) ? Number(value) : 0);
+  const hasFiniteConfidence = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
 
   function formatMusicbrainzConfidence(value) {
-    return finite(value) ? `${Math.max(0, Math.min(100, Math.round(Number(value))))}/100` : 'Confidence unavailable';
+    return hasFiniteConfidence(value) ? `${Math.max(0, Math.min(100, Math.round(Number(value))))}/100` : 'Confidence unavailable';
   }
 
   function repairMusicbrainzConfidenceHtml(html) {
