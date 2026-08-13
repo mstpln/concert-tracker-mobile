@@ -27,11 +27,12 @@ test('missing MusicBrainz confidence has a truthful fallback', () => {
   assert.equal(gau2.repairMusicbrainzConfidenceHtml('undefined/100'), 'Confidence unavailable');
 });
 
-test('missing automation state is not reported as healthy', () => {
+test('missing or contradictory automation state is not reported as healthy', () => {
   assert.equal(gau2.statusFromRun(null).kind, 'warning');
   assert.equal(gau2.statusFromRun({ status: 'ok' }).kind, 'healthy');
   assert.equal(gau2.statusFromRun({ status: 'error' }).kind, 'failed');
   assert.equal(gau2.statusFromRun({ error: 'provider unavailable' }).kind, 'failed');
+  assert.equal(gau2.statusFromRun({ status: 'ok', error: 'late failure' }).kind, 'failed');
 });
 
 test('ListenBrainz is healthy only after a recorded successful sync', () => {
