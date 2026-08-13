@@ -57,6 +57,13 @@ test('artist automation uses the newest recorded artist run', () => {
   assert.equal(gau2.latestRun(null, older), older);
 });
 
+test('mode-specific automation uses the newest matching aggregate run', () => {
+  const olderExplicit = { finishedAt: '2026-08-12T12:00:00.000Z', status: 'ok', mode: 'structured-research' };
+  const newerLast = { finishedAt: '2026-08-13T12:00:00.000Z', status: 'error', mode: 'structured-research' };
+  assert.equal(gau2.latestRunByMode({ automationRuns: { structuredResearch: olderExplicit }, lastRun: newerLast }, 'structuredResearch'), newerLast);
+  assert.equal(gau2.latestRunByMode({ automationRuns: { structuredResearch: olderExplicit }, lastRun: { ...newerLast, mode: 'tavily-concert-only' } }, 'structuredResearch'), olderExplicit);
+});
+
 test('approved schedules remain deterministic', () => {
   assert.equal(gau2.nextMwfUtc(new Date('2026-08-13T12:00:00Z')), '2026-08-14T01:00:00.000Z');
   assert.equal(gau2.nextFocusedWebUtc(new Date('2026-08-13T12:00:00Z')), '2026-08-15T02:00:00.000Z');
@@ -67,6 +74,11 @@ test('GAU2 presentation avoids repeated observed-subtree rewrites', () => {
   assert.match(source, /gau2Signature/);
   assert.match(source, /gau2Summary/);
   assert.doesNotMatch(source, /card\.innerHTML = automationRows\(\)\.map/);
+});
+
+test('GAU2 keeps connection metadata in the original Connections card after moving device actions', () => {
+  assert.match(source, /connectionLabel\?\.nextElementSibling/);
+  assert.doesNotMatch(source, /querySelector\('#change-connection-btn'\)\?\.closest\('\.settings-card'\)/);
 });
 
 test('GAU2 does not invent provider usage or a verified core connection', () => {
