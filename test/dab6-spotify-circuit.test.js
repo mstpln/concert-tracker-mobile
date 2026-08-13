@@ -229,6 +229,6 @@ test('DAB6 is wired only into the scheduled preload and keeps the PWA version un
   const serviceWorker = fs.readFileSync('service-worker.js', 'utf8');
   assert.match(preload, /installUsageTrackerSpotifyCircuit\(UsageTracker\)/);
   assert.match(preload, /installSpotifyModuleCircuit\(spotify\)/);
-  assert.match(version, /APP_VERSION\s*=\s*'v115'/);
-  assert.match(serviceWorker, /CACHE_NAME_LITERAL\s*=\s*'v115'/);
+  assert.match(version, /APP_VERSION\s*=\s*["']v115["']/);
+  assert.match(serviceWorker, /CACHE_NAME_LITERAL\s*=\s*["']bandmarkr-v115["']/);
 });
