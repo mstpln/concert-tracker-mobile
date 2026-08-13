@@ -5,7 +5,7 @@ const { withSchedulerLease } = require('./lib/schedulerLease');
 
 function parseArgs(argv = []) {
   const separator = argv.indexOf('--');
-  if (separator <= 0 || separator === argv.length - 1) {
+  if (separator !== 1 || separator === argv.length - 1) {
     throw new Error('Usage: node scripts/run-with-scheduler-lease.js <owner> -- <command> [args...]');
   }
   const owner = String(argv[0] || '').trim();
