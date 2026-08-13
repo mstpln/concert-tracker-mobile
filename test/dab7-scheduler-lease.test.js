@@ -97,6 +97,43 @@ test('expired lease can be replaced while preserving unknown lease fields', asyn
   await lease.releaseSchedulerLease(handle);
 });
 
+test('acquisition rejects a requested lease longer than the six-hour safety ceiling', async () => {
+  const store = { version: 1, value: { futureField: true } };
+  await assert.rejects(
+    () => lease.acquireSchedulerLease({
+      owner: 'too-long',
+      leaseMs: lease.DEFAULT_LEASE_MS + 1,
+      client: storeClient(store),
+    }),
+    /between 1 and six hours/
+  );
+  assert.deepEqual(store.value, { futureField: true });
+});
+
+test('persisted schema-v1 lease longer than six hours fails closed', async () => {
+  const store = {
+    version: 1,
+    value: {
+      schedulerLease: {
+        schemaVersion: 1,
+        leaseId: 'overlong',
+        owner: 'stale-run',
+        acquiredAt: '2026-08-12T00:00:00.000Z',
+        expiresAt: '2026-08-12T06:00:00.001Z',
+      },
+    },
+  };
+  await assert.rejects(
+    () => lease.acquireSchedulerLease({
+      owner: 'candidate',
+      now: () => Date.parse('2026-08-13T08:00:00.000Z'),
+      client: storeClient(store),
+    }),
+    (error) => error?.code === 'SCHEDULER_LEASE_STATE_INVALID'
+  );
+  assert.equal(store.value.schedulerLease.leaseId, 'overlong');
+});
+
 test('malformed persisted lease fails closed', async () => {
   const store = { version: 1, value: { schedulerLease: { owner: 'broken' } } };
   await assert.rejects(
@@ -190,6 +227,13 @@ test('scheduler command wrapper acquires lease around the exact child command', 
     'spawn:node:-r ./scripts/preloadStructuredRun.js scripts/research.js',
     'release',
   ]);
+});
+
+test('scheduler command wrapper rejects arguments between owner and separator', () => {
+  assert.throws(
+    () => wrapper.parseArgs(['structured-research', 'ignored', '--', 'node', 'scripts/research.js']),
+    /Usage:/
+  );
 });
 
 test('legacy trusted artwork CLI acquires the shared lease before loading usage', async () => {
