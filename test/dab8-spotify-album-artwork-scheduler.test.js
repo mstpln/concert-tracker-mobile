@@ -28,14 +28,16 @@ test('DAB8 defaults to one bounded daily trusted-local maintenance opportunity',
   assert.equal(options.delayMs, 1000);
   assert.equal(options.market, 'SE');
   assert.equal(options.statePath, '.livevault-maintenance/spotify-album-artwork-schedule.json');
+  assert.equal(scheduler.MAX_SCHEDULED_CAP, 25);
 });
 
-test('DAB8 rejects unsafe cap, pacing, interval and state paths', () => {
-  assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--cap', '101']), /between 1 and 100/);
+test('DAB8 rejects a faster interval, higher scheduled cap, weaker pacing or alternate state path', () => {
+  assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--cap', '26']), /between 1 and 25/);
   assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--delay-ms', '999']), /at least 1000/);
   assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--interval-hours', '23']), /at least 24 hours/);
+  assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--state', '.livevault-maintenance/other.json']), /Unknown argument: --state/);
   assert.throws(() => scheduler.scheduleDecision({ schemaVersion: 1 }, { now: '2026-08-13T10:00:00.000Z', intervalHours: 1 }), /at least 24 hours/);
-  assert.throws(() => scheduler.assertPrivateStatePath('schedule.json'), /\.livevault-maintenance/);
+  assert.throws(() => scheduler.assertPrivateStatePath('.livevault-maintenance/other.json'), /state path is fixed/);
 });
 
 test('DAB8 due gate is exact at the 24-hour boundary', () => {
