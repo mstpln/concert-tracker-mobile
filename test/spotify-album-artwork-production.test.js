@@ -123,6 +123,70 @@ test('already-known compatible album artwork makes the group zero-call and zero-
   assert.equal(writes, 0);
 });
 
+test('definitive exact-track outcomes are durably suppressed before the runner continues', async () => {
+  let remote = { ...emptyMetadata(), futureField: { preserved: true } };
+  let etagSequence = 1;
+  const fetched = [];
+  const writes = [];
+  const result = await runner.runAlbumArtwork({
+    cap: 2,
+    delayMs: 5000,
+    loadSource: async () => ({
+      events: [event('TrackA', 'Album A'), event('TrackB', 'Album B')],
+      counts: { totalEvents: 2 },
+      manifest: { kind: 'livevault-listening-vault', schemaVersion: 1 },
+    }),
+    readBands: async () => ({ value: bands }),
+    readMetadata: async () => ({ metadata: remote, etag: `etag-${etagSequence}`, missing: false }),
+    writeMetadata: async ({ value }) => {
+      remote = JSON.parse(JSON.stringify(value));
+      writes.push(remote);
+      etagSequence += 1;
+    },
+    getToken: async () => 'synthetic-token',
+    fetchTrack: async ({ id }) => {
+      fetched.push(id);
+      return id === 'TrackA'
+        ? { kind: 'not_found', status: 404 }
+        : { kind: 'ok', track: { ...spotifyTrack(id), album: { ...spotifyTrack(id).album, images: [] } } };
+    },
+    trackProviderCall: async (_usage, operation) => operation(),
+    usageFactory: async () => fakeUsage(),
+    sleepImpl: async () => {},
+    now: () => '2026-08-13T12:00:00.000Z',
+  });
+
+  assert.deepEqual(fetched, ['TrackA', 'TrackB']);
+  assert.equal(writes.length, 2);
+  assert.equal(Object.keys(writes[0].albumArtworkSuppressions).length, 1);
+  assert.equal(Object.keys(writes[1].albumArtworkSuppressions).length, 2);
+  assert.equal(remote.futureField.preserved, true);
+  assert.deepEqual(Object.values(remote.albumArtworkSuppressions).map((item) => item.reason).sort(), [
+    'exact_track_has_no_usable_artwork',
+    'exact_track_not_found',
+  ]);
+  assert.equal(result.providerGroupsSuppressed, 2);
+  assert.equal(result.providerAlbumGroupsRemaining, 0);
+  assert.match(result.sourceManifestFingerprint, /^sha256:/);
+});
+
+test('temporary provider failure remains retryable and creates no terminal suppression', async () => {
+  const remote = emptyMetadata();
+  let writes = 0;
+  await assert.rejects(() => runner.runAlbumArtwork({
+    loadSource: async () => ({ events: [event('TrackA')], counts: { totalEvents: 1 } }),
+    readBands: async () => ({ value: bands }),
+    readMetadata: async () => ({ metadata: remote, etag: 'etag-1', missing: false }),
+    writeMetadata: async () => { writes += 1; },
+    getToken: async () => 'synthetic-token',
+    fetchTrack: async () => ({ kind: 'rate_limited', status: 429 }),
+    trackProviderCall: async (_usage, operation) => operation(),
+    usageFactory: async () => fakeUsage(),
+  }), /spotify_rate_limited/);
+  assert.equal(writes, 0);
+  assert.equal(remote.albumArtworkSuppressions, undefined);
+});
+
 test('conflicting known album IDs fail closed without provider work', async () => {
   const remote = {
     ...emptyMetadata(),
