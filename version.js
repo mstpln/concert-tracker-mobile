@@ -48,15 +48,3 @@ const APP_VERSION = 'v119';
 // Earlier merged release marker retained for regression coverage: APP_VERSION = 'v75'.
 // Earlier merged release marker retained for regression coverage: APP_VERSION = 'v74'.
 // Legacy owned-ticket release marker retained for historical regression coverage: APP_VERSION = 'v70'.
-
-// GAU3 is a post-app compatibility layer so existing app.js remains the single
-// manual-add enrichment entry point. Load it only after parser scripts finish.
-if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', () => {
-    if (document.querySelector('script[data-gau3-artist-enrichment]')) return;
-    const script = document.createElement('script');
-    script.src = 'artistEnrichmentV119.js';
-    script.dataset.gau3ArtistEnrichment = 'true';
-    document.body.appendChild(script);
-  }, { once: true });
-}
