@@ -2,15 +2,9 @@
 
 ## Status
 
-DAB8 adds the scheduler gate for the existing album-oriented Spotify listening-artwork maintenance path. It does not install, enable or run a production schedule by itself.
+DAB8 adds a trusted-local scheduler gate around the existing album-oriented Spotify listening-artwork maintenance path. It does not install, enable or run a production schedule by itself.
 
-The execution boundary remains trusted local. Private listening objects require the browser credential, so DAB8 does not create a GitHub Actions workflow and does not broaden the Worker automation role.
-
-## Goal
-
-The v114 album-artwork priority is intentionally cumulative rather than a bulk-backfill objective. DAB8 turns that priority into one bounded daily maintenance opportunity while preserving the existing provider and private-data safety layers.
-
-A trusted local scheduler may wake the DAB8 command more frequently than once per day. The command itself keeps one fixed private local due marker and performs production work only when at least 24 hours have elapsed since the previous admitted scheduled run. The due interval may be lengthened, but cannot be configured below 24 hours.
+Private listening objects continue to require the browser credential. DAB8 therefore does not move artwork maintenance into GitHub Actions and does not broaden the Worker automation role.
 
 ## Scheduled command
 
@@ -20,19 +14,18 @@ The supported scheduler entrypoint is:
 node scripts/spotify-album-artwork-scheduler.js --execute-scheduled
 ```
 
-Defaults and hard scheduled boundaries:
+The scheduled safety envelope is intentionally smaller and slower than the lower-level manual runner:
 
-- due interval: 24 hours, also the enforced minimum;
-- Spotify album-group cap: 25, also the scheduled-run maximum;
-- Spotify track-request pacing: at least 1,000 ms;
-- Spotify market: `SE`;
-- private due state: exactly `.livevault-maintenance/spotify-album-artwork-schedule.json`.
+- default and minimum due interval: **4 hours**;
+- scheduled album-group cap: **5** per admitted run;
+- Spotify track-request pacing: at least **5,000 ms**;
+- rolling provider ceiling: **30 Spotify track lookups in any preceding 24-hour window**;
+- Spotify market: `SE` by default;
+- private schedule state: exactly `.livevault-maintenance/spotify-album-artwork-schedule.json`.
 
-The lower-level manual album runner retains its existing hard ceiling of 100 album groups, but DAB8 never exposes that larger ceiling to scheduled execution. A scheduled invocation may lower the 25-group cap but cannot raise it.
+The manual album runner retains its separate 100-group hard ceiling and 1,000-ms minimum pacing. DAB8 never exposes those larger/faster manual limits to scheduled execution. A scheduled invocation may lower its five-group cap or lengthen its interval/pacing, but cannot exceed the scheduled envelope.
 
-The schedule-state path is intentionally not configurable. Allowing multiple state files would let independent host commands manufacture separate daily allowances and bypass the one-opportunity-per-day policy.
-
-The scheduler wrapper does not install cron, launchd, systemd, Task Scheduler or another host scheduler. Host installation and activation are separate operational actions because the repository cannot safely assume which trusted machine will own the private credentials.
+The schedule-state path is intentionally fixed so independent host commands cannot manufacture separate allowances.
 
 ## Authorization boundary
 
@@ -42,87 +35,78 @@ Scheduled production execution requires the dedicated environment confirmation:
 LIVEVAULT_ARTWORK_SCHEDULE_CONFIRM=I_AUTHORIZE_SCHEDULED_PRIVATE_LISTENING_READS_LIVE_SPOTIFY_CALLS_PROVIDER_USAGE_AND_METADATA_WRITES
 ```
 
-The existing private runtime secrets are still required in the trusted local environment:
+The trusted local environment must also provide the existing private runtime secrets:
 
 - `CF_WORKER_ENDPOINT`
 - `CF_WORKER_BROWSER_TOKEN`
 - `SPOTIFY_CLIENT_ID`
 - `SPOTIFY_CLIENT_SECRET`
 
-The DAB8 wrapper translates the dedicated schedule authorization into the existing album-maintenance execution and metadata-write gates only for the scheduled child invocation. The existing manual production entrypoint and its manual authorization contract remain unchanged.
+DAB8 translates its dedicated authorization into the existing album-maintenance execution/write gates only for the admitted scheduled child invocation. The manual production entrypoint and its authorization contract remain unchanged.
 
-Merging DAB8 does not authorize setting the schedule confirmation, installing a host scheduler, performing a private production read, calling Spotify, writing provider usage, writing listening metadata or deploying anything. Those remain separate production actions.
+Merging DAB8 does not authorize setting this confirmation, installing or activating a host scheduler, performing private production reads, calling Spotify, writing provider usage or artwork metadata, running a production workflow, deploying, or modifying production data.
 
-## Due-state and admission contract
+## Schedule state and due gate
 
-The schedule marker is local-only and remains under the already ignored `.livevault-maintenance/` directory. It is never stored in GitHub, R2 or a public QA artifact.
+The schedule marker is local-only under the already ignored `.livevault-maintenance/` directory. Schema v1 tracks the admitted/completed outcome, whether unresolved provider work remained, a caught-up listening-manifest fingerprint, and rolling provider reservations. Unknown future fields are preserved. Malformed JSON, unsupported schema, invalid timestamps/outcomes/reservations, or an alternate state path fail closed.
 
-Schema v1 contains:
+A fresh wake performs no lease acquisition and no provider/full-history work. The ordinary due gate is based on `lastAttemptAt`, so an admitted failure waits until the next four-hour opportunity rather than hot-looping.
 
-- `schemaVersion`;
-- `lastAttemptAt` when a due scheduled invocation was admitted;
-- `lastCompletedAt` after a successful admitted invocation;
-- `lastOutcome` as `completed` or `failed`.
+When a previous run proved the artwork plan fully caught up, DAB8 stores the source listening-manifest fingerprint. At a later due wake it may read only that private manifest and, if the fingerprint is unchanged, record an `idle_unchanged` maintenance checkpoint without acquiring the provider lease, reading full listening history, or calling Spotify. A changed fingerprint falls through to normal provider admission.
 
-Unknown future fields are preserved. Malformed JSON, an unsupported schema, invalid timestamps or an unknown outcome fail closed before production work.
+## Provider admission and rolling budget
 
-The first local due check is deliberately cheap and does not acquire the provider lease when the run is fresh. A due candidate configures the existing Worker/UsageTracker environment and then acquires the DAB7 persisted cross-environment lease before consuming the daily attempt. Under that lease DAB8 rereads the local marker and rechecks due state. This prevents two overlapping local wake-ups from both admitting the same daily run.
+A due provider candidate configures the existing Worker/UsageTracker environment and acquires the DAB7 persisted cross-environment provider lease. Under that lease DAB8 rereads local schedule state and rechecks due status, preventing overlapping local wakes from both admitting the same opportunity.
 
-A busy DAB7 lease returns a safe `deferred` result and does not advance `lastAttemptAt`, because no artwork maintenance run was actually admitted. The host scheduler may try again on a later wake-up. Once the lease is held and the run is admitted, DAB8 writes `lastAttemptAt` before private listening reads or Spotify work. A failure after admission therefore consumes that daily opportunity and prevents rapid repeated provider probing.
+A busy DAB7 lease returns a safe `deferred` result and does not advance `lastAttemptAt`. Before provider work, DAB8 calculates reservations strictly inside the preceding rolling 24-hour window. At most 30 Spotify track lookups may be reserved in that window. If no budget remains, the run defers without provider work.
 
-The existing album production runner normally acquires the DAB7 lease itself. When called from DAB8, it executes inside the already-held DAB8 lease through an injected no-op nested lease wrapper, so there is one lease owner for the whole scheduled admission and provider operation rather than a self-deadlock.
+For an admitted run, DAB8 reserves up to the smaller of the five-group scheduled cap and remaining rolling budget, then durably writes `lastAttemptAt` before full private-history/provider work. After a successful child run, the reservation is reconciled down to the actual number of attempted Spotify track lookups. A failed admitted run keeps its conservative reservation and records failure.
 
-The due gate is based on `lastAttemptAt`, not only successful completion. A failed admitted invocation therefore waits for the next daily opportunity. The DAB6 persisted Spotify circuit remains authoritative for provider cooldowns.
+The existing album production runner normally acquires DAB7 itself. DAB8 invokes it inside the already-held scheduler lease and bypasses only the redundant nested acquisition, so there is one lease owner across admission and provider work.
 
-If the initial local attempt marker cannot be persisted after lease acquisition, private/provider work does not start. If final outcome-state persistence fails after provider work, the run fails closed and reports that state-write failure rather than silently claiming a clean schedule checkpoint.
+## Terminal album outcomes
+
+Permanent exact-track outcomes are durably checkpointed in `listening/spotify-metadata.json`:
+
+- `exact_track_not_found`;
+- `exact_track_has_no_usable_artwork`.
+
+A suppression is bound to the stable album-group key and exact representative Spotify Track ID. Valid suppressions are excluded from later provider plans, preventing the four-hour scheduler from repeatedly spending calls on the same terminal result. Unknown metadata fields are preserved. A later successful exact representative record clears the matching suppression.
+
+Transient/rate/quota/provider failures are not converted into terminal suppressions. They continue through the existing DAB6 Spotify circuit and fail-safe behavior.
 
 ## Existing safety layers retained
 
-After the DAB8 due, authorization and lease-admission gates pass, the existing `scripts/spotify-album-artwork-production.js` path remains authoritative. DAB8 does not reimplement album grouping or provider behavior.
-
-The scheduled run therefore retains:
+The lower-level album production runner remains authoritative for actual artwork work. DAB8 retains:
 
 - v114 ordering by latest valid listen, listen count, distinct trusted Spotify Track IDs and stable group key;
-- removal of already reusable album groups before the provider cap;
+- removal of reusable and terminally suppressed groups before provider selection;
 - conservative album grouping and ambiguity quarantine;
 - exact trusted Spotify Track ID provider seeds only;
-- at most 25 album groups per scheduled run;
-- at least 1,000 ms between album-group track requests;
-- UsageTracker accounting before provider requests;
+- UsageTracker accounting;
 - the DAB6 shared persisted Spotify circuit;
-- the DAB7 shared cross-environment provider lease;
+- the DAB7 cross-environment provider lease;
 - conditional `listening/spotify-metadata.json` writes and ETag confirmation;
 - current-band ownership checks before provider work and persistence;
+- provider ownership boundaries and unknown-field preservation;
 - immutable source listening observations;
 - zero MusicBrainz and ListenBrainz artwork calls;
 - aggregate-only command summaries.
 
 ## Host wake-up model
 
-DAB8 deliberately separates repository behavior from host scheduling. A trusted machine can invoke the command on a regular wake-up cadence, for example hourly or daily, and the enforced 24-hour minimum due gate prevents more than one admitted scheduled attempt per day on that host. DAB7 additionally prevents overlap with GitHub provider workflows and other trusted-local provider maintenance.
+DAB8 separates repository behavior from host scheduling. A trusted machine may wake the command regularly; the command itself enforces the four-hour minimum and rolling 30-lookups-per-24-hours ceiling.
 
-The host scheduler must provide the required private environment without putting secrets into source control or command-line arguments. DAB8 does not include a credential file, scheduler installation script or OS-specific service definition because those are machine-specific production configuration.
+The repository does not include scheduler installation/activation, a credential file, or an OS-specific service definition. Host configuration is a separate production action.
 
 ## Validation
 
-Automated tests use injected synthetic runners, schedule state and lease behavior only. They verify:
+Automated QA uses synthetic fixtures only. Coverage verifies the four-hour/five-group/five-second envelope, rolling 24-hour reservation budget, fixed state path, fail-closed state validation, zero-work fresh wakes, caught-up manifest fast path, busy-lease deferral, due recheck under lease, reservation-before-provider-work, reconciliation to actual lookups, authorization bridging, and preservation of future local fields.
 
-- the 24-hour default, enforced minimum and exact due boundary;
-- the fixed 25-group scheduled ceiling even though the manual runner can support more;
-- at-least-1,000-ms pacing;
-- one fixed private schedule-state path;
-- malformed schedule state fail-closed behavior;
-- zero production work and zero lease acquisition while fresh;
-- dedicated scheduled authorization before runner invocation;
-- busy-lease deferral without consuming the daily attempt;
-- due-state recheck after lease acquisition;
-- one lease owner around admission plus the existing production runner;
-- correct bridging into the existing production execution/write gates;
-- unknown local state-field preservation;
-- failure checkpointing that prevents hot-loop retries.
+Album-runner tests cover conservative grouping, exact-track-only provider seeds, existing-artwork reuse, ownership changes, conditional persistence, and production authorization. Terminal suppression checkpointing is part of the same metadata path and must remain covered by focused synthetic tests.
 
-No automated DAB8 test reads private production listening data, calls Spotify, writes production R2/Worker data, installs a scheduler, deploys or runs a production workflow.
+No automated DAB8 test reads production listening data, calls live Spotify, writes production R2/Worker data, installs a scheduler, deploys, or runs a production workflow.
 
 ## Version
 
-DAB8 adds Node/trusted-local operational scheduling around the existing v114 album-maintenance path. It does not change the browser PWA shell or service worker. `APP_VERSION`, `CACHE_NAME_LITERAL` and deterministic build-state facts therefore remain synchronized at v115.
+DAB8 changes trusted-local Node operational plumbing rather than the browser PWA shell. `APP_VERSION`, `CACHE_NAME_LITERAL` and deterministic build-state facts remain synchronized at **v115**.
