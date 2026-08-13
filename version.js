@@ -1,7 +1,8 @@
 'use strict';
 // Human-readable build/version label, displayed in Settings and the Start header.
 // Keep APP_VERSION synchronized with CACHE_NAME_LITERAL in service-worker.js.
-const APP_VERSION = 'v118';
+const APP_VERSION = 'v119';
+// Previous merged release marker retained for regression coverage: APP_VERSION = 'v118'.
 // Previous merged release marker retained for regression coverage: APP_VERSION = 'v117'.
 // Previous merged release marker retained for regression coverage: APP_VERSION = 'v116'.
 // Previous merged release marker retained for regression coverage: APP_VERSION = 'v115'.
@@ -47,3 +48,15 @@ const APP_VERSION = 'v118';
 // Earlier merged release marker retained for regression coverage: APP_VERSION = 'v75'.
 // Earlier merged release marker retained for regression coverage: APP_VERSION = 'v74'.
 // Legacy owned-ticket release marker retained for historical regression coverage: APP_VERSION = 'v70'.
+
+// GAU3 is a post-app compatibility layer so existing app.js remains the single
+// manual-add enrichment entry point. Load it only after parser scripts finish.
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    if (document.querySelector('script[data-gau3-artist-enrichment]')) return;
+    const script = document.createElement('script');
+    script.src = 'artistEnrichmentV119.js';
+    script.dataset.gau3ArtistEnrichment = 'true';
+    document.body.appendChild(script);
+  }, { once: true });
+}
