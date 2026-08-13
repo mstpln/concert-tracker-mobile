@@ -135,7 +135,7 @@ async function runAlbumArtwork({
 
   if (providerGroups.length) {
     await assertBandsCurrent();
-    token = await trackProviderCall(usage, getToken);
+    token = await trackProviderCall(usage, getToken, { allowSuccess: false });
   }
 
   for (let index = 0; index < providerGroups.length; index += 1) {
