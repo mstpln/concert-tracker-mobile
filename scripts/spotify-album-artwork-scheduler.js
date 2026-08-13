@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const albumRunner = require('./spotify-album-artwork-production');
 const productionSafety = require('./spotify-artwork-backfill-production');
+const schedulerLease = require('./lib/schedulerLease');
 
 const SCHEDULE_SCHEMA_VERSION = 1;
 const DEFAULT_INTERVAL_HOURS = 24;
@@ -13,6 +14,7 @@ const DEFAULT_DELAY_MS = albumRunner.DEFAULT_DELAY_MS;
 const DEFAULT_MARKET = albumRunner.DEFAULT_MARKET;
 const DEFAULT_STATE_PATH = '.livevault-maintenance/spotify-album-artwork-schedule.json';
 const SCHEDULE_AUTHORIZATION = 'I_AUTHORIZE_SCHEDULED_PRIVATE_LISTENING_READS_LIVE_SPOTIFY_CALLS_PROVIDER_USAGE_AND_METADATA_WRITES';
+const LEASE_OWNER = 'spotify-album-artwork-scheduler';
 
 function safeString(value) {
   return String(value || '').trim();
@@ -125,7 +127,12 @@ async function readState(statePath, { readFile = fs.readFile } = {}) {
   }
 }
 
-async function writeState(statePath, value, { mkdir = fs.mkdir, writeFile = fs.writeFile, rename = fs.rename } = {}) {
+async function writeState(statePath, value, {
+  mkdir = fs.mkdir,
+  writeFile = fs.writeFile,
+  rename = fs.rename,
+  unlink = fs.unlink,
+} = {}) {
   const normalized = validateState(value);
   await mkdir(path.dirname(statePath), { recursive: true });
   const temporaryPath = `${statePath}.tmp-${process.pid}`;
@@ -134,7 +141,7 @@ async function writeState(statePath, value, { mkdir = fs.mkdir, writeFile = fs.w
     await writeFile(temporaryPath, payload, { encoding: 'utf8', mode: 0o600 });
     await rename(temporaryPath, statePath);
   } catch (error) {
-    try { await fs.unlink(temporaryPath); } catch (_) {}
+    try { await unlink(temporaryPath); } catch (_) {}
     throw error;
   }
   return normalized;
@@ -178,6 +185,18 @@ function productionEnv(env) {
   };
 }
 
+function configureLeaseEnvironment(env) {
+  const endpoint = productionSafety.normalizeEndpoint(productionSafety.requiredEnv(env, 'CF_WORKER_ENDPOINT'));
+  const workerToken = productionSafety.requiredEnv(env, 'CF_WORKER_BROWSER_TOKEN');
+  productionSafety.requiredEnv(env, 'SPOTIFY_CLIENT_ID');
+  productionSafety.requiredEnv(env, 'SPOTIFY_CLIENT_SECRET');
+  productionSafety.configureUsageEnvironment(env, { endpoint, workerToken });
+}
+
+function notDueSummary(decision) {
+  return { mode: 'spotify-album-artwork-scheduler', status: 'not_due', nextDueAt: decision.nextDueAt };
+}
+
 async function runScheduledCli({
   argv = process.argv.slice(2),
   env = process.env,
@@ -186,6 +205,7 @@ async function runScheduledCli({
   readStateImpl = readState,
   writeStateImpl = writeState,
   runAlbumArtworkCliImpl = albumRunner.runProductionCli,
+  withLeaseImpl = schedulerLease.withSchedulerLease,
 } = {}) {
   const options = parseArgs(argv);
   if (options.help) {
@@ -197,46 +217,71 @@ async function runScheduledCli({
   const state = await readStateImpl(statePath);
   const decision = scheduleDecision(state, { now: now(), intervalHours: options.intervalHours });
   if (!decision.due) {
-    const summary = { mode: 'spotify-album-artwork-scheduler', status: 'not_due', nextDueAt: decision.nextDueAt };
+    const summary = notDueSummary(decision);
     log(JSON.stringify(summary, null, 2));
     return summary;
   }
 
-  const attemptAt = decision.now;
-  await writeStateImpl(statePath, {
-    ...state,
-    schemaVersion: SCHEDULE_SCHEMA_VERSION,
-    lastAttemptAt: attemptAt,
-  });
-
+  configureLeaseEnvironment(env);
   try {
-    const result = await runAlbumArtworkCliImpl({
-      argv: [
-        '--execute',
-        '--write',
-        '--cap', String(options.cap),
-        '--delay-ms', String(options.delayMs),
-        '--market', options.market,
-      ],
-      env: productionEnv(env),
-      log,
+    return await withLeaseImpl({ owner: LEASE_OWNER }, async () => {
+      const currentState = await readStateImpl(statePath);
+      const currentDecision = scheduleDecision(currentState, { now: now(), intervalHours: options.intervalHours });
+      if (!currentDecision.due) {
+        const summary = notDueSummary(currentDecision);
+        log(JSON.stringify(summary, null, 2));
+        return summary;
+      }
+
+      const attemptAt = currentDecision.now;
+      await writeStateImpl(statePath, {
+        ...currentState,
+        schemaVersion: SCHEDULE_SCHEMA_VERSION,
+        lastAttemptAt: attemptAt,
+      });
+
+      try {
+        const result = await runAlbumArtworkCliImpl({
+          argv: [
+            '--execute',
+            '--write',
+            '--cap', String(options.cap),
+            '--delay-ms', String(options.delayMs),
+            '--market', options.market,
+          ],
+          env: productionEnv(env),
+          log,
+          withLeaseImpl: async (_leaseOptions, operation) => operation(),
+        });
+        const completedAt = parseIso(now());
+        await writeStateImpl(statePath, {
+          ...currentState,
+          schemaVersion: SCHEDULE_SCHEMA_VERSION,
+          lastAttemptAt: attemptAt,
+          lastCompletedAt: completedAt,
+          lastOutcome: 'completed',
+        });
+        return { mode: 'spotify-album-artwork-scheduler', status: 'completed', completedAt, result };
+      } catch (error) {
+        try {
+          await writeStateImpl(statePath, {
+            ...currentState,
+            schemaVersion: SCHEDULE_SCHEMA_VERSION,
+            lastAttemptAt: attemptAt,
+            lastOutcome: 'failed',
+          });
+        } catch (stateError) {
+          error.scheduleStateWriteError = stateError;
+        }
+        throw error;
+      }
     });
-    const completedAt = parseIso(now());
-    await writeStateImpl(statePath, {
-      ...state,
-      schemaVersion: SCHEDULE_SCHEMA_VERSION,
-      lastAttemptAt: attemptAt,
-      lastCompletedAt: completedAt,
-      lastOutcome: 'completed',
-    });
-    return { mode: 'spotify-album-artwork-scheduler', status: 'completed', completedAt, result };
   } catch (error) {
-    await writeStateImpl(statePath, {
-      ...state,
-      schemaVersion: SCHEDULE_SCHEMA_VERSION,
-      lastAttemptAt: attemptAt,
-      lastOutcome: 'failed',
-    });
+    if (error?.code === 'SCHEDULER_LEASE_BUSY') {
+      const summary = { mode: 'spotify-album-artwork-scheduler', status: 'deferred', reason: 'scheduler_lease_busy' };
+      log(JSON.stringify(summary, null, 2));
+      return summary;
+    }
     throw error;
   }
 }
@@ -257,6 +302,7 @@ module.exports = {
   DEFAULT_MARKET,
   DEFAULT_STATE_PATH,
   SCHEDULE_AUTHORIZATION,
+  LEASE_OWNER,
   parseArgs,
   usageText,
   assertPrivateStatePath,
@@ -268,5 +314,7 @@ module.exports = {
   scheduleDecision,
   assertScheduledAuthorization,
   productionEnv,
+  configureLeaseEnvironment,
+  notDueSummary,
   runScheduledCli,
 };
