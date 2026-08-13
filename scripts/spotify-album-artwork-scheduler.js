@@ -19,6 +19,7 @@ const DEFAULT_MARKET = albumRunner.DEFAULT_MARKET;
 const DEFAULT_STATE_PATH = '.livevault-maintenance/spotify-album-artwork-schedule.json';
 const SCHEDULE_AUTHORIZATION = 'I_AUTHORIZE_SCHEDULED_PRIVATE_LISTENING_READS_LIVE_SPOTIFY_CALLS_PROVIDER_USAGE_AND_METADATA_WRITES';
 const LEASE_OWNER = 'spotify-album-artwork-scheduler';
+const MANIFEST_FINGERPRINT = /^sha256:[a-f0-9]{64}$/;
 
 function safeString(value) {
   return String(value || '').trim();
@@ -103,6 +104,11 @@ function parseIso(value) {
   return new Date(time).toISOString();
 }
 
+function manifestFingerprint(value) {
+  const fingerprint = safeString(value);
+  return MANIFEST_FINGERPRINT.test(fingerprint) ? fingerprint : null;
+}
+
 function normalizeReservation(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Scheduled artwork provider reservation is malformed.');
@@ -137,7 +143,7 @@ function validateState(value) {
   if (value.lastPlanHadUnresolved != null && typeof value.lastPlanHadUnresolved !== 'boolean') {
     throw new Error('Scheduled artwork state has invalid lastPlanHadUnresolved.');
   }
-  if (value.lastManifestFingerprint != null && !safeString(value.lastManifestFingerprint)) {
+  if (value.lastManifestFingerprint != null && !manifestFingerprint(value.lastManifestFingerprint)) {
     throw new Error('Scheduled artwork state has invalid lastManifestFingerprint.');
   }
   if (value.providerReservations != null) {
@@ -203,8 +209,11 @@ function activeReservations(state, nowIso) {
   const normalized = validateState(state);
   const nowTime = Date.parse(parseIso(nowIso));
   if (!Number.isFinite(nowTime)) throw new Error('Scheduled artwork clock is invalid.');
+  if ((normalized.providerReservations || []).some((item) => Date.parse(item.at) > nowTime)) {
+    throw new Error('Scheduled artwork provider reservation is in the future; refusing to discard quota state.');
+  }
   const cutoff = nowTime - ROLLING_WINDOW_MS;
-  return (normalized.providerReservations || []).filter((item) => Date.parse(item.at) > cutoff && Date.parse(item.at) <= nowTime);
+  return (normalized.providerReservations || []).filter((item) => Date.parse(item.at) > cutoff);
 }
 
 function remainingTrackBudget(state, nowIso) {
@@ -214,7 +223,7 @@ function remainingTrackBudget(state, nowIso) {
 }
 
 function maintenanceEligible(state) {
-  return state?.lastPlanHadUnresolved === false && Boolean(safeString(state?.lastManifestFingerprint));
+  return state?.lastPlanHadUnresolved === false && Boolean(manifestFingerprint(state?.lastManifestFingerprint));
 }
 
 function assertScheduledAuthorization(options, env) {
@@ -303,6 +312,22 @@ function replaceReservation(reservations, attemptAt, actualLookups) {
     }
   }
   return adjusted;
+}
+
+function validateCompletedRun(result, runCap) {
+  const actualLookups = result?.providerAlbumGroupsAttempted;
+  const remaining = result?.providerAlbumGroupsRemaining;
+  if (!Number.isSafeInteger(actualLookups) || actualLookups < 0 || actualLookups > runCap) {
+    throw new Error('Scheduled artwork child returned an invalid attempted-track count; retaining the conservative reservation.');
+  }
+  if (!Number.isSafeInteger(remaining) || remaining < 0) {
+    throw new Error('Scheduled artwork child returned an invalid remaining-group count; retaining the conservative reservation.');
+  }
+  const sourceManifestFingerprint = manifestFingerprint(result?.sourceManifestFingerprint);
+  if (remaining === 0 && !sourceManifestFingerprint) {
+    throw new Error('Scheduled artwork child reached maintenance mode without a valid source-manifest fingerprint.');
+  }
+  return { actualLookups, remaining, sourceManifestFingerprint };
 }
 
 async function runScheduledCli({
@@ -404,18 +429,18 @@ async function runScheduledCli({
           withLeaseImpl: async (_leaseOptions, operation) => operation(),
         });
         const completedAt = parseIso(now());
-        const actualLookups = Math.max(0, Math.min(runCap, Number(result?.providerAlbumGroupsAttempted) || 0));
-        const remaining = Number(result?.providerAlbumGroupsRemaining);
-        const caughtUp = Number.isSafeInteger(remaining) && remaining === 0;
+        if (!completedAt) throw new Error('Scheduled artwork completion clock is invalid.');
+        const completed = validateCompletedRun(result, runCap);
+        const caughtUp = completed.remaining === 0;
         const finalState = {
           ...admittedState,
           lastCompletedAt: completedAt,
           lastOutcome: 'completed',
           lastPlanHadUnresolved: !caughtUp,
-          providerReservations: replaceReservation(admittedReservations, attemptAt, actualLookups),
+          providerReservations: replaceReservation(admittedReservations, attemptAt, completed.actualLookups),
         };
-        if (caughtUp && safeString(result?.sourceManifestFingerprint)) {
-          finalState.lastManifestFingerprint = safeString(result.sourceManifestFingerprint);
+        if (caughtUp) {
+          finalState.lastManifestFingerprint = completed.sourceManifestFingerprint;
         }
         await writeStateImpl(statePath, finalState);
         return { mode: 'spotify-album-artwork-scheduler', status: 'completed', completedAt, result };
@@ -461,10 +486,12 @@ module.exports = {
   DEFAULT_STATE_PATH,
   SCHEDULE_AUTHORIZATION,
   LEASE_OWNER,
+  MANIFEST_FINGERPRINT,
   parseArgs,
   usageText,
   assertPrivateStatePath,
   parseIso,
+  manifestFingerprint,
   normalizeReservation,
   validateState,
   readState,
@@ -482,5 +509,6 @@ module.exports = {
   notDueSummary,
   recordIdleMaintenance,
   replaceReservation,
+  validateCompletedRun,
   runScheduledCli,
 };

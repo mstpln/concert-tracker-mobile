@@ -53,3 +53,21 @@ test('a suppression with a different representative track is ignored', () => {
   assert.equal(replanned.provider.length, 1);
   assert.equal(replanned.suppressed.length, 0);
 });
+
+test('a successful changed representative clears the obsolete group suppression', () => {
+  const expandedEvents = [
+    { ...events[0], stableListenId: 'listen-b', spotifyTrackId: 'ATrack' },
+    events[0],
+  ];
+  const initial = core.planAlbumArtwork({ events, bands, metadata: metadata() });
+  const suppressed = core.mergeTerminalSuppression(metadata(), initial.provider[0], 'exact_track_not_found', '2026-08-13T12:00:00.000Z');
+  const changed = core.planAlbumArtwork({ events: expandedEvents, bands, metadata: suppressed });
+  assert.equal(changed.provider[0].representativeTrackId, 'ATrack');
+  const resolved = core.mergeRepresentativeRecord(suppressed, changed.provider[0], {
+    spotifyTrackId: 'ATrack',
+    spotifyAlbumId: 'AlbumA',
+    spotifyAlbumUrl: 'https://open.spotify.com/album/AlbumA',
+    artworkUrl: 'https://images.example.test/album-a.jpg',
+  });
+  assert.equal(resolved.albumArtworkSuppressions[changed.provider[0].key], undefined);
+});
