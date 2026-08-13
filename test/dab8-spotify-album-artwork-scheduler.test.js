@@ -28,7 +28,8 @@ test('DAB8 defaults to one bounded daily trusted-local maintenance opportunity',
 test('DAB8 rejects unsafe cap, pacing, interval and state paths', () => {
   assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--cap', '101']), /between 1 and 100/);
   assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--delay-ms', '999']), /at least 1000/);
-  assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--interval-hours', '0']), /positive whole number/);
+  assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--interval-hours', '23']), /at least 24 hours/);
+  assert.throws(() => scheduler.scheduleDecision({ schemaVersion: 1 }, { now: '2026-08-13T10:00:00.000Z', intervalHours: 1 }), /at least 24 hours/);
   assert.throws(() => scheduler.assertPrivateStatePath('schedule.json'), /\.livevault-maintenance/);
 });
 
