@@ -74,6 +74,7 @@
     hardenTree(documentRef);
     checkpointManualBandAdds();
     documentRef.addEventListener('click', (event) => {
+      if (event.target?.closest?.('#add-band-submit')) checkpointManualBandAdds();
       const anchor = event.target?.closest?.('a');
       if (!anchor) return;
       const href = anchor.getAttribute('href');
