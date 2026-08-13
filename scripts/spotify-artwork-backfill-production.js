@@ -53,10 +53,7 @@ function configureUsageEnvironment(env, { endpoint, workerToken }) {
 }
 
 async function persistCircuitSignal(usage, signal) {
-  if (!signal) return;
-  if (typeof usage.reportSpotifyCircuitSignal === 'function') usage.reportSpotifyCircuitSignal(signal);
-  else spotifyCircuit.reportSpotifyCircuitSignal(usage, signal);
-  await usage.save();
+  return spotifyCircuit.applyAndPersistSpotifyCircuitSignal(usage, signal);
 }
 
 async function trackedSpotifyCall(usage, operation) {
