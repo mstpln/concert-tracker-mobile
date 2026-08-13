@@ -47,6 +47,7 @@ function usageText() {
     'Historical artwork is grouped conservatively by trusted local band identity + normalized release title.',
     'Only one exact trusted Spotify track ID is used as the provider seed for each unresolved safe album group.',
     'Only that exact representative track receives a new persisted Spotify metadata record.',
+    'Terminal exact-track no-match/no-artwork outcomes are checkpointed so later scheduled runs do not repeat them.',
     'Sibling listens reuse the album artwork in memory; source listening observations are never rewritten.',
     'MusicBrainz and ListenBrainz are never used by this artwork runner.',
     '',
@@ -112,6 +113,7 @@ async function runAlbumArtwork({
   let providerGroupsAttempted = 0;
   let providerGroupsResolved = 0;
   let providerGroupsNoArtwork = 0;
+  let providerGroupsSuppressed = 0;
   let representativeRecordsAdded = 0;
   let token = null;
   const usage = await usageFactory();
@@ -133,6 +135,15 @@ async function runAlbumArtwork({
     if (!etag && !missing) throw new Error('Album artwork could not confirm the metadata ETag after persistence.');
   }
 
+  async function checkpointSuppression(group, reason) {
+    const next = albumCore.mergeTerminalSuppression(metadata, group, reason, now());
+    if (!next) throw new Error('Album-oriented Spotify artwork refused an unsafe terminal suppression update.');
+    metadata = next;
+    providerGroupsSuppressed += 1;
+    await assertBandsCurrent();
+    await persist();
+  }
+
   if (providerGroups.length) {
     await assertBandsCurrent();
     token = await trackProviderCall(usage, getToken, { allowSuccess: false });
@@ -146,7 +157,10 @@ async function runAlbumArtwork({
     const result = await trackProviderCall(usage, () => fetchTrack({ id: requestedId, token, market }));
     providerGroupsAttempted += 1;
 
-    if (result.kind === 'not_found') continue;
+    if (result.kind === 'not_found') {
+      await checkpointSuppression(group, 'exact_track_not_found');
+      continue;
+    }
     if (result.kind !== 'ok') {
       throw new Error(`Album-oriented Spotify artwork stopped safely: ${legacyRunner.stopReasonForResult(result)}.`);
     }
@@ -154,6 +168,7 @@ async function runAlbumArtwork({
     const record = exactAlbumRecord(requestedId, result.track, now());
     if (!record) {
       providerGroupsNoArtwork += 1;
+      await checkpointSuppression(group, 'exact_track_has_no_usable_artwork');
       continue;
     }
     if (group.knownAlbumId && group.knownAlbumId !== record.spotifyAlbumId) {
@@ -171,6 +186,10 @@ async function runAlbumArtwork({
   }
 
   await usage.save();
+  const finalPlan = albumCore.planAlbumArtwork({ events: source.events, bands, metadata });
+  const sourceManifestFingerprint = source.manifest
+    ? `sha256:${sourceReader.sha256Hex(JSON.stringify(source.manifest))}`
+    : null;
   return {
     mode: 'spotify-album-artwork',
     sourceEvents: Number(source?.counts?.totalEvents) || source.events.length,
@@ -182,6 +201,9 @@ async function runAlbumArtwork({
     providerAlbumGroupsAttempted: providerGroupsAttempted,
     providerAlbumGroupsResolved: providerGroupsResolved,
     providerGroupsNoArtwork,
+    providerGroupsSuppressed,
+    providerAlbumGroupsRemaining: finalPlan.summary.providerAlbumGroups,
+    sourceManifestFingerprint,
     representativeRecordsAdded,
     musicbrainzCalls: 0,
     listenbrainzCalls: 0,
@@ -202,7 +224,7 @@ async function runProductionCli({
     return { help: true };
   }
   productionSafety.assertProductionAuthorization(options, env);
-  if (!options.write) throw new Error('Album-oriented artwork execution requires --write so each resolved representative record is durably checkpointed before continuing.');
+  if (!options.write) throw new Error('Album-oriented artwork execution requires --write so each resolved or terminal album group is durably checkpointed before continuing.');
 
   const endpoint = productionSafety.normalizeEndpoint(productionSafety.requiredEnv(env, 'CF_WORKER_ENDPOINT'));
   const workerToken = productionSafety.requiredEnv(env, 'CF_WORKER_BROWSER_TOKEN');
