@@ -10,7 +10,7 @@ The execution boundary remains trusted local. Private listening objects require 
 
 The v114 album-artwork priority is intentionally cumulative rather than a bulk-backfill objective. DAB8 turns that priority into one bounded daily maintenance opportunity while preserving the existing provider and private-data safety layers.
 
-A trusted local scheduler may wake the DAB8 command more frequently than once per day. The command itself keeps a private local due marker and performs production work only when at least 24 hours have elapsed since the previous attempted scheduled run.
+A trusted local scheduler may wake the DAB8 command more frequently than once per day. The command itself keeps a private local due marker and performs production work only when at least 24 hours have elapsed since the previous attempted scheduled run. The due interval may be lengthened, but cannot be configured below 24 hours.
 
 ## Scheduled command
 
@@ -22,7 +22,7 @@ node scripts/spotify-album-artwork-scheduler.js --execute-scheduled
 
 Defaults:
 
-- due interval: 24 hours;
+- due interval: 24 hours, also the enforced minimum;
 - Spotify album-group cap: 25;
 - Spotify track-request pacing: at least 1,000 ms;
 - Spotify market: `SE`;
@@ -89,7 +89,7 @@ The scheduled run therefore retains:
 
 ## Host wake-up model
 
-DAB8 deliberately separates repository behavior from host scheduling. A trusted machine can invoke the command on a regular wake-up cadence, for example hourly or daily, and the 24-hour due gate prevents more than one admitted scheduled attempt per interval.
+DAB8 deliberately separates repository behavior from host scheduling. A trusted machine can invoke the command on a regular wake-up cadence, for example hourly or daily, and the enforced 24-hour minimum due gate prevents more than one admitted scheduled attempt per day.
 
 The host scheduler must provide the required private environment without putting secrets into source control or command-line arguments. DAB8 does not include a credential file, scheduler installation script or OS-specific service definition because those are machine-specific production configuration.
 
@@ -97,7 +97,7 @@ The host scheduler must provide the required private environment without putting
 
 Automated tests use injected synthetic runners and state only. They verify:
 
-- the 24-hour default and exact due boundary;
+- the 24-hour default, enforced minimum and exact due boundary;
 - 25-group default cap and existing 100-group hard ceiling;
 - at-least-1,000-ms pacing;
 - private state-path confinement;
