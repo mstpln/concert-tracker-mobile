@@ -10,7 +10,7 @@ The execution boundary remains trusted local. Private listening objects require 
 
 The v114 album-artwork priority is intentionally cumulative rather than a bulk-backfill objective. DAB8 turns that priority into one bounded daily maintenance opportunity while preserving the existing provider and private-data safety layers.
 
-A trusted local scheduler may wake the DAB8 command more frequently than once per day. The command itself keeps a private local due marker and performs production work only when at least 24 hours have elapsed since the previous attempted scheduled run. The due interval may be lengthened, but cannot be configured below 24 hours.
+A trusted local scheduler may wake the DAB8 command more frequently than once per day. The command itself keeps a private local due marker and performs production work only when at least 24 hours have elapsed since the previous admitted scheduled run. The due interval may be lengthened, but cannot be configured below 24 hours.
 
 ## Scheduled command
 
@@ -49,7 +49,7 @@ The DAB8 wrapper translates the dedicated schedule authorization into the existi
 
 Merging DAB8 does not authorize setting the schedule confirmation, installing a host scheduler, performing a private production read, calling Spotify, writing provider usage, writing listening metadata or deploying anything. Those remain separate production actions.
 
-## Due-state contract
+## Due-state and admission contract
 
 The schedule marker is local-only and remains under the already ignored `.livevault-maintenance/` directory. It is never stored in GitHub, R2 or a public QA artifact.
 
@@ -62,13 +62,19 @@ Schema v1 contains:
 
 Unknown future fields are preserved. Malformed JSON, an unsupported schema, invalid timestamps or an unknown outcome fail closed before production work.
 
-The due gate is based on `lastAttemptAt`, not only successful completion. This prevents a host wake loop from repeatedly probing a failing provider or retrying a failed maintenance run every few minutes. A failed admitted invocation therefore waits for the next daily opportunity. The DAB6 persisted Spotify circuit remains authoritative for provider cooldowns, and the DAB7 persisted scheduler lease remains authoritative for cross-environment exclusion.
+The first local due check is deliberately cheap and does not acquire the provider lease when the run is fresh. A due candidate configures the existing Worker/UsageTracker environment and then acquires the DAB7 persisted cross-environment lease before consuming the daily attempt. Under that lease DAB8 rereads the local marker and rechecks due state. This prevents two overlapping local wake-ups from both admitting the same daily run.
 
-The local state is written before the existing production runner starts. If that local checkpoint cannot be persisted, provider work does not start.
+A busy DAB7 lease returns a safe `deferred` result and does not advance `lastAttemptAt`, because no artwork maintenance run was actually admitted. The host scheduler may try again on a later wake-up. Once the lease is held and the run is admitted, DAB8 writes `lastAttemptAt` before private listening reads or Spotify work. A failure after admission therefore consumes that daily opportunity and prevents rapid repeated provider probing.
+
+The existing album production runner normally acquires the DAB7 lease itself. When called from DAB8, it executes inside the already-held DAB8 lease through an injected no-op nested lease wrapper, so there is one lease owner for the whole scheduled admission and provider operation rather than a self-deadlock.
+
+The due gate is based on `lastAttemptAt`, not only successful completion. A failed admitted invocation therefore waits for the next daily opportunity. The DAB6 persisted Spotify circuit remains authoritative for provider cooldowns.
+
+If the initial local attempt marker cannot be persisted after lease acquisition, private/provider work does not start. If final outcome-state persistence fails after provider work, the run fails closed and reports that state-write failure rather than silently claiming a clean schedule checkpoint.
 
 ## Existing safety layers retained
 
-After the DAB8 due and authorization gates pass, the existing `scripts/spotify-album-artwork-production.js` path remains authoritative. DAB8 does not reimplement album grouping or provider behavior.
+After the DAB8 due, authorization and lease-admission gates pass, the existing `scripts/spotify-album-artwork-production.js` path remains authoritative. DAB8 does not reimplement album grouping or provider behavior.
 
 The scheduled run therefore retains:
 
@@ -89,21 +95,24 @@ The scheduled run therefore retains:
 
 ## Host wake-up model
 
-DAB8 deliberately separates repository behavior from host scheduling. A trusted machine can invoke the command on a regular wake-up cadence, for example hourly or daily, and the enforced 24-hour minimum due gate prevents more than one admitted scheduled attempt per day.
+DAB8 deliberately separates repository behavior from host scheduling. A trusted machine can invoke the command on a regular wake-up cadence, for example hourly or daily, and the enforced 24-hour minimum due gate prevents more than one admitted scheduled attempt per day on that host. DAB7 additionally prevents overlap with GitHub provider workflows and other trusted-local provider maintenance.
 
 The host scheduler must provide the required private environment without putting secrets into source control or command-line arguments. DAB8 does not include a credential file, scheduler installation script or OS-specific service definition because those are machine-specific production configuration.
 
 ## Validation
 
-Automated tests use injected synthetic runners and state only. They verify:
+Automated tests use injected synthetic runners, schedule state and lease behavior only. They verify:
 
 - the 24-hour default, enforced minimum and exact due boundary;
 - 25-group default cap and existing 100-group hard ceiling;
 - at-least-1,000-ms pacing;
 - private state-path confinement;
 - malformed schedule state fail-closed behavior;
-- zero production work while fresh;
+- zero production work and zero lease acquisition while fresh;
 - dedicated scheduled authorization before runner invocation;
+- busy-lease deferral without consuming the daily attempt;
+- due-state recheck after lease acquisition;
+- one lease owner around admission plus the existing production runner;
 - correct bridging into the existing production execution/write gates;
 - unknown local state-field preservation;
 - failure checkpointing that prevents hot-loop retries.
