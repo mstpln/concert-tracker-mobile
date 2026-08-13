@@ -271,7 +271,7 @@ async function spotifyRequest(url, usage, { fetchImpl = fetch, getToken = getApp
     await usage.recordSpotifyCall();
     const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
     if (res.status === 429) return spotify429Outcome(res);
-    if (!res.ok) return { kind: res.status === 403 ? 'unavailable' : 'error', status: res.status };
+    if (!res.ok) return { kind: res.status === 403 ? 'unavailable' : 'error', status: res.status, retryAfter: spotifyRetryAfter(res) };
     return { kind: 'ok', data: await res.json() };
   } catch (error) {
     if (error?.code === 'SPOTIFY_QUOTA_EXCEEDED') return { kind: 'quota_exceeded', status: 429, retryAfter: error.retryAfter || null };
