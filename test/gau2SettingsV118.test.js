@@ -41,6 +41,14 @@ test('ListenBrainz is healthy only after a recorded successful sync', () => {
   assert.equal(gau2.listenBrainzAutomationState({ lastSyncAt: '2026-08-13T12:00:00.000Z' }).kind, 'healthy');
 });
 
+test('artist automation uses the newest recorded artist run', () => {
+  const older = { finishedAt: '2026-08-12T12:00:00.000Z', status: 'ok' };
+  const newer = { finishedAt: '2026-08-13T12:00:00.000Z', status: 'error' };
+  assert.equal(gau2.latestRun(older, newer), newer);
+  assert.equal(gau2.latestRun(newer, older), newer);
+  assert.equal(gau2.latestRun(null, older), older);
+});
+
 test('approved schedules remain deterministic', () => {
   assert.equal(gau2.nextMwfUtc(new Date('2026-08-13T12:00:00Z')), '2026-08-14T01:00:00.000Z');
   assert.equal(gau2.nextFocusedWebUtc(new Date('2026-08-13T12:00:00Z')), '2026-08-15T02:00:00.000Z');
