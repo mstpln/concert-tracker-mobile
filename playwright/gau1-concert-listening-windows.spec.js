@@ -49,16 +49,13 @@ test('visible concert listening rows use GAU1 upcoming and recent-past windows',
     renderMyConcertsScreen();
   });
 
-  const upcomingCard = page.locator('.concert-prep-group[data-concert-id="qa-show-day"]').locator('xpath=ancestor::div[contains(@class,"row-card-mc")]');
-  const pastCard = page.locator('.past-concert-details-group[data-concert-id="qa-past-attended"]').locator('xpath=ancestor::div[contains(@class,"row-card-mc")]');
+  const upcomingCard = page.locator('#screen-myconcerts .concert-prep-group:not(.past-concert-details-group)[data-concert-id="qa-show-day"]').locator('xpath=ancestor::div[contains(@class,"row-card-mc")]');
+  const pastCard = page.locator('#screen-myconcerts .past-concert-details-group[data-concert-id="qa-past-attended"]').locator('xpath=ancestor::div[contains(@class,"row-card-mc")]');
   await expect(upcomingCard.locator('.concert-listening-row')).toContainText('2 min · 2 listens');
   await expect(pastCard.locator('.concert-listening-row')).toContainText('2 min · 2 listens');
   await expect(upcomingCard.locator('.concert-listening-row')).toBeVisible();
   await expect(pastCard.locator('.concert-listening-row')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-  expect(unexpectedRequests).toEqual([]);
-  expect(pageErrors).toEqual([]);
-  expect(consoleErrors).toEqual([]);
 
   await upcomingCard.locator('.concert-listening-row').screenshot({
     path: testInfo.outputPath(`${testInfo.project.name}-gau1-upcoming-listening-row.png`),
@@ -66,4 +63,16 @@ test('visible concert listening rows use GAU1 upcoming and recent-past windows',
   await pastCard.locator('.concert-listening-row').screenshot({
     path: testInfo.outputPath(`${testInfo.project.name}-gau1-past-listening-row.png`),
   });
+
+  await page.evaluate(() => {
+    window.__LIVEVAULT_QA_NOW__ = '2027-07-17T12:00:00.000Z';
+    tickCountdownCard();
+  });
+  const transitionedCard = page.locator('#screen-myconcerts .past-concert-details-group[data-concert-id="qa-show-day"]').locator('xpath=ancestor::div[contains(@class,"row-card-mc")]');
+  await expect(upcomingCard).toHaveCount(0);
+  await expect(transitionedCard).toBeVisible();
+  await expect(transitionedCard.locator('.concert-listening-row')).toContainText('2 min · 2 listens');
+  expect(unexpectedRequests).toEqual([]);
+  expect(pageErrors).toEqual([]);
+  expect(consoleErrors).toEqual([]);
 });

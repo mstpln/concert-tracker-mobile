@@ -216,9 +216,11 @@
     if (!concertAt) return null;
     const start = shiftUtcMonths(concertAt, -3);
     const fixedEndDate = shiftUtcMonths(concertAt, 3);
+    const fixedEndExclusive = new Date(fixedEndDate.getTime());
+    fixedEndExclusive.setUTCDate(fixedEndExclusive.getUTCDate() + 1);
     return {
       startMs: start.getTime(),
-      endMs: Math.min(nowAt.getTime(), fixedEndDate.getTime()) + 1,
+      endMs: Math.min(nowAt.getTime() + 1, fixedEndExclusive.getTime()),
     };
   }
 

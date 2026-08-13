@@ -71,8 +71,8 @@ test('past window includes the exact plus-three-month boundary and then freezes'
   const atBoundary = corrections.concertListeningWindow(concert, true, new Date('2026-04-30T12:00:00.000Z'));
   const longAfter = corrections.concertListeningWindow(concert, true, new Date('2026-10-01T12:00:00.000Z'));
   assert.equal(new Date(atBoundary.startMs).toISOString(), '2025-10-31T00:00:00.000Z');
-  assert.equal(new Date(atBoundary.endMs).toISOString(), '2026-04-30T00:00:00.001Z');
-  assert.equal(new Date(longAfter.endMs).toISOString(), '2026-04-30T00:00:00.001Z');
+  assert.equal(new Date(atBoundary.endMs).toISOString(), '2026-04-30T12:00:00.001Z');
+  assert.equal(new Date(longAfter.endMs).toISOString(), '2026-05-01T00:00:00.000Z');
 });
 
 test('old past aggregate includes the frozen boundary and excludes later listening', () => {
@@ -84,11 +84,12 @@ test('old past aggregate includes the frozen boundary and excludes later listeni
     [
       { localBandId: 'a', listenedAt: '2025-10-31T00:00:00.000Z', listenedDurationMs: 60000 },
       { localBandId: 'a', listenedAt: '2026-04-30T00:00:00.000Z', listenedDurationMs: 60000 },
-      { localBandId: 'a', listenedAt: '2026-04-30T00:00:00.001Z', listenedDurationMs: 60000 },
+      { localBandId: 'a', listenedAt: '2026-04-30T23:59:59.999Z', listenedDurationMs: 60000 },
+      { localBandId: 'a', listenedAt: '2026-05-01T00:00:00.000Z', listenedDurationMs: 60000 },
       { localBandId: 'a', listenedAt: '2026-09-01T00:00:00.000Z', listenedDurationMs: 60000 },
     ],
   );
-  assert.deepEqual(aggregate, { durationMs: 120000, listenCount: 2 });
+  assert.deepEqual(aggregate, { durationMs: 180000, listenCount: 3 });
 });
 
 test('calendar-month shifts clamp month ends and preserve leap-day boundaries', () => {
@@ -97,7 +98,7 @@ test('calendar-month shifts clamp month ends and preserve leap-day boundaries', 
 
   const leapConcert = corrections.concertListeningWindow({ bandId: 'a', date: '2024-05-31' }, true, new Date('2025-01-01T00:00:00.000Z'));
   assert.equal(new Date(leapConcert.startMs).toISOString(), '2024-02-29T00:00:00.000Z');
-  assert.equal(new Date(leapConcert.endMs).toISOString(), '2024-08-31T00:00:00.001Z');
+  assert.equal(new Date(leapConcert.endMs).toISOString(), '2024-09-01T00:00:00.000Z');
 });
 
 test('upcoming-to-past transition switches calculation anchors without changing global windows', () => {
