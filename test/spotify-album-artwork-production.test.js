@@ -64,6 +64,7 @@ test('three sibling tracks require one exact Spotify track lookup and persist on
   let providerTrackCalls = 0;
   let writes = 0;
   let tokenCalls = 0;
+  const trackedCallOptions = [];
   const usage = fakeUsage();
 
   const result = await runner.runAlbumArtwork({
@@ -75,7 +76,10 @@ test('three sibling tracks require one exact Spotify track lookup and persist on
     writeMetadata: async ({ value }) => { remote = JSON.parse(JSON.stringify(value)); etag = `etag-${writes + 2}`; writes += 1; return { etag }; },
     getToken: async () => { tokenCalls += 1; return 'synthetic-token'; },
     fetchTrack: async ({ id }) => { providerTrackCalls += 1; return { kind: 'ok', track: spotifyTrack(id) }; },
-    trackProviderCall: async (_usage, operation) => operation(),
+    trackProviderCall: async (_usage, operation, options) => {
+      trackedCallOptions.push(options);
+      return operation();
+    },
     usageFactory: async () => usage,
     sleepImpl: async () => {},
     now: () => '2026-08-11T12:00:00.000Z',
@@ -84,6 +88,7 @@ test('three sibling tracks require one exact Spotify track lookup and persist on
   assert.equal(tokenCalls, 1);
   assert.equal(providerTrackCalls, 1);
   assert.equal(writes, 1);
+  assert.deepEqual(trackedCallOptions, [{ allowSuccess: false }, undefined]);
   assert.equal(result.providerAlbumGroupsResolved, 1);
   assert.equal(result.representativeRecordsAdded, 1);
   assert.equal(result.musicbrainzCalls, 0);

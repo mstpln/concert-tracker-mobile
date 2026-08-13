@@ -32,4 +32,4 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
           CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
-        run: node scripts/tavilyConcertRun.js
+        run: node scripts/run-with-scheduler-lease.js focused-tavily-concert -- node scripts/tavilyConcertRun.js

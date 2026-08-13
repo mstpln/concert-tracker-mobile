@@ -44,4 +44,4 @@ jobs:
           SETLISTFM_API_KEY: ${{ secrets.SETLISTFM_API_KEY }}
           MAX_CONCERTS: ${{ inputs.max_concerts }}
           FORCE_RECALCULATE: ${{ inputs.force_recalculate }}
-        run: node scripts/setlistInsightsBackfill.js
+        run: node scripts/run-with-scheduler-lease.js setlist-insights-backfill -- node scripts/setlistInsightsBackfill.js

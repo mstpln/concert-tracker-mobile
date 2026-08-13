@@ -34,4 +34,4 @@ jobs:
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
           CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
-        run: node -r ./scripts/preloadStructuredRun.js scripts/research.js
+        run: node scripts/run-with-scheduler-lease.js structured-research -- node -r ./scripts/preloadStructuredRun.js scripts/research.js

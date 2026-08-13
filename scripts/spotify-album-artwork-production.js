@@ -6,6 +6,7 @@ const legacyRunner = require('./spotify-artwork-backfill');
 const sourceReader = require('./spotify-artwork-backfill-source');
 const productionSafety = require('./spotify-artwork-backfill-production');
 const { UsageTracker } = require('./lib/usageTracker');
+const schedulerLease = require('./lib/schedulerLease');
 
 const DEFAULT_CAP = 25;
 const MAX_CAP = 100;
@@ -134,7 +135,7 @@ async function runAlbumArtwork({
 
   if (providerGroups.length) {
     await assertBandsCurrent();
-    token = await trackProviderCall(usage, getToken);
+    token = await trackProviderCall(usage, getToken, { allowSuccess: false });
   }
 
   for (let index = 0; index < providerGroups.length; index += 1) {
@@ -187,7 +188,14 @@ async function runAlbumArtwork({
   };
 }
 
-async function runProductionCli({ argv = process.argv.slice(2), env = process.env, fetchImpl = fetch, log = console.log } = {}) {
+async function runProductionCli({
+  argv = process.argv.slice(2),
+  env = process.env,
+  fetchImpl = fetch,
+  log = console.log,
+  runAlbumArtworkImpl = runAlbumArtwork,
+  withLeaseImpl = schedulerLease.withSchedulerLease,
+} = {}) {
   const options = parseArgs(argv);
   if (options.help) {
     log(usageText());
@@ -202,18 +210,20 @@ async function runProductionCli({ argv = process.argv.slice(2), env = process.en
   const clientSecret = productionSafety.requiredEnv(env, 'SPOTIFY_CLIENT_SECRET');
   productionSafety.configureUsageEnvironment(env, { endpoint, workerToken });
 
-  const summary = await runAlbumArtwork({
-    endpoint,
-    workerToken,
-    clientId,
-    clientSecret,
-    cap: options.cap,
-    delayMs: options.delayMs,
-    market: options.market,
-    fetchImpl,
+  return withLeaseImpl({ owner: 'spotify-album-artwork-maintenance' }, async () => {
+    const summary = await runAlbumArtworkImpl({
+      endpoint,
+      workerToken,
+      clientId,
+      clientSecret,
+      cap: options.cap,
+      delayMs: options.delayMs,
+      market: options.market,
+      fetchImpl,
+    });
+    log(JSON.stringify(summary, null, 2));
+    return summary;
   });
-  log(JSON.stringify(summary, null, 2));
-  return summary;
 }
 
 if (require.main === module) {
