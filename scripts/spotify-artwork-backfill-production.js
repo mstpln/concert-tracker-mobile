@@ -56,7 +56,7 @@ async function persistCircuitSignal(usage, signal) {
   return spotifyCircuit.applyAndPersistSpotifyCircuitSignal(usage, signal);
 }
 
-async function trackedSpotifyCall(usage, operation) {
+async function trackedSpotifyCall(usage, operation, { allowSuccess = true } = {}) {
   const circuitReason = typeof usage?.spotifyCircuitBlockReason === 'function'
     ? usage.spotifyCircuitBlockReason()
     : spotifyCircuit.spotifyCircuitBlockReason(usage?.state?.spotify);
@@ -81,7 +81,7 @@ async function trackedSpotifyCall(usage, operation) {
 
   try {
     const result = await operation();
-    const signal = spotifyCircuit.spotifyCircuitSignalFromResult(result, { successKinds: ['ok', 'not_found'] });
+    const signal = spotifyCircuit.spotifyCircuitSignalFromResult(result, { successKinds: ['ok', 'not_found'], allowSuccess });
     await persistCircuitSignal(usage, signal);
     return result;
   } catch (error) {
@@ -158,7 +158,9 @@ async function runProductionCli({
       }),
       loadCheckpoint: () => loadValidatedCheckpoint(checkpointPath),
       saveCheckpoint: (checkpoint) => runner.writeCheckpoint(checkpointPath, checkpoint),
-      getToken: () => trackedSpotifyCall(usage, () => runner.getSpotifyToken({ clientId, clientSecret, fetchImpl })),
+      // OAuth token success is not proof that Spotify Web API quota recovered, so it
+      // may arm a failure circuit but must not close an expired Web API circuit.
+      getToken: () => trackedSpotifyCall(usage, () => runner.getSpotifyToken({ clientId, clientSecret, fetchImpl }), { allowSuccess: false }),
       fetchTrack: ({ id, token, market }) => trackedSpotifyCall(usage, () => runner.fetchSpotifyTrack({ id, token, market, fetchImpl })),
     });
     return summary;
