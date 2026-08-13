@@ -92,6 +92,57 @@ test('mergeDocuments preserves unknown fields and keeps the newest exact record'
   assert.equal(merged.updatedAt, '2026-08-06T00:00:00.000Z');
 });
 
+test('browser metadata writes preserve remote provider suppressions and unknown root fields', async () => {
+  const suppression = {
+    representativeTrackId: 'TrackABC123',
+    reason: 'exact_track_not_found',
+    checkedAt: '2026-08-13T08:00:00.000Z',
+  };
+  const remoteDocument = {
+    ...metadataDocument({ Remote123: metadataRecord('Remote123') }, '2026-08-13T08:00:00.000Z'),
+    albumArtworkSuppressions: { 'album-group': suppression },
+    futureRootField: { keep: true },
+  };
+  const localDocument = metadataDocument({
+    Local456: metadataRecord('Local456', '2026-08-13T09:00:00.000Z'),
+  }, '2026-08-13T09:00:00.000Z');
+
+  const merged = metadata.mergeDocuments(localDocument, remoteDocument);
+  assert.deepEqual(merged.albumArtworkSuppressions, { 'album-group': suppression });
+  assert.deepEqual(merged.futureRootField, { keep: true });
+
+  let written;
+  global.remote = { endpoint: 'https://worker.invalid', token: 'synthetic-token' };
+  try {
+    await metadata.writeRemote(merged, 'metadata-etag', false, async (_input, options) => {
+      written = JSON.parse(options.body);
+      return { ok: true, status: 200, headers: { get: () => 'next-etag' } };
+    });
+  } finally {
+    delete global.remote;
+  }
+
+  assert.deepEqual(written.albumArtworkSuppressions, { 'album-group': suppression });
+  assert.deepEqual(written.futureRootField, { keep: true });
+});
+
+test('remote suppression removal wins over a stale browser-local checkpoint', () => {
+  const local = {
+    ...metadataDocument({ Local456: metadataRecord('Local456') }),
+    albumArtworkSuppressions: {
+      'album-group': {
+        representativeTrackId: 'TrackABC123',
+        reason: 'exact_track_not_found',
+        checkedAt: '2026-08-13T08:00:00.000Z',
+      },
+    },
+  };
+  const remoteWithoutSuppression = metadataDocument({ Remote123: metadataRecord('Remote123') });
+
+  const merged = metadata.mergeDocuments(local, remoteWithoutSuppression);
+  assert.equal(Object.hasOwn(merged, 'albumArtworkSuppressions'), false);
+});
+
 test('pending local-only metadata remains detectable after a conflict and needs no provider refetch', () => {
   const remote = metadataDocument({ Remote123: metadataRecord('Remote123') }, '2026-08-06T00:00:00.000Z');
   const localAfterConflict = metadataDocument({

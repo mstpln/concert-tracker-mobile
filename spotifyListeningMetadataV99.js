@@ -48,8 +48,15 @@
   }
 
   function normalizeDocument(value) {
-    const output = emptyDocument();
-    if (!value || value.kind !== output.kind || Number(value.schemaVersion) !== SCHEMA_VERSION || !value.records || typeof value.records !== 'object' || Array.isArray(value.records)) return output;
+    const empty = emptyDocument();
+    if (!value || value.kind !== empty.kind || Number(value.schemaVersion) !== SCHEMA_VERSION || !value.records || typeof value.records !== 'object' || Array.isArray(value.records)) return empty;
+    const output = {
+      ...value,
+      kind: empty.kind,
+      schemaVersion: SCHEMA_VERSION,
+      updatedAt: null,
+      records: {},
+    };
     for (const [key, raw] of Object.entries(value.records)) {
       const record = normalizeRecord(raw);
       if (record && key === record.spotifyTrackId) output.records[key] = record;
@@ -75,12 +82,20 @@
     for (const [id, record] of Object.entries(right.records)) records[id] = mergeRecord(records[id], record);
     const leftTime = Date.parse(left.updatedAt) || 0;
     const rightTime = Date.parse(right.updatedAt) || 0;
-    return {
+    const merged = {
+      ...left,
+      ...right,
       kind: left.kind,
       schemaVersion: SCHEMA_VERSION,
       updatedAt: rightTime >= leftTime ? right.updatedAt : left.updatedAt,
       records,
     };
+    // The remote document owns provider-maintenance checkpoints. Its absence is
+    // meaningful: a later successful provider result may have cleared them.
+    if (!Object.prototype.hasOwnProperty.call(right, 'albumArtworkSuppressions')) {
+      delete merged.albumArtworkSuppressions;
+    }
+    return merged;
   }
 
   function documentsEqual(left, right) {

@@ -109,4 +109,4 @@ No automated DAB8 test reads production listening data, calls live Spotify, writ
 
 ## Version
 
-DAB8 changes trusted-local Node operational plumbing rather than the browser PWA shell. `APP_VERSION`, `CACHE_NAME_LITERAL` and deterministic build-state facts remain synchronized at **v115**.
+DAB8 includes a browser metadata compatibility correction so browser artwork sync cannot erase provider-owned suppressions or unknown root fields; current remote suppression removal remains authoritative over stale local browser state. `APP_VERSION`, `CACHE_NAME_LITERAL` and deterministic build-state facts are synchronized at **v116**.
