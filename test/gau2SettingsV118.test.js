@@ -12,8 +12,9 @@ const sw = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
 const version = fs.readFileSync(path.join(root, 'version.js'), 'utf8');
 const qaBuild = fs.readFileSync(path.join(root, 'scripts/build-qa.js'), 'utf8');
 
-test('GAU2 automation names are stable', () => {
+test('GAU2 automation names and approved Web Concert Search copy are stable', () => {
   assert.deepEqual(gau2.AUTOMATION_GROUPS.map((item) => item[0]), ['Concert Updates','Web Concert Search','Listening Updates','Artist Updates','Artist Images','Setlist Updates']);
+  assert.equal(gau2.AUTOMATION_GROUPS[1][1], 'Looks for concerts that structured providers may have missed.');
 });
 
 test('GAU2 provider set is stable', () => {
@@ -33,6 +34,12 @@ test('missing or contradictory automation state is not reported as healthy', () 
   assert.equal(gau2.statusFromRun({ status: 'error' }).kind, 'failed');
   assert.equal(gau2.statusFromRun({ error: 'provider unavailable' }).kind, 'failed');
   assert.equal(gau2.statusFromRun({ status: 'ok', error: 'late failure' }).kind, 'failed');
+});
+
+test('setlist automation surfaces a caught setlist failure from an otherwise successful structured run', () => {
+  assert.equal(gau2.setlistStatusFromRun({ status: 'ok', notes: [] }).kind, 'healthy');
+  assert.equal(gau2.setlistStatusFromRun({ status: 'ok', notes: ['setlist.fm lookup failed for synthetic show: HTTP 503'] }).kind, 'failed');
+  assert.equal(gau2.setlistStatusFromRun({ status: 'error', notes: [] }).kind, 'failed');
 });
 
 test('ListenBrainz is healthy only after a recorded successful sync', () => {
