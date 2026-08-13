@@ -60,7 +60,7 @@ test('v91 listening review keeps alternatives pending and flattens sequential me
 
   await card.locator('[data-listening-pair="qa-review-b|qa-review-c"]').getByRole('button', { name: 'These are the same listen' }).click();
   await expect(card.locator('.listening-review-item')).toHaveCount(0);
-  await page.getByRole('tab', { name: 'Research', exact: true }).click();
+  await page.getByRole('tab', { name: 'Automation', exact: true }).click();
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
   await expect(card.getByRole('button', { name: 'These are the same listen' })).toHaveCount(1);
   await expect(card).toContainText('QA Review Artist');
@@ -79,7 +79,7 @@ test('v91 listening review keeps alternatives pending and flattens sequential me
   expect(afterFirst.review.candidatePairs[0].pairKey).toBe('qa-review-a|qa-review-b');
 
   await card.locator('[data-listening-pair="qa-review-a|qa-review-b"]').getByRole('button', { name: 'These are the same listen' }).click();
-  await page.getByRole('tab', { name: 'Research', exact: true }).click();
+  await page.getByRole('tab', { name: 'Automation', exact: true }).click();
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
   await expect(card.locator('.listening-review-item')).toHaveCount(0);
   const finalState = await page.evaluate(async () => ({
