@@ -10,7 +10,7 @@ The execution boundary remains trusted local. Private listening objects require 
 
 The v114 album-artwork priority is intentionally cumulative rather than a bulk-backfill objective. DAB8 turns that priority into one bounded daily maintenance opportunity while preserving the existing provider and private-data safety layers.
 
-A trusted local scheduler may wake the DAB8 command more frequently than once per day. The command itself keeps a private local due marker and performs production work only when at least 24 hours have elapsed since the previous admitted scheduled run. The due interval may be lengthened, but cannot be configured below 24 hours.
+A trusted local scheduler may wake the DAB8 command more frequently than once per day. The command itself keeps one fixed private local due marker and performs production work only when at least 24 hours have elapsed since the previous admitted scheduled run. The due interval may be lengthened, but cannot be configured below 24 hours.
 
 ## Scheduled command
 
@@ -20,13 +20,17 @@ The supported scheduler entrypoint is:
 node scripts/spotify-album-artwork-scheduler.js --execute-scheduled
 ```
 
-Defaults:
+Defaults and hard scheduled boundaries:
 
 - due interval: 24 hours, also the enforced minimum;
-- Spotify album-group cap: 25;
+- Spotify album-group cap: 25, also the scheduled-run maximum;
 - Spotify track-request pacing: at least 1,000 ms;
 - Spotify market: `SE`;
-- private due state: `.livevault-maintenance/spotify-album-artwork-schedule.json`.
+- private due state: exactly `.livevault-maintenance/spotify-album-artwork-schedule.json`.
+
+The lower-level manual album runner retains its existing hard ceiling of 100 album groups, but DAB8 never exposes that larger ceiling to scheduled execution. A scheduled invocation may lower the 25-group cap but cannot raise it.
+
+The schedule-state path is intentionally not configurable. Allowing multiple state files would let independent host commands manufacture separate daily allowances and bypass the one-opportunity-per-day policy.
 
 The scheduler wrapper does not install cron, launchd, systemd, Task Scheduler or another host scheduler. Host installation and activation are separate operational actions because the repository cannot safely assume which trusted machine will own the private credentials.
 
@@ -82,7 +86,7 @@ The scheduled run therefore retains:
 - removal of already reusable album groups before the provider cap;
 - conservative album grouping and ambiguity quarantine;
 - exact trusted Spotify Track ID provider seeds only;
-- at most 25 album groups by default and a hard existing ceiling of 100;
+- at most 25 album groups per scheduled run;
 - at least 1,000 ms between album-group track requests;
 - UsageTracker accounting before provider requests;
 - the DAB6 shared persisted Spotify circuit;
@@ -104,9 +108,9 @@ The host scheduler must provide the required private environment without putting
 Automated tests use injected synthetic runners, schedule state and lease behavior only. They verify:
 
 - the 24-hour default, enforced minimum and exact due boundary;
-- 25-group default cap and existing 100-group hard ceiling;
+- the fixed 25-group scheduled ceiling even though the manual runner can support more;
 - at-least-1,000-ms pacing;
-- private state-path confinement;
+- one fixed private schedule-state path;
 - malformed schedule state fail-closed behavior;
 - zero production work and zero lease acquisition while fresh;
 - dedicated scheduled authorization before runner invocation;
