@@ -10,6 +10,7 @@ const SCHEDULE_SCHEMA_VERSION = 1;
 const DEFAULT_INTERVAL_HOURS = 24;
 const MIN_INTERVAL_HOURS = DEFAULT_INTERVAL_HOURS;
 const DEFAULT_CAP = albumRunner.DEFAULT_CAP;
+const MAX_SCHEDULED_CAP = DEFAULT_CAP;
 const DEFAULT_DELAY_MS = albumRunner.DEFAULT_DELAY_MS;
 const DEFAULT_MARKET = albumRunner.DEFAULT_MARKET;
 const DEFAULT_STATE_PATH = '.livevault-maintenance/spotify-album-artwork-schedule.json';
@@ -45,7 +46,6 @@ function parseArgs(argv = []) {
     else if (arg === '--cap') { options.cap = parsePositiveInteger(next, 0); index += 1; }
     else if (arg === '--delay-ms') { options.delayMs = parsePositiveInteger(next, 0); index += 1; }
     else if (arg === '--market') { options.market = safeString(next).toUpperCase(); index += 1; }
-    else if (arg === '--state') { options.statePath = safeString(next); index += 1; }
     else if (arg === '--help' || arg === '-h') options.help = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
@@ -54,7 +54,9 @@ function parseArgs(argv = []) {
     if (!options.intervalHours || options.intervalHours < MIN_INTERVAL_HOURS) {
       throw new Error(`Scheduled artwork interval must be a whole number of at least ${MIN_INTERVAL_HOURS} hours.`);
     }
-    if (!options.cap || options.cap > albumRunner.MAX_CAP) throw new Error(`Scheduled artwork cap must be between 1 and ${albumRunner.MAX_CAP}.`);
+    if (!options.cap || options.cap > MAX_SCHEDULED_CAP) {
+      throw new Error(`Scheduled artwork cap must be between 1 and ${MAX_SCHEDULED_CAP}.`);
+    }
     if (!options.delayMs || options.delayMs < albumRunner.DEFAULT_DELAY_MS) {
       throw new Error(`Scheduled artwork pacing must be at least ${albumRunner.DEFAULT_DELAY_MS} ms.`);
     }
@@ -69,17 +71,20 @@ function usageText() {
     'Trusted-local Spotify album artwork scheduler gate',
     '',
     'This command is intended to be woken by a trusted local scheduler. It does not install or activate a scheduler.',
-    `Default and minimum due interval: ${DEFAULT_INTERVAL_HOURS} hours. Default album-group cap: ${DEFAULT_CAP}.`,
-    'The due marker is private local state under .livevault-maintenance/.',
+    `Default and minimum due interval: ${DEFAULT_INTERVAL_HOURS} hours. Scheduled album-group ceiling: ${MAX_SCHEDULED_CAP}.`,
+    `The due marker is fixed at ${DEFAULT_STATE_PATH}.`,
     '',
     'Production execution remains separately authorized:',
     '  node scripts/spotify-album-artwork-scheduler.js --execute-scheduled',
   ].join('\n');
 }
 
-function assertPrivateStatePath(value) {
+function assertPrivateStatePath(value = DEFAULT_STATE_PATH) {
+  if (safeString(value) !== DEFAULT_STATE_PATH) {
+    throw new Error(`Scheduled artwork state path is fixed at ${DEFAULT_STATE_PATH}.`);
+  }
   const maintenanceRoot = path.resolve('.livevault-maintenance');
-  const statePath = path.resolve(safeString(value));
+  const statePath = path.resolve(DEFAULT_STATE_PATH);
   if (statePath === maintenanceRoot || !statePath.startsWith(`${maintenanceRoot}${path.sep}`)) {
     throw new Error('Scheduled artwork state must stay inside the ignored .livevault-maintenance directory.');
   }
@@ -298,6 +303,7 @@ module.exports = {
   DEFAULT_INTERVAL_HOURS,
   MIN_INTERVAL_HOURS,
   DEFAULT_CAP,
+  MAX_SCHEDULED_CAP,
   DEFAULT_DELAY_MS,
   DEFAULT_MARKET,
   DEFAULT_STATE_PATH,
