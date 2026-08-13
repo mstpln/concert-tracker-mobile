@@ -6,6 +6,7 @@ const fs = require('node:fs');
 
 const circuit = require('../scripts/lib/spotifyCircuitBreaker');
 const spotifyProvider = require('../scripts/lib/spotify');
+const artworkRunner = require('../scripts/spotify-artwork-backfill');
 const { trackedSpotifyCall } = require('../scripts/spotify-artwork-backfill-production');
 
 const START = Date.parse('2026-08-12T20:00:00.000Z');
@@ -37,16 +38,22 @@ test('DAB6 honors Retry-After, falls back conservatively, and fails closed on ma
   assert.equal(circuit.spotifyCircuitBlockReason(usage.state.spotify, START + 5000), 'rate_limit_circuit_open');
   assert.equal(circuit.spotifyCircuitBlockReason(usage.state.spotify, START + 14000), null);
 
-  const fallback = circuit.retryBlockedUntil({ type: 'rate_limit', retryAfter: null }, START);
-  assert.equal(fallback, START + circuit.RATE_LIMIT_FALLBACK_MS);
+  for (const unusable of [null, '', 0, '0', 'invalid']) {
+    const fallback = circuit.retryBlockedUntil({ type: 'rate_limit', retryAfter: unusable }, START);
+    assert.equal(fallback, START + circuit.RATE_LIMIT_FALLBACK_MS);
+  }
   assert.equal(circuit.spotifyCircuitBlockReason({ circuit: { status: 'open', reason: 'rate_limited' } }, START), 'circuit_state_invalid');
 });
 
-test('DAB6 quota exhaustion is monotonic and only a later successful probe closes it', () => {
+test('DAB6 quota exhaustion is monotonic, preserves unknown state, and only a later successful probe closes it', () => {
   const usage = fakeUsage();
+  usage.state.spotify.circuit = {
+    status: 'closed', reason: null, blockedUntil: null, futureField: { preserve: true },
+  };
   circuit.reportSpotifyCircuitSignal(usage, { type: 'quota' }, { nowMs: START });
   assert.equal(usage.state.spotify.circuit.reason, 'quota_exceeded');
   assert.equal(usage.state.spotify.circuit.blockedUntil, '2026-08-13T20:00:00.000Z');
+  assert.deepEqual(usage.state.spotify.circuit.futureField, { preserve: true });
   assert.equal(circuit.spotifyCircuitBlockReason(usage.state.spotify, START + circuit.QUOTA_COOLDOWN_MS - 1), 'quota_circuit_open');
 
   const downgrade = circuit.reportSpotifyCircuitSignal(usage, { type: 'rate_limit', retryAfterSeconds: 1 }, { nowMs: START + 1000 });
@@ -63,6 +70,7 @@ test('DAB6 quota exhaustion is monotonic and only a later successful probe close
   assert.equal(probeSuccess.changed, true);
   assert.equal(usage.state.spotify.circuit.status, 'closed');
   assert.equal(usage.state.spotify.circuit.reason, null);
+  assert.deepEqual(usage.state.spotify.circuit.futureField, { preserve: true });
 });
 
 test('DAB6 patches UsageTracker so an open persisted circuit blocks all later Spotify reservations', () => {
@@ -148,6 +156,32 @@ test('DAB6 scheduled provider surfaces explicit Spotify QUOTA_EXCEEDED without r
   assert.equal(sleeps, 0);
 });
 
+test('DAB6 artwork 429 parsing preserves usable Retry-After and leaves missing or invalid values for the conservative fallback', async () => {
+  const makeResponse = (headerValue) => ({
+    ok: false,
+    status: 429,
+    headers: { get: () => headerValue },
+    clone() { return this; },
+    json: async () => ({ error: { status: 429, message: 'rate limited' } }),
+  });
+
+  const withDelay = await artworkRunner.fetchSpotifyTrack({
+    id: 'synthetic-track', token: 'synthetic-token', fetchImpl: async () => makeResponse('12'),
+  });
+  assert.equal(withDelay.kind, 'rate_limited');
+  assert.equal(withDelay.retryAfter, '12');
+  assert.equal(withDelay.retryAfterSeconds, 12);
+
+  for (const headerValue of [null, '', 'invalid', '0']) {
+    const withoutDelay = await artworkRunner.fetchSpotifyTrack({
+      id: 'synthetic-track', token: 'synthetic-token', fetchImpl: async () => makeResponse(headerValue),
+    });
+    assert.equal(withoutDelay.kind, 'rate_limited');
+    assert.equal(withoutDelay.retryAfterSeconds, null);
+    assert.equal(circuit.retryBlockedUntil(withoutDelay, START), START + circuit.RATE_LIMIT_FALLBACK_MS);
+  }
+});
+
 test('DAB6 trusted artwork maintenance persists quota state, avoids redundant success saves, and refuses a second provider call', async () => {
   const usage = fakeUsage();
   let saves = 0;
@@ -177,6 +211,16 @@ test('DAB6 trusted artwork maintenance persists quota state, avoids redundant su
   const cleanResult = await trackedSpotifyCall(cleanUsage, async () => ({ kind: 'ok' }));
   assert.equal(cleanResult.kind, 'ok');
   assert.equal(cleanSaves, 1);
+});
+
+test('DAB6 fails safely when changed circuit state cannot be persisted', async () => {
+  const usage = fakeUsage();
+  usage.save = async () => { throw new Error('synthetic persistence failure'); };
+  await assert.rejects(
+    circuit.applyAndPersistSpotifyCircuitSignal(usage, { type: 'quota' }, { nowMs: START }),
+    (error) => error?.code === 'SPOTIFY_CIRCUIT_SAVE_FAILED' && /could not be persisted/.test(error.message),
+  );
+  assert.equal(usage.state.spotify.circuit.reason, 'quota_exceeded');
 });
 
 test('DAB6 is wired only into the scheduled preload and keeps the PWA version unchanged', () => {
