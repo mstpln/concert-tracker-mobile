@@ -94,7 +94,7 @@ async function acquireSchedulerLease({
   return { leaseId, owner: normalizedOwner, acquiredAt, expiresAt, client };
 }
 
-async function releaseSchedulerLease(handle, { now = () => Date.now(), maxConflictRetries = 1 } = {}) {
+async function releaseSchedulerLease(handle, { maxConflictRetries = 1 } = {}) {
   if (!handle?.leaseId || !handle?.client) return false;
   for (let attempt = 0; attempt <= maxConflictRetries; attempt += 1) {
     const state = await handle.client.readJson('apiUsage.json', {});
