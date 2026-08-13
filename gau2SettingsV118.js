@@ -21,8 +21,8 @@
   function statusFromRun(run) {
     if (!run) return { label:'Warning', kind:'warning', problem:'No recent status is available.' };
     const value = String(run.status || '').trim().toLowerCase();
-    if (['ok','success','successful','complete','completed'].includes(value)) return { label:'Healthy', kind:'healthy', problem:'' };
     if (['error','failed','failure'].includes(value) || run.error) return { label:'Failed', kind:'failed', problem:String(run.error || 'The latest run failed.') };
+    if (['ok','success','successful','complete','completed'].includes(value)) return { label:'Healthy', kind:'healthy', problem:'' };
     return { label:'Warning', kind:'warning', problem:value ? `Latest status: ${value}.` : 'The latest outcome is not reported.' };
   }
   function listenBrainzAutomationState(connection) {
