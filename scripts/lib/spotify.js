@@ -29,6 +29,30 @@ function basicAuthHeader() {
   return 'Basic ' + Buffer.from(`${id}:${secret}`).toString('base64');
 }
 
+function spotifyRetryAfter(response) {
+  const value = response?.headers?.get?.('retry-after') ?? response?.headers?.get?.('Retry-After') ?? null;
+  return value == null || value === '' ? null : value;
+}
+
+async function spotifyQuotaExceeded(response) {
+  try {
+    const readable = typeof response?.clone === 'function' ? response.clone() : response;
+    if (!readable || typeof readable.json !== 'function') return false;
+    const payload = await readable.json();
+    return payload?.error?.reason === 'QUOTA_EXCEEDED';
+  } catch (_) {
+    return false;
+  }
+}
+
+async function spotify429Outcome(response) {
+  const retryAfter = spotifyRetryAfter(response);
+  if (await spotifyQuotaExceeded(response)) {
+    return { kind: 'quota_exceeded', status: 429, retryAfter };
+  }
+  return { kind: 'error', status: 429, retryAfter };
+}
+
 // Cached for the lifetime of this process (one pipeline run) — a Client
 // Credentials token lasts ~1 hour, far longer than a single run needs, so
 // there's no reason to fetch a new one per song.
@@ -46,7 +70,13 @@ async function getAppToken(usage = null, fetchImpl = fetch) {
     },
     body: 'grant_type=client_credentials',
   });
-  if (!res.ok) throw new Error(`Spotify token request failed: HTTP ${res.status}`);
+  if (!res.ok) {
+    const error = new Error(`Spotify token request failed: HTTP ${res.status}`);
+    error.status = res.status;
+    error.retryAfter = spotifyRetryAfter(res);
+    if (res.status === 429 && await spotifyQuotaExceeded(res)) error.code = 'SPOTIFY_QUOTA_EXCEEDED';
+    throw error;
+  }
   const data = await res.json();
   if (typeof data?.access_token !== 'string' || !data.access_token.trim()) throw new Error('Spotify token response was missing an access token');
   cachedToken = { accessToken: data.access_token, expiresAt: Date.now() + (data.expires_in || 3600) * 1000 };
@@ -61,11 +91,6 @@ function normalizeArtistMatchText(value) {
     .replace(/[^\p{L}\p{N}]+/gu, '');
 }
 
-// Same normalize-and-loosely-compare approach as setlistfm.js's venueMatches
-// — a false negative here throws away a perfectly good link, so it's
-// deliberately forgiving. When no confirmed Spotify artist ID is available,
-// an empty normalized band identity now fails closed instead of accepting an
-// arbitrary provider result; Unicode letters/numbers remain matchable.
 function artistMatches(candidateArtists, bandName, spotifyArtistId = null) {
   if (spotifyArtistId) return (candidateArtists || []).some((artist) => artist?.id === spotifyArtistId);
   const target = normalizeArtistMatchText(bandName);
@@ -76,8 +101,6 @@ function artistMatches(candidateArtists, bandName, spotifyArtistId = null) {
   });
 }
 
-// DAB4 structured outcome for the historical setlist linker. Only a real
-// `ok` or provider-derived `no_match` may become spotifyChecked.
 async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId = null, fetchImpl = fetch, getToken = getAppToken, sleepImpl = sleep } = {}) {
   if (!usage.canCallSpotify()) return { kind: 'skipped', reason: 'usage_cap' };
   let token;
@@ -85,6 +108,8 @@ async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId 
     token = await getToken(usage, fetchImpl);
   } catch (error) {
     usage.note(`Spotify token lookup failed for "${songTitle}" / "${bandName}": ${error.message}`);
+    if (error?.code === 'SPOTIFY_QUOTA_EXCEEDED') return { kind: 'quota_exceeded', status: 429, retryAfter: error.retryAfter || null };
+    if (Number(error?.status) === 429) return { kind: 'error', status: 429, retryAfter: error.retryAfter || null };
     return { kind: 'error', error: error.message || 'token_error' };
   }
   if (typeof token !== 'string' || !token.trim()) return { kind: 'error', error: 'invalid_token' };
@@ -102,7 +127,9 @@ async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId 
   }
 
   if (res.status === 429) {
-    const rawRetryAfter = Number(res.headers?.get?.('retry-after'));
+    const first429 = await spotify429Outcome(res);
+    if (first429.kind === 'quota_exceeded') return first429;
+    const rawRetryAfter = Number(first429.retryAfter);
     const retryAfter = Number.isFinite(rawRetryAfter) && rawRetryAfter > 0 ? rawRetryAfter : 2;
     if (retryAfter > MAX_429_RETRY_AFTER_SECONDS) {
       usage.note(`Spotify rate-limited with Retry-After ${retryAfter}s — deferring without retry`);
@@ -118,9 +145,14 @@ async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId 
       usage.note(`Spotify search retry failed for "${songTitle}": ${e.message}`);
       return { kind: 'error', error: e.message || 'network_error' };
     }
+    if (res.status === 429) {
+      const retry429 = await spotify429Outcome(res);
+      if (retry429.kind === 'quota_exceeded') return retry429;
+    }
   }
   if (!res.ok) {
     usage.note(`Spotify search returned ${res.status} for "${songTitle}" / "${bandName}"`);
+    if (res.status === 429) return spotify429Outcome(res);
     return { kind: 'error', status: res.status };
   }
 
@@ -133,24 +165,16 @@ async function searchTrackOutcome(songTitle, bandName, usage, { spotifyArtistId 
   if (!Array.isArray(data?.tracks?.items)) return { kind: 'error', error: 'invalid_response' };
   const candidates = data.tracks.items.filter((t) => artistMatches(t.artists, bandName, spotifyArtistId));
   if (candidates.length === 0) return { kind: 'no_match', reason: SETLIST_TRACK_NO_MATCH_REASON };
-
-  // Most-popular version wins — the agreed default when a song has multiple
-  // Spotify recordings (studio, live, remaster), rather than always
-  // preferring the studio original.
   candidates.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
   const urlValue = candidates[0]?.external_urls?.spotify;
   return typeof urlValue === 'string' && urlValue ? { kind: 'ok', url: urlValue } : { kind: 'error', error: 'missing_track_url' };
 }
 
-// Preserve the historical URL-or-null helper contract for unrelated callers.
 async function searchTrack(songTitle, bandName, usage, options = {}) {
   const outcome = await searchTrackOutcome(songTitle, bandName, usage, options);
   return outcome.kind === 'ok' ? outcome.url : null;
 }
 
-// Mutates only trustworthy outcomes. Successful matches and definitive
-// no-matches become spotifyChecked; transient/provider/quota failures leave
-// the current and remaining songs untouched so a later run can retry them.
 async function resolveSongLinks(songs, bandName, usage, { spotifyArtistId = null, search = searchTrackOutcome } = {}) {
   let added = 0;
   for (const song of songs) {
@@ -220,7 +244,12 @@ async function resolveArtistIdentity({ band, metadata, usage, fetchImpl = fetch,
     await usage.recordSpotifyCall();
     const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
     if (res.status === 403) return { kind: 'unavailable', identity: retryableIdentity(prior, 'unavailable', now, 'capability_403') };
-    if (res.status === 429 || res.status >= 500) return { kind: 'error', identity: retryableIdentity(prior, 'error', now, `http_${res.status}`) };
+    if (res.status === 429) {
+      const rateOutcome = await spotify429Outcome(res);
+      const category = rateOutcome.kind === 'quota_exceeded' ? 'spotify_quota_exceeded' : 'http_429';
+      return { kind: 'error', status: 429, retryAfter: rateOutcome.retryAfter, quotaExceeded: rateOutcome.kind === 'quota_exceeded', identity: retryableIdentity(prior, 'error', now, category) };
+    }
+    if (res.status >= 500) return { kind: 'error', identity: retryableIdentity(prior, 'error', now, `http_${res.status}`) };
     if (!res.ok) return { kind: 'error', identity: retryableIdentity(prior, 'error', now, `http_${res.status}`) };
     const data = await res.json();
     const acceptedNames = new Set([band.name, metadata?.artistName, ...(metadata?.aliases || [])].map(norm).filter(Boolean));
@@ -228,6 +257,8 @@ async function resolveArtistIdentity({ band, metadata, usage, fetchImpl = fetch,
     if (candidates.length === 1) return { kind: 'confirmed', identity: spotifyIdentity(metadata, candidates[0], now) };
     return { kind: candidates.length ? 'needs_review' : 'no_match', identity: retryableIdentity(prior, candidates.length ? 'needs_review' : 'no_match', now, null, candidates) };
   } catch (error) {
+    if (error?.code === 'SPOTIFY_QUOTA_EXCEEDED') return { kind: 'error', status: 429, retryAfter: error.retryAfter || null, quotaExceeded: true, identity: retryableIdentity(prior, 'error', now, 'spotify_quota_exceeded') };
+    if (Number(error?.status) === 429) return { kind: 'error', status: 429, retryAfter: error.retryAfter || null, identity: retryableIdentity(prior, 'error', now, 'http_429') };
     return { kind: 'error', identity: retryableIdentity(prior, 'error', now, error.message || 'request_failed') };
   }
 }
@@ -239,9 +270,14 @@ async function spotifyRequest(url, usage, { fetchImpl = fetch, getToken = getApp
     if (!usage.canCallSpotify()) return { kind: 'skipped' };
     await usage.recordSpotifyCall();
     const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) return { kind: res.status === 403 ? 'unavailable' : 'error', status: res.status, retryAfter: res.headers?.get?.('retry-after') || null };
+    if (res.status === 429) return spotify429Outcome(res);
+    if (!res.ok) return { kind: res.status === 403 ? 'unavailable' : 'error', status: res.status };
     return { kind: 'ok', data: await res.json() };
-  } catch (error) { return { kind: 'error', error: error.message || 'request_failed' }; }
+  } catch (error) {
+    if (error?.code === 'SPOTIFY_QUOTA_EXCEEDED') return { kind: 'quota_exceeded', status: 429, retryAfter: error.retryAfter || null };
+    if (Number(error?.status) === 429) return { kind: 'error', status: 429, retryAfter: error.retryAfter || null };
+    return { kind: 'error', error: error.message || 'request_failed' };
+  }
 }
 
 async function listArtistReleases(artistId, usage, { offset = 0, limit = 50, fetchImpl = fetch, getToken = getAppToken } = {}) {
@@ -258,9 +294,6 @@ async function getReleaseTracks(releaseId, usage, options = {}) {
 
 const UNSUITABLE_TRACK = /\b(live|acoustic|remix|demo|karaoke|tribute|cover|instrumental)\b/i;
 
-// This is intentionally stricter than the legacy historical-setlist linker:
-// predictions already have a confirmed Spotify artist ID, so accepting a
-// merely similar title would create an unsafe future playlist candidate.
 function predictedTrackCandidate(track, song, spotifyArtistId) {
   if (!track || !artistMatches(track.artists, '', spotifyArtistId)) return false;
   if (normalizeTitle(track.name) !== normalizeTitle(song.name)) return false;
@@ -274,15 +307,21 @@ function predictedTrackFields(track) {
 async function matchPredictedSong(song, spotifyArtistId, usage, { bandName = '', fetchImpl = fetch, getToken = getAppToken } = {}) {
   if (!spotifyArtistId || !usage.canCallSpotify()) return { kind: 'skipped' };
   let token;
-  try { token = await getToken(usage, fetchImpl); } catch (error) { return { kind: 'error', error: error.message }; }
+  try { token = await getToken(usage, fetchImpl); }
+  catch (error) {
+    if (error?.code === 'SPOTIFY_QUOTA_EXCEEDED') return { kind: 'quota_exceeded', status: 429, retryAfter: error.retryAfter || null };
+    if (Number(error?.status) === 429) return { kind: 'error', status: 429, retryAfter: error.retryAfter || null };
+    return { kind: 'error', error: error.message };
+  }
   const cleanTitle = String(song.name || '').replace(/"/g, ''); const cleanBand = String(bandName || '').replace(/"/g, '');
   const queries = [cleanBand ? `track:"${cleanTitle}" artist:"${cleanBand}"` : `track:"${cleanTitle}"`, `track:"${cleanTitle}"`].filter((query, index, all) => all.indexOf(query) === index);
   for (const q of queries) {
     if (!usage.canCallSpotify()) return { kind: 'skipped' };
     const url = `${config.SPOTIFY.searchUrl}?type=track&limit=10&q=${encodeURIComponent(q)}`;
     let res;
-    try { await usage.recordSpotifyCall(); res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } }); } catch (error) { return { kind: 'error', error: error.message }; }
-    if (res.status === 429) return { kind: 'error', status: 429 };
+    try { await usage.recordSpotifyCall(); res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } }); }
+    catch (error) { return { kind: 'error', error: error.message }; }
+    if (res.status === 429) return spotify429Outcome(res);
     if (!res.ok) return { kind: 'error', status: res.status };
     let data; try { data = await res.json(); } catch (error) { return { kind: 'error', error: 'Invalid Spotify track JSON' }; }
     const candidates = (data?.tracks?.items || []).filter((track) => predictedTrackCandidate(track, song, spotifyArtistId));
@@ -292,4 +331,4 @@ async function matchPredictedSong(song, spotifyArtistId, usage, { bandName = '',
   return { kind: 'no_match' };
 }
 
-module.exports = { resolveSongLinks, searchTrack, searchTrackOutcome, resolveArtistIdentity, listArtistReleases, getReleaseTracks, spotifyIdentity, retryableIdentity, spotifyReviewCandidates, artistMatches, predictedTrackCandidate, predictedTrackFields, matchPredictedSong };
+module.exports = { resolveSongLinks, searchTrack, searchTrackOutcome, resolveArtistIdentity, listArtistReleases, getReleaseTracks, spotifyIdentity, retryableIdentity, spotifyReviewCandidates, artistMatches, predictedTrackCandidate, predictedTrackFields, matchPredictedSong, spotifyRetryAfter, spotifyQuotaExceeded, spotify429Outcome };
