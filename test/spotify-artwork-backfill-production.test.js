@@ -7,6 +7,7 @@ const production = require('../scripts/spotify-artwork-backfill-production.js');
 test('tracked Spotify call persists usage before the provider operation', async () => {
   const order = [];
   const usage = {
+    state: { spotify: {} },
     canCallSpotify: () => true,
     recordSpotifyCall: async () => { order.push('record'); },
     save: async () => { order.push('save'); },
