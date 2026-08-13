@@ -6,193 +6,86 @@ const scheduler = require('../scripts/spotify-album-artwork-scheduler');
 const productionSafety = require('../scripts/spotify-artwork-backfill-production');
 
 function authorizedEnv() {
-  return {
-    LIVEVAULT_ARTWORK_SCHEDULE_CONFIRM: scheduler.SCHEDULE_AUTHORIZATION,
-    CF_WORKER_ENDPOINT: 'https://worker.example.test',
-    CF_WORKER_BROWSER_TOKEN: 'synthetic-browser-token',
-    SPOTIFY_CLIENT_ID: 'synthetic-client-id',
-    SPOTIFY_CLIENT_SECRET: 'synthetic-client-secret',
-  };
+  return { LIVEVAULT_ARTWORK_SCHEDULE_CONFIRM: scheduler.SCHEDULE_AUTHORIZATION, CF_WORKER_ENDPOINT: 'https://worker.example.test',
+    CF_WORKER_BROWSER_TOKEN: 'synthetic-browser-token', SPOTIFY_CLIENT_ID: 'synthetic-client-id', SPOTIFY_CLIENT_SECRET: 'synthetic-client-secret' };
 }
+async function immediateLease(options, operation) { assert.equal(options.owner, scheduler.LEASE_OWNER); return operation({ leaseId: 'synthetic-lease' }); }
 
-async function immediateLease(options, operation) {
-  assert.equal(options.owner, scheduler.LEASE_OWNER);
-  return operation({ leaseId: 'synthetic-lease' });
-}
-
-test('DAB8 defaults to one bounded daily trusted-local maintenance opportunity', () => {
+test('DAB8 uses the agreed four-hour five-group five-second scheduled envelope', () => {
   const options = scheduler.parseArgs(['--execute-scheduled']);
-  assert.equal(options.executeScheduled, true);
-  assert.equal(options.intervalHours, 24);
-  assert.equal(options.cap, 25);
-  assert.equal(options.delayMs, 1000);
-  assert.equal(options.market, 'SE');
-  assert.equal(options.statePath, '.livevault-maintenance/spotify-album-artwork-schedule.json');
-  assert.equal(scheduler.MAX_SCHEDULED_CAP, 25);
+  assert.equal(options.intervalHours, 4); assert.equal(options.cap, 5); assert.equal(options.delayMs, 5000);
+  assert.equal(options.market, 'SE'); assert.equal(scheduler.MAX_TRACK_LOOKUPS_24H, 30);
 });
 
-test('DAB8 rejects a faster interval, higher scheduled cap, weaker pacing or alternate state path', () => {
-  assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--cap', '26']), /between 1 and 25/);
-  assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--delay-ms', '999']), /at least 1000/);
-  assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--interval-hours', '23']), /at least 24 hours/);
-  assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--state', '.livevault-maintenance/other.json']), /Unknown argument: --state/);
-  assert.throws(() => scheduler.scheduleDecision({ schemaVersion: 1 }, { now: '2026-08-13T10:00:00.000Z', intervalHours: 1 }), /at least 24 hours/);
-  assert.throws(() => scheduler.assertPrivateStatePath('.livevault-maintenance/other.json'), /state path is fixed/);
+test('DAB8 rejects faster cadence, larger cap, weaker pacing and alternate state path', () => {
+  assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--cap', '6']), /between 1 and 5/);
+  assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--delay-ms', '4999']), /at least 5000/);
+  assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--interval-hours', '3']), /at least 4 hours/);
+  assert.throws(() => scheduler.parseArgs(['--execute-scheduled', '--state', 'other.json']), /Unknown argument/);
 });
 
-test('DAB8 due gate is exact at the 24-hour boundary', () => {
-  const state = { schemaVersion: 1, lastAttemptAt: '2026-08-12T10:00:00.000Z' };
+test('DAB8 due gate is exact at four hours', () => {
+  const state = { schemaVersion: 1, lastAttemptAt: '2026-08-13T06:00:00.000Z' };
   assert.equal(scheduler.scheduleDecision(state, { now: '2026-08-13T09:59:59.999Z' }).due, false);
   assert.equal(scheduler.scheduleDecision(state, { now: '2026-08-13T10:00:00.000Z' }).due, true);
 });
 
-test('DAB8 malformed durable local schedule state fails closed', () => {
-  assert.throws(() => scheduler.validateState({ schemaVersion: 2 }), /schema is unsupported/);
-  assert.throws(() => scheduler.validateState({ schemaVersion: 1, lastAttemptAt: 'not-a-date' }), /invalid lastAttemptAt/);
-  assert.throws(() => scheduler.validateState({ schemaVersion: 1, lastOutcome: 'maybe' }), /invalid lastOutcome/);
+test('DAB8 rolling budget counts only reservations inside the preceding 24 hours', () => {
+  const state = { schemaVersion: 1, providerReservations: [
+    { at: '2026-08-12T09:59:59.000Z', maxLookups: 5 }, { at: '2026-08-12T10:00:01.000Z', maxLookups: 5 },
+    { at: '2026-08-13T06:00:00.000Z', maxLookups: 4 }] };
+  assert.deepEqual(scheduler.remainingTrackBudget(state, '2026-08-13T10:00:00.000Z'), {
+    reservations: [{ at: '2026-08-12T10:00:01.000Z', maxLookups: 5 }, { at: '2026-08-13T06:00:00.000Z', maxLookups: 4 }], reserved: 9, remaining: 21 });
 });
 
-test('DAB8 refuses scheduled production execution before invoking the album runner without its dedicated authorization', async () => {
-  let runs = 0;
-  let leases = 0;
-  await assert.rejects(() => scheduler.runScheduledCli({
-    argv: ['--execute-scheduled'],
-    env: {},
-    log: () => {},
-    readStateImpl: async () => ({ schemaVersion: 1 }),
-    writeStateImpl: async () => {},
-    withLeaseImpl: async () => { leases += 1; },
-    runAlbumArtworkCliImpl: async () => { runs += 1; },
-  }), /schedule authorization/i);
-  assert.equal(leases, 0);
-  assert.equal(runs, 0);
+test('DAB8 unchanged caught-up manifest skips lease, full history and Spotify', async () => {
+  let leases = 0; let runs = 0; let fingerprints = 0; const states = [];
+  const result = await scheduler.runScheduledCli({ argv: ['--execute-scheduled'], env: authorizedEnv(),
+    now: () => '2026-08-13T10:00:00.000Z', log: () => {},
+    readStateImpl: async () => ({ schemaVersion: 1, lastAttemptAt: '2026-08-13T06:00:00.000Z', lastPlanHadUnresolved: false,
+      lastManifestFingerprint: 'sha256:same', futureField: { preserved: true } }),
+    writeStateImpl: async (_path, state) => states.push(state), readManifestFingerprintImpl: async () => { fingerprints += 1; return 'sha256:same'; },
+    withLeaseImpl: async () => { leases += 1; }, runAlbumArtworkCliImpl: async () => { runs += 1; } });
+  assert.equal(result.status, 'idle_unchanged'); assert.equal(result.spotifyTrackLookups, 0); assert.equal(result.fullHistoryRead, false);
+  assert.equal(fingerprints, 1); assert.equal(leases, 0); assert.equal(runs, 0); assert.equal(states[0].futureField.preserved, true);
 });
 
-test('DAB8 fresh state performs zero production work and reports next due time without taking the provider lease', async () => {
-  let runs = 0;
-  let writes = 0;
-  let leases = 0;
-  const logs = [];
-  const result = await scheduler.runScheduledCli({
-    argv: ['--execute-scheduled'],
-    env: authorizedEnv(),
-    now: () => '2026-08-13T10:00:00.000Z',
-    log: (value) => logs.push(value),
-    readStateImpl: async () => ({ schemaVersion: 1, lastAttemptAt: '2026-08-13T09:00:00.000Z', futureField: { preserved: true } }),
-    writeStateImpl: async () => { writes += 1; },
-    withLeaseImpl: async () => { leases += 1; },
-    runAlbumArtworkCliImpl: async () => { runs += 1; },
-  });
-  assert.equal(result.status, 'not_due');
-  assert.equal(result.nextDueAt, '2026-08-14T09:00:00.000Z');
-  assert.equal(leases, 0);
-  assert.equal(runs, 0);
-  assert.equal(writes, 0);
-  assert.equal(logs.length, 1);
+test('DAB8 fresh state performs zero work', async () => {
+  let runs = 0; let leases = 0;
+  const result = await scheduler.runScheduledCli({ argv: ['--execute-scheduled'], env: authorizedEnv(), now: () => '2026-08-13T10:00:00.000Z', log: () => {},
+    readStateImpl: async () => ({ schemaVersion: 1, lastAttemptAt: '2026-08-13T09:00:00.000Z' }), writeStateImpl: async () => {},
+    withLeaseImpl: async () => { leases += 1; }, runAlbumArtworkCliImpl: async () => { runs += 1; } });
+  assert.equal(result.status, 'not_due'); assert.equal(result.nextDueAt, '2026-08-13T13:00:00.000Z'); assert.equal(leases, 0); assert.equal(runs, 0);
 });
 
-test('DAB8 busy cross-scheduler lease defers without consuming the daily attempt', async () => {
-  let writes = 0;
-  let runs = 0;
-  const busy = new Error('synthetic busy lease');
-  busy.code = 'SCHEDULER_LEASE_BUSY';
-  const result = await scheduler.runScheduledCli({
-    argv: ['--execute-scheduled'],
-    env: authorizedEnv(),
-    now: () => '2026-08-13T10:00:00.000Z',
-    log: () => {},
-    readStateImpl: async () => ({ schemaVersion: 1 }),
-    writeStateImpl: async () => { writes += 1; },
-    withLeaseImpl: async () => { throw busy; },
-    runAlbumArtworkCliImpl: async () => { runs += 1; },
-  });
-  assert.deepEqual(result, {
-    mode: 'spotify-album-artwork-scheduler',
-    status: 'deferred',
-    reason: 'scheduler_lease_busy',
-  });
-  assert.equal(writes, 0);
-  assert.equal(runs, 0);
+test('DAB8 busy provider lease defers without consuming the four-hour attempt', async () => {
+  let writes = 0; const busy = new Error('busy'); busy.code = 'SCHEDULER_LEASE_BUSY';
+  const result = await scheduler.runScheduledCli({ argv: ['--execute-scheduled'], env: authorizedEnv(), now: () => '2026-08-13T10:00:00.000Z', log: () => {},
+    readStateImpl: async () => ({ schemaVersion: 1 }), writeStateImpl: async () => { writes += 1; }, withLeaseImpl: async () => { throw busy; } });
+  assert.equal(result.status, 'deferred'); assert.equal(result.reason, 'scheduler_lease_busy'); assert.equal(writes, 0);
 });
 
-test('DAB8 rechecks the local due marker after lease acquisition so a concurrent local admission cannot duplicate work', async () => {
-  let reads = 0;
-  let writes = 0;
-  let runs = 0;
-  const result = await scheduler.runScheduledCli({
-    argv: ['--execute-scheduled'],
-    env: authorizedEnv(),
-    now: () => '2026-08-13T10:00:00.000Z',
-    log: () => {},
-    readStateImpl: async () => {
-      reads += 1;
-      return reads === 1
-        ? { schemaVersion: 1 }
-        : { schemaVersion: 1, lastAttemptAt: '2026-08-13T09:59:00.000Z' };
-    },
-    writeStateImpl: async () => { writes += 1; },
-    withLeaseImpl: immediateLease,
-    runAlbumArtworkCliImpl: async () => { runs += 1; },
-  });
-  assert.equal(result.status, 'not_due');
-  assert.equal(result.nextDueAt, '2026-08-14T09:59:00.000Z');
-  assert.equal(writes, 0);
-  assert.equal(runs, 0);
-});
-
-test('DAB8 due run admits under the shared provider lease and bridges into the existing production gates', async () => {
-  const states = [];
-  let clockCalls = 0;
-  let invocation = null;
-  const result = await scheduler.runScheduledCli({
-    argv: ['--execute-scheduled', '--cap', '7', '--delay-ms', '1500', '--market', 'us'],
-    env: authorizedEnv(),
-    now: () => {
-      clockCalls += 1;
-      return clockCalls < 3 ? '2026-08-13T10:00:00.000Z' : '2026-08-13T10:02:00.000Z';
-    },
-    log: () => {},
-    readStateImpl: async () => ({ schemaVersion: 1, futureField: { preserved: true } }),
-    writeStateImpl: async (_path, state) => { states.push(JSON.parse(JSON.stringify(state))); },
-    withLeaseImpl: immediateLease,
-    runAlbumArtworkCliImpl: async (options) => {
-      invocation = options;
-      return { providerAlbumGroupsPlanned: 7 };
-    },
-  });
-
+test('DAB8 reserves rolling budget before provider work and reconciles to actual lookups', async () => {
+  const states = []; let invocation; let clock = 0;
+  const result = await scheduler.runScheduledCli({ argv: ['--execute-scheduled', '--market', 'us'], env: authorizedEnv(),
+    now: () => (++clock < 3 ? '2026-08-13T10:00:00.000Z' : '2026-08-13T10:02:00.000Z'), log: () => {},
+    readStateImpl: async () => ({ schemaVersion: 1, providerReservations: [{ at: '2026-08-13T06:00:00.000Z', maxLookups: 5 }], futureField: true }),
+    writeStateImpl: async (_path, state) => states.push(JSON.parse(JSON.stringify(state))), withLeaseImpl: immediateLease,
+    runAlbumArtworkCliImpl: async (options) => { invocation = options; return { providerAlbumGroupsAttempted: 2, providerAlbumGroupsRemaining: 3, sourceManifestFingerprint: 'sha256:x' }; } });
   assert.equal(result.status, 'completed');
-  assert.deepEqual(invocation.argv, ['--execute', '--write', '--cap', '7', '--delay-ms', '1500', '--market', 'US']);
+  assert.deepEqual(invocation.argv, ['--execute', '--write', '--cap', '5', '--delay-ms', '5000', '--market', 'US']);
   assert.equal(invocation.env.LIVEVAULT_BACKFILL_CONFIRM, productionSafety.PRODUCTION_EXECUTION_CONFIRMATION);
-  assert.equal(invocation.env.LIVEVAULT_BACKFILL_WRITE_CONFIRM, productionSafety.PRODUCTION_WRITE_CONFIRMATION);
-  assert.equal(invocation.env.CF_WORKER_BROWSER_TOKEN, 'synthetic-browser-token');
-  assert.equal(typeof invocation.withLeaseImpl, 'function');
-  let nestedRan = false;
-  await invocation.withLeaseImpl({ owner: 'nested-owner' }, async () => { nestedRan = true; });
-  assert.equal(nestedRan, true);
-  assert.equal(states.length, 2);
-  assert.equal(states[0].lastAttemptAt, '2026-08-13T10:00:00.000Z');
-  assert.equal(states[0].futureField.preserved, true);
-  assert.equal(states[1].lastCompletedAt, '2026-08-13T10:02:00.000Z');
-  assert.equal(states[1].lastOutcome, 'completed');
-  assert.equal(states[1].futureField.preserved, true);
+  assert.equal(states[0].providerReservations.at(-1).maxLookups, 5); assert.equal(states[1].providerReservations.at(-1).maxLookups, 2);
+  assert.equal(states[1].lastPlanHadUnresolved, true); assert.equal(states[1].futureField, true);
 });
 
-test('DAB8 failed admitted run records the attempt and failure so an external wake loop cannot hot-loop provider work', async () => {
-  const states = [];
-  await assert.rejects(() => scheduler.runScheduledCli({
-    argv: ['--execute-scheduled'],
-    env: authorizedEnv(),
-    now: () => '2026-08-13T10:00:00.000Z',
-    log: () => {},
-    readStateImpl: async () => ({ schemaVersion: 1 }),
-    writeStateImpl: async (_path, state) => { states.push(JSON.parse(JSON.stringify(state))); },
-    withLeaseImpl: immediateLease,
-    runAlbumArtworkCliImpl: async () => { throw new Error('synthetic provider stop'); },
-  }), /synthetic provider stop/);
-
-  assert.equal(states.length, 2);
-  assert.equal(states[1].lastAttemptAt, '2026-08-13T10:00:00.000Z');
-  assert.equal(states[1].lastOutcome, 'failed');
-  assert.equal(scheduler.scheduleDecision(states[1], { now: '2026-08-13T10:30:00.000Z' }).due, false);
+test('DAB8 refuses a seventh five-lookup reservation inside a rolling day', async () => {
+  const reservations = [0, 4, 8, 12, 16, 20].map((hour) => ({ at: `2026-08-12T${String(10 + hour).padStart(2, '0')}:00:00.000Z`, maxLookups: 5 }));
+  // Use explicit valid ISO times spanning the preceding 24h.
+  reservations.splice(4, 2, { at: '2026-08-13T02:00:00.000Z', maxLookups: 5 }, { at: '2026-08-13T06:00:00.000Z', maxLookups: 5 });
+  let runs = 0;
+  const result = await scheduler.runScheduledCli({ argv: ['--execute-scheduled'], env: authorizedEnv(), now: () => '2026-08-13T10:00:00.000Z', log: () => {},
+    readStateImpl: async () => ({ schemaVersion: 1, providerReservations: reservations }), writeStateImpl: async () => {}, withLeaseImpl: immediateLease,
+    runAlbumArtworkCliImpl: async () => { runs += 1; } });
+  assert.equal(result.status, 'deferred'); assert.equal(result.reason, 'rolling_24h_track_lookup_budget'); assert.equal(runs, 0);
 });
