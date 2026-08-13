@@ -6,7 +6,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   const AUTOMATION_GROUPS = Object.freeze([
     ['Concert Updates', 'Finds new concerts and updates known concert information.'],
-    ['Web Concert Search', 'Looks for concerts that structured providers may have missed.'],
+    ['Web Concert Search', 'Looks for concerts that structured providers may have missed a show.'],
     ['Listening Updates', 'Keeps listening history up to date.'],
     ['Artist Updates', 'Fills in and refreshes artist identity and metadata.'],
     ['Artist Images', 'Fills in missing artist artwork.'],
@@ -39,9 +39,10 @@
   function listeningState(){try{return Array.isArray(listeningEvents)?listeningEvents:[];}catch(_){return[];}}
   function listenBrainzConnection(){try{return root.LiveVaultListenBrainz?.connection?.()||null;}catch(_){return null;}}
   function latestRunByMode(usage,mode){const explicit=usage?.automationRuns?.[mode];if(explicit)return explicit;const last=usage?.lastRun;if(!last)return null;if(mode==='focusedTavilyConcert')return last.mode==='tavily-concert-only'?last:null;if(mode==='structuredResearch')return last.mode!=='tavily-concert-only'?last:null;return null;}
+  function latestRun(...runs){return runs.filter(Boolean).sort((a,b)=>(Date.parse(b.finishedAt||b.startedAt||'')||0)-(Date.parse(a.finishedAt||a.startedAt||'')||0))[0]||null;}
   function resultFor(run,a,b,c,d,fallback){if(!run)return fallback;const p=[];if(finite(run[a]))p.push(`${count(run[a]).toLocaleString()} ${b}`);if(finite(run[c]))p.push(`${count(run[c]).toLocaleString()} ${d}`);return p.join(' · ')||'A run is recorded, but no outcome counts are reported.';}
   function automationRows(now=new Date()){
-    const usage=usageState()||{},structured=latestRunByMode(usage,'structuredResearch'),focused=latestRunByMode(usage,'focusedTavilyConcert'),artistRun=usage.lastProviderIdentityRun||usage.lastMusicbrainzRun||null,lb=listenBrainzConnection();
+    const usage=usageState()||{},structured=latestRunByMode(usage,'structuredResearch'),focused=latestRunByMode(usage,'focusedTavilyConcert'),artistRun=latestRun(usage.lastProviderIdentityRun,usage.lastMusicbrainzRun),lb=listenBrainzConnection();
     const ss=statusFromRun(structured),fs=statusFromRun(focused),as=statusFromRun(artistRun),ls=listenBrainzAutomationState(lb),validSync=ls.kind==='healthy'?lb.lastSyncAt:null;
     return [
       {name:AUTOMATION_GROUPS[0][0],description:AUTOMATION_GROUPS[0][1],...ss,lastSuccess:ss.kind==='healthy'?structured?.finishedAt:null,nextExpected:nextMwfUtc(now),result:resultFor(structured,'bandsProcessed','bands checked','concertsAdded','concerts found','No separate recent result is reported.')},
@@ -90,5 +91,5 @@
   let scheduled=false;function schedulePresentation(){if(scheduled)return;scheduled=true;root.setTimeout?.(()=>{scheduled=false;applyPresentation();},0);}
   function install(){if(typeof artistIdentityReviewHtml==='function'&&!artistIdentityReviewHtml.__gau2V118){const old=artistIdentityReviewHtml,wrapped=function(...args){return repairMusicbrainzConfidenceHtml(old.apply(this,args));};wrapped.__gau2V118=true;artistIdentityReviewHtml=wrapped;}if(typeof renderSettingsScreen==='function'&&!renderSettingsScreen.__gau2V118){const old=renderSettingsScreen,wrapped=async function(...args){const result=await old.apply(this,args);applyPresentation();schedulePresentation();return result;};wrapped.__gau2V118=true;renderSettingsScreen=wrapped;}const screen=root.document?.getElementById('screen-settings');if(screen&&root.MutationObserver&&!screen.dataset.gau2Observer){screen.dataset.gau2Observer='true';new root.MutationObserver(schedulePresentation).observe(screen,{childList:true,subtree:true});}schedulePresentation();}
   if(typeof root?.document!=='undefined'){if(root.document.readyState==='loading')root.addEventListener('DOMContentLoaded',install,{once:true});else install();}
-  return {AUTOMATION_GROUPS,PROVIDER_PURPOSES,formatMusicbrainzConfidence,repairMusicbrainzConfidenceHtml,statusFromRun,listenBrainzAutomationState,nextMwfUtc,nextFocusedWebUtc,automationRows,applyPresentation,install};
+  return {AUTOMATION_GROUPS,PROVIDER_PURPOSES,formatMusicbrainzConfidence,repairMusicbrainzConfidenceHtml,statusFromRun,listenBrainzAutomationState,nextMwfUtc,nextFocusedWebUtc,latestRun,automationRows,applyPresentation,install};
 });
