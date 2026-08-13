@@ -3,15 +3,18 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const albumRunner = require('./spotify-album-artwork-production');
+const sourceReader = require('./spotify-artwork-backfill-source');
 const productionSafety = require('./spotify-artwork-backfill-production');
 const schedulerLease = require('./lib/schedulerLease');
 
 const SCHEDULE_SCHEMA_VERSION = 1;
-const DEFAULT_INTERVAL_HOURS = 24;
+const DEFAULT_INTERVAL_HOURS = 4;
 const MIN_INTERVAL_HOURS = DEFAULT_INTERVAL_HOURS;
-const DEFAULT_CAP = albumRunner.DEFAULT_CAP;
+const DEFAULT_CAP = 5;
 const MAX_SCHEDULED_CAP = DEFAULT_CAP;
-const DEFAULT_DELAY_MS = albumRunner.DEFAULT_DELAY_MS;
+const DEFAULT_DELAY_MS = 5000;
+const MAX_TRACK_LOOKUPS_24H = 30;
+const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_MARKET = albumRunner.DEFAULT_MARKET;
 const DEFAULT_STATE_PATH = '.livevault-maintenance/spotify-album-artwork-schedule.json';
 const SCHEDULE_AUTHORIZATION = 'I_AUTHORIZE_SCHEDULED_PRIVATE_LISTENING_READS_LIVE_SPOTIFY_CALLS_PROVIDER_USAGE_AND_METADATA_WRITES';
@@ -57,8 +60,8 @@ function parseArgs(argv = []) {
     if (!options.cap || options.cap > MAX_SCHEDULED_CAP) {
       throw new Error(`Scheduled artwork cap must be between 1 and ${MAX_SCHEDULED_CAP}.`);
     }
-    if (!options.delayMs || options.delayMs < albumRunner.DEFAULT_DELAY_MS) {
-      throw new Error(`Scheduled artwork pacing must be at least ${albumRunner.DEFAULT_DELAY_MS} ms.`);
+    if (!options.delayMs || options.delayMs < DEFAULT_DELAY_MS) {
+      throw new Error(`Scheduled artwork pacing must be at least ${DEFAULT_DELAY_MS} ms.`);
     }
     if (!/^[A-Z]{2}$/.test(options.market)) throw new Error('Spotify market must be a two-letter country code.');
   }
@@ -72,6 +75,7 @@ function usageText() {
     '',
     'This command is intended to be woken by a trusted local scheduler. It does not install or activate a scheduler.',
     `Default and minimum due interval: ${DEFAULT_INTERVAL_HOURS} hours. Scheduled album-group ceiling: ${MAX_SCHEDULED_CAP}.`,
+    `Rolling provider ceiling: ${MAX_TRACK_LOOKUPS_24H} Spotify track lookups per 24 hours. Minimum pacing: ${DEFAULT_DELAY_MS} ms.`,
     `The due marker is fixed at ${DEFAULT_STATE_PATH}.`,
     '',
     'Production execution remains separately authorized:',
@@ -99,6 +103,18 @@ function parseIso(value) {
   return new Date(time).toISOString();
 }
 
+function normalizeReservation(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Scheduled artwork provider reservation is malformed.');
+  }
+  const at = parseIso(value.at);
+  const maxLookups = Number(value.maxLookups);
+  if (!at || !Number.isSafeInteger(maxLookups) || maxLookups < 1 || maxLookups > MAX_SCHEDULED_CAP) {
+    throw new Error('Scheduled artwork provider reservation is invalid.');
+  }
+  return { ...value, at, maxLookups };
+}
+
 function validateState(value) {
   if (value == null) return { schemaVersion: SCHEDULE_SCHEMA_VERSION };
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -117,6 +133,16 @@ function validateState(value) {
   }
   if (value.lastOutcome != null && !['completed', 'failed'].includes(value.lastOutcome)) {
     throw new Error('Scheduled artwork state has invalid lastOutcome.');
+  }
+  if (value.lastPlanHadUnresolved != null && typeof value.lastPlanHadUnresolved !== 'boolean') {
+    throw new Error('Scheduled artwork state has invalid lastPlanHadUnresolved.');
+  }
+  if (value.lastManifestFingerprint != null && !safeString(value.lastManifestFingerprint)) {
+    throw new Error('Scheduled artwork state has invalid lastManifestFingerprint.');
+  }
+  if (value.providerReservations != null) {
+    if (!Array.isArray(value.providerReservations)) throw new Error('Scheduled artwork provider reservations are malformed.');
+    normalized.providerReservations = value.providerReservations.map(normalizeReservation);
   }
   return normalized;
 }
@@ -173,6 +199,24 @@ function scheduleDecision(state, { now = new Date().toISOString(), intervalHours
   };
 }
 
+function activeReservations(state, nowIso) {
+  const normalized = validateState(state);
+  const nowTime = Date.parse(parseIso(nowIso));
+  if (!Number.isFinite(nowTime)) throw new Error('Scheduled artwork clock is invalid.');
+  const cutoff = nowTime - ROLLING_WINDOW_MS;
+  return (normalized.providerReservations || []).filter((item) => Date.parse(item.at) > cutoff && Date.parse(item.at) <= nowTime);
+}
+
+function remainingTrackBudget(state, nowIso) {
+  const reservations = activeReservations(state, nowIso);
+  const reserved = reservations.reduce((sum, item) => sum + item.maxLookups, 0);
+  return { reservations, reserved, remaining: Math.max(0, MAX_TRACK_LOOKUPS_24H - reserved) };
+}
+
+function maintenanceEligible(state) {
+  return state?.lastPlanHadUnresolved === false && Boolean(safeString(state?.lastManifestFingerprint));
+}
+
 function assertScheduledAuthorization(options, env) {
   if (!options.executeScheduled) {
     throw new Error('Refusing scheduled production maintenance: add --execute-scheduled only after this trusted-local schedule has been explicitly authorized.');
@@ -190,16 +234,75 @@ function productionEnv(env) {
   };
 }
 
+function privateManifestEnvironment(env) {
+  return {
+    endpoint: productionSafety.normalizeEndpoint(productionSafety.requiredEnv(env, 'CF_WORKER_ENDPOINT')),
+    workerToken: productionSafety.requiredEnv(env, 'CF_WORKER_BROWSER_TOKEN'),
+  };
+}
+
 function configureLeaseEnvironment(env) {
-  const endpoint = productionSafety.normalizeEndpoint(productionSafety.requiredEnv(env, 'CF_WORKER_ENDPOINT'));
-  const workerToken = productionSafety.requiredEnv(env, 'CF_WORKER_BROWSER_TOKEN');
+  const { endpoint, workerToken } = privateManifestEnvironment(env);
   productionSafety.requiredEnv(env, 'SPOTIFY_CLIENT_ID');
   productionSafety.requiredEnv(env, 'SPOTIFY_CLIENT_SECRET');
   productionSafety.configureUsageEnvironment(env, { endpoint, workerToken });
+  return { endpoint, workerToken };
+}
+
+async function readManifestFingerprint({ endpoint, workerToken, fetchImpl = fetch } = {}) {
+  const result = await sourceReader.readJson({
+    endpoint,
+    token: workerToken,
+    pathname: 'listening/manifest.json',
+    fetchImpl,
+  });
+  const manifest = result.value;
+  if (!manifest || manifest.kind !== 'livevault-listening-vault' || Number(manifest.schemaVersion) !== 1) {
+    throw new Error('Private listening manifest is missing or unsupported.');
+  }
+  return `sha256:${sourceReader.sha256Hex(JSON.stringify(manifest))}`;
 }
 
 function notDueSummary(decision) {
   return { mode: 'spotify-album-artwork-scheduler', status: 'not_due', nextDueAt: decision.nextDueAt };
+}
+
+async function recordIdleMaintenance({ statePath, state, decision, fingerprint, writeStateImpl, log }) {
+  const completedAt = decision.now;
+  const reservations = activeReservations(state, completedAt);
+  await writeStateImpl(statePath, {
+    ...state,
+    schemaVersion: SCHEDULE_SCHEMA_VERSION,
+    lastAttemptAt: decision.now,
+    lastCompletedAt: completedAt,
+    lastOutcome: 'completed',
+    lastPlanHadUnresolved: false,
+    lastManifestFingerprint: fingerprint,
+    providerReservations: reservations,
+  });
+  const summary = {
+    mode: 'spotify-album-artwork-scheduler',
+    status: 'idle_unchanged',
+    completedAt,
+    spotifyTrackLookups: 0,
+    fullHistoryRead: false,
+  };
+  log(JSON.stringify(summary, null, 2));
+  return summary;
+}
+
+function replaceReservation(reservations, attemptAt, actualLookups) {
+  const adjusted = [];
+  let replaced = false;
+  for (const reservation of reservations) {
+    if (!replaced && reservation.at === attemptAt) {
+      replaced = true;
+      if (actualLookups > 0) adjusted.push({ ...reservation, maxLookups: actualLookups });
+    } else {
+      adjusted.push(reservation);
+    }
+  }
+  return adjusted;
 }
 
 async function runScheduledCli({
@@ -209,6 +312,7 @@ async function runScheduledCli({
   log = console.log,
   readStateImpl = readState,
   writeStateImpl = writeState,
+  readManifestFingerprintImpl = readManifestFingerprint,
   runAlbumArtworkCliImpl = albumRunner.runProductionCli,
   withLeaseImpl = schedulerLease.withSchedulerLease,
 } = {}) {
@@ -227,6 +331,15 @@ async function runScheduledCli({
     return summary;
   }
 
+  let observedFingerprint = null;
+  if (maintenanceEligible(state)) {
+    const privateEnv = privateManifestEnvironment(env);
+    observedFingerprint = await readManifestFingerprintImpl(privateEnv);
+    if (observedFingerprint === state.lastManifestFingerprint) {
+      return recordIdleMaintenance({ statePath, state, decision, fingerprint: observedFingerprint, writeStateImpl, log });
+    }
+  }
+
   configureLeaseEnvironment(env);
   try {
     return await withLeaseImpl({ owner: LEASE_OWNER }, async () => {
@@ -238,19 +351,51 @@ async function runScheduledCli({
         return summary;
       }
 
+      if (maintenanceEligible(currentState)) {
+        const privateEnv = privateManifestEnvironment(env);
+        observedFingerprint = await readManifestFingerprintImpl(privateEnv);
+        if (observedFingerprint === currentState.lastManifestFingerprint) {
+          return recordIdleMaintenance({
+            statePath,
+            state: currentState,
+            decision: currentDecision,
+            fingerprint: observedFingerprint,
+            writeStateImpl,
+            log,
+          });
+        }
+      }
+
+      const budget = remainingTrackBudget(currentState, currentDecision.now);
+      const runCap = Math.min(options.cap, budget.remaining);
+      if (runCap < 1) {
+        const summary = {
+          mode: 'spotify-album-artwork-scheduler',
+          status: 'deferred',
+          reason: 'rolling_24h_track_lookup_budget',
+          reservedTrackLookups: budget.reserved,
+        };
+        log(JSON.stringify(summary, null, 2));
+        return summary;
+      }
+
       const attemptAt = currentDecision.now;
-      await writeStateImpl(statePath, {
+      const reservation = { at: attemptAt, maxLookups: runCap };
+      const admittedReservations = [...budget.reservations, reservation];
+      const admittedState = {
         ...currentState,
         schemaVersion: SCHEDULE_SCHEMA_VERSION,
         lastAttemptAt: attemptAt,
-      });
+        providerReservations: admittedReservations,
+      };
+      await writeStateImpl(statePath, admittedState);
 
       try {
         const result = await runAlbumArtworkCliImpl({
           argv: [
             '--execute',
             '--write',
-            '--cap', String(options.cap),
+            '--cap', String(runCap),
             '--delay-ms', String(options.delayMs),
             '--market', options.market,
           ],
@@ -259,20 +404,25 @@ async function runScheduledCli({
           withLeaseImpl: async (_leaseOptions, operation) => operation(),
         });
         const completedAt = parseIso(now());
-        await writeStateImpl(statePath, {
-          ...currentState,
-          schemaVersion: SCHEDULE_SCHEMA_VERSION,
-          lastAttemptAt: attemptAt,
+        const actualLookups = Math.max(0, Math.min(runCap, Number(result?.providerAlbumGroupsAttempted) || 0));
+        const remaining = Number(result?.providerAlbumGroupsRemaining);
+        const caughtUp = Number.isSafeInteger(remaining) && remaining === 0;
+        const finalState = {
+          ...admittedState,
           lastCompletedAt: completedAt,
           lastOutcome: 'completed',
-        });
+          lastPlanHadUnresolved: !caughtUp,
+          providerReservations: replaceReservation(admittedReservations, attemptAt, actualLookups),
+        };
+        if (caughtUp && safeString(result?.sourceManifestFingerprint)) {
+          finalState.lastManifestFingerprint = safeString(result.sourceManifestFingerprint);
+        }
+        await writeStateImpl(statePath, finalState);
         return { mode: 'spotify-album-artwork-scheduler', status: 'completed', completedAt, result };
       } catch (error) {
         try {
           await writeStateImpl(statePath, {
-            ...currentState,
-            schemaVersion: SCHEDULE_SCHEMA_VERSION,
-            lastAttemptAt: attemptAt,
+            ...admittedState,
             lastOutcome: 'failed',
           });
         } catch (stateError) {
@@ -305,6 +455,8 @@ module.exports = {
   DEFAULT_CAP,
   MAX_SCHEDULED_CAP,
   DEFAULT_DELAY_MS,
+  MAX_TRACK_LOOKUPS_24H,
+  ROLLING_WINDOW_MS,
   DEFAULT_MARKET,
   DEFAULT_STATE_PATH,
   SCHEDULE_AUTHORIZATION,
@@ -313,14 +465,22 @@ module.exports = {
   usageText,
   assertPrivateStatePath,
   parseIso,
+  normalizeReservation,
   validateState,
   readState,
   writeState,
   dueAt,
   scheduleDecision,
+  activeReservations,
+  remainingTrackBudget,
+  maintenanceEligible,
   assertScheduledAuthorization,
   productionEnv,
+  privateManifestEnvironment,
   configureLeaseEnvironment,
+  readManifestFingerprint,
   notDueSummary,
+  recordIdleMaintenance,
+  replaceReservation,
   runScheduledCli,
 };
