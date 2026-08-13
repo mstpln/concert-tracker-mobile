@@ -56,7 +56,7 @@ function parseRetryAfterBlockedUntil(value, nowMs) {
   const seconds = typeof value === 'number'
     ? value
     : (/^\s*\d+(?:\.\d+)?\s*$/.test(String(value)) ? Number(value) : NaN);
-  if (Number.isFinite(seconds) && seconds >= 0) {
+  if (Number.isFinite(seconds) && seconds > 0) {
     return normalizedNow + Math.ceil(seconds * 1000) + RETRY_AFTER_SAFETY_MS;
   }
   const absolute = validDateMs(value);
