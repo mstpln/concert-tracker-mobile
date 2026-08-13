@@ -98,6 +98,15 @@ function metadataRecords(metadata = {}) {
   return result;
 }
 
+function terminalSuppression(metadata, group) {
+  const item = metadata?.albumArtworkSuppressions?.[group?.key];
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+  if (safeString(item.albumGroupKey) !== group.key) return null;
+  if (safeString(item.representativeTrackId) !== group.representativeTrackId) return null;
+  if (!['exact_track_not_found', 'exact_track_has_no_usable_artwork'].includes(item.reason)) return null;
+  return item;
+}
+
 function buildAlbumGroups({ events = [], bands = [], metadata = {} } = {}) {
   const bandIndex = bandOwnershipIndex(bands);
   const known = metadataRecords(metadata);
@@ -203,6 +212,8 @@ function exactRepresentativeRecord({ metadata = {}, group, record } = {}) {
 function mergeRepresentativeRecord(metadata = {}, group, record) {
   const exact = exactRepresentativeRecord({ metadata, group, record });
   if (!exact) return null;
+  const suppressions = { ...(metadata?.albumArtworkSuppressions || {}) };
+  delete suppressions[group.key];
   return {
     ...(metadata || {}),
     kind: metadata?.kind || 'livevault-spotify-listening-metadata',
@@ -211,26 +222,34 @@ function mergeRepresentativeRecord(metadata = {}, group, record) {
       ...(metadata?.records || {}),
       [group.representativeTrackId]: exact,
     },
+    albumArtworkSuppressions: suppressions,
   };
 }
 
 function planAlbumArtwork({ events = [], bands = [], metadata = {} } = {}) {
   const built = buildAlbumGroups({ events, bands, metadata });
   const reusable = [];
+  const suppressed = [];
   const provider = [];
   for (const group of built.groups) {
     const record = reusableAlbumRecord(group);
     if (record) reusable.push({ group, albumRecord: record });
-    else provider.push(group);
+    else {
+      const suppression = terminalSuppression(metadata, group);
+      if (suppression) suppressed.push({ group, suppression });
+      else provider.push(group);
+    }
   }
   return {
     reusable,
+    suppressed,
     provider,
     ambiguous: built.ambiguous,
     unsafeEvents: built.unsafeEvents,
     summary: {
       safeAlbumGroups: built.groups.length,
       reusableAlbumGroups: reusable.length,
+      suppressedAlbumGroups: suppressed.length,
       providerAlbumGroups: provider.length,
       ambiguousAlbumGroups: built.ambiguous.length,
       unsafeEvents: built.unsafeEvents,
@@ -248,6 +267,7 @@ module.exports = {
   uniqueBandNameMap,
   mappedBandId,
   normalizeMetadataRecord,
+  terminalSuppression,
   buildAlbumGroups,
   reusableAlbumRecord,
   exactRepresentativeRecord,
