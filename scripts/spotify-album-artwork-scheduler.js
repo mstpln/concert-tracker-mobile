@@ -7,6 +7,7 @@ const productionSafety = require('./spotify-artwork-backfill-production');
 
 const SCHEDULE_SCHEMA_VERSION = 1;
 const DEFAULT_INTERVAL_HOURS = 24;
+const MIN_INTERVAL_HOURS = DEFAULT_INTERVAL_HOURS;
 const DEFAULT_CAP = albumRunner.DEFAULT_CAP;
 const DEFAULT_DELAY_MS = albumRunner.DEFAULT_DELAY_MS;
 const DEFAULT_MARKET = albumRunner.DEFAULT_MARKET;
@@ -48,7 +49,9 @@ function parseArgs(argv = []) {
   }
 
   if (!options.help) {
-    if (!options.intervalHours) throw new Error('Scheduled artwork interval must be a positive whole number of hours.');
+    if (!options.intervalHours || options.intervalHours < MIN_INTERVAL_HOURS) {
+      throw new Error(`Scheduled artwork interval must be a whole number of at least ${MIN_INTERVAL_HOURS} hours.`);
+    }
     if (!options.cap || options.cap > albumRunner.MAX_CAP) throw new Error(`Scheduled artwork cap must be between 1 and ${albumRunner.MAX_CAP}.`);
     if (!options.delayMs || options.delayMs < albumRunner.DEFAULT_DELAY_MS) {
       throw new Error(`Scheduled artwork pacing must be at least ${albumRunner.DEFAULT_DELAY_MS} ms.`);
@@ -64,7 +67,7 @@ function usageText() {
     'Trusted-local Spotify album artwork scheduler gate',
     '',
     'This command is intended to be woken by a trusted local scheduler. It does not install or activate a scheduler.',
-    `Default due interval: ${DEFAULT_INTERVAL_HOURS} hours. Default album-group cap: ${DEFAULT_CAP}.`,
+    `Default and minimum due interval: ${DEFAULT_INTERVAL_HOURS} hours. Default album-group cap: ${DEFAULT_CAP}.`,
     'The due marker is private local state under .livevault-maintenance/.',
     '',
     'Production execution remains separately authorized:',
@@ -145,6 +148,9 @@ function dueAt(state, intervalHours) {
 
 function scheduleDecision(state, { now = new Date().toISOString(), intervalHours = DEFAULT_INTERVAL_HOURS } = {}) {
   const normalized = validateState(state);
+  if (!Number.isSafeInteger(intervalHours) || intervalHours < MIN_INTERVAL_HOURS) {
+    throw new Error(`Scheduled artwork interval must be a whole number of at least ${MIN_INTERVAL_HOURS} hours.`);
+  }
   const nowIso = parseIso(now);
   if (!nowIso) throw new Error('Scheduled artwork clock is invalid.');
   const nextDueAt = dueAt(normalized, intervalHours);
@@ -245,6 +251,7 @@ if (require.main === module) {
 module.exports = {
   SCHEDULE_SCHEMA_VERSION,
   DEFAULT_INTERVAL_HOURS,
+  MIN_INTERVAL_HOURS,
   DEFAULT_CAP,
   DEFAULT_DELAY_MS,
   DEFAULT_MARKET,
