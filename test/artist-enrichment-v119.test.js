@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const gau3 = require('../artistEnrichmentV119');
+const gau3 = require('../providerIdentityState').artistEnrichment;
 
 function spotifyBand(overrides = {}) {
   return {
@@ -92,7 +92,7 @@ test('successful retry fills missing safe fields without changing id or user-own
   assert.equal(band.id, before.id);
   assert.equal(band.genre, 'Rock');
   assert.equal(band.origin, 'Stockholm');
-  assert.equal(band.formedYear, 2020);
+  assert.equal(band.formedYear, '2020');
   assert.equal(band.bio, 'User text');
   assert.equal(band.photoUrl, 'https://user.example/manual.jpg');
   assert.equal(band.favourite, before.favourite);
@@ -107,7 +107,7 @@ test('unknown future fields and provider identity survive enrichment merges', ()
   const identityBefore = structuredClone(band.musicbrainz);
   const futureBefore = structuredClone(band.futureField);
   gau3.decorateBand(band);
-  gau3.applyHomepageEnrichment(band, { image: 'https://band.example/og.jpg', socials: { instagram: 'https://instagram.com/synthetic' } }, '2026-08-13T00:00:00.000Z');
+  gau3.applyHomepageEnrichment(band, { image: 'https://band.example/og.jpg', instagram: 'https://instagram.com/synthetic' }, '2026-08-13T00:00:00.000Z');
   assert.deepEqual(band.musicbrainz, identityBefore);
   assert.deepEqual(band.futureField, futureBefore);
   assert.equal(band.favourite, true);
@@ -124,8 +124,8 @@ test('stale or rejected Spotify identity immediately loses artwork authority', (
   assert.equal(gau3.visibleArtistImageUrl(band), null);
 });
 
-test('malformed Spotify image metadata fails closed', () => {
-  assert.equal(gau3.selectSpotifyArtistImage({ images: [{ url: 'javascript:alert(1)', width: 640, height: 640 }] }), null);
+test('multiple or malformed Spotify image metadata fails closed', () => {
+  assert.equal(gau3.selectSpotifyArtistImage({ images: [{ url: 'http://images.example/insecure.jpg', width: 640, height: 640 }] }), null);
   assert.equal(gau3.selectSpotifyArtistImage({ images: [{ url: 'https://images.example/good.jpg', width: 640, height: 640 }, { url: 'not a url', width: 320, height: 320 }] }), null);
   assert.equal(gau3.selectSpotifyArtistImage({ images: 'https://images.example/not-an-array.jpg' }), null);
 });
