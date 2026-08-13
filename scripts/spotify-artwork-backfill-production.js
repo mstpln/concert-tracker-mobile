@@ -6,6 +6,7 @@ const runner = require('./spotify-artwork-backfill');
 const source = require('./spotify-artwork-backfill-source');
 const { UsageTracker } = require('./lib/usageTracker');
 const spotifyCircuit = require('./lib/spotifyCircuitBreaker');
+const schedulerLease = require('./lib/schedulerLease');
 
 const PRODUCTION_EXECUTION_CONFIRMATION = 'I_AUTHORIZE_PRIVATE_LISTENING_READS_LIVE_SPOTIFY_CALLS_AND_PROVIDER_USAGE_WRITES';
 const PRODUCTION_WRITE_CONFIRMATION = 'I_AUTHORIZE_PRODUCTION_SPOTIFY_METADATA_WRITES';
@@ -118,6 +119,7 @@ async function runProductionCli({
   log = console.log,
   usageFactory = () => UsageTracker.load(),
   runBackfillImpl = runner.runBackfill,
+  withLeaseImpl = schedulerLease.withSchedulerLease,
 } = {}) {
   const options = runner.parseArgs(argv);
   if (options.help) {
@@ -133,54 +135,56 @@ async function runProductionCli({
   const checkpointPath = assertPrivateCheckpointPath(options.checkpointPath);
   configureUsageEnvironment(env, { endpoint, workerToken });
 
-  const usage = await usageFactory();
-  let summary = null;
-  let runError = null;
-  try {
-    summary = await runBackfillImpl({
-      cap: options.cap,
-      delayMs: options.delayMs,
-      market: options.market,
-      writeEnabled: options.write,
-      loadEvents: async () => {
-        const result = await source.readAllSourceEvents({ endpoint, token: workerToken, fetchImpl });
-        return result.events;
-      },
-      readMetadata: () => runner.readRemoteMetadata({ endpoint, token: workerToken, fetchImpl }),
-      writeMetadata: ({ value, etag, missing }) => runner.workerPutJson({
-        endpoint,
-        token: workerToken,
-        pathname: 'listening/spotify-metadata.json',
-        value,
-        etag,
-        missing,
-        fetchImpl,
-      }),
-      loadCheckpoint: () => loadValidatedCheckpoint(checkpointPath),
-      saveCheckpoint: (checkpoint) => runner.writeCheckpoint(checkpointPath, checkpoint),
-      // OAuth token success is not proof that Spotify Web API quota recovered, so it
-      // may arm a failure circuit but must not close an expired Web API circuit.
-      getToken: () => trackedSpotifyCall(usage, () => runner.getSpotifyToken({ clientId, clientSecret, fetchImpl }), { allowSuccess: false }),
-      fetchTrack: ({ id, token, market }) => trackedSpotifyCall(usage, () => runner.fetchSpotifyTrack({ id, token, market, fetchImpl })),
-    });
-    return summary;
-  } catch (error) {
-    runError = error;
-    throw error;
-  } finally {
+  return withLeaseImpl({ owner: 'spotify-artwork-maintenance' }, async () => {
+    const usage = await usageFactory();
+    let summary = null;
+    let runError = null;
     try {
-      await usage.save();
-    } catch (saveError) {
-      if (!runError) throw new Error(`Backfill finished but provider-usage accounting could not be saved: ${saveError.message}`);
-      log('Provider-usage accounting also failed to save; no credential values were logged.');
-    }
-    if (summary) {
-      log(JSON.stringify(summary, null, 2));
-      if (!options.write && summary.staged > 0) {
-        log('Spotify metadata is staged only in the ignored private checkpoint. Production listening metadata was not written.');
+      summary = await runBackfillImpl({
+        cap: options.cap,
+        delayMs: options.delayMs,
+        market: options.market,
+        writeEnabled: options.write,
+        loadEvents: async () => {
+          const result = await source.readAllSourceEvents({ endpoint, token: workerToken, fetchImpl });
+          return result.events;
+        },
+        readMetadata: () => runner.readRemoteMetadata({ endpoint, token: workerToken, fetchImpl }),
+        writeMetadata: ({ value, etag, missing }) => runner.workerPutJson({
+          endpoint,
+          token: workerToken,
+          pathname: 'listening/spotify-metadata.json',
+          value,
+          etag,
+          missing,
+          fetchImpl,
+        }),
+        loadCheckpoint: () => loadValidatedCheckpoint(checkpointPath),
+        saveCheckpoint: (checkpoint) => runner.writeCheckpoint(checkpointPath, checkpoint),
+        // OAuth token success is not proof that Spotify Web API quota recovered, so it
+        // may arm a failure circuit but must not close an expired Web API circuit.
+        getToken: () => trackedSpotifyCall(usage, () => runner.getSpotifyToken({ clientId, clientSecret, fetchImpl }), { allowSuccess: false }),
+        fetchTrack: ({ id, token, market }) => trackedSpotifyCall(usage, () => runner.fetchSpotifyTrack({ id, token, market, fetchImpl })),
+      });
+      return summary;
+    } catch (error) {
+      runError = error;
+      throw error;
+    } finally {
+      try {
+        await usage.save();
+      } catch (saveError) {
+        if (!runError) throw new Error(`Backfill finished but provider-usage accounting could not be saved: ${saveError.message}`);
+        log('Provider-usage accounting also failed to save; no credential values were logged.');
+      }
+      if (summary) {
+        log(JSON.stringify(summary, null, 2));
+        if (!options.write && summary.staged > 0) {
+          log('Spotify metadata is staged only in the ignored private checkpoint. Production listening metadata was not written.');
+        }
       }
     }
-  }
+  });
 }
 
 if (require.main === module) {
