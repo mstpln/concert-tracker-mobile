@@ -5,9 +5,12 @@ const core = require('./spotify-artwork-backfill-core');
 const runner = require('./spotify-artwork-backfill');
 const source = require('./spotify-artwork-backfill-source');
 const { UsageTracker } = require('./lib/usageTracker');
+const spotifyCircuit = require('./lib/spotifyCircuitBreaker');
 
 const PRODUCTION_EXECUTION_CONFIRMATION = 'I_AUTHORIZE_PRIVATE_LISTENING_READS_LIVE_SPOTIFY_CALLS_AND_PROVIDER_USAGE_WRITES';
 const PRODUCTION_WRITE_CONFIRMATION = 'I_AUTHORIZE_PRODUCTION_SPOTIFY_METADATA_WRITES';
+
+spotifyCircuit.installUsageTrackerSpotifyCircuit(UsageTracker);
 
 function requiredEnv(env, name) {
   const value = String(env?.[name] || '').trim();
@@ -49,7 +52,19 @@ function configureUsageEnvironment(env, { endpoint, workerToken }) {
   }
 }
 
-async function trackedSpotifyCall(usage, operation) {
+async function persistCircuitSignal(usage, signal) {
+  return spotifyCircuit.applyAndPersistSpotifyCircuitSignal(usage, signal);
+}
+
+async function trackedSpotifyCall(usage, operation, { allowSuccess = true } = {}) {
+  const circuitReason = typeof usage?.spotifyCircuitBlockReason === 'function'
+    ? usage.spotifyCircuitBlockReason()
+    : spotifyCircuit.spotifyCircuitBlockReason(usage?.state?.spotify);
+  if (circuitReason) {
+    const error = new Error(`BANDMARKR Spotify circuit is open (${circuitReason}); no provider request was started.`);
+    error.code = 'SPOTIFY_CIRCUIT_OPEN';
+    throw error;
+  }
   if (!usage?.canCallSpotify?.()) {
     const error = new Error('BANDMARKR provider-usage safety stopped this Spotify maintenance run before another request.');
     error.code = 'SPOTIFY_USAGE_GUARD';
@@ -63,7 +78,25 @@ async function trackedSpotifyCall(usage, operation) {
     wrapped.code = 'SPOTIFY_USAGE_SAVE_FAILED';
     throw wrapped;
   }
-  return operation();
+
+  try {
+    const result = await operation();
+    const signal = spotifyCircuit.spotifyCircuitSignalFromResult(result, { successKinds: ['ok', 'not_found'], allowSuccess });
+    await persistCircuitSignal(usage, signal);
+    return result;
+  } catch (error) {
+    const signal = spotifyCircuit.spotifyCircuitSignalFromError(error);
+    if (signal) {
+      try { await persistCircuitSignal(usage, signal); }
+      catch (saveError) {
+        const wrapped = new Error(`Spotify request stopped and its circuit state could not be persisted: ${saveError.message}`);
+        wrapped.code = 'SPOTIFY_CIRCUIT_SAVE_FAILED';
+        wrapped.cause = error;
+        throw wrapped;
+      }
+    }
+    throw error;
+  }
 }
 
 function assertProductionAuthorization(options, env) {
@@ -125,7 +158,9 @@ async function runProductionCli({
       }),
       loadCheckpoint: () => loadValidatedCheckpoint(checkpointPath),
       saveCheckpoint: (checkpoint) => runner.writeCheckpoint(checkpointPath, checkpoint),
-      getToken: () => trackedSpotifyCall(usage, () => runner.getSpotifyToken({ clientId, clientSecret, fetchImpl })),
+      // OAuth token success is not proof that Spotify Web API quota recovered, so it
+      // may arm a failure circuit but must not close an expired Web API circuit.
+      getToken: () => trackedSpotifyCall(usage, () => runner.getSpotifyToken({ clientId, clientSecret, fetchImpl }), { allowSuccess: false }),
       fetchTrack: ({ id, token, market }) => trackedSpotifyCall(usage, () => runner.fetchSpotifyTrack({ id, token, market, fetchImpl })),
     });
     return summary;

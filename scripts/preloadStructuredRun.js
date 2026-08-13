@@ -3,14 +3,17 @@
 // Loaded with Node's -r flag before scripts/research.js. It keeps the
 // existing mature structured pipeline intact while disabling every Tavily
 // route for this more frequent run, narrowing release alerts to actual
-// Spotify catalogue releases, and gating MusicBrainz to a small fair queue
-// of due work rather than band-order polling.
+// Spotify catalogue releases, gating MusicBrainz to a small fair queue of
+// due work, and sharing Spotify rate/quota backoff through apiUsage.json.
 const config = require('./lib/config');
 const releasePlan = require('./lib/releaseAlertPlan');
 const releaseLifecycle = require('./lib/releaseLifecycle');
 const musicbrainz = require('./lib/musicbrainz');
+const spotify = require('./lib/spotify');
 const worker = require('./lib/workerClient');
+const { UsageTracker } = require('./lib/usageTracker');
 const { installMusicbrainzScheduledGate } = require('./lib/musicbrainzScheduledGate');
+const { installUsageTrackerSpotifyCircuit, installSpotifyModuleCircuit } = require('./lib/spotifyCircuitBreaker');
 
 config.STRUCTURED_RESEARCH.targetedTavilyRoutingEnabled = false;
 // Spotify remains the frequent catalogue source. MusicBrainz retains the
@@ -19,6 +22,8 @@ config.STRUCTURED_RESEARCH.targetedTavilyRoutingEnabled = false;
 config.STRUCTURED_RESEARCH.spotifyReleaseRefreshDays = 3;
 
 installMusicbrainzScheduledGate({ musicbrainz, worker, config });
+installUsageTrackerSpotifyCircuit(UsageTracker);
+installSpotifyModuleCircuit(spotify);
 
 function fullDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));

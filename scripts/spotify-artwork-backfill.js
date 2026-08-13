@@ -160,6 +160,18 @@ async function readSpotifyError(response) {
   }
 }
 
+function spotifyRetryAfter(response) {
+  const value = response?.headers?.get?.('Retry-After') ?? response?.headers?.get?.('retry-after') ?? null;
+  if (value == null || String(value).trim() === '') return null;
+  return String(value).trim();
+}
+
+function spotifyRetryAfterSeconds(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return Math.ceil(numeric);
+}
+
 async function fetchSpotifyTrack({ id, token, market = DEFAULT_MARKET, fetchImpl = fetch }) {
   const response = await fetchImpl(`https://api.spotify.com/v1/tracks/${encodeURIComponent(id)}?market=${market}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -167,10 +179,12 @@ async function fetchSpotifyTrack({ id, token, market = DEFAULT_MARKET, fetchImpl
   if (response.status === 404) return { kind: 'not_found', status: 404 };
   if (response.status === 429) {
     const spotifyError = await readSpotifyError(response);
+    const retryAfter = spotifyRetryAfter(response);
     return {
       kind: spotifyError.reason === 'QUOTA_EXCEEDED' ? 'quota_exceeded' : 'rate_limited',
       status: 429,
-      retryAfterSeconds: Math.max(0, Math.ceil(Number(response.headers.get('Retry-After')) || 0)),
+      retryAfter,
+      retryAfterSeconds: spotifyRetryAfterSeconds(retryAfter),
     };
   }
   if (response.status === 401) return { kind: 'auth_error', status: 401 };
