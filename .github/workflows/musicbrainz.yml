@@ -36,4 +36,4 @@ jobs:
         env:
           CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
           CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
-        run: node scripts/musicbrainz-backfill.js
+        run: node scripts/run-with-scheduler-lease.js musicbrainz-identity-backfill -- node scripts/musicbrainz-backfill.js
