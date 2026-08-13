@@ -64,7 +64,6 @@ const SHELL_FILES = [
   './trustedListeningV99.css',
   './gau2SettingsV118.css',
   './app.js',
-  './artistEnrichmentV119.js',
   './gau2SettingsV118.js',
   './listeningReviewRollout.js',
   './listeningReviewReconcile.js',
