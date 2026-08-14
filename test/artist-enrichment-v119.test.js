@@ -118,6 +118,16 @@ test('user-written bio is never overwritten by generated enrichment', () => {
   assert.equal(band.generatedBio, undefined);
 });
 
+test('empty generated enrichment is incomplete while any safe generated field is usable', () => {
+  assert.equal(gau3.generatedEnrichmentHasUsableResult(null), false);
+  assert.equal(gau3.generatedEnrichmentHasUsableResult({}), false);
+  assert.equal(gau3.generatedEnrichmentHasUsableResult({ genre: ' ', origin: null, formedYear: '', bio: null }), false);
+  assert.equal(gau3.generatedEnrichmentHasUsableResult([]), false);
+  assert.equal(gau3.generatedEnrichmentHasUsableResult({ genre: 'Rock' }), true);
+  assert.equal(gau3.generatedEnrichmentHasUsableResult({ formedYear: '2026' }), true);
+  assert.equal(gau3.generatedEnrichmentHasUsableResult({ bio: 'Generated text' }), true);
+});
+
 test('transient failure remains retryable instead of terminally complete', () => {
   const now = '2026-08-13T10:00:00.000Z';
   const state = gau3.nextEnrichmentState(null, { failures: ['wikipedia'], now });
