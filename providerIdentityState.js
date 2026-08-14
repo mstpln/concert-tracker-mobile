@@ -181,7 +181,7 @@
     if (!url) return null;
     const sourceUrl = nonEmptyString(artwork?.sourceUrl);
     const officialUrl = nonEmptyString(band?.officialUrl);
-    if (sourceUrl && officialUrl && sourceUrl !== officialUrl) return null;
+    if (sourceUrl && sourceUrl !== officialUrl) return null;
     return url;
   }
 
@@ -344,11 +344,28 @@
   }
 
   function artistEnrichmentRetryDue(band, now = new Date()) {
-    if (officialArtworkNeedsRefresh(band)) return true;
     const state = band?.artistEnrichment;
+    const eligible = Date.parse(state?.nextEligibleCheckAt || '');
+    if (officialArtworkNeedsRefresh(band)) {
+      if (state?.status !== 'retryable') return true;
+      return !Number.isFinite(eligible) || eligible <= now.getTime();
+    }
     if (state?.status !== 'retryable') return false;
-    const eligible = Date.parse(state.nextEligibleCheckAt || '');
     return !Number.isFinite(eligible) || eligible <= now.getTime();
+  }
+
+  function artistEnrichmentDueSortKey(band) {
+    const state = band?.artistEnrichment;
+    const eligible = Date.parse(state?.nextEligibleCheckAt || '');
+    if (Number.isFinite(eligible)) return eligible;
+    const attempted = Date.parse(state?.lastAttemptedAt || '');
+    return Number.isFinite(attempted) ? attempted : 0;
+  }
+
+  function nextArtistEnrichmentRetryBand(rows, now = new Date()) {
+    return (rows || [])
+      .filter((band) => !band?._enriching && artistEnrichmentRetryDue(band, now))
+      .sort((a, b) => artistEnrichmentDueSortKey(a) - artistEnrichmentDueSortKey(b) || String(a?.id || '').localeCompare(String(b?.id || '')))[0] || null;
   }
 
   function installArtistEnrichmentBrowserIntegration() {
@@ -367,7 +384,7 @@
       if (session.retryStarted || session.retryTimer) return;
       session.retryTimer = root.setTimeout(() => {
         session.retryTimer = null;
-        const due = currentBands().find((band) => !band?._enriching && artistEnrichmentRetryDue(band));
+        const due = nextArtistEnrichmentRetryBand(currentBands());
         if (!due) return;
         session.retryStarted = true;
         Promise.resolve(enrichBand(due.id)).catch(() => {});
@@ -486,6 +503,7 @@
     noteEnrichmentSourceResult,
     nextEnrichmentState: nextArtistEnrichmentState,
     enrichmentRetryDue: artistEnrichmentRetryDue,
+    nextRetryBand: nextArtistEnrichmentRetryBand,
     installBrowserIntegration: installArtistEnrichmentBrowserIntegration,
   };
 
