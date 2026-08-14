@@ -393,8 +393,9 @@
     const current = band.socials && typeof band.socials === 'object' ? band.socials : {};
     const next = { ...current };
     for (const [key, value] of [['instagram', homepage.instagram], ['spotify', homepage.spotify]]) {
-      if (!next[key] && nonEmptyString(value)) {
-        next[key] = value;
+      const safeValue = safeHttpsUrl(value);
+      if (!next[key] && safeValue) {
+        next[key] = safeValue;
         changed = true;
       }
     }
@@ -406,7 +407,7 @@
     if (source === 'wikipedia') return Boolean(nonEmptyString(value));
     if (source === 'official_site') {
       return Boolean(value && typeof value === 'object' && !Array.isArray(value)
-        && (safeHttpsImageUrl(value.image) || nonEmptyString(value.instagram) || nonEmptyString(value.spotify)));
+        && (safeHttpsImageUrl(value.image) || safeHttpsUrl(value.instagram) || safeHttpsUrl(value.spotify)));
     }
     return value != null;
   }
