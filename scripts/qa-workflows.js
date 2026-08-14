@@ -52,6 +52,7 @@ assert(pr.source.includes('Mobile Chromium QA'), 'PR QA must include mobile Chro
 assert(pr.source.includes('npm run qa:safety'), 'PR QA must run the data safety guard');
 assert(!pr.source.includes('pull_request_target'), 'PR QA must not use pull_request_target');
 assert(!pr.source.includes('secrets.'), 'PR QA must not consume repository secrets');
+assertPinnedNodeWorkflow('PR QA', pr);
 
 const pwa = getWorkflow('full-pwa-qa.yml');
 assert(pwa.source.includes('workflow_dispatch:'), 'Full PWA QA must remain manual');
@@ -60,6 +61,7 @@ assert(pwa.source.includes('npm run qa:pwa'), 'Full PWA QA must run the dedicate
 assert(!pwa.source.includes('pull_request:'), 'Full PWA QA must not run for pull requests');
 assert(!pwa.source.includes('schedule:'), 'Full PWA QA must not run on a schedule');
 assert(!pwa.source.includes('secrets.'), 'Full PWA QA must not consume repository secrets');
+assertPinnedNodeWorkflow('Full PWA QA', pwa);
 
 const smoke = getWorkflow('production-smoke.yml');
 assert(smoke.source.includes('workflow_dispatch:'), 'Production smoke must remain manual');
@@ -67,6 +69,7 @@ assert(smoke.source.includes('contents: read'), 'Production smoke must use read-
 assert(smoke.source.includes('CF_WORKER_READ_TOKEN'), 'Production smoke must use the read-only token');
 assert(!smoke.source.includes('pull_request:'), 'Production smoke must not run for pull requests');
 assert(!smoke.source.includes('schedule:'), 'Production smoke must not run on a schedule');
+assertPinnedNodeWorkflow('Production smoke', smoke);
 
 const scheduleGuard = "vars.LIVEVAULT_RESEARCH_SCHEDULES_ENABLED";
 const structured = getWorkflow('research.yml');
