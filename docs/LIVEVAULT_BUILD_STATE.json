@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v121",
-  "serviceWorkerCacheVersion": "v121",
+  "appVersion": "v122",
+  "serviceWorkerCacheVersion": "v122",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 22,
@@ -28,6 +28,7 @@
     "gau2SettingsV118.css",
     "icons/bandmarkr-wordmark.svg",
     "app.js",
+    "releaseAlertsV122.js",
     "gau2SettingsV118.js",
     "toplistStatsV96.js",
     "toplistV96.js",
