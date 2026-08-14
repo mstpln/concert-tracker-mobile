@@ -1,0 +1,379 @@
+'use strict';
+
+(function attachBandmarkrSettingsV123(root, factory) {
+  const api = factory(root);
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  if (root) root.BandmarkrSettingsV123 = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
+  const COVERAGE_THRESHOLDS = Object.freeze([
+    { min: 95, key: 'good', label: 'Strong' },
+    { min: 90, key: 'goodish', label: 'Good' },
+    { min: 75, key: 'watch', label: 'Needs work' },
+    { min: 50, key: 'warning', label: 'Weak' },
+    { min: 0, key: 'bad', label: 'Poor' },
+  ]);
+  const USAGE_THRESHOLDS = Object.freeze([
+    { max: 50, key: 'good', label: 'Comfortable' },
+    { max: 70, key: 'goodish', label: 'Moderate' },
+    { max: 85, key: 'watch', label: 'Watch' },
+    { max: 95, key: 'warning', label: 'High usage' },
+    { max: Infinity, key: 'bad', label: 'Critical' },
+  ]);
+  const PROVIDER_PURPOSES = Object.freeze({
+    ticketmaster: 'Concert discovery, event information and trusted artist identity.',
+    tavily: 'Targeted web concert searches when structured providers may have missed a show.',
+    groq: 'Structured extraction and selected artist-information tasks.',
+    setlistfm: 'Actual setlists and setlist history.',
+    spotify: 'Artist identity, releases, track links, playlists, metadata and artwork.',
+    musicbrainz: 'Artist identity, metadata and catalogue structure.',
+    listenbrainz: 'Personal listening-history synchronization.',
+  });
+
+  let renderToken = 0;
+  let reviewNotice = '';
+  let connectionNotice = '';
+
+  const esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
+  const clean = (value) => String(value == null ? '' : value).trim();
+  const finite = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+  const count = (value) => Math.max(0, finite(value) ? Number(value) : 0);
+  const pct = (value, total) => total > 0 ? Math.round((Number(value) || 0) / total * 100) : 0;
+  const plural = (n, one, many = `${one}s`) => `${Number(n).toLocaleString()} ${Number(n) === 1 ? one : many}`;
+
+  function coverageLevel(percent) {
+    const value = Math.max(0, Math.min(100, Number(percent) || 0));
+    return COVERAGE_THRESHOLDS.find((rule) => value >= rule.min) || COVERAGE_THRESHOLDS.at(-1);
+  }
+  function usageLevel(percent) {
+    const value = Math.max(0, Number(percent) || 0);
+    return USAGE_THRESHOLDS.find((rule) => value <= rule.max) || USAGE_THRESHOLDS.at(-1);
+  }
+  function normalizedText(value) {
+    return clean(value).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').toLocaleLowerCase('en');
+  }
+  function dateOnly(value) {
+    const time = Date.parse(value || '');
+    return Number.isFinite(time) ? new Intl.DateTimeFormat('en', { day:'numeric', month:'short', year:'numeric' }).format(new Date(time)) : 'Not available';
+  }
+  function dateTime(value) {
+    const time = Date.parse(value || '');
+    return Number.isFinite(time) ? new Intl.DateTimeFormat('en', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }).format(new Date(time)) : 'Not available';
+  }
+  function bandState() { try { return typeof bands !== 'undefined' && Array.isArray(bands) ? bands : []; } catch (_) { return []; } }
+  function concertState() { try { return typeof concerts !== 'undefined' && Array.isArray(concerts) ? concerts : []; } catch (_) { return []; } }
+  function listeningState() { try { return typeof listeningEvents !== 'undefined' && Array.isArray(listeningEvents) ? listeningEvents : []; } catch (_) { return []; } }
+  function usageState() { try { return typeof apiUsage !== 'undefined' && apiUsage ? apiUsage : {}; } catch (_) { return {}; } }
+  function remoteState() { try { return typeof remote !== 'undefined' ? remote : null; } catch (_) { return null; } }
+
+  function trustedVisibleImage(band) {
+    const helper = root.ProviderIdentityState?.visibleArtistImageUrl;
+    if (typeof helper === 'function') return Boolean(helper(band));
+    return Boolean(clean(band?.photoUrl) || clean(band?.artistArtwork?.officialSite?.url) || clean(band?.musicbrainz?.spotify?.images?.[0]?.url));
+  }
+  function trustedVisibleBio(band) {
+    const helper = root.ProviderIdentityState?.visibleBio;
+    if (typeof helper === 'function') return Boolean(helper(band));
+    return Boolean(clean(band?.bio) || clean(band?.generatedBio));
+  }
+  function profileCoverage(rows = []) {
+    const total = rows.length;
+    const metric = (key, matched) => ({ key, matched, total, percent:pct(matched,total) });
+    return [
+      metric('Images', rows.filter(trustedVisibleImage).length),
+      metric('Descriptions', rows.filter(trustedVisibleBio).length),
+      metric('Genres', rows.filter((band) => Boolean(clean(band?.genre))).length),
+      metric('Origin', rows.filter((band) => Boolean(clean(band?.origin))).length),
+    ];
+  }
+  function concertHasNamedVenue(concert) {
+    const venue = clean(concert?.venue);
+    return Boolean(venue && !/^unknown(?:\s+venue)?$/i.test(venue));
+  }
+  function concertHasActualSetlist(concert) {
+    return Boolean(
+      (Array.isArray(concert?.setlist) && concert.setlist.length) ||
+      (Array.isArray(concert?.setlistSongs) && concert.setlistSongs.length) ||
+      (Array.isArray(concert?.actualSetlist) && concert.actualSetlist.length) ||
+      (Array.isArray(concert?.setlist?.songs) && concert.setlist.songs.length)
+    );
+  }
+  function concertWasAttended(concert) {
+    return concert?.attended === true || concert?.status === 'attended' || concert?.attending === true;
+  }
+  function concertIsPast(concert, now = new Date()) {
+    const raw = clean(concert?.date);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+    const event = new Date(`${raw}T00:00:00`);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Number.isFinite(event.getTime()) && event < today;
+  }
+  function concertCoverage(rows = [], now = new Date()) {
+    const venueMatched = rows.filter(concertHasNamedVenue).length;
+    const eligible = rows.filter((concert) => concertWasAttended(concert) && concertIsPast(concert, now));
+    const setlists = eligible.filter(concertHasActualSetlist).length;
+    return [
+      { key:'Venue information', matched:venueMatched, total:rows.length, percent:pct(venueMatched,rows.length), detail:`${venueMatched.toLocaleString()} of ${rows.length.toLocaleString()} concerts have a named venue` },
+      { key:'Setlists', matched:setlists, total:eligible.length, percent:pct(setlists,eligible.length), detail:`${setlists.toLocaleString()} of ${eligible.length.toLocaleString()} eligible attended concerts` },
+    ];
+  }
+  function listeningCoverage(bandRows = [], events = []) {
+    const knownBandIds = new Set(bandRows.map((band) => clean(band?.id)).filter(Boolean));
+    const followedEvents = events.filter((event) => knownBandIds.has(clean(event?.localBandId || event?.bandId)));
+    const matchedBandIds = new Set(followedEvents.map((event) => clean(event?.localBandId || event?.bandId)));
+    const songs = new Map();
+    const albums = new Map();
+    for (const event of followedEvents) {
+      const bandId = clean(event?.localBandId || event?.bandId);
+      const title = normalizedText(event?.recordingTitle);
+      if (title) {
+        const key = `${bandId}\n${title}`;
+        songs.set(key, Boolean(songs.get(key) || clean(event?.musicbrainzRecordingId || event?.recordingMbid || event?.spotifyTrackId)));
+      }
+      const release = normalizedText(event?.releaseTitle);
+      if (release) {
+        const key = `${bandId}\n${release}`;
+        albums.set(key, Boolean(albums.get(key) || clean(event?.albumArtworkUrl || event?.artworkPath || event?.artworkUrl)));
+      }
+    }
+    const identifiedSongs = [...songs.values()].filter(Boolean).length;
+    const artworkAlbums = [...albums.values()].filter(Boolean).length;
+    return [
+      { key:'Artists matched', matched:matchedBandIds.size, total:bandRows.length, percent:pct(matchedBandIds.size,bandRows.length), detail:`${matchedBandIds.size.toLocaleString()} of ${bandRows.length.toLocaleString()} followed artists linked` },
+      { key:'Songs identified', matched:identifiedSongs, total:songs.size, percent:pct(identifiedSongs,songs.size), detail:`${identifiedSongs.toLocaleString()} of ${songs.size.toLocaleString()} unique songs` },
+      { key:'Album artwork', matched:artworkAlbums, total:albums.size, percent:pct(artworkAlbums,albums.size), detail:`${artworkAlbums.toLocaleString()} of ${albums.size.toLocaleString()} listened albums` },
+    ];
+  }
+  function identityCoverage(rows = []) {
+    const coverage = root.ProviderIdentityState?.identityCoverage?.(rows);
+    if (!coverage) return [];
+    const metric = (key, data, verb, attention = 0) => ({ key, matched:data.confirmed, total:data.total, percent:data.coveragePercent, detail:`${data.confirmed.toLocaleString()} of ${data.total.toLocaleString()} artists ${verb}`, attention });
+    return [
+      metric('MusicBrainz',coverage.musicbrainz,'identified'),
+      metric('Spotify',coverage.spotify,'identified',coverage.spotify.issueCount || 0),
+      metric('Ticketmaster',coverage.ticketmaster,'identified'),
+      metric('setlist.fm',coverage.setlistfm,'linked'),
+    ];
+  }
+
+  function reportedCap(source, keys) {
+    for (const key of keys) if (finite(source?.[key]) && Number(source[key]) > 0) return Number(source[key]);
+    return null;
+  }
+  function usageMetric(id, name, used, cap, unit) {
+    if (!finite(used) || !finite(cap) || Number(cap) <= 0) return { id,name,status:'Usage unavailable',statusLevel:'neutral',detail:'A current safety budget is not reported.' };
+    const percent = Math.round(Number(used) / Number(cap) * 100);
+    return { id,name,used:Number(used),cap:Number(cap),unit,percent,level:usageLevel(percent) };
+  }
+  function providerUsageRows(usage = usageState()) {
+    const tm = usage.ticketmaster || {};
+    const tv = usage.tavily || {};
+    const gq = usage.groq || {};
+    const sl = usage.setlistfm || {};
+    const sp = usage.spotify || {};
+    const mb = usage.musicbrainz || {};
+    const lb = root.LiveVaultListenBrainz?.connection?.() || null;
+    let tavilyUsed = finite(tv.callsThisMonth) ? Number(tv.callsThisMonth) : null;
+    try {
+      if (typeof RESEARCH_KEY_METADATA !== 'undefined' && RESEARCH_KEY_METADATA?.tavily?.usageCounterEpoch && tv.usageCounterEpoch !== RESEARCH_KEY_METADATA.tavily.usageCounterEpoch) tavilyUsed = 0;
+    } catch (_) {}
+    const rows = [
+      usageMetric('ticketmaster','Ticketmaster',tm.callsToday,reportedCap(tm,['dailyCap']),'BANDMARKR daily calls used'),
+      usageMetric('tavily','Tavily',tavilyUsed,reportedCap(tv,['monthlyCap']),'monthly searches used'),
+      usageMetric('groq','Groq',gq.tokensToday,reportedCap(gq,['safeTpd']),'daily tokens used'),
+      usageMetric('setlistfm','setlist.fm',sl.callsToday,reportedCap(sl,['dailyCap']),'daily calls used'),
+      usageMetric('spotify','Spotify',sp.callsToday,reportedCap(sp,['dailyCap']),'BANDMARKR daily safety limit'),
+    ];
+    const mbRun = usage.lastProviderIdentityRun || usage.lastMusicbrainzRun || null;
+    const mbState = mbRun ? statusFromRun(mbRun) : null;
+    rows.push({ id:'musicbrainz', name:'MusicBrainz', status:mbState ? mbState.label : 'Courtesy paced', statusLevel:mbState ? mbState.key : 'neutral', detail:mb.lastCallAt ? `Courtesy-paced automatically · last checked ${dateOnly(mb.lastCallAt)}` : 'Courtesy-paced automatically · no recent call recorded' });
+    rows.push({ id:'listenbrainz', name:'ListenBrainz', status:lb ? 'Connected' : 'Not connected', statusLevel:lb ? 'good' : 'warning', detail:lb?.lastSyncAt ? `Keeps listening history current · last sync ${dateTime(lb.lastSyncAt)}` : 'Keeps your listening history up to date' });
+    return rows;
+  }
+  function statusFromRun(run) {
+    if (!run) return { label:'Not reported', key:'neutral', problem:'' };
+    const value = clean(run.status).toLowerCase();
+    if (['error','failed','failure'].includes(value) || run.error) return { label:'Failed', key:'bad', problem:clean(run.error) || 'The latest run failed.' };
+    if (['ok','success','successful','complete','completed'].includes(value)) return { label:'Healthy', key:'good', problem:'' };
+    return { label:'Needs attention', key:'warning', problem:value ? `Latest status: ${value}.` : 'The latest outcome is not reported.' };
+  }
+  function latestRun(...runs) { return runs.filter(Boolean).sort((a,b) => (Date.parse(b.finishedAt || b.startedAt || '') || 0) - (Date.parse(a.finishedAt || a.startedAt || '') || 0))[0] || null; }
+  function nextMwfUtc(now = new Date()) {
+    for (let offset=0; offset<8; offset+=1) {
+      const candidate = new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()+offset,1));
+      if ([1,3,5].includes(candidate.getUTCDay()) && candidate > now) return candidate.toISOString();
+    }
+    return null;
+  }
+  function nextFocusedWebUtc(now = new Date()) {
+    return [new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1,2)),new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),15,2)),new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+1,1,2))].filter((d)=>d>now).sort((a,b)=>a-b)[0]?.toISOString() || null;
+  }
+  function updateActivityRows(usage = usageState(), now = new Date()) {
+    const structured = latestRun(usage.automationRuns?.structuredResearch,usage.lastRun?.mode === 'tavily-concert-only' ? null : usage.lastRun);
+    const focused = latestRun(usage.automationRuns?.focusedTavilyConcert,usage.lastRun?.mode === 'tavily-concert-only' ? usage.lastRun : null);
+    const artist = latestRun(usage.lastProviderIdentityRun,usage.lastMusicbrainzRun);
+    const lb = root.LiveVaultListenBrainz?.connection?.() || null;
+    const structuredState = statusFromRun(structured);
+    const focusedState = statusFromRun(focused);
+    const artistState = statusFromRun(artist);
+    const setlistFailed = Array.isArray(structured?.notes) && structured.notes.some((note)=>/setlist.*failed/i.test(clean(note)));
+    const artworkMissing = bandState().filter((band)=>!trustedVisibleImage(band)).length;
+    const result = (run,a,aLabel,b,bLabel,fallback) => {
+      if (!run) return fallback;
+      const parts=[];
+      if (finite(run[a])) parts.push(`${count(run[a]).toLocaleString()} ${aLabel}`);
+      if (finite(run[b])) parts.push(`${count(run[b]).toLocaleString()} ${bLabel}`);
+      return parts.join(' · ') || fallback;
+    };
+    return [
+      { name:'Concerts',...structuredState,last:structured?.finishedAt,next:nextMwfUtc(now),result:result(structured,'bandsProcessed','artists checked','concertsAdded','concerts added','No recent result reported.') },
+      { name:'Web concert search',...focusedState,last:focused?.finishedAt,next:nextFocusedWebUtc(now),result:result(focused,'bandsAttempted','artists checked','concertsAdded','concerts added','No recent result reported.') },
+      { name:'Listening history',label:lb ? (lb.lastSyncAt ? 'Healthy' : 'Needs attention') : 'Needs connection',key:lb?.lastSyncAt ? 'good' : 'warning',last:lb?.lastSyncAt,next:lb?.lastSyncAt ? new Date(Date.parse(lb.lastSyncAt)+21600000).toISOString() : null,result:lb ? `Last sync ${dateTime(lb.lastSyncAt)}` : 'Connect ListenBrainz in Data.' },
+      { name:'Artist information',...artistState,last:artist?.finishedAt,next:null,result:result(artist,'identityUpdates','artists updated','spotifyCalls','Spotify checks','No recent result reported.') },
+      { name:'Artist artwork',label:artworkMissing ? 'Minor gap' : 'Healthy',key:artworkMissing ? 'watch' : 'good',last:null,next:null,result:artworkMissing ? `${plural(artworkMissing,'profile')} still waiting for usable artwork` : 'All followed artists have usable artwork' },
+      { name:'Setlists',...(setlistFailed ? {label:'Failed',key:'bad',problem:'The latest setlist update recorded a failure.'} : structuredState),last:structured?.finishedAt,next:nextMwfUtc(now),result:finite(structured?.setlistsAdded) ? `${plural(structured.setlistsAdded,'setlist')} updated` : 'No recent result reported.' },
+    ];
+  }
+
+  function sectionHeader(title,intro) { return `<div class="settings-v123-section-head"><span class="settings-v123-section-accent" aria-hidden="true"></span><div><h3>${esc(title)}</h3>${intro ? `<p>${esc(intro)}</p>` : ''}</div></div>`; }
+  function tabsHtml(active) { return `<div class="settings-v123-tabs" role="tablist" aria-label="Settings sections">${[['research','Automation'],['review','Review'],['data','Data']].map(([key,label])=>`<button type="button" class="settings-v123-tab${active===key?' is-selected':''}" data-settings-tab="${key}" role="tab" aria-selected="${active===key?'true':'false'}"${active===key?'':' tabindex="-1"'}>${label}</button>`).join('')}</div>`; }
+  function progressRow(row,mode='coverage') {
+    const percent = Math.max(0,Math.round(Number(row.percent)||0));
+    const level = mode === 'usage' ? usageLevel(percent) : coverageLevel(percent);
+    return `<div class="settings-v123-row" data-v123-metric="${esc(row.key || row.name)}"><div class="settings-v123-row-head"><div><strong>${esc(row.key || row.name)}</strong><p>${esc(row.detail)}</p></div><span class="settings-v123-metric-value is-${level.key}"><i></i>${percent}%</span></div><div class="settings-v123-progress" role="progressbar" aria-label="${esc(row.key || row.name)} ${percent}%" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.min(100,percent)}"><span class="is-${level.key}" style="width:${Math.min(100,percent)}%"></span></div>${row.attention ? `<p class="settings-v123-note">${plural(row.attention,'artist')} need attention.</p>` : ''}</div>`;
+  }
+  function providerRow(row) {
+    const purpose = PROVIDER_PURPOSES[row.id] || '';
+    const body = finite(row.cap) ? progressRow({ ...row,key:row.name,detail:`${row.used.toLocaleString()} of ${row.cap.toLocaleString()} ${row.unit}` },'usage') : `<div class="settings-v123-row"><div class="settings-v123-row-head"><div><strong>${esc(row.name)}</strong><p>${esc(row.detail)}</p></div><span class="settings-v123-status is-${row.statusLevel || 'neutral'}"><i></i>${esc(row.status)}</span></div></div>`;
+    return `<div class="settings-v123-provider-wrap">${body}<button type="button" class="settings-v123-detail-toggle" data-v123-provider-toggle="${row.id}" aria-expanded="false">Details</button><div class="settings-v123-provider-detail" data-v123-provider-detail="${row.id}" hidden><p>${esc(purpose)}</p></div></div>`;
+  }
+  function activityRow(row) {
+    const meta=[row.last?`Last updated ${dateOnly(row.last)}`:null,row.next?`Next check ${dateOnly(row.next)}`:null].filter(Boolean).join(' · ');
+    return `<div class="settings-v123-row"><div class="settings-v123-row-head"><div><strong>${esc(row.name)}</strong>${meta?`<p>${esc(meta)}</p>`:''}<p>${esc(row.result)}</p>${row.problem?`<p class="settings-v123-problem">${esc(row.problem)}</p>`:''}</div><span class="settings-v123-status is-${row.key || 'neutral'}"><i></i>${esc(row.label)}</span></div></div>`;
+  }
+  function groupHtml(title,rows) { return `<div class="settings-v123-group-label">${esc(title)}</div>${rows.map((row)=>progressRow(row)).join('')}`; }
+
+  async function spotifyState() {
+    try {
+      const key=root.SpotifyUser?.TOKEN_KEY;
+      const values=await root.chrome?.storage?.local?.get?.(['spotifyUserClientId',key].filter(Boolean));
+      return { clientId:clean(values?.spotifyUserClientId),auth:key ? values?.[key] || null : null };
+    } catch (_) { return {clientId:'',auth:null}; }
+  }
+  function connectionRow(name,status,level,detail,actions='') { return `<div class="settings-v123-row"><div class="settings-v123-row-head"><div><strong>${esc(name)}</strong><p>${esc(detail)}</p></div><span class="settings-v123-status is-${level}"><i></i>${esc(status)}</span></div>${actions?`<div class="settings-v123-actions">${actions}</div>`:''}</div>`; }
+
+  function musicbrainzReviewItems(rows) {
+    return rows.filter((band)=>band?.musicbrainz?.status==='needs_review' && Array.isArray(band.musicbrainz.reviewCandidates) && band.musicbrainz.reviewCandidates.length).map((band)=>({kind:'musicbrainz',band,candidates:band.musicbrainz.reviewCandidates.slice(0,5)}));
+  }
+  async function reviewModel() {
+    const rows=bandState();
+    const events=listeningState();
+    let spotify=[]; let listening=[];
+    try { spotify=(root.ListeningSpotifyIdentityReview?.auditSpotifyArtistIdentities?.(rows,events,{identityState:root.ProviderIdentityState})||[]).filter((row)=>row.actionState==='candidate_available').map((row)=>({kind:'spotify',row})); } catch (_) {}
+    try { listening=await root.BandmarkrListeningReviewRollout?.reviewQueue?.({maxItems:20}) || []; } catch (_) {}
+    return { artist:[...musicbrainzReviewItems(rows),...spotify],listening };
+  }
+  function artistReview(item,index) {
+    if (item.kind==='musicbrainz') {
+      return `<article class="settings-v123-review-item" data-v123-artist-review="${index}"><div class="settings-v123-row-head"><div><strong>${esc(item.band.name)}</strong><p>${plural(item.candidates.length,'possible artist match','possible artist matches')} found.</p></div><span class="settings-v123-status is-warning"><i></i>Needs review</span></div><div class="settings-v123-candidates">${item.candidates.map((candidate)=>{const id=clean(candidate.mbid || candidate.id);return `<div><span><strong>${esc(candidate.artistName || 'Unnamed artist')}</strong><small>${esc([candidate.area,candidate.country,candidate.disambiguation].filter(Boolean).join(' · ') || 'MusicBrainz candidate')}</small></span><button type="button" class="btn-primary" data-v123-mb-use="${esc(id)}">Use this artist</button></div>`;}).join('')}</div><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-mb-none>None of these</button><button type="button" class="btn-secondary" data-v123-review-later>Later</button></div></article>`;
+    }
+    return `<article class="settings-v123-review-item" data-v123-artist-review="${index}"><div class="settings-v123-row-head"><div><strong>${esc(item.row.bandName)}</strong><p>${item.row.duplicateConflict?'Spotify has a conflicting artist match.':'Spotify needs you to confirm the artist match.'}</p></div><span class="settings-v123-status is-warning"><i></i>Needs review</span></div><div class="settings-v123-candidates">${(item.row.candidates||[]).map((candidate)=>`<div><span><strong>${esc(candidate.artistName || candidate.name || candidate.id)}</strong><small>Spotify candidate</small></span><button type="button" class="btn-primary" data-v123-spotify-use="${esc(candidate.id)}">Use this artist</button></div>`).join('')}</div><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-spotify-none>None of these</button><button type="button" class="btn-secondary" data-v123-review-later>Later</button></div></article>`;
+  }
+  function eventSummary(event) { return event ? `${clean(event.artistCreditName)||'Unknown artist'} — ${clean(event.recordingTitle)||'Unknown track'} · ${dateTime(event.listenedAt)} · ${clean(event.source)||'unknown source'}` : 'Source details unavailable'; }
+  function listeningReview(item,index) {
+    const first=item.candidatePairs?.[0];
+    return `<article class="settings-v123-review-item" data-v123-listening-review="${index}"><div class="settings-v123-row-head"><div><strong>${esc(first?.left?.recordingTitle || first?.right?.recordingTitle || 'Possible duplicate listen')}</strong><p>${esc(first?.left?.artistCreditName || first?.right?.artistCreditName || 'Listening history')}</p></div><span class="settings-v123-status is-warning"><i></i>Needs review</span></div><div class="settings-v123-listen-pairs">${(item.candidatePairs||[]).map((pair)=>`<div><p>${esc(eventSummary(pair.left))}</p><p>${esc(eventSummary(pair.right))}</p><button type="button" class="btn-primary" data-v123-listen-merge="${esc(pair.pairKey)}">Same listen</button></div>`).join('')}</div><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-listen-separate>Keep separate</button><button type="button" class="btn-secondary" data-v123-review-later>Later</button></div></article>`;
+  }
+
+  async function automationHtml() {
+    return `<div class="settings-v123-section">${sectionHeader('PROVIDER USAGE','Capacity and connection status for the services BANDMARKR uses.')}<div class="settings-v123-card">${providerUsageRows().map(providerRow).join('')}</div></div><div class="settings-v123-section">${sectionHeader('UPDATE ACTIVITY','What BANDMARKR updates automatically and when it last ran.')}<div class="settings-v123-card">${updateActivityRows().map(activityRow).join('')}</div></div>`;
+  }
+  function reviewHtml(model) {
+    const artistCount=model.artist.length; const listeningCount=model.listening.length; const total=artistCount+listeningCount; const resolved=!total;
+    return `<div class="settings-v123-section">${sectionHeader('REVIEW SUMMARY','Only decisions BANDMARKR cannot make safely appear here.')}<div class="settings-v123-card"><div class="settings-v123-summary"><strong>${resolved?'Everything is resolved.':`${plural(total,'item')} need your attention`}</strong><p>${resolved?'No artist or listening matches need your attention.':`${plural(artistCount,'artist match','artist matches')} · ${plural(listeningCount,'listening match','listening matches')}`}</p><div class="settings-v123-summary-grid"><span><b>${artistCount}</b><small>Artist matches</small></span><span><b>${listeningCount}</b><small>Listening match${listeningCount===1?'':'es'}</small></span><span><b>0</b><small>Critical blockers</small></span></div>${reviewNotice?`<p class="settings-v123-note" role="status">${esc(reviewNotice)}</p>`:''}</div></div></div>${artistCount?`<div class="settings-v123-section">${sectionHeader('ARTIST MATCHES','Check artists BANDMARKR could not identify with confidence.')}<div class="settings-v123-card">${model.artist.map(artistReview).join('')}</div></div>`:''}${listeningCount?`<div class="settings-v123-section">${sectionHeader('LISTENING MATCHES','Check listens that may be duplicates.')}<div class="settings-v123-card">${model.listening.map(listeningReview).join('')}</div></div>`:''}`;
+  }
+  async function maintenanceHtml() {
+    let meta=null; try { meta=await root.LiveVaultSpotifyHistory?.getMeta?.(); } catch (_) {}
+    const activation=root.BandmarkrListeningCanonicalActivation?.stateStore?.(root.localStorage)?.load?.() || null;
+    const activationText=activation?.status==='active'?'Reviewed listening totals are active.':activation?.status==='ready'?'Reviewed listening totals are ready to use.':'Update reviewed listening totals when needed.';
+    return `<details class="settings-v123-maintenance"><summary>Maintenance & recovery</summary><div class="settings-v123-maintenance-row"><strong>Listening history import</strong><p>${meta?`${count(meta.eventCount).toLocaleString()} listens are stored on this device.`:'Use this only to restore a prepared listening-history file.'}</p><input type="file" data-v123-history-file accept=".json,.gz,application/json,application/gzip" hidden><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-history-import>Import history</button>${meta?'<button type="button" class="btn-secondary" data-v123-history-clear>Remove imported history</button>':''}</div><p class="settings-v123-note" data-v123-history-status aria-live="polite"></p></div><div class="settings-v123-maintenance-row"><strong>Listening statistics</strong><p>${esc(activationText)}</p><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-prepare-listening>Update listening statistics</button>${activation?.status==='ready'?'<button type="button" class="btn-primary" data-v123-activate-listening>Use reviewed totals</button>':''}${activation?.status==='active'?'<button type="button" class="btn-secondary" data-v123-deactivate-listening>Use original totals</button>':''}</div><p class="settings-v123-note" data-v123-activation-status aria-live="polite"></p></div><div class="settings-v123-maintenance-row"><strong>Missing song information</strong><p>Try to fill trusted song details that are still missing.</p><button type="button" class="btn-secondary" data-v123-complete-identities>Fix missing song information</button><p class="settings-v123-note" data-v123-identity-status aria-live="polite"></p></div><div class="settings-v123-maintenance-row"><strong>Missing album artwork</strong><p>Try again for listened albums that still have trusted Spotify track IDs but no artwork.</p><button type="button" class="btn-secondary" data-v123-refresh-artwork>Refresh missing artwork</button><p class="settings-v123-note" data-v123-artwork-status aria-live="polite"></p></div></details>`;
+  }
+  async function dataHtml() {
+    const rows=bandState(); const spotify=await spotifyState(); const lb=root.LiveVaultListenBrainz?.connection?.() || null; const connection=remoteState();
+    const profiles=profileCoverage(rows).map((row)=>({...row,detail:`${row.matched.toLocaleString()} of ${row.total.toLocaleString()} artist profiles`}));
+    const spotifyStatus=spotify.clientId && spotify.auth?'Connected':spotify.clientId?'Ready to connect':'Not configured';
+    const spotifyActions=!spotify.clientId?'<label class="settings-v123-inline-field"><span>Public Client ID</span><input class="settings-v123-input" data-v123-spotify-client-id autocomplete="off"></label><button type="button" class="btn-primary" data-v123-save-spotify-client>Save Client ID</button>':!spotify.auth?'<button type="button" class="btn-primary" data-v123-connect-spotify>Connect</button><button type="button" class="btn-secondary" data-v123-remove-spotify-client>Remove Client ID</button>':'<button type="button" class="btn-secondary" data-v123-disconnect-spotify>Disconnect</button>';
+    const lbActions=lb?'<button type="button" class="btn-primary" data-v123-listenbrainz-sync>Sync now</button><button type="button" class="btn-secondary" data-v123-listenbrainz-disconnect>Disconnect</button>':'<label class="settings-v123-inline-field"><span>User token</span><input class="settings-v123-input" type="password" data-v123-listenbrainz-token autocomplete="off"></label><button type="button" class="btn-primary" data-v123-listenbrainz-connect>Connect</button>';
+    return `<div class="settings-v123-section">${sectionHeader('DATA COVERAGE','How complete your artist, concert and listening data is.')}<div class="settings-v123-card">${groupHtml('ARTIST IDS',identityCoverage(rows))}${groupHtml('ARTIST PROFILES',profiles)}${groupHtml('CONCERT DATA',concertCoverage(concertState()))}${groupHtml('LISTENING DATA',listeningCoverage(rows,listeningState()))}</div></div><div class="settings-v123-section">${sectionHeader('CONNECTIONS','Services connected to this device.')}<div class="settings-v123-card">${connectionRow('Data storage',connection?.endpoint&&connection?.token?'Connected':'Not connected',connection?.endpoint&&connection?.token?'good':'warning','Stores your data privately in Cloudflare.',connection?.endpoint&&connection?.token?'<button type="button" class="btn-secondary" data-v123-disconnect-data>Disconnect</button>':'<button type="button" class="btn-primary" data-v123-connect-data>Connect</button>')}${connectionRow('Spotify',spotifyStatus,spotify.auth?'good':'warning','Creates playlists and supplies trusted music information.',spotifyActions)}${connectionRow('ListenBrainz',lb?'Connected':'Not connected',lb?'good':'warning',lb?.lastSyncAt?`Keeps your listening history current · last sync ${dateTime(lb.lastSyncAt)}`:'Keeps your listening history current.',lbActions)}<p class="settings-v123-note settings-v123-connection-message" data-v123-connection-status aria-live="polite">${esc(connectionNotice)}</p></div></div><div class="settings-v123-section">${sectionHeader('EXPORT','Download a copy of your BANDMARKR data.')}<div class="settings-v123-card"><div class="settings-v123-row"><strong>Export your data</strong><p>Bands, concerts, ratings, notes, costs and setlists.</p><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-export-csv>Export CSV</button><button type="button" class="btn-secondary" data-v123-export-excel>Export Excel</button></div><p class="settings-v123-note" data-v123-export-status aria-live="polite"></p></div></div></div><div class="settings-v123-section">${sectionHeader('DEVICE','Manage BANDMARKR data saved only on this device.')}<div class="settings-v123-card"><div class="settings-v123-row"><strong>Disconnect this device</strong><p>Removes the saved data connection. Local listening history and settings stay.</p><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-disconnect-data>Disconnect</button></div></div><div class="settings-v123-row"><strong>Erase this device</strong><p>Removes data stored only in this browser. Remote concert data is not deleted.</p><div class="settings-v123-actions"><button type="button" class="btn-secondary btn-danger" data-v123-erase-device>Erase this device</button></div></div>${await maintenanceHtml()}</div><p class="settings-v123-version">Version ${esc(typeof APP_VERSION!=='undefined'?APP_VERSION:'?')}</p></div>`;
+  }
+
+  function setStatus(screen,selector,text) { const node=screen.querySelector(selector); if (node) node.textContent=text; }
+  async function saveMusicbrainz(item,candidateId) {
+    if (typeof saveArtistIdentity!=='function') throw new Error('Artist review is unavailable.');
+    return saveArtistIdentity(item.band.id,(band)=>{
+      const state=band.musicbrainz || {};
+      if (!candidateId) return root.MusicbrainzState?.rejectCandidates?.(state);
+      const candidate=(state.reviewCandidates||[]).find((row)=>clean(row.mbid || row.id)===candidateId);
+      return candidate ? root.MusicbrainzState?.confirmedIdentity?.(candidate,state) : null;
+    });
+  }
+  async function wireReview(screen,model) {
+    screen.querySelectorAll('[data-v123-artist-review]').forEach((article)=>{
+      const item=model.artist[Number(article.dataset.v123ArtistReview)]; if (!item) return;
+      article.querySelectorAll('[data-v123-mb-use]').forEach((button)=>button.addEventListener('click',async()=>{button.disabled=true;try{await saveMusicbrainz(item,button.dataset.v123MbUse);reviewNotice=`${item.band.name} was linked.`;await renderUnifiedSettings();}catch(error){reviewNotice=error?.message||'The artist match could not be saved.';button.disabled=false;}}));
+      article.querySelector('[data-v123-mb-none]')?.addEventListener('click',async(event)=>{event.currentTarget.disabled=true;try{await saveMusicbrainz(item,null);reviewNotice=`${item.band.name} candidates were rejected.`;await renderUnifiedSettings();}catch(error){reviewNotice=error?.message||'The artist decision could not be saved.';event.currentTarget.disabled=false;}});
+      article.querySelectorAll('[data-v123-spotify-use]').forEach((button)=>button.addEventListener('click',async()=>{button.disabled=true;try{await root.ListeningSpotifyIdentityReviewUi.saveDecision(item.row,'confirm',button.dataset.v123SpotifyUse);reviewNotice=`${item.row.bandName} was linked to Spotify.`;await renderUnifiedSettings();}catch(error){reviewNotice=error?.message||'The Spotify match could not be saved.';button.disabled=false;}}));
+      article.querySelector('[data-v123-spotify-none]')?.addEventListener('click',async(event)=>{event.currentTarget.disabled=true;try{await root.ListeningSpotifyIdentityReviewUi.saveDecision(item.row,'reject',null);reviewNotice=`${item.row.bandName} candidates were rejected.`;await renderUnifiedSettings();}catch(error){reviewNotice=error?.message||'The Spotify decision could not be saved.';event.currentTarget.disabled=false;}});
+      article.querySelector('[data-v123-review-later]')?.addEventListener('click',()=>{article.hidden=true;});
+    });
+    screen.querySelectorAll('[data-v123-listening-review]').forEach((article)=>{
+      const item=model.listening[Number(article.dataset.v123ListeningReview)]; if (!item) return;
+      article.querySelectorAll('[data-v123-listen-merge]').forEach((button)=>button.addEventListener('click',async()=>{button.disabled=true;try{await root.BandmarkrListeningReviewRollout.applyReview(item,'merge',{pairKey:button.dataset.v123ListenMerge});reviewNotice='Listening match saved.';await renderUnifiedSettings();}catch(error){reviewNotice=error?.message||'The listening decision could not be saved.';button.disabled=false;}}));
+      article.querySelector('[data-v123-listen-separate]')?.addEventListener('click',async(event)=>{event.currentTarget.disabled=true;try{await root.BandmarkrListeningReviewRollout.applyReview(item,'keep_separate',{});reviewNotice='Listening records will stay separate.';await renderUnifiedSettings();}catch(error){reviewNotice=error?.message||'The listening decision could not be saved.';event.currentTarget.disabled=false;}});
+      article.querySelector('[data-v123-review-later]')?.addEventListener('click',()=>{article.hidden=true;});
+    });
+  }
+  function wireAutomation(screen) {
+    screen.querySelectorAll('[data-v123-provider-toggle]').forEach((button)=>button.addEventListener('click',()=>{const detail=screen.querySelector(`[data-v123-provider-detail="${button.dataset.v123ProviderToggle}"]`);const open=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(open));if(detail)detail.hidden=!open;}));
+  }
+  async function wireData(screen) {
+    screen.querySelector('[data-v123-connect-data]')?.addEventListener('click',()=>{if(typeof showOnboarding==='function')showOnboarding();});
+    screen.querySelectorAll('[data-v123-disconnect-data]').forEach((button)=>button.addEventListener('click',()=>root.LiveVaultDevicePrivacy?.disconnectDevice?.()));
+    screen.querySelector('[data-v123-erase-device]')?.addEventListener('click',async(event)=>{if(!root.confirm?.('Erase all BANDMARKR data stored on this device? Your remote concert data and permanent ticket files will remain in Cloudflare.'))return;event.currentTarget.disabled=true;await root.LiveVaultDevicePrivacy?.eraseDevice?.();});
+    screen.querySelector('[data-v123-save-spotify-client]')?.addEventListener('click',async()=>{const value=clean(screen.querySelector('[data-v123-spotify-client-id]')?.value);if(!value){setStatus(screen,'[data-v123-connection-status]','Enter the public Spotify Client ID.');return;}await root.chrome?.storage?.local?.set?.({spotifyUserClientId:value});connectionNotice='Spotify Client ID saved.';await renderUnifiedSettings();});
+    screen.querySelector('[data-v123-remove-spotify-client]')?.addEventListener('click',async()=>{await root.chrome?.storage?.local?.remove?.('spotifyUserClientId');connectionNotice='';await renderUnifiedSettings();});
+    screen.querySelector('[data-v123-connect-spotify]')?.addEventListener('click',async()=>{const state=await spotifyState();root.SpotifyUser?.beginAuthorization?.(state.clientId);});
+    screen.querySelector('[data-v123-disconnect-spotify]')?.addEventListener('click',async()=>{await root.SpotifyUser?.clearAuth?.();connectionNotice='Spotify disconnected.';await renderUnifiedSettings();});
+    screen.querySelector('[data-v123-listenbrainz-connect]')?.addEventListener('click',async(event)=>{event.currentTarget.disabled=true;try{const validated=await root.LiveVaultListenBrainz.validateToken(clean(screen.querySelector('[data-v123-listenbrainz-token]')?.value));root.LiveVaultListenBrainz.saveConnection(validated);await root.LiveVaultListenBrainz.syncNow();await renderUnifiedSettings();}catch(error){setStatus(screen,'[data-v123-connection-status]',error?.message||'ListenBrainz connection failed.');event.currentTarget.disabled=false;}});
+    screen.querySelector('[data-v123-listenbrainz-sync]')?.addEventListener('click',async(event)=>{event.currentTarget.disabled=true;try{const result=await root.LiveVaultListenBrainz.syncNow();setStatus(screen,'[data-v123-connection-status]',result.added?`${result.added.toLocaleString()} new listens added.`:'Listening history is already up to date.');}catch(error){setStatus(screen,'[data-v123-connection-status]',error?.message||'ListenBrainz sync failed.');}event.currentTarget.disabled=false;});
+    screen.querySelector('[data-v123-listenbrainz-disconnect]')?.addEventListener('click',async()=>{root.LiveVaultListenBrainz?.clearConnection?.();await renderUnifiedSettings();});
+    screen.querySelector('[data-v123-export-csv]')?.addEventListener('click',()=>{if(typeof exportDataAsCsv==='function')exportDataAsCsv();setStatus(screen,'[data-v123-export-status]','CSV files downloading…');});
+    screen.querySelector('[data-v123-export-excel]')?.addEventListener('click',async()=>{try{if(typeof exportDataAsExcel==='function')await exportDataAsExcel();setStatus(screen,'[data-v123-export-status]','Excel export ready.');}catch(_){setStatus(screen,'[data-v123-export-status]',"Couldn't create the Excel export. Use CSV instead.");}});
+    const file=screen.querySelector('[data-v123-history-file]');screen.querySelector('[data-v123-history-import]')?.addEventListener('click',()=>file?.click());file?.addEventListener('change',async()=>{const selected=file.files?.[0];if(!selected)return;try{const result=await root.LiveVaultSpotifyHistory.importFile(selected);await root.LiveVaultSpotifyHistory.applyToApp();setStatus(screen,'[data-v123-history-status]',`${result.imported.toLocaleString()} listens imported.`);}catch(error){setStatus(screen,'[data-v123-history-status]',error?.message||'Import failed.');}file.value='';});
+    screen.querySelector('[data-v123-history-clear]')?.addEventListener('click',async()=>{await root.LiveVaultSpotifyHistory?.clear?.();try{if(typeof listeningEvents!=='undefined')listeningEvents=[];}catch(_){}await renderUnifiedSettings();});
+    screen.querySelector('[data-v123-prepare-listening]')?.addEventListener('click',async(event)=>{event.currentTarget.disabled=true;try{if(root.BandmarkrGau5PreparationIntegrationV121?.runPreparation)await root.BandmarkrGau5PreparationIntegrationV121.runPreparation({userInitiated:true});else await root.BandmarkrListeningCanonicalActivation?.prepare?.({bands:bandState()});await renderUnifiedSettings();}catch(error){setStatus(screen,'[data-v123-activation-status]',error?.message||'Listening statistics update stopped safely.');event.currentTarget.disabled=false;}});
+    screen.querySelector('[data-v123-activate-listening]')?.addEventListener('click',async()=>{const result=await root.BandmarkrListeningCanonicalActivation.activate({bands:bandState()});try{if(typeof listeningEvents!=='undefined')listeningEvents=result.events;}catch(_){}await renderUnifiedSettings();});
+    screen.querySelector('[data-v123-deactivate-listening]')?.addEventListener('click',async()=>{const result=await root.BandmarkrListeningCanonicalActivation.deactivate({bands:bandState()});try{if(typeof listeningEvents!=='undefined')listeningEvents=result.events;}catch(_){}await renderUnifiedSettings();});
+    screen.querySelector('[data-v123-complete-identities]')?.addEventListener('click',async(event)=>{event.currentTarget.disabled=true;try{const result=await root.BandmarkrListeningIdentityCompletionV104.complete({onProgress:({checked,total})=>setStatus(screen,'[data-v123-identity-status]',`Checking ${checked} of ${total}…`)});setStatus(screen,'[data-v123-identity-status]',result.checked?`${result.resolvedRecordings.toLocaleString()} song identities added · ${result.remaining.toLocaleString()} still unresolved.`:'No safe song-information lookup is needed.');}catch(error){setStatus(screen,'[data-v123-identity-status]',error?.message||'Song-information update stopped safely.');}event.currentTarget.disabled=false;});
+    screen.querySelector('[data-v123-refresh-artwork]')?.addEventListener('click',async(event)=>{event.currentTarget.disabled=true;try{const result=await root.SpotifyListeningMetadataV99.enrich({onProgress:({processed,total})=>setStatus(screen,'[data-v123-artwork-status]',`Checking ${processed} of ${total}…`)});setStatus(screen,'[data-v123-artwork-status]',result.requested?`${result.added.toLocaleString()} artwork records added.`:'Album artwork is already complete for trusted Spotify track IDs.');}catch(error){setStatus(screen,'[data-v123-artwork-status]',error?.message||'Artwork refresh stopped safely.');}event.currentTarget.disabled=false;});
+  }
+
+  async function renderUnifiedSettings() {
+    const screen=root.document?.getElementById('screen-settings'); if(!screen)return false; const token=++renderToken;
+    let active='research'; try{if(typeof settingsTab!=='undefined'&&['research','review','data'].includes(settingsTab))active=settingsTab;}catch(_){}
+    let model=null; let body='';
+    if(active==='review'){model=await reviewModel();body=reviewHtml(model);}else if(active==='data')body=await dataHtml();else body=await automationHtml();
+    if(token!==renderToken||!root.document?.contains(screen))return false;
+    screen.innerHTML=`${tabsHtml(active)}<div class="settings-v123-body" data-v123-tab-panel="${active}">${body}</div>`;
+    screen.querySelectorAll('[data-settings-tab]').forEach((button)=>button.addEventListener('click',async()=>{try{settingsTab=button.dataset.settingsTab;}catch(_){}reviewNotice='';await renderUnifiedSettings();}));
+    if(active==='review')await wireReview(screen,model);else if(active==='data')await wireData(screen);else wireAutomation(screen);
+    return true;
+  }
+  function install() {
+    if(typeof root.document==='undefined')return false;
+    if(typeof renderSettingsScreen==='function'&&!renderSettingsScreen.__bandmarkrV123){const previous=renderSettingsScreen;const replacement=async function(){return renderUnifiedSettings();};replacement.__bandmarkrV123=true;replacement.__legacy=previous;renderSettingsScreen=replacement;}
+    return true;
+  }
+  if(typeof root.document!=='undefined')install();
+
+  return { COVERAGE_THRESHOLDS,USAGE_THRESHOLDS,PROVIDER_PURPOSES,coverageLevel,usageLevel,normalizedText,profileCoverage,concertHasNamedVenue,concertHasActualSetlist,concertWasAttended,concertIsPast,concertCoverage,listeningCoverage,providerUsageRows,statusFromRun,nextMwfUtc,nextFocusedWebUtc,updateActivityRows,renderUnifiedSettings,install };
+});
