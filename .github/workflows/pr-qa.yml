@@ -16,12 +16,12 @@ jobs:
     name: Unit and safety checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - name: Install dependencies
         run: npm ci
@@ -49,7 +49,7 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.sha }}
       - name: Whitespace validation
         run: git diff --check ${{ github.event.pull_request.base.sha }}...HEAD
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: unit-and-safety-artifacts
@@ -63,10 +63,10 @@ jobs:
     name: Desktop Chromium QA
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - name: Install dependencies and Chromium
         run: npm ci && npx playwright install --with-deps chromium
@@ -76,7 +76,7 @@ jobs:
           QA_BUILD_ID: pr-${{ github.event.pull_request.number }}-${{ github.sha }}-desktop
       - name: Run desktop Chromium QA
         run: npx playwright test --project=desktop-chromium
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: desktop-chromium-artifacts
@@ -91,10 +91,10 @@ jobs:
     name: Mobile Chromium QA
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - name: Install dependencies and Chromium
         run: npm ci && npx playwright install --with-deps chromium
@@ -104,7 +104,7 @@ jobs:
           QA_BUILD_ID: pr-${{ github.event.pull_request.number }}-${{ github.sha }}-mobile
       - name: Run mobile Chromium QA
         run: npx playwright test --project=mobile-chromium
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: mobile-chromium-artifacts
