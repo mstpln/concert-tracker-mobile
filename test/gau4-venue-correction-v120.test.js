@@ -87,6 +87,37 @@ test('GAU4 accepts an exact Ticketmaster ticket URL as strong recovery evidence 
   assert.equal(research.findTicketmasterConcertMatch([existing], candidate).reason, 'trusted_venue_evidence');
 });
 
+test('exact provider-event matches retain the existing full Ticketmaster allowlist upgrade path', () => {
+  const existing = existingConcert({
+    sourceProvider: 'ticketmaster',
+    providerEventId: 'tm-synthetic-le-sserafim',
+  });
+  const candidate = ticketmasterCandidate({
+    time: '21:15:00',
+    venueAddress: 'Provider Canonical Address',
+    ticketUrl: 'https://www.ticketmaster.dk/event/provider-canonical-link',
+    distanceKm: 77,
+  });
+
+  const match = research.findTicketmasterConcertMatch([existing], candidate);
+  assert.equal(match.kind, 'match');
+  assert.equal(match.reason, 'provider_event_id');
+
+  const upgraded = research.upgradeExistingConcertWithTicketmaster(existing, candidate);
+  assert.equal(upgraded.venue, 'Royal Arena');
+  assert.equal(upgraded.time, '21:15:00');
+  assert.equal(upgraded.venueAddress, 'Provider Canonical Address');
+  assert.equal(upgraded.ticketUrl, 'https://www.ticketmaster.dk/event/provider-canonical-link');
+  assert.equal(upgraded.distanceKm, 77);
+  assert.equal(upgraded.providerEventId, 'tm-synthetic-le-sserafim');
+  assert.equal(upgraded.notes, existing.notes);
+  assert.equal(upgraded.ticketPrice, existing.ticketPrice);
+  assert.equal(upgraded.ticketQuantity, existing.ticketQuantity);
+  assert.equal(upgraded.playlistUrl, existing.playlistUrl);
+  assert.deepEqual(upgraded.photos, existing.photos);
+  assert.deepEqual(upgraded.futureField, existing.futureField);
+});
+
 test('GAU4 does not guess a venue from city/date alone', () => {
   const existing = existingConcert({ venueAddress: null, ticketUrl: 'https://tickets.example/user-link' });
   const candidate = ticketmasterCandidate({ venueAddress: null, ticketUrl: 'https://www.ticketmaster.dk/event/other', providerEventId: null });
