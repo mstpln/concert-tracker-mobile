@@ -71,6 +71,12 @@ assert(!smoke.source.includes('pull_request:'), 'Production smoke must not run f
 assert(!smoke.source.includes('schedule:'), 'Production smoke must not run on a schedule');
 assertPinnedNodeWorkflow('Production smoke', smoke);
 
+const listeningDryRun = getWorkflow('listening-maintenance-dry-run.yml');
+assert(listeningDryRun.source.includes('workflow_dispatch:'), 'listening maintenance dry run must remain manual');
+assert(!listeningDryRun.source.includes('schedule:'), 'listening maintenance dry run must never be scheduled');
+assert(listeningDryRun.source.includes("github.ref == 'refs/heads/main'"), 'listening maintenance dry run must run only from main');
+assertPinnedNodeWorkflow('Listening maintenance dry run', listeningDryRun);
+
 const scheduleGuard = "vars.LIVEVAULT_RESEARCH_SCHEDULES_ENABLED";
 const structured = getWorkflow('research.yml');
 assert(structured.source.includes("cron: '0 1 * * 1,3,5'"), 'structured research must define the Monday, Wednesday and Friday cadence');
@@ -92,6 +98,7 @@ assert(cleanup.source.includes('workflow_dispatch:'), 'release cleanup must rema
 assert(!cleanup.source.includes('schedule:'), 'release cleanup must never be scheduled');
 assert(cleanup.source.includes('news-before-v77-cleanup.json'), 'release cleanup must create a rollback backup');
 assert(cleanup.source.includes('actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'), 'release cleanup backup action must be pinned');
+assertPinnedNodeWorkflow('Release cleanup', cleanup);
 
 const spotifyCandidates = getWorkflow('spotify-candidate-acquisition.yml');
 assert(spotifyCandidates.source.includes('workflow_dispatch:'), 'Spotify candidate acquisition must remain manual');
@@ -109,6 +116,7 @@ assert(approvedIdentities.source.includes("github.ref == 'refs/heads/main'"), 'a
 assert(approvedIdentities.source.includes('contents: read'), 'approved identity update must use read-only repository permissions');
 assert(approvedIdentities.source.includes('CF_WORKER_TOKEN'), 'approved identity update must use the automation Worker token');
 assert(!approvedIdentities.source.includes('SPOTIFY_CLIENT_SECRET'), 'approved identity update must not receive Spotify credentials');
+assertPinnedNodeWorkflow('Approved identity update', approvedIdentities);
 
 const musicbrainzBackfill = getWorkflow('musicbrainz.yml');
 assert(musicbrainzBackfill.source.includes('workflow_dispatch:'), 'MusicBrainz identity backfill must remain manual');
