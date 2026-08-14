@@ -45,13 +45,17 @@ function spotifyReleaseReady(release, today) {
 // Cross-provider canonicalization can merge a new Spotify observation into a
 // MusicBrainz-keyed release. The old lifecycle test then looked only at the
 // merged MusicBrainz key and lost the Spotify "new this run" signal. Restore
-// that signal by matching the exact Spotify release ID from the original
-// observations before the generic merge result is consumed by research.js.
+// that signal by reconstructing the Spotify observation key from the merged
+// canonical observation before the generic merge result is consumed.
 const mergeLifecycleReleases = structured.mergeLifecycleReleases;
 structured.mergeLifecycleReleases = function mergeLifecycleReleasesWithSpotifyEligibility(existing, observations, now, lifecycleEligibleKeys = []) {
   const eligibleKeys = new Set(lifecycleEligibleKeys);
   const newSpotifyIds = new Set((observations || [])
-    .filter((release) => release?.spotifyReleaseId && eligibleKeys.has(structured.releaseKey(release)))
+    .filter((release) => {
+      if (!release?.spotifyReleaseId) return false;
+      const spotifyObservationKey = structured.releaseKey({ ...release, musicbrainzReleaseGroupMbid: null });
+      return eligibleKeys.has(spotifyObservationKey);
+    })
     .map((release) => release.spotifyReleaseId));
   return mergeLifecycleReleases(existing, observations, now, lifecycleEligibleKeys)
     .map((release) => newSpotifyIds.has(release.spotifyReleaseId) ? { ...release, lifecycleEligible: true } : release);
