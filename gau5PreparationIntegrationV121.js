@@ -145,10 +145,7 @@
   function takeOverPrepareButton() {
     const card = root?.document?.querySelector?.('[data-canonical-activation]');
     const button = card?.querySelector?.('[data-canonical-prepare]');
-    if (!card || !button || button.dataset.gau5Owned === 'true') {
-      render(card);
-      return false;
-    }
+    if (!card || !button || button.dataset.gau5Owned === 'true') return false;
     const replacement = button.cloneNode(true);
     replacement.dataset.gau5Owned = 'true';
     button.replaceWith(replacement);
