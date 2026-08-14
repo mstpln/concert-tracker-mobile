@@ -183,6 +183,56 @@ test('latest user correction wins over an in-flight venue-only provider recovery
   assert.equal(merged[0].ticketUrl, original.ticketUrl);
 });
 
+test('latest same-ID record must still satisfy trusted venue evidence before persistence', () => {
+  const original = existingConcert();
+  const candidate = {
+    ...ticketmasterCandidate({
+      providerEventId: null,
+      ticketUrl: 'https://different.example/provider-ticket',
+    }),
+    _venueRecoveryOnly: true,
+  };
+  assert.equal(research.trustedVenueRecoveryMatch(original, candidate), true);
+
+  const latest = {
+    ...original,
+    city: 'User corrected city',
+    venueAddress: 'User corrected address',
+    ticketUrl: 'https://tickets.example/new-user-link',
+    notes: 'Newer user evidence must win.',
+  };
+  const merged = research.mergeTicketmasterConcertUpgrades([latest], [{ id: original.id, candidate }]);
+
+  assert.equal(merged[0].venue, 'Unknown venue');
+  assert.equal(merged[0].city, 'User corrected city');
+  assert.equal(merged[0].venueAddress, 'User corrected address');
+  assert.equal(merged[0].ticketUrl, 'https://tickets.example/new-user-link');
+  assert.equal(merged[0].notes, 'Newer user evidence must win.');
+});
+
+test('latest conflicting provider event identity blocks an in-flight venue-only recovery', () => {
+  const original = existingConcert();
+  const candidate = { ...ticketmasterCandidate(), _venueRecoveryOnly: true };
+  assert.equal(research.trustedVenueRecoveryMatch(original, candidate), true);
+
+  const latest = { ...original, providerEventId: 'tm-newer-conflicting-event' };
+  const merged = research.mergeTicketmasterConcertUpgrades([latest], [{ id: original.id, candidate }]);
+
+  assert.equal(merged[0].venue, 'Unknown venue');
+  assert.equal(merged[0].providerEventId, 'tm-newer-conflicting-event');
+});
+
+test('latest matching ticket evidence can still complete a venue-only recovery when address changes', () => {
+  const original = existingConcert({ venueAddress: null });
+  const candidate = { ...ticketmasterCandidate({ venueAddress: null, providerEventId: null }), _venueRecoveryOnly: true };
+  const latest = { ...original, venueAddress: 'Newer unrelated address note' };
+
+  const merged = research.mergeTicketmasterConcertUpgrades([latest], [{ id: original.id, candidate }]);
+  assert.equal(merged[0].venue, 'Royal Arena');
+  assert.equal(merged[0].venueAddress, 'Newer unrelated address note');
+  assert.equal(merged[0].ticketUrl, original.ticketUrl);
+});
+
 test('multiple equally strong unknown-venue records stay ambiguous instead of choosing one', () => {
   const first = existingConcert({ id: 'concert-a' });
   const second = existingConcert({ id: 'concert-b' });
