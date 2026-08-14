@@ -161,9 +161,12 @@ test('recovery chooses the oldest due artist rather than permanent array order',
   assert.equal(gau3.nextRetryBand(rows, new Date('2026-08-14T12:00:00.000Z')).id, 'oldest');
 });
 
-test('unsafe official social links are not stored', () => {
+test('unsafe or deceptive official social links are not stored', () => {
   const band = spotifyBand({ socials: {} });
-  const homepage = { instagram: 'http://instagram.example/synthetic', spotify: 'javascript:alert(1)' };
+  const homepage = {
+    instagram: 'https://evil.example/?next=instagram.com',
+    spotify: 'https://evil.example/open.spotify.com/artist/synthetic',
+  };
   assert.equal(gau3.applyHomepageEnrichment(band, homepage, '2026-08-14T00:00:00.000Z'), false);
   assert.deepEqual(band.socials, {});
 });
