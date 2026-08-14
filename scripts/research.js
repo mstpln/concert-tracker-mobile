@@ -458,7 +458,7 @@ function ticketmasterConcertPatch(candidate) {
 
 function upgradeExistingConcertWithTicketmaster(existing, candidate) {
   if (candidate?._venueRecoveryOnly) {
-    if (!isUnknownVenueName(existing?.venue) || isUnknownVenueName(candidate?.venue)) return existing;
+    if (!trustedVenueRecoveryMatch(existing, candidate)) return existing;
     return { ...existing, venue: candidate.venue };
   }
   return { ...existing, ...ticketmasterConcertPatch(candidate) };
