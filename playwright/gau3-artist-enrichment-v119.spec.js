@@ -1,24 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
 async function installSyntheticProviderStubs(page) {
-  await page.route('https://example.invalid/**', async (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname === '/official-failure') {
-      await route.fulfill({
-        status: 503,
-        contentType: 'text/html',
-        body: '<html><head><title>Temporarily unavailable</title><meta property="og:image" content="https://example.invalid/images/error.svg"></head><body>Retry later</body></html>',
-      });
-      return;
-    }
-    if (url.pathname === '/official-success') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'text/html',
-        body: '<html><head><title>Synthetic official site</title><meta property="og:image" content="https://example.invalid/images/official-success.svg"></head><body>Synthetic artist home page.</body></html>',
-      });
-      return;
-    }
+  await page.route('https://example.invalid/images/**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'image/svg+xml',
@@ -26,35 +9,58 @@ async function installSyntheticProviderStubs(page) {
     });
   });
 
-  await page.route('https://en.wikipedia.org/**', async (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname.includes('/w/api.php')) {
-      const search = url.searchParams.get('search') || '';
-      if (search === 'Synthetic Wikipedia Failure') {
-        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify([search, [search], [], []]) });
-        return;
-      }
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([search, [search], [], []]) });
-      return;
-    }
-    if (url.pathname.includes('/api/rest_v1/page/summary/')) {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ extract: 'Synthetic Wikipedia context for browser QA.' }) });
-      return;
-    }
-    await route.abort();
-  });
+  await page.evaluate(() => {
+    const upstreamFetch = window.fetch.bind(window);
+    const observerKey = Symbol.for('livevault.gau3.artist-enrichment-fetch-observer');
+    const observer = window.fetch[observerKey] || null;
 
-  await page.route('https://text.pollinations.ai/**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        genre: 'Synthetic rock',
-        origin: 'Sweden',
-        formedYear: '2026',
-        bio: 'Generated synthetic biography from the existing add-band enrichment path.',
-      }),
-    });
+    function observeNonOk(url, response) {
+      if (!observer?.contexts || response?.ok !== false) return response;
+      for (const context of observer.contexts) {
+        try {
+          if (context.matches(url)) context.nonOk = true;
+        } catch (_) {}
+      }
+      return response;
+    }
+
+    const syntheticFetch = async (input, options = {}) => {
+      const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+      let response = null;
+      if (url.hostname === 'en.wikipedia.org' && url.pathname.includes('/w/api.php')) {
+        const search = url.searchParams.get('search') || '';
+        response = search === 'Synthetic Wikipedia Failure'
+          ? new Response(JSON.stringify([search, [search], [], []]), { status: 503, headers: { 'Content-Type': 'application/json' } })
+          : new Response(JSON.stringify([search, [search], [], []]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      } else if (url.hostname === 'en.wikipedia.org' && url.pathname.includes('/api/rest_v1/page/summary/')) {
+        response = new Response(JSON.stringify({ extract: 'Synthetic Wikipedia context for browser QA.' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } else if (url.hostname === 'text.pollinations.ai') {
+        response = new Response(JSON.stringify({
+          genre: 'Synthetic rock',
+          origin: 'Sweden',
+          formedYear: '2026',
+          bio: 'Generated synthetic biography from the existing add-band enrichment path.',
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      } else if (url.hostname === 'example.invalid' && url.pathname === '/official-failure') {
+        response = new Response('<html><head><title>Temporarily unavailable</title><meta property="og:image" content="https://example.invalid/images/error.svg"></head><body>Retry later</body></html>', {
+          status: 503,
+          headers: { 'Content-Type': 'text/html' },
+        });
+      } else if (url.hostname === 'example.invalid' && url.pathname === '/official-success') {
+        response = new Response('<html><head><title>Synthetic official site</title><meta property="og:image" content="https://example.invalid/images/official-success.svg"></head><body>Synthetic artist home page.</body></html>', {
+          status: 200,
+          headers: { 'Content-Type': 'text/html' },
+        });
+      }
+      if (response) return observeNonOk(url, response);
+      return upstreamFetch(input, options);
+    };
+
+    if (observer) Object.defineProperty(syntheticFetch, observerKey, { value: observer, enumerable: false });
+    window.fetch = syntheticFetch;
   });
 }
 
@@ -115,6 +121,7 @@ test('manual add enrichment exposes only trusted Spotify artwork and preserves m
   });
 
   await page.reload();
+  await installSyntheticProviderStubs(page);
   await page.getByRole('button', { name: 'Bands' }).click();
 
   await page.locator('#screen-mybands').getByText('Synthetic Added Artist', { exact: true }).click();
@@ -157,6 +164,7 @@ test('unconfirmed Spotify candidate stays initials-only', async ({ page }) => {
   });
 
   await page.reload();
+  await installSyntheticProviderStubs(page);
   await page.getByRole('button', { name: 'Bands' }).click();
   await page.locator('#screen-mybands').getByText('Synthetic Candidate Only', { exact: true }).click();
   await expect(page.locator('#screen-profile .profile-avatar img')).toHaveCount(0);
