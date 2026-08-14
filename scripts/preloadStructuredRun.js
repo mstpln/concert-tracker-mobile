@@ -42,6 +42,10 @@ function spotifyReleaseReady(release, today) {
   return true;
 }
 
+function spotifyLifecycleStage(release) {
+  return release?.type === 'Single' ? 'spotify_single_release' : 'spotify_album_release';
+}
+
 // Cross-provider canonicalization can merge a new Spotify observation into a
 // MusicBrainz-keyed release. The old lifecycle test then looked only at the
 // merged MusicBrainz key and lost the Spotify "new this run" signal. Restore
@@ -105,9 +109,10 @@ releasePlan.planLifecycleAlerts = function planSpotifyReleaseAlerts({ band, rele
     const generatedId = spotifyReleaseAlertId(band.id, release);
     const existing = knownById.get(generatedId) || knownBySpotifyRelease.get(release.spotifyReleaseId) || null;
     const alertId = existing?.id || generatedId;
-    lifecycleUpdates.push({ bandId: band.id, canonicalReleaseId: release.canonicalReleaseId || releaseLifecycle.canonicalReleaseId(release), stage: 'spotify_release', alertId });
+    const lifecycleStage = spotifyLifecycleStage(release);
+    lifecycleUpdates.push({ bandId: band.id, canonicalReleaseId: release.canonicalReleaseId || releaseLifecycle.canonicalReleaseId(release), stage: lifecycleStage, alertId });
     if (existing) {
-      enrich.push({ id: existing.id, lifecycleStage: 'spotify_release' });
+      enrich.push({ id: existing.id, lifecycleStage });
       continue;
     }
     const spotifyUrl = releaseFeedPolicy.trustedSpotifyReleaseUrl(release.spotifyUrl);
@@ -120,7 +125,7 @@ releasePlan.planLifecycleAlerts = function planSpotifyReleaseAlerts({ band, rele
       foundAt: today,
       structured: true,
       provider: 'spotify',
-      lifecycleStage: 'spotify_release',
+      lifecycleStage,
       canonicalReleaseId: release.canonicalReleaseId || releaseLifecycle.canonicalReleaseId(release),
       releaseTitle: release.title,
       releaseType: release.type,
