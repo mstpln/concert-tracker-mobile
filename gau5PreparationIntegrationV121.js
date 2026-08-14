@@ -120,6 +120,13 @@
     return runningPromise;
   }
 
+  function setVisible(element, visible) {
+    if (!element) return;
+    element.hidden = !visible;
+    if (visible) element.style.removeProperty('display');
+    else element.style.display = 'none';
+  }
+
   function render(container = root?.document?.querySelector?.('[data-canonical-activation]')) {
     if (!container) return false;
     const { gau5 } = dependencies();
@@ -133,12 +140,12 @@
     if (canonical?.status === 'active') return false;
     if (status) status.textContent = gau5.progressText(state);
     if (prepare) {
-      prepare.hidden = state.status === 'complete';
+      setVisible(prepare, state.status !== 'complete');
       prepare.disabled = Boolean(runningPromise);
       prepare.textContent = state.status === 'paused' || state.status === 'running' || state.status === 'error' ? 'Resume preparation' : 'Prepare cleaned totals';
     }
-    if (activate) activate.hidden = state.status !== 'complete';
-    if (deactivate) deactivate.hidden = true;
+    setVisible(activate, state.status === 'complete');
+    setVisible(deactivate, false);
     return true;
   }
 
@@ -204,6 +211,7 @@
     resetFreshPreparation,
     ensureSourceCompatible,
     runPreparation,
+    setVisible,
     render,
     takeOverPrepareButton,
     resumePersistedWork,
