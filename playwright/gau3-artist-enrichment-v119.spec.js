@@ -11,6 +11,14 @@ async function installSyntheticProviderStubs(page) {
       });
       return;
     }
+    if (url.pathname === '/official-success') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: '<html><head><title>Synthetic official site</title><meta property="og:image" content="https://example.invalid/images/official-success.svg"></head><body>Synthetic artist home page.</body></html>',
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: 'image/svg+xml',
@@ -171,4 +179,25 @@ test('non-OK Wikipedia and official-site responses remain retryable and their pa
   const officialFailure = await readStoredBand(page, 'Synthetic Official Failure');
   expect(officialFailure.artistEnrichment.errorCategory).toContain('official_site');
   expect(officialFailure.artistArtwork?.officialSite).toBeUndefined();
+});
+
+test('adding an official URL through Edit schedules and completes refreshed official artwork', async ({ page }) => {
+  await page.goto('/');
+  await installSyntheticProviderStubs(page);
+
+  await addManualBand(page, 'Synthetic Official Edit');
+  await expect.poll(async () => (await readStoredBand(page, 'Synthetic Official Edit'))?.artistEnrichment?.status).toBe('complete');
+
+  await page.locator('#screen-mybands').getByText('Synthetic Official Edit', { exact: true }).click();
+  await page.locator('#screen-profile').getByRole('button', { name: 'Edit band' }).click();
+  await page.locator('#screen-profile .edit-url').fill('https://example.invalid/official-success');
+  await page.locator('#screen-profile .edit-save').click();
+
+  await expect.poll(async () => (await readStoredBand(page, 'Synthetic Official Edit'))?.officialUrl).toBe('https://example.invalid/official-success');
+  await expect.poll(async () => (await readStoredBand(page, 'Synthetic Official Edit'))?.artistEnrichment?.status).toBe('complete');
+  const refreshed = await readStoredBand(page, 'Synthetic Official Edit');
+  expect(refreshed.artistArtwork.officialSite.url).toBe('https://example.invalid/images/official-success.svg');
+  expect(refreshed.artistArtwork.officialSite.sourceUrl).toBe('https://example.invalid/official-success');
+  expect(refreshed.artistArtwork.officialSite.source).toBe('official_site_og_image');
+  await expect(page.locator('#screen-profile .profile-avatar img')).toHaveAttribute('src', 'https://example.invalid/images/official-success.svg');
 });
