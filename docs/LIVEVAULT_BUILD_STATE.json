@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v120",
-  "serviceWorkerCacheVersion": "v120",
+  "appVersion": "v121",
+  "serviceWorkerCacheVersion": "v121",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 20,
@@ -39,6 +39,7 @@
     "listeningReviewReconcile.js",
     "listeningCanonicalActivation.js",
     "listeningPreparationRecovery.js",
+    "listeningPreparationV121.js",
     "listeningSpotifyIdentityReview.js",
     "listeningSpotifyIdentityReviewUi.js",
     "listeningIdentityPacingV105.js",
