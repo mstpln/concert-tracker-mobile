@@ -121,17 +121,18 @@
       const { gau5 } = dependencies();
       const store = gau5Store();
       if (!gau5?.prepare || !store) throw new Error('Resumable listening preparation is unavailable.');
-      await ensureSourceCompatible({ freshIfIdle: userInitiated });
-      setCanonicalPreparing();
-      render();
-      await requestPreparationWakeLock();
       try {
+        await ensureSourceCompatible({ freshIfIdle: userInitiated });
+        setCanonicalPreparing();
+        render();
+        await requestPreparationWakeLock();
         const result = await gau5.prepare(options());
         if (result.state?.status === 'complete') setCanonicalReady(result.state);
         else setCanonicalPreparing();
         render();
         return result;
       } catch (error) {
+        store.save(gau5.fail(store.load(), error));
         setCanonicalError(error);
         render();
         throw error;
