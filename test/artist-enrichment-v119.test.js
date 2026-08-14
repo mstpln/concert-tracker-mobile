@@ -171,6 +171,12 @@ test('soft provider absence is classified as retryable enrichment failure', () =
   assert.equal(state.errorCategory, 'wikipedia,official_site');
 });
 
+test('unsafe official artwork alone remains retryable instead of becoming provider success', () => {
+  const failures = [];
+  assert.equal(gau3.noteEnrichmentSourceResult(failures, 'official_site', { image: 'http://band.example/insecure.jpg' }), true);
+  assert.deepEqual(failures, ['official_site']);
+});
+
 test('usable provider evidence does not create a retry failure', () => {
   const failures = [];
   assert.equal(gau3.noteEnrichmentSourceResult(failures, 'wikipedia', 'Synthetic context'), false);
