@@ -119,6 +119,39 @@ test('Spotify release planner catches up recent pre-fix releases that were alrea
   assert.equal(isSpotifyReleaseItem(plan.alertsToCreate[0]), true);
 });
 
+test('Spotify release planner does not let durable lifecycle eligibility bypass the 30-day recency bound', () => {
+  const oldEligible = {
+    lifecycleEligible: true,
+    canonicalReleaseId: 'spotify:old-eligible',
+    firstSeenAt: '2026-08-01T00:00:00.000Z',
+    title: 'Old Eligible Album',
+    type: 'Album',
+    releaseDate: '2026-06-01',
+    spotifyReleaseId: 'old-eligible',
+    spotifyUrl: 'https://open.spotify.com/album/old-eligible',
+  };
+  const plan = planSpotifyReleaseAlerts({ band: { id: 'band-1', name: 'Example Band' }, releases: [oldEligible], alerts: [], today: '2026-08-15T12:00:00.000Z' });
+  assert.equal(plan.alertsToCreate.length, 0);
+  assert.equal(plan.skipped[0].reason, 'outside_recency_window');
+});
+
+test('Spotify release planner does not recreate a release after its typed lifecycle stage was generated', () => {
+  const release = {
+    lifecycleEligible: true,
+    canonicalReleaseId: 'spotify:generated',
+    title: 'Generated Album',
+    type: 'Album',
+    releaseDate: '2026-08-14',
+    spotifyReleaseId: 'generated',
+    spotifyUrl: 'https://open.spotify.com/album/generated',
+    lifecycle: { spotify_album_release: { alertId: 'release-band-1-spotify-generated', generatedAt: '2026-08-14T12:00:00.000Z' } },
+  };
+  const plan = planSpotifyReleaseAlerts({ band: { id: 'band-1', name: 'Example Band' }, releases: [release], alerts: [], today: '2026-08-15T12:00:00.000Z' });
+  assert.equal(plan.alertsToCreate.length, 0);
+  assert.equal(plan.lifecycleUpdates.length, 0);
+  assert.equal(plan.skipped[0].reason, 'already_generated');
+});
+
 test('Spotify release planner keeps future first baselines and old history silent and rejects malformed URLs', () => {
   const postFixBaseline = { lifecycleEligible: false, canonicalReleaseId: 'spotify:new-band', firstSeenAt: '2026-08-15T00:00:00.000Z', title: 'Fresh Baseline Album', type: 'Album', releaseDate: '2026-08-14', spotifyReleaseId: 'new-band', spotifyUrl: 'https://open.spotify.com/album/new-band' };
   const old = { lifecycleEligible: false, canonicalReleaseId: 'spotify:old', firstSeenAt: '2026-08-01T00:00:00.000Z', title: 'Old Album', type: 'Album', releaseDate: '2026-06-01', spotifyReleaseId: 'old', spotifyUrl: 'https://open.spotify.com/album/old' };
