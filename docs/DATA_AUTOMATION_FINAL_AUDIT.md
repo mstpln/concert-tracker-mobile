@@ -94,7 +94,7 @@ No provider cap, schedule, credential scope, data schema, PWA behavior, or produ
 - Destructive release-feed cleanup remains manual only.
 - QA and production smoke remain non-scheduled.
 
-## 8. Deliberately outstanding architecture, not audit defects
+## 8. Deliberately outstanding architecture and follow-up risks
 
 These are separate future product/architecture decisions and are not silently implemented by the final audit:
 
@@ -102,9 +102,10 @@ These are separate future product/architecture decisions and are not silently im
 2. Scheduled weather-data cutover from the current browser weather fetch path.
 3. Whether GAU3 + DAB5 fully supersede the older future-band identity-automation proposal or whether a separate automatic candidate-acquisition lane is still wanted.
 4. Removal of remaining routine maintenance buttons only after their automatic replacements are physically verified.
+5. GitHub Actions currently emits a Node.js 20 deprecation warning for the pinned v4 checkout/setup/upload actions and force-runs those action internals on Node.js 24. BANDMARKR's application/QA runtime remains Node.js 20. Updating action majors or the repository runtime is a separate CI/toolchain review and should not be hidden inside this audit.
 
 ## 9. Final audit conclusion
 
 The current automation architecture has one coherent safety model: scheduled provider work is narrow and serialized; manual provider work remains explicitly gated; provider calls are bounded and paced; Spotify shares persisted backoff; MusicBrainz is demand-driven; writes are conditional; provider/source ownership remains separated; and private listening work stays outside public QA and ordinary GitHub provider workflows.
 
-The workflow drift listed in section 6 is the only repository-level automation-hardening defect identified by this audit that should be corrected immediately. The items in section 8 are intentionally separate future builds, not hidden incompleteness in the current automation safety model.
+The workflow drift listed in section 6 is the only repository-level automation-hardening defect identified by this audit that should be corrected immediately. The items in section 8 are intentionally separate future builds or toolchain follow-ups, not hidden incompleteness in the current automation safety model.
