@@ -9,7 +9,7 @@ const state = {
   serviceWorkerCacheVersion: cache,
   versionsMatch: version === cache,
   runtime: 'plain-html-css-javascript-pwa',
-  expectedNodeMajor: 20,
+  expectedNodeMajor: 22,
   qaOutputDirectory: 'dist',
   playwrightProjects: ['desktop-chromium','mobile-chromium'],
   workflows: ['pr-qa.yml','full-pwa-qa.yml','production-smoke.yml'],
