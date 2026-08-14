@@ -8,7 +8,8 @@
 const config = require('./lib/config');
 const releasePlan = require('./lib/releaseAlertPlan');
 const releaseLifecycle = require('./lib/releaseLifecycle');
-const { trustedSpotifyReleaseUrl } = require('./lib/releaseFeedPolicy');
+const releaseFeedPolicy = require('./lib/releaseFeedPolicy');
+const structured = require('./lib/structuredResearch');
 const musicbrainz = require('./lib/musicbrainz');
 const spotify = require('./lib/spotify');
 const worker = require('./lib/workerClient');
@@ -27,30 +28,48 @@ installUsageTrackerSpotifyCircuit(UsageTracker);
 installSpotifyModuleCircuit(spotify);
 
 const DAY = 86400000;
+const RELEASE_REPAIR_CATCHUP_DAYS = 30;
+const RELEASE_REPAIR_FIRST_SEEN_CUTOFF = Date.parse('2026-08-14T23:59:59.999Z');
 
 function fullDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
 }
 
 function spotifyReleaseReady(release, today) {
-  if (!release?.spotifyReleaseId || !trustedSpotifyReleaseUrl(release.spotifyUrl)) return false;
+  if (!release?.spotifyReleaseId || !releaseFeedPolicy.trustedSpotifyReleaseUrl(release.spotifyUrl)) return false;
   if (!['Album', 'Single'].includes(release.type)) return false;
   if (!fullDate(release.releaseDate) || release.releaseDate > today.slice(0, 10)) return false;
   return true;
 }
 
-// Baseline creation is still silent for old catalogue history, but a real
-// Spotify release from the normal recency window must not disappear merely
-// because it was first observed while a provider baseline was being built.
-// This bounded catch-up is what repairs missed recent albums/singles without
-// turning the first baseline into a historical flood.
-function recentSpotifyCatchupEligible(release, today) {
+// Cross-provider canonicalization can merge a new Spotify observation into a
+// MusicBrainz-keyed release. The old lifecycle test then looked only at the
+// merged MusicBrainz key and lost the Spotify "new this run" signal. Restore
+// that signal by matching the exact Spotify release ID from the original
+// observations before the generic merge result is consumed by research.js.
+const mergeLifecycleReleases = structured.mergeLifecycleReleases;
+structured.mergeLifecycleReleases = function mergeLifecycleReleasesWithSpotifyEligibility(existing, observations, now, lifecycleEligibleKeys = []) {
+  const eligibleKeys = new Set(lifecycleEligibleKeys);
+  const newSpotifyIds = new Set((observations || [])
+    .filter((release) => release?.spotifyReleaseId && eligibleKeys.has(structured.releaseKey(release)))
+    .map((release) => release.spotifyReleaseId));
+  return mergeLifecycleReleases(existing, observations, now, lifecycleEligibleKeys)
+    .map((release) => newSpotifyIds.has(release.spotifyReleaseId) ? { ...release, lifecycleEligible: true } : release);
+};
+
+// Existing production baselines were built while the cross-provider bug above
+// was present. A bounded one-time catch-up makes already-observed Spotify
+// releases from the previous 30 days eligible on the first post-fix run. The
+// firstSeen cutoff means future first baselines stay silent exactly as before.
+function repairCatchupEligible(release, today) {
   if (!spotifyReleaseReady(release, today)) return false;
+  const firstSeenAt = Date.parse(release.firstSeenAt || '');
+  if (!Number.isFinite(firstSeenAt) || firstSeenAt > RELEASE_REPAIR_FIRST_SEEN_CUTOFF) return false;
   const releaseAt = Date.parse(`${release.releaseDate}T00:00:00Z`);
   const todayAt = Date.parse(`${today.slice(0, 10)}T00:00:00Z`);
   if (!Number.isFinite(releaseAt) || !Number.isFinite(todayAt)) return false;
   const ageDays = Math.floor((todayAt - releaseAt) / DAY);
-  return ageDays >= 0 && ageDays <= config.NEWS_RECENCY_DAYS;
+  return ageDays >= 0 && ageDays <= RELEASE_REPAIR_CATCHUP_DAYS;
 }
 
 function spotifyReleaseAlertId(bandId, release) {
@@ -70,7 +89,7 @@ releasePlan.planLifecycleAlerts = function planSpotifyReleaseAlerts({ band, rele
       continue;
     }
     const normalLifecycleEligible = Boolean(release?.lifecycleEligible);
-    const catchupEligible = recentSpotifyCatchupEligible(release, today);
+    const catchupEligible = repairCatchupEligible(release, today);
     if (!normalLifecycleEligible && !catchupEligible) {
       skipped.push({ release, reason: 'baseline' });
       continue;
@@ -87,7 +106,7 @@ releasePlan.planLifecycleAlerts = function planSpotifyReleaseAlerts({ band, rele
       enrich.push({ id: existing.id, lifecycleStage: 'spotify_release' });
       continue;
     }
-    const spotifyUrl = trustedSpotifyReleaseUrl(release.spotifyUrl);
+    const spotifyUrl = releaseFeedPolicy.trustedSpotifyReleaseUrl(release.spotifyUrl);
     creates.push({
       id: generatedId,
       bandId: band.id,
