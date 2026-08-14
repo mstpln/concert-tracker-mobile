@@ -91,7 +91,9 @@ test('manual workflow is hardened, shares the data-write concurrency group, and 
   assert.match(workflow, /github\.ref == 'refs\/heads\/main'/); assert.match(workflow, /contents: read/); assert.match(workflow, /timeout-minutes: 10/);
   assert.match(workflow, /group: live-vault-data-writes/);
   assert.match(workflow, /cancel-in-progress: false/);
-  assert.match(workflow, /queue: max/);
+  assert.doesNotMatch(workflow, /queue: max/);
+  assert.match(workflow, /actions\/checkout@11d5960a326750d5838078e36cf38b85af677262/);
+  assert.match(workflow, /actions\/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020/);
   assert.match(structured, /group: live-vault-data-writes/);
   assert.match(structured, /cancel-in-progress: false/);
   assert.doesNotMatch(structured, /queue: max/);
