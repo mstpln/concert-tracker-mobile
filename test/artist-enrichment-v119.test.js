@@ -69,9 +69,24 @@ test('official artwork from a previous official URL is refreshable and replaceab
   assert.equal(gau3.enrichmentRetryDue(band, new Date('2026-08-14T00:00:00.000Z')), true);
   assert.equal(gau3.mergeOfficialArtwork(band, 'https://new.example/new-og.jpg', band.officialUrl, '2026-08-14T00:00:00.000Z'), true);
   assert.equal(band.artistArtwork.officialSite.url, 'https://new.example/new-og.jpg');
-  assert.equal(band.artistArtwork.officialSite.sourceUrl, 'https://new.example');
+  assert.equal(band.artistArtwork.officialSite.sourceUrl, 'https://new.example/');
   assert.equal(band.artistArtwork.officialSite.futureField, 'keep');
   assert.equal(gau3.officialArtworkNeedsRefresh(band), false);
+});
+
+test('unprovenanced official artwork is hidden and can be repaired without losing unknown fields', () => {
+  const band = spotifyBand({
+    musicbrainz: { status: 'confirmed', spotify: { id: 'spotify-artist-1', status: 'confirmed', images: [] } },
+    officialUrl: 'https://band.example',
+    artistArtwork: { officialSite: { url: 'https://band.example/old.jpg', futureField: 'keep' } },
+  });
+  assert.equal(gau3.officialArtworkUrl(band), null);
+  assert.equal(gau3.officialArtworkNeedsRefresh(band), true);
+  assert.equal(gau3.mergeOfficialArtwork(band, 'https://band.example/new.jpg', band.officialUrl, '2026-08-14T00:00:00.000Z'), true);
+  assert.equal(band.artistArtwork.officialSite.source, 'official_site_og_image');
+  assert.equal(band.artistArtwork.officialSite.sourceUrl, 'https://band.example/');
+  assert.equal(band.artistArtwork.officialSite.futureField, 'keep');
+  assert.equal(gau3.officialArtworkUrl(band), 'https://band.example/new.jpg');
 });
 
 test('removing the official URL removes old official-site artwork authority without creating a retry loop', () => {
@@ -115,7 +130,7 @@ test('transient failure remains retryable instead of terminally complete', () =>
 test('stale official artwork still respects the bounded retry delay after a failed refresh', () => {
   const band = spotifyBand({
     officialUrl: 'https://new.example',
-    artistArtwork: { officialSite: { url: 'https://old.example/og.jpg', sourceUrl: 'https://old.example' } },
+    artistArtwork: { officialSite: { url: 'https://old.example/og.jpg', sourceUrl: 'https://old.example', source: 'official_site_og_image' } },
     artistEnrichment: {
       status: 'retryable',
       lastAttemptedAt: '2026-08-14T00:00:00.000Z',
