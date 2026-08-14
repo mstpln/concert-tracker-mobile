@@ -220,10 +220,15 @@ async function resolveSongLinks(songs, bandName, usage, { spotifyArtistId = null
 const IMPERSONATOR = /\b(tribute|cover|karaoke|parody|experience|impersonat|ultimate|revival|homage|salute)\b/i;
 const norm = (value) => String(value || '').toLocaleLowerCase().normalize('NFKD').replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/^the\s+/u, '').replace(/\s+/g, ' ');
 
+function spotifyArtistImages(candidate) {
+  if (!Array.isArray(candidate?.images)) return [];
+  return candidate.images.map((image) => image && typeof image === 'object' ? { ...image } : image);
+}
+
 function spotifyIdentity(mbidMetadata, candidate, now = new Date().toISOString(), method = 'search_exact') {
   return {
     id: candidate.id, url: candidate.url || candidate.external_urls?.spotify || `https://open.spotify.com/artist/${candidate.id}`,
-    artistName: candidate.name || null, status: 'confirmed', matchMethod: method, confidence: 100,
+    artistName: candidate.name || null, images: spotifyArtistImages(candidate), status: 'confirmed', matchMethod: method, confidence: 100,
     matchedAt: now, lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: now, nextEligibleCheckAt: null, errorCategory: null, reviewCandidates: [],
   };
 }
@@ -231,7 +236,7 @@ function spotifyIdentity(mbidMetadata, candidate, now = new Date().toISOString()
 function spotifyReviewCandidates(candidates) {
   const seen = new Set();
   return (candidates || []).filter((candidate) => candidate?.id && !seen.has(candidate.id) && seen.add(candidate.id)).slice(0, 5)
-    .map((candidate) => ({ id: candidate.id, artistName: candidate.name || null, url: candidate.url || candidate.external_urls?.spotify || null }));
+    .map((candidate) => ({ id: candidate.id, artistName: candidate.name || null, url: candidate.url || candidate.external_urls?.spotify || null, images: spotifyArtistImages(candidate) }));
 }
 
 function retryableIdentity(prior, status, now, errorCategory = null, candidates = []) {
