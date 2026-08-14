@@ -382,11 +382,6 @@
     return changed;
   }
 
-  function generatedEnrichmentHasUsableResult(value) {
-    return Boolean(value && typeof value === 'object' && !Array.isArray(value)
-      && [value.genre, value.origin, value.formedYear, value.bio].some(nonEmptyString));
-  }
-
   function applyHomepageEnrichment(band, homepage, now) {
     if (!band || !homepage || typeof homepage !== 'object') return false;
     let changed = mergeOfficialArtwork(band, homepage.image, band.officialUrl, now);
@@ -401,21 +396,6 @@
     }
     if (changed || band.socials) band.socials = next;
     return changed;
-  }
-
-  function enrichmentSourceHasUsableResult(source, value) {
-    if (source === 'wikipedia') return Boolean(nonEmptyString(value));
-    if (source === 'official_site') {
-      return Boolean(value && typeof value === 'object' && !Array.isArray(value)
-        && (safeHttpsImageUrl(value.image) || safeHttpsUrl(value.instagram) || safeHttpsUrl(value.spotify)));
-    }
-    return value != null;
-  }
-
-  function noteEnrichmentSourceResult(failures, source, value) {
-    if (!Array.isArray(failures) || enrichmentSourceHasUsableResult(source, value)) return false;
-    if (!failures.includes(source)) failures.push(source);
-    return true;
   }
 
   function nextArtistEnrichmentState(prior, { failures = [], now = new Date().toISOString() } = {}) {
@@ -539,17 +519,22 @@
             (url) => Boolean(expectedOfficialUrl && safeHttpsUrl(url.href) === expectedOfficialUrl),
           );
           if (captured.nonOk) failures.push('official_site');
-          else {
-            homepage = captured.value;
-            noteEnrichmentSourceResult(failures, 'official_site', homepage);
-          }
+          else homepage = captured.value;
         } catch (_) { failures.push('official_site'); }
       }
 
       let wikiText = null;
       try {
-        wikiText = await fetchWikipediaText(band.name);
-        noteEnrichmentSourceResult(failures, 'wikipedia', wikiText);
+        const expectedWikiName = nonEmptyString(band.name) || '';
+        const captured = await captureEnrichmentFetchOutcome(
+          () => fetchWikipediaText(band.name),
+          (url) => url.hostname === 'en.wikipedia.org' && (
+            url.pathname.includes('/api/rest_v1/page/summary/') ||
+            (url.pathname.includes('/w/api.php') && (url.searchParams.get('search') || '') === expectedWikiName)
+          ),
+        );
+        if (captured.nonOk) failures.push('wikipedia');
+        else wikiText = captured.value;
       } catch (_) { failures.push('wikipedia'); }
 
       let groqApiKey = '';
@@ -559,13 +544,11 @@
       } catch (_) {}
 
       let ai = null;
-      const aiSource = groqApiKey ? 'groq' : 'pollinations';
       try {
         const prompt = buildEnrichPrompt(band.name, homepage, wikiText);
         ai = groqApiKey ? await callGroq(prompt, groqApiKey) : await callPollinations(prompt);
-        if (!generatedEnrichmentHasUsableResult(ai)) failures.push(aiSource);
       } catch (_) {
-        failures.push(aiSource);
+        failures.push(groqApiKey ? 'groq' : 'pollinations');
       }
 
       applyGeneratedEnrichment(band, ai, attemptedAt);
@@ -608,10 +591,7 @@
     decorateBands: decorateBandsForArtistEnrichment,
     mergeOfficialArtwork,
     applyGeneratedEnrichment,
-    generatedEnrichmentHasUsableResult,
     applyHomepageEnrichment,
-    enrichmentSourceHasUsableResult,
-    noteEnrichmentSourceResult,
     nextEnrichmentState: nextArtistEnrichmentState,
     enrichmentRetryDue: artistEnrichmentRetryDue,
     nextRetryBand: nextArtistEnrichmentRetryBand,
