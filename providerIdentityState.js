@@ -9,6 +9,7 @@
   const PROVIDERS = ['musicbrainz', 'ticketmaster', 'spotify'];
   const ARTIST_ENRICHMENT_RETRY_DELAY_MS = 24 * 60 * 60 * 1000;
   const ARTIST_ENRICHMENT_DECORATED = Symbol('gau3-artist-enrichment-decorated');
+  const ARTIST_ENRICHMENT_FETCH_OBSERVER = Symbol.for('livevault.gau3.artist-enrichment-fetch-observer');
   const OFFICIAL_ARTWORK_SOURCE = 'official_site_og_image';
 
   function providerRecord(band, provider) {
@@ -147,6 +148,46 @@
 
   function safeHttpsImageUrl(value) {
     return safeHttpsUrl(value);
+  }
+
+  function enrichmentFetchContexts() {
+    if (!root?.document || typeof root.fetch !== 'function') return null;
+    const installed = root.fetch[ARTIST_ENRICHMENT_FETCH_OBSERVER];
+    if (installed?.contexts) return installed.contexts;
+    const originalFetch = root.fetch.bind(root);
+    const contexts = new Set();
+    const wrappedFetch = async (input, init) => {
+      const response = await originalFetch(input, init);
+      let url = null;
+      try {
+        const raw = typeof input === 'string' ? input : input?.url;
+        url = raw ? new URL(raw, root.location?.href || 'https://livevault.invalid/') : null;
+      } catch (_) {}
+      if (url && response?.ok === false) {
+        for (const context of contexts) {
+          try {
+            if (context.matches(url)) context.nonOk = true;
+          } catch (_) {}
+        }
+      }
+      return response;
+    };
+    Object.defineProperty(wrappedFetch, ARTIST_ENRICHMENT_FETCH_OBSERVER, { value: { contexts }, enumerable: false });
+    root.fetch = wrappedFetch;
+    return contexts;
+  }
+
+  async function captureEnrichmentFetchOutcome(run, matches) {
+    const contexts = enrichmentFetchContexts();
+    if (!contexts) return { value: await run(), nonOk: false };
+    const context = { matches, nonOk: false };
+    contexts.add(context);
+    try {
+      const value = await run();
+      return { value, nonOk: context.nonOk };
+    } finally {
+      contexts.delete(context);
+    }
   }
 
   function trustedSpotifyIdentity(band) {
@@ -420,6 +461,7 @@
   function installArtistEnrichmentBrowserIntegration() {
     if (!root?.document || root.__gau3ArtistEnrichmentInstalled) return;
     root.__gau3ArtistEnrichmentInstalled = true;
+    enrichmentFetchContexts();
     const session = { retryStarted: false, retryTimer: null };
     const originalRenderProfile = typeof renderProfileScreen === 'function' ? renderProfileScreen : null;
     const originalRenderBands = typeof renderMyBandsScreen === 'function' ? renderMyBandsScreen : null;
@@ -484,15 +526,34 @@
       let homepage = null;
       if (nonEmptyString(band.officialUrl)) {
         try {
-          homepage = await fetchHomepageInfo(band.officialUrl);
-          noteEnrichmentSourceResult(failures, 'official_site', homepage);
+          const expectedOfficialUrl = safeHttpsUrl(band.officialUrl);
+          const captured = await captureEnrichmentFetchOutcome(
+            () => fetchHomepageInfo(band.officialUrl),
+            (url) => Boolean(expectedOfficialUrl && safeHttpsUrl(url.href) === expectedOfficialUrl),
+          );
+          if (captured.nonOk) failures.push('official_site');
+          else {
+            homepage = captured.value;
+            noteEnrichmentSourceResult(failures, 'official_site', homepage);
+          }
         } catch (_) { failures.push('official_site'); }
       }
 
       let wikiText = null;
       try {
-        wikiText = await fetchWikipediaText(band.name);
-        noteEnrichmentSourceResult(failures, 'wikipedia', wikiText);
+        const expectedWikiName = nonEmptyString(band.name) || '';
+        const captured = await captureEnrichmentFetchOutcome(
+          () => fetchWikipediaText(band.name),
+          (url) => url.hostname === 'en.wikipedia.org' && (
+            url.pathname.includes('/api/rest_v1/page/summary/') ||
+            (url.pathname.includes('/w/api.php') && (url.searchParams.get('search') || '') === expectedWikiName)
+          ),
+        );
+        if (captured.nonOk) failures.push('wikipedia');
+        else {
+          wikiText = captured.value;
+          noteEnrichmentSourceResult(failures, 'wikipedia', wikiText);
+        }
       } catch (_) { failures.push('wikipedia'); }
 
       let groqApiKey = '';
