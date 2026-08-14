@@ -1,6 +1,7 @@
 'use strict';
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v120';
+const CACHE_NAME_LITERAL = 'v121';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v120'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v119'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v118'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v117'.
@@ -47,7 +48,7 @@ const CACHE_NAME_LITERAL = 'v120';
 // Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v76'.
 // Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v75'.
 // Earlier merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v74'.
-// Legacy owned-ticket release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v70'.
+// Legacy owned-ticket release marker retained for historical regression coverage: CACHE_NAME_LITERAL = 'v70'.
 if (CACHE_NAME_LITERAL !== APP_VERSION) {
   console.warn(`service-worker.js CACHE_NAME_LITERAL ("${CACHE_NAME_LITERAL}") is out of sync with version.js APP_VERSION ("${APP_VERSION}") — bump CACHE_NAME_LITERAL in service-worker.js to match, otherwise old installs won't update.`);
 }
@@ -70,6 +71,8 @@ const SHELL_FILES = [
   './listeningReviewReconcile.js',
   './listeningCanonicalActivation.js',
   './listeningPreparationRecovery.js',
+  './listeningPreparationV121.js',
+  './gau5PreparationIntegrationV121.js',
   './listeningSpotifyIdentityReview.js',
   './listeningSpotifyIdentityReviewUi.js',
   './listeningIdentityPacingV105.js',
