@@ -93,6 +93,6 @@ test('GAU5 resumes a persisted listening preparation after reload without activa
   await expect(card.locator('[data-canonical-activation-status]')).toContainText('Preparation complete');
   await expect(card.locator('[data-canonical-activate]')).toBeVisible();
   await expect(card.locator('[data-canonical-deactivate]')).toBeHidden();
-  await expect(page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).resolves.toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await card.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-gau5-resumable-preparation.png`) });
 });
