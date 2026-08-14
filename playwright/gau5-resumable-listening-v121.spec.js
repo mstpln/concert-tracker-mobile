@@ -88,6 +88,7 @@ test('GAU5 resumes a persisted listening preparation after reload without activa
   expect(states.activation.activatedAt).toBeNull();
 
   await page.locator('#settings-btn').click();
+  await page.getByRole('tab', { name: 'Review', exact: true }).click();
   const card = page.locator('[data-canonical-activation]');
   await expect(card).toBeVisible();
   await expect(card.locator('[data-canonical-activation-status]')).toContainText('Preparation complete');
