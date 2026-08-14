@@ -118,14 +118,14 @@ test('user-written bio is never overwritten by generated enrichment', () => {
   assert.equal(band.generatedBio, undefined);
 });
 
-test('empty generated enrichment is incomplete while any safe generated field is usable', () => {
-  assert.equal(gau3.generatedEnrichmentHasUsableResult(null), false);
-  assert.equal(gau3.generatedEnrichmentHasUsableResult({}), false);
-  assert.equal(gau3.generatedEnrichmentHasUsableResult({ genre: ' ', origin: null, formedYear: '', bio: null }), false);
-  assert.equal(gau3.generatedEnrichmentHasUsableResult([]), false);
-  assert.equal(gau3.generatedEnrichmentHasUsableResult({ genre: 'Rock' }), true);
-  assert.equal(gau3.generatedEnrichmentHasUsableResult({ formedYear: '2026' }), true);
-  assert.equal(gau3.generatedEnrichmentHasUsableResult({ bio: 'Generated text' }), true);
+test('successful provider no-evidence result does not invent enrichment fields', () => {
+  const band = spotifyBand({ genre: null, origin: null, formedYear: null });
+  gau3.decorateBand(band);
+  assert.equal(gau3.applyGeneratedEnrichment(band, { genre: null, origin: ' ', formedYear: '', bio: null }, '2026-08-14T00:00:00.000Z'), false);
+  assert.equal(band.genre, null);
+  assert.equal(band.origin, null);
+  assert.equal(band.formedYear, null);
+  assert.equal(band.generatedBio, undefined);
 });
 
 test('transient failure remains retryable instead of terminally complete', () => {
@@ -161,37 +161,21 @@ test('recovery chooses the oldest due artist rather than permanent array order',
   assert.equal(gau3.nextRetryBand(rows, new Date('2026-08-14T12:00:00.000Z')).id, 'oldest');
 });
 
-test('soft provider absence is classified as retryable enrichment failure', () => {
-  const failures = [];
-  assert.equal(gau3.noteEnrichmentSourceResult(failures, 'wikipedia', null), true);
-  assert.equal(gau3.noteEnrichmentSourceResult(failures, 'official_site', {}), true);
-  assert.deepEqual(failures, ['wikipedia', 'official_site']);
-  const state = gau3.nextEnrichmentState(null, { failures, now: '2026-08-14T00:00:00.000Z' });
-  assert.equal(state.status, 'retryable');
-  assert.equal(state.errorCategory, 'wikipedia,official_site');
-});
-
-test('unsafe official artwork alone remains retryable instead of becoming provider success', () => {
-  const failures = [];
-  assert.equal(gau3.noteEnrichmentSourceResult(failures, 'official_site', { image: 'http://band.example/insecure.jpg' }), true);
-  assert.deepEqual(failures, ['official_site']);
-});
-
-test('unsafe official social links are neither stored nor treated as provider success', () => {
+test('unsafe official social links are not stored', () => {
   const band = spotifyBand({ socials: {} });
   const homepage = { instagram: 'http://instagram.example/synthetic', spotify: 'javascript:alert(1)' };
   assert.equal(gau3.applyHomepageEnrichment(band, homepage, '2026-08-14T00:00:00.000Z'), false);
   assert.deepEqual(band.socials, {});
-  const failures = [];
-  assert.equal(gau3.noteEnrichmentSourceResult(failures, 'official_site', homepage), true);
-  assert.deepEqual(failures, ['official_site']);
 });
 
-test('usable provider evidence does not create a retry failure', () => {
-  const failures = [];
-  assert.equal(gau3.noteEnrichmentSourceResult(failures, 'wikipedia', 'Synthetic context'), false);
-  assert.equal(gau3.noteEnrichmentSourceResult(failures, 'official_site', { image: 'https://band.example/image.jpg' }), false);
-  assert.deepEqual(failures, []);
+test('safe official social links are normalized and stored without overwriting existing values', () => {
+  const band = spotifyBand({ socials: { instagram: 'https://instagram.com/existing' } });
+  assert.equal(gau3.applyHomepageEnrichment(band, {
+    instagram: 'https://instagram.com/replacement',
+    spotify: 'https://open.spotify.com/artist/synthetic',
+  }, '2026-08-14T00:00:00.000Z'), true);
+  assert.equal(band.socials.instagram, 'https://instagram.com/existing');
+  assert.equal(band.socials.spotify, 'https://open.spotify.com/artist/synthetic');
 });
 
 test('manual add receives a durable retry checkpoint before its first persisted snapshot', () => {
