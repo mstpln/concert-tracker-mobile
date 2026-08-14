@@ -405,7 +405,8 @@
   function enrichmentSourceHasUsableResult(source, value) {
     if (source === 'wikipedia') return Boolean(nonEmptyString(value));
     if (source === 'official_site') {
-      return Boolean(value && typeof value === 'object' && !Array.isArray(value) && [value.image, value.instagram, value.spotify].some(nonEmptyString));
+      return Boolean(value && typeof value === 'object' && !Array.isArray(value)
+        && (safeHttpsImageUrl(value.image) || nonEmptyString(value.instagram) || nonEmptyString(value.spotify)));
     }
     return value != null;
   }
@@ -546,19 +547,8 @@
 
       let wikiText = null;
       try {
-        const expectedWikiName = nonEmptyString(band.name) || '';
-        const captured = await captureEnrichmentFetchOutcome(
-          () => fetchWikipediaText(band.name),
-          (url) => url.hostname === 'en.wikipedia.org' && (
-            url.pathname.includes('/api/rest_v1/page/summary/') ||
-            (url.pathname.includes('/w/api.php') && (url.searchParams.get('search') || '') === expectedWikiName)
-          ),
-        );
-        if (captured.nonOk) failures.push('wikipedia');
-        else {
-          wikiText = captured.value;
-          noteEnrichmentSourceResult(failures, 'wikipedia', wikiText);
-        }
+        wikiText = await fetchWikipediaText(band.name);
+        noteEnrichmentSourceResult(failures, 'wikipedia', wikiText);
       } catch (_) { failures.push('wikipedia'); }
 
       let groqApiKey = '';
