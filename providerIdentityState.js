@@ -382,6 +382,11 @@
     return changed;
   }
 
+  function generatedEnrichmentHasUsableResult(value) {
+    return Boolean(value && typeof value === 'object' && !Array.isArray(value)
+      && [value.genre, value.origin, value.formedYear, value.bio].some(nonEmptyString));
+  }
+
   function applyHomepageEnrichment(band, homepage, now) {
     if (!band || !homepage || typeof homepage !== 'object') return false;
     let changed = mergeOfficialArtwork(band, homepage.image, band.officialUrl, now);
@@ -563,11 +568,13 @@
       } catch (_) {}
 
       let ai = null;
+      const aiSource = groqApiKey ? 'groq' : 'pollinations';
       try {
         const prompt = buildEnrichPrompt(band.name, homepage, wikiText);
         ai = groqApiKey ? await callGroq(prompt, groqApiKey) : await callPollinations(prompt);
+        if (!generatedEnrichmentHasUsableResult(ai)) failures.push(aiSource);
       } catch (_) {
-        failures.push(groqApiKey ? 'groq' : 'pollinations');
+        failures.push(aiSource);
       }
 
       applyGeneratedEnrichment(band, ai, attemptedAt);
@@ -610,6 +617,7 @@
     decorateBands: decorateBandsForArtistEnrichment,
     mergeOfficialArtwork,
     applyGeneratedEnrichment,
+    generatedEnrichmentHasUsableResult,
     applyHomepageEnrichment,
     enrichmentSourceHasUsableResult,
     noteEnrichmentSourceResult,
