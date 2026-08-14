@@ -7,6 +7,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   let runningPromise = null;
   let observer = null;
+  let wakeLock = null;
 
   function dependencies() {
     return {
@@ -52,6 +53,24 @@
     const store = activationStore();
     if (!store) return null;
     return store.save({ ...store.load(), status: 'error', error: error?.message || 'Listening preparation stopped safely.' });
+  }
+
+  async function requestPreparationWakeLock() {
+    if (!root?.navigator?.wakeLock?.request || root?.document?.visibilityState === 'hidden') return null;
+    if (wakeLock && !wakeLock.released) return wakeLock;
+    try {
+      wakeLock = await root.navigator.wakeLock.request('screen');
+      wakeLock.addEventListener?.('release', () => { wakeLock = null; }, { once: true });
+      return wakeLock;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function releasePreparationWakeLock() {
+    const current = wakeLock;
+    wakeLock = null;
+    try { await current?.release?.(); } catch (_) {}
   }
 
   async function currentSourceCount() {
@@ -105,6 +124,7 @@
       await ensureSourceCompatible({ freshIfIdle: userInitiated });
       setCanonicalPreparing();
       render();
+      await requestPreparationWakeLock();
       try {
         const result = await gau5.prepare(options());
         if (result.state?.status === 'complete') setCanonicalReady(result.state);
@@ -115,6 +135,8 @@
         setCanonicalError(error);
         render();
         throw error;
+      } finally {
+        await releasePreparationWakeLock();
       }
     })().finally(() => { runningPromise = null; });
     return runningPromise;
@@ -131,7 +153,9 @@
     const deactivate = container.querySelector('[data-canonical-deactivate]');
     const canonical = activationStore()?.load?.();
     if (canonical?.status === 'active') return false;
-    if (status) status.textContent = gau5.progressText(state);
+    if (status) status.textContent = state.status === 'error'
+      ? `Preparation stopped safely: ${state.error || 'Listening preparation stopped safely.'}`
+      : gau5.progressText(state);
     if (prepare) {
       prepare.hidden = state.status === 'complete';
       prepare.disabled = Boolean(runningPromise);
@@ -188,6 +212,7 @@
       observer = new root.MutationObserver(() => takeOverPrepareButton());
       observer.observe(root.document.documentElement, { subtree: true, childList: true });
     }
+    root.addEventListener?.('pagehide', releasePreparationWakeLock);
     return true;
   }
 
@@ -200,6 +225,8 @@
     setCanonicalPreparing,
     setCanonicalReady,
     setCanonicalError,
+    requestPreparationWakeLock,
+    releasePreparationWakeLock,
     currentSourceCount,
     resetFreshPreparation,
     ensureSourceCompatible,
