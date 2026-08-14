@@ -105,3 +105,34 @@ test('GAU5 integration renders a stopped preparation truthfully with its durable
     else globalThis.BandmarkrListeningCanonicalActivation = originalActivation;
   }
 });
+
+test('GAU5 integration persists and renders preflight failures instead of swallowing them', async () => {
+  const originals = {
+    storage: globalThis.localStorage,
+    document: globalThis.document,
+    gau5: globalThis.BandmarkrListeningPreparationV121,
+    activation: globalThis.BandmarkrListeningCanonicalActivation,
+    migration: globalThis.BandmarkrListeningDerivedMigration,
+  };
+  const storage = memoryStorage();
+  const card = fakeCard();
+  globalThis.localStorage = storage;
+  globalThis.document = { visibilityState: 'visible', querySelector: () => card };
+  globalThis.BandmarkrListeningPreparationV121 = gau5;
+  globalThis.BandmarkrListeningCanonicalActivation = activationApi(storage);
+  globalThis.BandmarkrListeningDerivedMigration = { async sourceCount() { return 0; } };
+  try {
+    await assert.rejects(() => integration.runPreparation({ userInitiated: true }), /No private listening history/i);
+    const state = gau5.stateStore(storage).load();
+    assert.equal(state.status, 'error');
+    assert.match(state.error, /No private listening history/i);
+    assert.match(card.nodes.status.textContent, /Preparation stopped safely: No private listening history/i);
+    assert.equal(globalThis.BandmarkrListeningCanonicalActivation.stateStore().load().status, 'error');
+  } finally {
+    if (originals.storage === undefined) delete globalThis.localStorage; else globalThis.localStorage = originals.storage;
+    if (originals.document === undefined) delete globalThis.document; else globalThis.document = originals.document;
+    if (originals.gau5 === undefined) delete globalThis.BandmarkrListeningPreparationV121; else globalThis.BandmarkrListeningPreparationV121 = originals.gau5;
+    if (originals.activation === undefined) delete globalThis.BandmarkrListeningCanonicalActivation; else globalThis.BandmarkrListeningCanonicalActivation = originals.activation;
+    if (originals.migration === undefined) delete globalThis.BandmarkrListeningDerivedMigration; else globalThis.BandmarkrListeningDerivedMigration = originals.migration;
+  }
+});
