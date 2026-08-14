@@ -15,6 +15,7 @@
   const STAGED_EVENT_STORE = 'staged-events';
   const CANDIDATE_STORE = 'duplicate-candidates';
   const MAX_PREP_BATCH = 500;
+  const MAX_CANDIDATE_PLAN = 5000;
 
   const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value));
   const clean = (value) => String(value == null ? '' : value).trim() || null;
@@ -278,9 +279,10 @@
             const request = store.openCursor(range, 'prev');
             request.onsuccess = () => {
               const cursor = request.result;
-              if (!cursor || output.length >= bounded) return resolve();
+              if (!cursor) return resolve();
               const value = cursor.value;
               if (Number(value.listenedAtMs) < earliestMs) return resolve();
+              if (output.length >= bounded) return reject(new Error('Candidate lookback window exceeds safe bounded capacity.'));
               output.push(clone(value));
               cursor.continue();
             };
@@ -367,7 +369,8 @@
       const written = await prep.putEvents(events);
       staged += written.written;
       afterSourceEventId = clean(events.at(-1)?.stableListenId);
-      state = checkpoint(state, { phase: 'candidates', candidateStageCursor: afterSourceEventId, stagedEventCount: state.stagedEventCount + written.written, phaseCounts: { ...state.phaseCounts, candidateStageChunks: nonNegativeInteger(state.phaseCounts?.candidateStageChunks) + 1 } });
+      const stagedEventCount = await prep.count(STAGED_EVENT_STORE);
+      state = checkpoint(state, { phase: 'candidates', candidateStageCursor: afterSourceEventId, stagedEventCount, phaseCounts: { ...state.phaseCounts, candidateStageChunks: nonNegativeInteger(state.phaseCounts?.candidateStageChunks) + 1 } });
       store.save(state);
       await yieldToBrowser(options);
     }
@@ -444,6 +447,7 @@
     do {
       if (shouldPauseForVisibility(options.documentRef)) return { paused: true, candidates: [] };
       const page = await prep.readCandidates(afterPairKey, options.chunkSize || DEFAULT_CHUNK_SIZE);
+      if (candidates.length + (page.items || []).length > MAX_CANDIDATE_PLAN) throw new Error('Listening duplicate candidate plan exceeds safe bounded capacity.');
       candidates.push(...(page.items || []));
       afterPairKey = clean(page.nextAfterPairKey);
       if (afterPairKey) await yieldToBrowser(options);
@@ -582,7 +586,7 @@
   }
 
   return {
-    STATE_KEY, STATE_VERSION, PHASES, DEFAULT_CHUNK_SIZE, YIELD_DELAY_MS, PREP_DB_NAME, PREP_DB_VERSION, STAGED_EVENT_STORE, CANDIDATE_STORE, MAX_PREP_BATCH,
+    STATE_KEY, STATE_VERSION, PHASES, DEFAULT_CHUNK_SIZE, YIELD_DELAY_MS, PREP_DB_NAME, PREP_DB_VERSION, STAGED_EVENT_STORE, CANDIDATE_STORE, MAX_PREP_BATCH, MAX_CANDIDATE_PLAN,
     defaultState, normalizeState, stateStore, phaseComplete, begin, checkpoint, completePhase, pause, fail, shouldPauseForVisibility, resumable, statusText, progressText, yieldToBrowser,
     stagedSortKey, normalizeStagedEvent, normalizeCandidate, openPreparationDb, preparationStorage,
     runMigrationChunks, stageCandidateEvents, candidatePairsForPage, scanCandidateChunks, runCandidatePhase, loadCandidatePlan, runPersistencePhase, verifyCanonicalPage, runVerificationPhase, prepare, installAutoResume,
