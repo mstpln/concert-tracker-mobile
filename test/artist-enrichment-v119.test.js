@@ -210,12 +210,28 @@ test('multiple or malformed Spotify image metadata fails closed', () => {
   assert.equal(gau3.selectSpotifyArtistImage({ images: 'https://images.example/not-an-array.jpg' }), null);
 });
 
-test('decorated provider artwork is visible but never masquerades as persisted manual photoUrl', () => {
+test('decorated provider artwork is visible while raw null user fields remain serialized unchanged', () => {
   const band = spotifyBand();
+  band._enriching = true;
   gau3.decorateBand(band);
   assert.equal(band.photoUrl, 'https://images.example/artist-640.jpg');
   assert.equal(Object.prototype.propertyIsEnumerable.call(band, 'photoUrl'), false);
   const persisted = JSON.parse(JSON.stringify(band));
-  assert.equal(Object.prototype.hasOwnProperty.call(persisted, 'photoUrl'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(persisted, 'photoUrl'), true);
+  assert.equal(persisted.photoUrl, null);
+  assert.equal(Object.prototype.hasOwnProperty.call(persisted, 'bio'), true);
+  assert.equal(persisted.bio, null);
+  assert.equal(Object.prototype.hasOwnProperty.call(persisted, '_enriching'), false);
   assert.equal(persisted.musicbrainz.spotify.images[0].url, 'https://images.example/artist-640.jpg');
+});
+
+test('compatibility serialization preserves absence of raw user fields when they never existed', () => {
+  const band = spotifyBand();
+  delete band.photoUrl;
+  delete band.bio;
+  gau3.decorateBand(band);
+  const persisted = gau3.persistentBandSnapshot(band);
+  assert.equal(Object.prototype.hasOwnProperty.call(persisted, 'photoUrl'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(persisted, 'bio'), false);
+  assert.deepEqual(persisted.futureField, { keep: true });
 });
