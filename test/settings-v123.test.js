@@ -28,6 +28,20 @@ test('usage status thresholds move from green to red as safety-budget use rises'
   assert.equal(settings.usageLevel(96).key, 'bad');
 });
 
+test('provider usage does not invent missing safety-budget denominators', () => {
+  const rows = settings.providerUsageRows({
+    ticketmaster:{ callsToday:12 },
+    tavily:{ callsThisMonth:20 },
+    groq:{ tokensToday:30 },
+    setlistfm:{ callsToday:4 },
+    spotify:{ callsToday:5 },
+  });
+  for (const row of rows.slice(0,5)) {
+    assert.equal(row.cap, undefined);
+    assert.equal(row.status, 'Usage unavailable');
+  }
+});
+
 test('artist profile coverage counts visible information without mutating records', () => {
   const rows = [
     { id:'a', photoUrl:'https://example.invalid/a.jpg', bio:'Manual biography', genre:'Rock', origin:'Sweden', future:{ keep:true } },
@@ -58,12 +72,13 @@ test('concert coverage treats only named venues and past attended setlists as co
   ]);
 });
 
-test('listening coverage groups unique songs and albums instead of raw listen count', () => {
+test('listening coverage groups unique followed-band songs and albums instead of raw listen count', () => {
   const bands = [{ id:'band-a' }, { id:'band-b' }];
   const events = [
     { stableListenId:'1', localBandId:'band-a', artistCreditName:'Band A', recordingTitle:'Song One', releaseTitle:'Album One', musicbrainzRecordingId:'mbid-1', albumArtworkUrl:'https://example.invalid/one.jpg' },
     { stableListenId:'2', localBandId:'band-a', artistCreditName:'Band A', recordingTitle:'Song One', releaseTitle:'Album One', musicbrainzRecordingId:'mbid-1' },
     { stableListenId:'3', localBandId:'band-b', artistCreditName:'Band B', recordingTitle:'Song Two', releaseTitle:'Album Two' },
+    { stableListenId:'4', artistCreditName:'Unfollowed Artist', recordingTitle:'Song Three', releaseTitle:'Album Three', spotifyTrackId:'track-3', albumArtworkUrl:'https://example.invalid/three.jpg' },
   ];
   const result = settings.listeningCoverage(bands, events);
   assert.deepEqual(result.map((row) => [row.key,row.matched,row.total]), [
