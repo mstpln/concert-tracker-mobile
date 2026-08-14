@@ -1,0 +1,74 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const settings = require('../settingsV123');
+
+test('coverage status thresholds move from green to red as completeness falls', () => {
+  assert.equal(settings.coverageLevel(100).key, 'good');
+  assert.equal(settings.coverageLevel(95).key, 'good');
+  assert.equal(settings.coverageLevel(94).key, 'goodish');
+  assert.equal(settings.coverageLevel(90).key, 'goodish');
+  assert.equal(settings.coverageLevel(89).key, 'watch');
+  assert.equal(settings.coverageLevel(75).key, 'watch');
+  assert.equal(settings.coverageLevel(74).key, 'warning');
+  assert.equal(settings.coverageLevel(50).key, 'warning');
+  assert.equal(settings.coverageLevel(49).key, 'bad');
+});
+
+test('usage status thresholds move from green to red as safety-budget use rises', () => {
+  assert.equal(settings.usageLevel(0).key, 'good');
+  assert.equal(settings.usageLevel(50).key, 'good');
+  assert.equal(settings.usageLevel(51).key, 'goodish');
+  assert.equal(settings.usageLevel(70).key, 'goodish');
+  assert.equal(settings.usageLevel(71).key, 'watch');
+  assert.equal(settings.usageLevel(85).key, 'watch');
+  assert.equal(settings.usageLevel(86).key, 'warning');
+  assert.equal(settings.usageLevel(95).key, 'warning');
+  assert.equal(settings.usageLevel(96).key, 'bad');
+});
+
+test('artist profile coverage counts visible information without mutating records', () => {
+  const rows = [
+    { id:'a', photoUrl:'https://example.invalid/a.jpg', bio:'Manual biography', genre:'Rock', origin:'Sweden', future:{ keep:true } },
+    { id:'b', generatedBio:'Generated biography', musicbrainz:{ spotify:{ images:[{ url:'https://example.invalid/b.jpg' }] } }, genre:'Metal' },
+    { id:'c' },
+  ];
+  const before = JSON.stringify(rows);
+  const result = settings.profileCoverage(rows);
+  assert.deepEqual(result.map((row) => [row.key,row.matched,row.total]), [
+    ['Images',2,3],
+    ['Descriptions',2,3],
+    ['Genres',2,3],
+    ['Origin',1,3],
+  ]);
+  assert.equal(JSON.stringify(rows), before);
+});
+
+test('concert coverage treats only named venues and past attended setlists as coverage', () => {
+  const rows = [
+    { id:'a', date:'2026-01-01', attending:true, attended:true, venue:'Arena', setlist:{ songs:[{ name:'One' }] } },
+    { id:'b', date:'2026-02-01', attending:true, attended:true, venue:'Unknown Venue', setlist:null },
+    { id:'c', date:'2027-01-01', attending:true, venue:'Future Hall', setlist:{ songs:[{ name:'Future' }] } },
+  ];
+  const result = settings.concertCoverage(rows, new Date('2026-08-14T12:00:00Z'));
+  assert.deepEqual(result.map((row) => [row.key,row.matched,row.total]), [
+    ['Venue information',2,3],
+    ['Setlists',1,2],
+  ]);
+});
+
+test('listening coverage groups unique songs and albums instead of raw listen count', () => {
+  const bands = [{ id:'band-a' }, { id:'band-b' }];
+  const events = [
+    { stableListenId:'1', localBandId:'band-a', artistCreditName:'Band A', recordingTitle:'Song One', releaseTitle:'Album One', musicbrainzRecordingId:'mbid-1', albumArtworkUrl:'https://example.invalid/one.jpg' },
+    { stableListenId:'2', localBandId:'band-a', artistCreditName:'Band A', recordingTitle:'Song One', releaseTitle:'Album One', musicbrainzRecordingId:'mbid-1' },
+    { stableListenId:'3', localBandId:'band-b', artistCreditName:'Band B', recordingTitle:'Song Two', releaseTitle:'Album Two' },
+  ];
+  const result = settings.listeningCoverage(bands, events);
+  assert.deepEqual(result.map((row) => [row.key,row.matched,row.total]), [
+    ['Artists matched',2,2],
+    ['Songs identified',1,2],
+    ['Album artwork',1,2],
+  ]);
+});
