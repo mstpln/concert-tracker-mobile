@@ -74,7 +74,7 @@ Changing any of these limits or pacing rules is outside this audit and requires 
 - Browser, automation, data-maintenance, and read-only smoke credentials remain separate roles. Values must never appear in source, logs, screenshots, docs, PR text, or QA artifacts.
 - Whole-document production writes use conditional ETag/create-only semantics. The shared Worker client supports one bounded reread/merge retry for ordinary ownership-aware writes and a strict fail-on-conflict path for lease/safety state.
 
-## 6. Workflow hardening found by this audit
+## 6. Workflow hardening and Node toolchain
 
 The audit found three manual provider workflows that had drifted from the repository's established workflow-hardening rules:
 
@@ -82,9 +82,11 @@ The audit found three manual provider workflows that had drifted from the reposi
 - `provider-identity-backfill.yml`
 - `setlist-insights-backfill.yml`
 
-They used unsupported `queue: max` concurrency syntax and floating `actions/checkout@v4` / `actions/setup-node@v4` references. The audit removes the unsupported field, uses the same reviewed immutable action SHAs as the scheduled workflows, and expands `scripts/qa-workflows.js` so these rules are checked for all current provider Node workflows and production writers.
+They used unsupported `queue: max` concurrency syntax and floating action references. The correction removes the unsupported field and standardizes current Node-running workflows on reviewed immutable action SHAs.
 
-No provider cap, schedule, credential scope, data schema, PWA behavior, or production route is changed by that correction.
+The related Node toolchain follow-up is also resolved in this branch. BANDMARKR project scripts now target Node 22 consistently in `package.json`, `package-lock.json`, generated build state, PR QA, Full PWA QA, production smoke, and current provider workflows. Checkout, setup-node, and upload-artifact references used by the updated workflows are pinned to reviewed immutable current commits rather than floating tags. `scripts/qa-workflows.js` enforces Node 22 and the reviewed checkout/setup pins for PR QA, Full PWA QA, production smoke, and current provider Node workflows.
+
+This is a CI/toolchain correction only. It does not change provider caps, schedules, pacing, credential scope, data schema, PWA behavior, Worker routes, production data, or application version. `APP_VERSION` and `CACHE_NAME_LITERAL` remain synchronized at v121.
 
 ## 7. Retired and intentionally inactive paths
 
@@ -102,10 +104,11 @@ These are separate future product/architecture decisions and are not silently im
 2. Scheduled weather-data cutover from the current browser weather fetch path.
 3. Whether GAU3 + DAB5 fully supersede the older future-band identity-automation proposal or whether a separate automatic candidate-acquisition lane is still wanted.
 4. Removal of remaining routine maintenance buttons only after their automatic replacements are physically verified.
-5. GitHub Actions currently emits a Node.js 20 deprecation warning for the pinned v4 checkout/setup/upload actions and force-runs those action internals on Node.js 24. BANDMARKR's application/QA runtime remains Node.js 20. Updating action majors or the repository runtime is a separate CI/toolchain review and should not be hidden inside this audit.
+
+The former GitHub Actions Node.js 20 deprecation/toolchain warning is no longer an outstanding architecture item in this branch: project scripts and updated workflows are aligned on Node 22 with reviewed immutable action pins. This change does not authorize running production smoke or any provider-writing workflow.
 
 ## 9. Final audit conclusion
 
 The current automation architecture has one coherent safety model: scheduled provider work is narrow and serialized; manual provider work remains explicitly gated; provider calls are bounded and paced; Spotify shares persisted backoff; MusicBrainz is demand-driven; writes are conditional; provider/source ownership remains separated; and private listening work stays outside public QA and ordinary GitHub provider workflows.
 
-The workflow drift listed in section 6 is the only repository-level automation-hardening defect identified by this audit that should be corrected immediately. The items in section 8 are intentionally separate future builds or toolchain follow-ups, not hidden incompleteness in the current automation safety model.
+The workflow drift and Node toolchain inconsistency identified during this audit are corrected in the open audit PR. The items remaining in section 8 are intentionally separate future product/architecture decisions, not hidden incompleteness in the current automation safety model.
