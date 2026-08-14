@@ -72,6 +72,7 @@ const SHELL_FILES = [
   './listeningCanonicalActivation.js',
   './listeningPreparationRecovery.js',
   './listeningPreparationV121.js',
+  './gau5PreparationIntegrationV121.js',
   './listeningSpotifyIdentityReview.js',
   './listeningSpotifyIdentityReviewUi.js',
   './listeningIdentityPacingV105.js',
