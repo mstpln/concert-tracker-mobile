@@ -19,7 +19,7 @@ function bucket() {
   const items = new Map([
     ['bands.json', { value: '[]', etag: 'bands-1' }],
     ['concerts.json', { value: '[]', etag: 'concerts-1' }],
-    ['news.json', { value: '{}', etag: 'news-1' }],
+    ['news.json', { value: '[]', etag: 'news-1' }],
     ['apiUsage.json', { value: '{}', etag: 'usage-1' }],
     ['listening/manifest.json', { value: JSON.stringify({ kind: 'livevault-listening-vault', schemaVersion: 1, archive: { source: 'spotify_import', path: `listening/spotify-history/${'a'.repeat(64)}.json.gz`, sha256: 'a'.repeat(64), contentEncoding: 'gzip', eventCount: 1 }, incrementals: [] }), etag: 'manifest-1' }],
     ['listening/spotify-metadata.json', { value: JSON.stringify({ kind: 'livevault-spotify-listening-metadata', schemaVersion: 1, updatedAt: null, records: {} }), etag: 'metadata-1' }],
