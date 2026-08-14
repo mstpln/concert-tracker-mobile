@@ -38,7 +38,14 @@ async function installSyntheticProviderStubs(page) {
           headers: { 'Content-Type': 'application/json' },
         });
       } else if (url.hostname === 'text.pollinations.ai') {
-        response = new Response(JSON.stringify({
+        const requestBody = typeof options.body === 'string' ? options.body : '';
+        const noEvidence = requestBody.includes('Synthetic No Evidence');
+        response = new Response(JSON.stringify(noEvidence ? {
+          genre: null,
+          origin: null,
+          formedYear: null,
+          bio: null,
+        } : {
           genre: 'Synthetic rock',
           origin: 'Sweden',
           formedYear: '2026',
@@ -169,6 +176,21 @@ test('unconfirmed Spotify candidate stays initials-only', async ({ page }) => {
   await page.locator('#screen-mybands').getByText('Synthetic Candidate Only', { exact: true }).click();
   await expect(page.locator('#screen-profile .profile-avatar img')).toHaveCount(0);
   await expect(page.locator('#screen-profile .profile-avatar')).toContainText('SC');
+});
+
+test('successful no-evidence enrichment completes without inventing generated fields', async ({ page }) => {
+  await page.goto('/');
+  await installSyntheticProviderStubs(page);
+  await addManualBand(page, 'Synthetic No Evidence');
+
+  await expect.poll(async () => (await readStoredBand(page, 'Synthetic No Evidence'))?.artistEnrichment?.status).toBe('complete');
+  const band = await readStoredBand(page, 'Synthetic No Evidence');
+  expect(band.generatedBio).toBeUndefined();
+  expect(band.genre).toBeNull();
+  expect(band.origin).toBeNull();
+  expect(band.formedYear).toBeNull();
+  expect(band.artistEnrichment.errorCategory).toBeNull();
+  expect(band.artistEnrichment.nextEligibleCheckAt).toBeNull();
 });
 
 test('non-OK Wikipedia and official-site responses remain retryable and their payloads are discarded', async ({ page }) => {
