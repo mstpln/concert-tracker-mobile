@@ -26,13 +26,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Unit tests
-        run: |
-          mkdir -p test-results
-          set +e
-          npm run test > test-results/unit-output.txt 2>&1
-          status=$?
-          cat test-results/unit-output.txt
-          exit $status
+        run: npm run test
       - name: JavaScript syntax
         run: npm run qa:syntax
       - name: Version and cache synchronization
