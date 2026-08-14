@@ -212,6 +212,13 @@
       observer = new root.MutationObserver(() => takeOverPrepareButton());
       observer.observe(root.document.documentElement, { subtree: true, childList: true });
     }
+    root.document.addEventListener?.('visibilitychange', () => {
+      if (root.document.visibilityState === 'visible') {
+        if (runningPromise) requestPreparationWakeLock();
+      } else {
+        releasePreparationWakeLock();
+      }
+    });
     root.addEventListener?.('pagehide', releasePreparationWakeLock);
     return true;
   }
