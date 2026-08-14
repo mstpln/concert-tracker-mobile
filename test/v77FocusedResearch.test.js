@@ -122,13 +122,13 @@ test('Spotify release planner catches up recent pre-fix releases that were alrea
 test('Spotify release planner does not let durable lifecycle eligibility bypass the 30-day recency bound', () => {
   const oldEligible = {
     lifecycleEligible: true,
-    canonicalReleaseId: 'spotify:old-eligible',
+    canonicalReleaseId: 'spotify:oldeligible',
     firstSeenAt: '2026-08-01T00:00:00.000Z',
     title: 'Old Eligible Album',
     type: 'Album',
     releaseDate: '2026-06-01',
-    spotifyReleaseId: 'old-eligible',
-    spotifyUrl: 'https://open.spotify.com/album/old-eligible',
+    spotifyReleaseId: 'oldeligible',
+    spotifyUrl: 'https://open.spotify.com/album/oldeligible',
   };
   const plan = planSpotifyReleaseAlerts({ band: { id: 'band-1', name: 'Example Band' }, releases: [oldEligible], alerts: [], today: '2026-08-15T12:00:00.000Z' });
   assert.equal(plan.alertsToCreate.length, 0);
