@@ -57,12 +57,10 @@ test('empty Tavily results back off for 30, 60 and then 90 days', () => {
 
 test('a concert observation resets Tavily backoff to the active cadence', () => {
   const prior = { consecutiveEmpty: 3, lastCheckedAt: '2026-07-01T00:00:00.000Z', nextEligibleAt: '2026-10-01T00:00:00.000Z' };
-  const next = policy.nextState(bandWithState(prior), [], 0, '2026-08-02T00:00:00Z');
-  assert.equal(next.consecutiveEmpty, 1);
-  const reset = policy.nextState(bandWithState(prior), [], 1, '2026-08-02T00:00:00Z');
-  assert.equal(reset.consecutiveEmpty, 0);
-  assert.equal(reset.lastResult, 'concerts_found');
-  assert.equal(reset.nextEligibleAt, '2026-08-30T00:00:00.000Z');
+  const next = policy.nextState(bandWithState(prior), [], 1, '2026-08-02T00:00:00Z');
+  assert.equal(next.consecutiveEmpty, 0);
+  assert.equal(next.lastResult, 'concerts_found');
+  assert.equal(next.nextEligibleAt, '2026-08-30T00:00:00.000Z');
 });
 
 test('recent Ticketmaster activity resets an old empty-result backoff', () => {
@@ -89,15 +87,31 @@ test('structured preload creates only actual Spotify release items', () => {
   assert.equal(isSpotifyReleaseItem(plan.alertsToCreate[0]), true);
 });
 
-test('structured preload catches up a recent Spotify release suppressed by first-baseline creation', () => {
+test('structured preload preserves Spotify newness after MusicBrainz and Spotify observations merge', () => {
+  require('../scripts/preloadStructuredRun');
+  const structured = require('../scripts/lib/structuredResearch');
+  const mb = structured.musicbrainzRelease({ id: 'mb-release', title: 'Same Release', 'primary-type': 'Album', 'first-release-date': '2026-08-14' }, 'mb-artist');
+  const sp = structured.spotifyRelease({ id: 'spotify-release', name: 'Same Release', album_type: 'album', release_date: '2026-08-14', release_date_precision: 'day', artists: [{ id: 'spotify-artist', name: 'Example Band' }], external_urls: { spotify: 'https://open.spotify.com/album/spotify-release' } }, 'spotify-artist');
+  const spotifyKey = structured.releaseKey(sp);
+  const mergedObservations = structured.mergeReleaseList([mb, sp]);
+  assert.equal(mergedObservations.length, 1);
+  assert.equal(mergedObservations[0].musicbrainzReleaseGroupMbid, 'mb-release');
+  assert.equal(mergedObservations[0].spotifyReleaseId, 'spotify-release');
+  const canonical = structured.mergeLifecycleReleases([], mergedObservations, '2026-08-14T12:00:00.000Z', [spotifyKey]);
+  assert.equal(canonical.length, 1);
+  assert.equal(canonical[0].lifecycleEligible, true);
+});
+
+test('structured preload catches up recent pre-fix Spotify releases that were already suppressed', () => {
   require('../scripts/preloadStructuredRun');
   const { planLifecycleAlerts } = require('../scripts/lib/releaseAlertPlan');
   const release = {
     lifecycleEligible: false,
     canonicalReleaseId: 'spotify:recent',
+    firstSeenAt: '2026-08-10T12:00:00.000Z',
     title: 'Recent Single',
     type: 'Single',
-    releaseDate: '2026-08-10',
+    releaseDate: '2026-07-25',
     spotifyReleaseId: 'recent',
     spotifyUrl: 'https://open.spotify.com/album/recent',
     artworkUrl: 'https://i.scdn.co/image/recent',
@@ -108,12 +122,13 @@ test('structured preload catches up a recent Spotify release suppressed by first
   assert.equal(isSpotifyReleaseItem(plan.alertsToCreate[0]), true);
 });
 
-test('structured preload keeps old baseline catalogue silent and rejects malformed Spotify URLs', () => {
+test('structured preload keeps future first baselines and old history silent and rejects malformed Spotify URLs', () => {
   require('../scripts/preloadStructuredRun');
   const { planLifecycleAlerts } = require('../scripts/lib/releaseAlertPlan');
-  const old = { lifecycleEligible: false, canonicalReleaseId: 'spotify:old', title: 'Old Album', type: 'Album', releaseDate: '2026-06-01', spotifyReleaseId: 'old', spotifyUrl: 'https://open.spotify.com/album/old' };
+  const postFixBaseline = { lifecycleEligible: false, canonicalReleaseId: 'spotify:new-band', firstSeenAt: '2026-08-15T00:00:00.000Z', title: 'Fresh Baseline Album', type: 'Album', releaseDate: '2026-08-14', spotifyReleaseId: 'new-band', spotifyUrl: 'https://open.spotify.com/album/new-band' };
+  const old = { lifecycleEligible: false, canonicalReleaseId: 'spotify:old', firstSeenAt: '2026-08-01T00:00:00.000Z', title: 'Old Album', type: 'Album', releaseDate: '2026-06-01', spotifyReleaseId: 'old', spotifyUrl: 'https://open.spotify.com/album/old' };
   const malformed = { lifecycleEligible: true, canonicalReleaseId: 'spotify:bad', title: 'Bad Link', type: 'Single', releaseDate: '2026-08-14', spotifyReleaseId: 'bad', spotifyUrl: 'https://example.com/album/bad' };
-  const plan = planLifecycleAlerts({ band: { id: 'band-1', name: 'Example Band' }, releases: [old, malformed], alerts: [], today: '2026-08-14T12:00:00.000Z' });
+  const plan = planLifecycleAlerts({ band: { id: 'band-1', name: 'Example Band' }, releases: [postFixBaseline, old, malformed], alerts: [], today: '2026-08-15T12:00:00.000Z' });
   assert.equal(plan.alertsToCreate.length, 0);
 });
 
