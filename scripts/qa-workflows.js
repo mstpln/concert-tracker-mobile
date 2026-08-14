@@ -7,8 +7,8 @@ const YAML = require('yaml');
 const workflowDir = path.join('.github', 'workflows');
 const workflowFiles = fs.readdirSync(workflowDir).filter((name) => /\.ya?ml$/.test(name));
 const workflows = new Map();
-const CHECKOUT_V4_PIN = 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262';
-const SETUP_NODE_V4_PIN = 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020';
+const CHECKOUT_V7_PIN = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
+const SETUP_NODE_V7_PIN = 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020';
 
 function assert(condition, message) {
   if (!condition) throw new Error(`Workflow validation failed: ${message}`);
@@ -35,10 +35,11 @@ function assertSerializedWriter(name, workflow) {
 }
 
 function assertPinnedNodeWorkflow(name, workflow) {
-  assert(workflow.source.includes(CHECKOUT_V4_PIN), `${name} must pin actions/checkout to the reviewed v4 commit`);
-  assert(workflow.source.includes(SETUP_NODE_V4_PIN), `${name} must pin actions/setup-node to the reviewed v4 commit`);
-  assert(!workflow.source.includes('actions/checkout@v4'), `${name} must not use a floating checkout v4 tag`);
-  assert(!workflow.source.includes('actions/setup-node@v4'), `${name} must not use a floating setup-node v4 tag`);
+  assert(workflow.source.includes(CHECKOUT_V7_PIN), `${name} must pin actions/checkout to the reviewed v7 commit`);
+  assert(workflow.source.includes(SETUP_NODE_V7_PIN), `${name} must pin actions/setup-node to the reviewed v7 commit`);
+  assert(!workflow.source.includes('actions/checkout@v7'), `${name} must not use a floating checkout v7 tag`);
+  assert(!workflow.source.includes('actions/setup-node@v7'), `${name} must not use a floating setup-node v7 tag`);
+  assert(/node-version:\s*['"]?22['"]?/.test(workflow.source), `${name} must run project scripts on Node 22`);
 }
 
 const pr = getWorkflow('pr-qa.yml');
