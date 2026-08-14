@@ -122,7 +122,12 @@ test('GAU5 visibility resume runs only for persisted paused/running work', async
   await Promise.resolve();
   assert.equal(resumes, 1);
 
-  store.save(gau5.completePhase(gau5.completePhase(gau5.completePhase(gau5.begin(gau5.defaultState()), 'migration'), 'candidates'), 'persistence'));
+  let complete = gau5.begin(gau5.defaultState());
+  complete = gau5.completePhase(complete, 'migration');
+  complete = gau5.completePhase(complete, 'candidates');
+  complete = gau5.completePhase(complete, 'persistence');
+  complete = gau5.completePhase(complete, 'verification');
+  store.save(complete);
   await documentRef.fire('visibilitychange');
   await Promise.resolve();
   assert.equal(resumes, 1);
