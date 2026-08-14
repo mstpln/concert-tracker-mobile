@@ -83,7 +83,7 @@ test('structured preload creates only actual Spotify release items', () => {
   assert.equal(plan.alertsToCreate.length, 1);
   assert.equal(plan.alertsToCreate[0].spotifyReleaseId, 'abc');
   assert.equal(plan.alertsToCreate[0].artworkUrl, actual.artworkUrl);
-  assert.equal(plan.alertsToCreate[0].lifecycleStage, 'spotify_release');
+  assert.equal(plan.alertsToCreate[0].lifecycleStage, 'spotify_album_release');
   assert.equal(isSpotifyReleaseItem(plan.alertsToCreate[0]), true);
 });
 
@@ -119,6 +119,7 @@ test('structured preload catches up recent pre-fix Spotify releases that were al
   const plan = planLifecycleAlerts({ band: { id: 'band-1', name: 'Example Band' }, releases: [release], alerts: [], today: '2026-08-14T12:00:00.000Z' });
   assert.equal(plan.alertsToCreate.length, 1);
   assert.equal(plan.alertsToCreate[0].spotifyReleaseId, 'recent');
+  assert.equal(plan.alertsToCreate[0].lifecycleStage, 'spotify_single_release');
   assert.equal(isSpotifyReleaseItem(plan.alertsToCreate[0]), true);
 });
 
@@ -138,8 +139,18 @@ test('structured preload reuses an existing Spotify release item instead of dupl
   const release = { lifecycleEligible: true, canonicalReleaseId: 'spotify:abc', title: 'Available Album', type: 'Album', releaseDate: '2026-08-02', spotifyReleaseId: 'abc', spotifyUrl: 'https://open.spotify.com/album/abc' };
   const plan = planLifecycleAlerts({ band: { id: 'band-1', name: 'Example Band' }, releases: [release], alerts: [{ id: 'legacy-id', category: 'album', spotifyReleaseId: 'abc', spotifyUrl: release.spotifyUrl }], today: '2026-08-02T12:00:00.000Z' });
   assert.equal(plan.alertsToCreate.length, 0);
-  assert.deepEqual(plan.alertsToEnrich, [{ id: 'legacy-id', lifecycleStage: 'spotify_release' }]);
+  assert.deepEqual(plan.alertsToEnrich, [{ id: 'legacy-id', lifecycleStage: 'spotify_album_release' }]);
   assert.equal(plan.lifecycleUpdates[0].alertId, 'legacy-id');
+});
+
+test('v122 release labels load after app.js and distinguish album and single availability', () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  const labels = fs.readFileSync('releaseAlertsV122.js', 'utf8');
+  assert.ok(html.indexOf('<script src="releaseAlertsV122.js"></script>') > html.indexOf('<script src="app.js"></script>'));
+  assert.match(labels, /spotify_album_release/);
+  assert.match(labels, /NEW ALBUM/);
+  assert.match(labels, /spotify_single_release/);
+  assert.match(labels, /NEW SINGLE/);
 });
 
 test('focused workflows separate structured providers from Tavily web research and are scheduled', () => {
