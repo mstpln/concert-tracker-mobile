@@ -74,10 +74,16 @@ function mergeLifecycleReleases(existing, observations, now = new Date().toISOSt
   const eligible = new Set(lifecycleEligibleKeys);
   const merged = mergeReleaseList(observations).map((observation) => {
     const canonical = canonicalReleaseId(observation); const before = prior.get(canonical) || {};
+    // A Spotify observation may have been conservatively merged with a matching
+    // MusicBrainz observation. In that case releaseKey(observation) is the MBID,
+    // but the provider-newness signal still belongs to the exact Spotify key.
+    const spotifyKey = observation.spotifyReleaseId
+      ? releaseKey({ ...observation, musicbrainzReleaseGroupMbid: null })
+      : null;
     return { ...before, ...observation, canonicalReleaseId: canonical, firstSeenAt: before.firstSeenAt || observation.firstSeenAt || now,
       updatedAt: now, providerObservations: { ...(before.providerObservations || {}), ...(observation.providerObservations || {}) },
       lifecycle: { ...(observation.lifecycle || {}), ...(before.lifecycle || {}) },
-      lifecycleEligible: Boolean(before.lifecycleEligible || observation.lifecycleEligible || eligible.has(releaseKey(observation))) };
+      lifecycleEligible: Boolean(before.lifecycleEligible || observation.lifecycleEligible || eligible.has(releaseKey(observation)) || (spotifyKey && eligible.has(spotifyKey))) };
   });
   const mergedIds = new Set(merged.map((release) => release.canonicalReleaseId));
   // A provider page may be partial or temporarily unavailable.  Keep prior
