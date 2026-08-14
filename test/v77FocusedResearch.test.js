@@ -153,11 +153,12 @@ test('Spotify release planner does not recreate a release after its typed lifecy
 });
 
 test('Spotify release planner keeps future first baselines and old history silent and rejects malformed URLs', () => {
-  const postFixBaseline = { lifecycleEligible: false, canonicalReleaseId: 'spotify:new-band', firstSeenAt: '2026-08-15T00:00:00.000Z', title: 'Fresh Baseline Album', type: 'Album', releaseDate: '2026-08-14', spotifyReleaseId: 'new-band', spotifyUrl: 'https://open.spotify.com/album/new-band' };
+  const postFixBaseline = { lifecycleEligible: false, canonicalReleaseId: 'spotify:newband', firstSeenAt: '2026-08-15T00:00:00.000Z', title: 'Fresh Baseline Album', type: 'Album', releaseDate: '2026-08-14', spotifyReleaseId: 'newband', spotifyUrl: 'https://open.spotify.com/album/newband' };
   const old = { lifecycleEligible: false, canonicalReleaseId: 'spotify:old', firstSeenAt: '2026-08-01T00:00:00.000Z', title: 'Old Album', type: 'Album', releaseDate: '2026-06-01', spotifyReleaseId: 'old', spotifyUrl: 'https://open.spotify.com/album/old' };
   const malformed = { lifecycleEligible: true, canonicalReleaseId: 'spotify:bad', title: 'Bad Link', type: 'Single', releaseDate: '2026-08-14', spotifyReleaseId: 'bad', spotifyUrl: 'https://example.com/album/bad' };
   const plan = planSpotifyReleaseAlerts({ band: { id: 'band-1', name: 'Example Band' }, releases: [postFixBaseline, old, malformed], alerts: [], today: '2026-08-15T12:00:00.000Z' });
   assert.equal(plan.alertsToCreate.length, 0);
+  assert.equal(plan.skipped.find(({ release }) => release === postFixBaseline)?.reason, 'baseline');
 });
 
 test('Spotify release planner reuses an existing release item instead of duplicating it', () => {
