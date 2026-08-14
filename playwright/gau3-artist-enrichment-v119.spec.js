@@ -4,7 +4,11 @@ async function installSyntheticProviderStubs(page) {
   await page.route('https://example.invalid/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === '/official-failure') {
-      await route.fulfill({ status: 503, contentType: 'text/html', body: '<html><head><title>Temporarily unavailable</title></head><body>Retry later</body></html>' });
+      await route.fulfill({
+        status: 503,
+        contentType: 'text/html',
+        body: '<html><head><title>Temporarily unavailable</title><meta property="og:image" content="https://example.invalid/images/error.svg"></head><body>Retry later</body></html>',
+      });
       return;
     }
     await route.fulfill({
@@ -14,36 +18,35 @@ async function installSyntheticProviderStubs(page) {
     });
   });
 
-  await page.evaluate(() => {
-    const qaFetch = window.fetch.bind(window);
-    window.fetch = async (input, options = {}) => {
-      const url = new URL(typeof input === 'string' ? input : input.url, location.href);
-      if (url.hostname === 'en.wikipedia.org' && url.pathname.includes('/w/api.php')) {
-        const search = url.searchParams.get('search') || '';
-        if (search === 'Synthetic Wikipedia Failure') {
-          return new Response('temporarily unavailable', { status: 503, headers: { 'Content-Type': 'text/plain' } });
-        }
-        return new Response(JSON.stringify([search, [search], [], []]), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
+  await page.route('https://en.wikipedia.org/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.includes('/w/api.php')) {
+      const search = url.searchParams.get('search') || '';
+      if (search === 'Synthetic Wikipedia Failure') {
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify([search, [search], [], []]) });
+        return;
       }
-      if (url.hostname === 'en.wikipedia.org' && url.pathname.includes('/api/rest_v1/page/summary/')) {
-        return new Response(JSON.stringify({ extract: 'Synthetic Wikipedia context for browser QA.' }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.hostname === 'text.pollinations.ai') {
-        return new Response(JSON.stringify({
-          genre: 'Synthetic rock',
-          origin: 'Sweden',
-          formedYear: '2026',
-          bio: 'Generated synthetic biography from the existing add-band enrichment path.',
-        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-      return qaFetch(input, options);
-    };
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([search, [search], [], []]) });
+      return;
+    }
+    if (url.pathname.includes('/api/rest_v1/page/summary/')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ extract: 'Synthetic Wikipedia context for browser QA.' }) });
+      return;
+    }
+    await route.abort();
+  });
+
+  await page.route('https://text.pollinations.ai/**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        genre: 'Synthetic rock',
+        origin: 'Sweden',
+        formedYear: '2026',
+        bio: 'Generated synthetic biography from the existing add-band enrichment path.',
+      }),
+    });
   });
 }
 
@@ -152,7 +155,7 @@ test('unconfirmed Spotify candidate stays initials-only', async ({ page }) => {
   await expect(page.locator('#screen-profile .profile-avatar')).toContainText('SC');
 });
 
-test('soft Wikipedia and official-site failures remain retryable after generated fields succeed', async ({ page }) => {
+test('non-OK Wikipedia and official-site responses remain retryable and their payloads are discarded', async ({ page }) => {
   await page.goto('/');
   await installSyntheticProviderStubs(page);
 
