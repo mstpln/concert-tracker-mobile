@@ -5,7 +5,7 @@
   "serviceWorkerCacheVersion": "v121",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
-  "expectedNodeMajor": 20,
+  "expectedNodeMajor": 22,
   "qaOutputDirectory": "dist",
   "playwrightProjects": [
     "desktop-chromium",
