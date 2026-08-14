@@ -185,6 +185,14 @@
     return url;
   }
 
+  function officialArtworkNeedsRefresh(band) {
+    const artwork = band?.artistArtwork?.officialSite;
+    const storedUrl = safeHttpsImageUrl(artwork?.url);
+    const sourceUrl = nonEmptyString(artwork?.sourceUrl);
+    const officialUrl = nonEmptyString(band?.officialUrl);
+    return Boolean(storedUrl && sourceUrl && officialUrl && sourceUrl !== officialUrl);
+  }
+
   function trustedSpotifyArtworkUrl(band) {
     const identity = trustedSpotifyIdentity(band);
     return identity ? selectSpotifyArtistImage(identity) : null;
@@ -244,13 +252,16 @@
     const url = safeHttpsImageUrl(imageUrl);
     if (!url) return false;
     const current = band.artistArtwork && typeof band.artistArtwork === 'object' ? band.artistArtwork : {};
-    if (safeHttpsImageUrl(current.officialSite?.url)) return false;
+    const currentUrl = safeHttpsImageUrl(current.officialSite?.url);
+    const currentSource = nonEmptyString(current.officialSite?.sourceUrl);
+    const nextSource = nonEmptyString(sourceUrl);
+    if (currentUrl && (!currentSource || currentSource === nextSource)) return false;
     band.artistArtwork = {
       ...current,
       officialSite: {
         ...(current.officialSite || {}),
         url,
-        sourceUrl: nonEmptyString(sourceUrl),
+        sourceUrl: nextSource,
         source: 'official_site_og_image',
         updatedAt: now,
       },
@@ -296,6 +307,20 @@
     return changed;
   }
 
+  function enrichmentSourceHasUsableResult(source, value) {
+    if (source === 'wikipedia') return Boolean(nonEmptyString(value));
+    if (source === 'official_site') {
+      return Boolean(value && typeof value === 'object' && !Array.isArray(value) && [value.image, value.instagram, value.spotify].some(nonEmptyString));
+    }
+    return value != null;
+  }
+
+  function noteEnrichmentSourceResult(failures, source, value) {
+    if (!Array.isArray(failures) || enrichmentSourceHasUsableResult(source, value)) return false;
+    if (!failures.includes(source)) failures.push(source);
+    return true;
+  }
+
   function nextArtistEnrichmentState(prior, { failures = [], now = new Date().toISOString() } = {}) {
     const failureList = [...new Set((failures || []).map(nonEmptyString).filter(Boolean))];
     if (failureList.length) {
@@ -319,6 +344,7 @@
   }
 
   function artistEnrichmentRetryDue(band, now = new Date()) {
+    if (officialArtworkNeedsRefresh(band)) return true;
     const state = band?.artistEnrichment;
     if (state?.status !== 'retryable') return false;
     const eligible = Date.parse(state.nextEligibleCheckAt || '');
@@ -391,13 +417,17 @@
 
       let homepage = null;
       if (nonEmptyString(band.officialUrl)) {
-        try { homepage = await fetchHomepageInfo(band.officialUrl); }
-        catch (_) { failures.push('official_site'); }
+        try {
+          homepage = await fetchHomepageInfo(band.officialUrl);
+          noteEnrichmentSourceResult(failures, 'official_site', homepage);
+        } catch (_) { failures.push('official_site'); }
       }
 
       let wikiText = null;
-      try { wikiText = await fetchWikipediaText(band.name); }
-      catch (_) { failures.push('wikipedia'); }
+      try {
+        wikiText = await fetchWikipediaText(band.name);
+        noteEnrichmentSourceResult(failures, 'wikipedia', wikiText);
+      } catch (_) { failures.push('wikipedia'); }
 
       let groqApiKey = '';
       try {
@@ -442,6 +472,7 @@
     selectSpotifyArtistImage,
     trustedSpotifyArtworkUrl,
     officialArtworkUrl,
+    officialArtworkNeedsRefresh,
     visibleArtistImageUrl,
     visibleBio,
     rawPhotoUrl,
@@ -451,6 +482,8 @@
     mergeOfficialArtwork,
     applyGeneratedEnrichment,
     applyHomepageEnrichment,
+    enrichmentSourceHasUsableResult,
+    noteEnrichmentSourceResult,
     nextEnrichmentState: nextArtistEnrichmentState,
     enrichmentRetryDue: artistEnrichmentRetryDue,
     installBrowserIntegration: installArtistEnrichmentBrowserIntegration,
