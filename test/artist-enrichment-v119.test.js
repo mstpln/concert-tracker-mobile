@@ -58,6 +58,22 @@ test('existing official-site provider artwork is preserved and remains a safe fa
   assert.equal(band.artistArtwork.officialSite.url, 'https://band.example/og.jpg');
 });
 
+test('official artwork from a previous official URL is refreshable and replaceable', () => {
+  const band = spotifyBand({
+    musicbrainz: { status: 'confirmed', spotify: { id: 'spotify-artist-1', status: 'confirmed', images: [] } },
+    officialUrl: 'https://new.example',
+    artistArtwork: { officialSite: { url: 'https://old.example/og.jpg', sourceUrl: 'https://old.example', source: 'official_site_og_image', futureField: 'keep' } },
+  });
+  assert.equal(gau3.officialArtworkUrl(band), null);
+  assert.equal(gau3.officialArtworkNeedsRefresh(band), true);
+  assert.equal(gau3.enrichmentRetryDue(band, new Date('2026-08-14T00:00:00.000Z')), true);
+  assert.equal(gau3.mergeOfficialArtwork(band, 'https://new.example/new-og.jpg', band.officialUrl, '2026-08-14T00:00:00.000Z'), true);
+  assert.equal(band.artistArtwork.officialSite.url, 'https://new.example/new-og.jpg');
+  assert.equal(band.artistArtwork.officialSite.sourceUrl, 'https://new.example');
+  assert.equal(band.artistArtwork.officialSite.futureField, 'keep');
+  assert.equal(gau3.officialArtworkNeedsRefresh(band), false);
+});
+
 test('generated bio remains separate and visible when no user bio exists', () => {
   const band = spotifyBand();
   gau3.decorateBand(band);
@@ -82,6 +98,23 @@ test('transient failure remains retryable instead of terminally complete', () =>
   assert.equal(state.lastSuccessfulAt, undefined);
   assert.equal(state.errorCategory, 'wikipedia');
   assert.equal(gau3.enrichmentRetryDue({ artistEnrichment: state }, new Date('2026-08-14T10:00:01.000Z')), true);
+});
+
+test('soft provider absence is classified as retryable enrichment failure', () => {
+  const failures = [];
+  assert.equal(gau3.noteEnrichmentSourceResult(failures, 'wikipedia', null), true);
+  assert.equal(gau3.noteEnrichmentSourceResult(failures, 'official_site', {}), true);
+  assert.deepEqual(failures, ['wikipedia', 'official_site']);
+  const state = gau3.nextEnrichmentState(null, { failures, now: '2026-08-14T00:00:00.000Z' });
+  assert.equal(state.status, 'retryable');
+  assert.equal(state.errorCategory, 'wikipedia,official_site');
+});
+
+test('usable provider evidence does not create a retry failure', () => {
+  const failures = [];
+  assert.equal(gau3.noteEnrichmentSourceResult(failures, 'wikipedia', 'Synthetic context'), false);
+  assert.equal(gau3.noteEnrichmentSourceResult(failures, 'official_site', { image: 'https://band.example/image.jpg' }), false);
+  assert.deepEqual(failures, []);
 });
 
 test('manual add receives a durable retry checkpoint before its first persisted snapshot', () => {
