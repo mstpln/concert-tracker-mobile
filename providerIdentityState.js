@@ -150,6 +150,20 @@
     return safeHttpsUrl(value);
   }
 
+  function safeOfficialSocialUrl(kind, value) {
+    const safe = safeHttpsUrl(value);
+    if (!safe) return null;
+    try {
+      const url = new URL(safe);
+      const hostname = url.hostname.toLowerCase();
+      if (kind === 'instagram') return hostname === 'instagram.com' || hostname.endsWith('.instagram.com') ? url.href : null;
+      if (kind === 'spotify') return hostname === 'open.spotify.com' ? url.href : null;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   function enrichmentFetchContexts() {
     if (!root?.document || typeof root.fetch !== 'function') return null;
     const installed = root.fetch[ARTIST_ENRICHMENT_FETCH_OBSERVER];
@@ -388,7 +402,7 @@
     const current = band.socials && typeof band.socials === 'object' ? band.socials : {};
     const next = { ...current };
     for (const [key, value] of [['instagram', homepage.instagram], ['spotify', homepage.spotify]]) {
-      const safeValue = safeHttpsUrl(value);
+      const safeValue = safeOfficialSocialUrl(key, value);
       if (!next[key] && safeValue) {
         next[key] = safeValue;
         changed = true;
