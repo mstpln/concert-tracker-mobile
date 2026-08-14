@@ -215,19 +215,55 @@
     });
   }
 
+  function persistentBandSnapshot(band) {
+    const output = {};
+    for (const key of Object.keys(band || {})) {
+      if (key === '_enriching') continue;
+      output[key] = band[key];
+    }
+    const photoDescriptor = Object.getOwnPropertyDescriptor(band || {}, 'photoUrl');
+    const bioDescriptor = Object.getOwnPropertyDescriptor(band || {}, 'bio');
+    if (photoDescriptor?.get) {
+      if (band.__gau3RawPhotoPresent) output.photoUrl = band.__gau3RawPhotoValue;
+      else delete output.photoUrl;
+    }
+    if (bioDescriptor?.get) {
+      if (band.__gau3RawBioPresent) output.bio = band.__gau3RawBioValue;
+      else delete output.bio;
+    }
+    return output;
+  }
+
+  function persistentBandsSnapshot(rows) {
+    return (rows || []).map(persistentBandSnapshot);
+  }
+
   function decorateBandForArtistEnrichment(band) {
     if (!band || typeof band !== 'object' || band[ARTIST_ENRICHMENT_DECORATED]) return band;
-    const startingPhoto = nonEmptyString(band.photoUrl);
-    const startingBio = nonEmptyString(band.bio);
+    const photoPresent = Object.prototype.hasOwnProperty.call(band, 'photoUrl');
+    const bioPresent = Object.prototype.hasOwnProperty.call(band, 'bio');
+    const rawPhotoValue = photoPresent ? band.photoUrl : undefined;
+    const rawBioValue = bioPresent ? band.bio : undefined;
+    const startingPhoto = nonEmptyString(rawPhotoValue);
+    const startingBio = nonEmptyString(rawBioValue);
     Object.defineProperty(band, '__gau3RawPhotoUrl', { value: startingPhoto, writable: true, configurable: true, enumerable: false });
     Object.defineProperty(band, '__gau3RawBio', { value: startingBio, writable: true, configurable: true, enumerable: false });
+    Object.defineProperty(band, '__gau3RawPhotoPresent', { value: photoPresent, writable: true, configurable: true, enumerable: false });
+    Object.defineProperty(band, '__gau3RawBioPresent', { value: bioPresent, writable: true, configurable: true, enumerable: false });
+    Object.defineProperty(band, '__gau3RawPhotoValue', { value: rawPhotoValue, writable: true, configurable: true, enumerable: false });
+    Object.defineProperty(band, '__gau3RawBioValue', { value: rawBioValue, writable: true, configurable: true, enumerable: false });
     if (!startingPhoto) {
       try { delete band.photoUrl; } catch (_) {}
       Object.defineProperty(band, 'photoUrl', {
         configurable: true,
         enumerable: false,
         get() { return visibleArtistImageUrl(band); },
-        set(value) { replaceWithOwnedField(band, 'photoUrl', value); },
+        set(value) {
+          band.__gau3RawPhotoPresent = true;
+          band.__gau3RawPhotoValue = value;
+          band.__gau3RawPhotoUrl = nonEmptyString(value);
+          replaceWithOwnedField(band, 'photoUrl', value);
+        },
       });
     }
     if (!startingBio) {
@@ -236,9 +272,15 @@
         configurable: true,
         enumerable: false,
         get() { return visibleBio(band); },
-        set(value) { replaceWithOwnedField(band, 'bio', value); },
+        set(value) {
+          band.__gau3RawBioPresent = true;
+          band.__gau3RawBioValue = value;
+          band.__gau3RawBio = nonEmptyString(value);
+          replaceWithOwnedField(band, 'bio', value);
+        },
       });
     }
+    Object.defineProperty(band, 'toJSON', { value() { return persistentBandSnapshot(band); }, configurable: true, enumerable: false });
     Object.defineProperty(band, ARTIST_ENRICHMENT_DECORATED, { value: true, enumerable: false });
     return band;
   }
@@ -467,7 +509,7 @@
       band._enriching = false;
 
       try {
-        await dlWriteJsonFile(remote, 'bands.json', stripTransient(rows));
+        await dlWriteJsonFile(remote, 'bands.json', persistentBandsSnapshot(rows));
       } catch (error) {
         band.artistEnrichment = nextArtistEnrichmentState(band.artistEnrichment, { failures: ['storage_write'], now: new Date().toISOString() });
         throw error;
@@ -494,6 +536,8 @@
     visibleBio,
     rawPhotoUrl,
     rawBio,
+    persistentBandSnapshot,
+    persistentBandsSnapshot,
     decorateBand: decorateBandForArtistEnrichment,
     decorateBands: decorateBandsForArtistEnrichment,
     mergeOfficialArtwork,
