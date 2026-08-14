@@ -23,7 +23,7 @@ test('Settings v123 uses one consistent Automation presentation', async ({ page 
   const divider = screen.locator('.settings-v123-section').nth(1);
   await expect(divider).toHaveCSS('border-top-width','2px');
   await expect(divider).toHaveCSS('border-top-color','rgb(11, 99, 246)');
-  await expect(screen.locator('.settings-v123-progress')).not.toHaveCount(0);
+  expect(await screen.locator('.settings-v123-progress').count()).toBeGreaterThan(0);
   await expectNoHorizontalOverflow(page);
 });
 
