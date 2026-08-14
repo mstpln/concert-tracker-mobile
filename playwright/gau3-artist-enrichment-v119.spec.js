@@ -2,6 +2,11 @@ const { test, expect } = require('@playwright/test');
 
 async function installSyntheticProviderStubs(page) {
   await page.route('https://example.invalid/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/official-failure') {
+      await route.fulfill({ status: 503, contentType: 'text/html', body: '<html><head><title>Temporarily unavailable</title></head><body>Retry later</body></html>' });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: 'image/svg+xml',
@@ -14,7 +19,11 @@ async function installSyntheticProviderStubs(page) {
     window.fetch = async (input, options = {}) => {
       const url = new URL(typeof input === 'string' ? input : input.url, location.href);
       if (url.hostname === 'en.wikipedia.org' && url.pathname.includes('/w/api.php')) {
-        return new Response(JSON.stringify(['Synthetic Added Artist', ['Synthetic Added Artist'], [], []]), {
+        const search = url.searchParams.get('search') || '';
+        if (search === 'Synthetic Wikipedia Failure') {
+          return new Response('temporarily unavailable', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+        }
+        return new Response(JSON.stringify([search, [search], [], []]), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -38,10 +47,11 @@ async function installSyntheticProviderStubs(page) {
   });
 }
 
-async function addManualBand(page, name) {
+async function addManualBand(page, name, officialUrl = '') {
   await page.getByRole('button', { name: 'Bands' }).click();
   const screen = page.locator('#screen-mybands');
   await screen.locator('#add-band-name').fill(name);
+  if (officialUrl) await screen.locator('#add-band-url').fill(officialUrl);
   await screen.locator('#add-band-submit').click();
   await expect(screen.getByText(name, { exact: true })).toBeVisible();
 }
@@ -140,4 +150,22 @@ test('unconfirmed Spotify candidate stays initials-only', async ({ page }) => {
   await page.locator('#screen-mybands').getByText('Synthetic Candidate Only', { exact: true }).click();
   await expect(page.locator('#screen-profile .profile-avatar img')).toHaveCount(0);
   await expect(page.locator('#screen-profile .profile-avatar')).toContainText('SC');
+});
+
+test('soft Wikipedia and official-site failures remain retryable after generated fields succeed', async ({ page }) => {
+  await page.goto('/');
+  await installSyntheticProviderStubs(page);
+
+  await addManualBand(page, 'Synthetic Wikipedia Failure');
+  await expect.poll(async () => (await readStoredBand(page, 'Synthetic Wikipedia Failure'))?.artistEnrichment?.status).toBe('retryable');
+  const wikipediaFailure = await readStoredBand(page, 'Synthetic Wikipedia Failure');
+  expect(wikipediaFailure.artistEnrichment.errorCategory).toContain('wikipedia');
+  expect(wikipediaFailure.generatedBio).toContain('Generated synthetic biography');
+  expect(Date.parse(wikipediaFailure.artistEnrichment.nextEligibleCheckAt)).toBeGreaterThan(Date.parse(wikipediaFailure.artistEnrichment.lastAttemptedAt));
+
+  await addManualBand(page, 'Synthetic Official Failure', 'https://example.invalid/official-failure');
+  await expect.poll(async () => (await readStoredBand(page, 'Synthetic Official Failure'))?.artistEnrichment?.status).toBe('retryable');
+  const officialFailure = await readStoredBand(page, 'Synthetic Official Failure');
+  expect(officialFailure.artistEnrichment.errorCategory).toContain('official_site');
+  expect(officialFailure.artistArtwork?.officialSite).toBeUndefined();
 });
