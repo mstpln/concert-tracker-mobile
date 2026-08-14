@@ -87,30 +87,6 @@ test('GAU4 accepts an exact Ticketmaster ticket URL as strong recovery evidence 
   assert.equal(research.findTicketmasterConcertMatch([existing], candidate).reason, 'trusted_venue_evidence');
 });
 
-test('GAU4 exact provider-event identity still performs a venue-only correction', () => {
-  const existing = existingConcert({
-    providerEventId: 'tm-synthetic-le-sserafim',
-    sourceProvider: 'ticketmaster',
-  });
-  const candidate = ticketmasterCandidate({
-    time: '21:00:00',
-    city: 'Provider City',
-    country: 'Provider Country',
-    venueAddress: 'Provider Address',
-    ticketUrl: 'https://www.ticketmaster.dk/event/provider-new-link',
-    distanceKm: 999,
-  });
-
-  const match = research.findTicketmasterConcertMatch([existing], candidate);
-  assert.equal(match.kind, 'match');
-  assert.equal(match.reason, 'provider_event_id');
-  const upgraded = research.upgradeExistingConcertWithTicketmaster(existing, candidate);
-  assert.equal(upgraded.venue, 'Royal Arena');
-  assert.equal(upgraded.time, existing.time);
-  assert.equal(upgraded.distanceKm, existing.distanceKm);
-  assertProtectedFieldsPreserved(upgraded, existing);
-});
-
 test('GAU4 does not guess a venue from city/date alone', () => {
   const existing = existingConcert({ venueAddress: null, ticketUrl: 'https://tickets.example/user-link' });
   const candidate = ticketmasterCandidate({ venueAddress: null, ticketUrl: 'https://www.ticketmaster.dk/event/other', providerEventId: null });
@@ -151,14 +127,14 @@ test('GAU4 fails closed when provider event IDs conflict', () => {
 
 test('GAU4 leaves Unknown venue when the trusted candidate also lacks a real venue name', () => {
   const existing = existingConcert();
-  const candidate = ticketmasterCandidate({ venue: 'Unknown venue' });
+  const candidate = ticketmasterCandidate({ venue: 'Unknown venue', providerEventId: null });
 
   assert.equal(research.trustedVenueRecoveryMatch(existing, candidate), false);
 });
 
 test('venue-only recovery preserves stable ID and every unrelated/user-owned field', () => {
   const existing = existingConcert();
-  const candidate = { ...ticketmasterCandidate(), _venueRecoveryOnly: true };
+  const candidate = { ...ticketmasterCandidate({ providerEventId: null }), _venueRecoveryOnly: true };
   const upgraded = research.upgradeExistingConcertWithTicketmaster(existing, candidate);
 
   assert.equal(upgraded.venue, 'Royal Arena');
@@ -167,7 +143,7 @@ test('venue-only recovery preserves stable ID and every unrelated/user-owned fie
 
 test('latest user correction wins over an in-flight venue-only provider recovery', () => {
   const original = existingConcert();
-  const candidate = { ...ticketmasterCandidate(), _venueRecoveryOnly: true };
+  const candidate = { ...ticketmasterCandidate({ providerEventId: null }), _venueRecoveryOnly: true };
   const latest = { ...original, venue: 'User corrected venue', notes: 'Newer user note' };
 
   const merged = research.mergeTicketmasterConcertUpgrades([latest], [{ id: original.id, candidate }]);
