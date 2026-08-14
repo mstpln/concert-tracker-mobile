@@ -177,6 +177,16 @@ test('unsafe official artwork alone remains retryable instead of becoming provid
   assert.deepEqual(failures, ['official_site']);
 });
 
+test('unsafe official social links are neither stored nor treated as provider success', () => {
+  const band = spotifyBand({ socials: {} });
+  const homepage = { instagram: 'http://instagram.example/synthetic', spotify: 'javascript:alert(1)' };
+  assert.equal(gau3.applyHomepageEnrichment(band, homepage, '2026-08-14T00:00:00.000Z'), false);
+  assert.deepEqual(band.socials, {});
+  const failures = [];
+  assert.equal(gau3.noteEnrichmentSourceResult(failures, 'official_site', homepage), true);
+  assert.deepEqual(failures, ['official_site']);
+});
+
 test('usable provider evidence does not create a retry failure', () => {
   const failures = [];
   assert.equal(gau3.noteEnrichmentSourceResult(failures, 'wikipedia', 'Synthetic context'), false);
