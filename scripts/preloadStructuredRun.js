@@ -8,6 +8,7 @@
 const config = require('./lib/config');
 const releasePlan = require('./lib/releaseAlertPlan');
 const releaseLifecycle = require('./lib/releaseLifecycle');
+const { trustedSpotifyReleaseUrl } = require('./lib/releaseFeedPolicy');
 const musicbrainz = require('./lib/musicbrainz');
 const spotify = require('./lib/spotify');
 const worker = require('./lib/workerClient');
@@ -25,15 +26,31 @@ installMusicbrainzScheduledGate({ musicbrainz, worker, config });
 installUsageTrackerSpotifyCircuit(UsageTracker);
 installSpotifyModuleCircuit(spotify);
 
+const DAY = 86400000;
+
 function fullDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
 }
 
 function spotifyReleaseReady(release, today) {
-  if (!release?.spotifyReleaseId || !release.spotifyUrl) return false;
+  if (!release?.spotifyReleaseId || !trustedSpotifyReleaseUrl(release.spotifyUrl)) return false;
   if (!['Album', 'Single'].includes(release.type)) return false;
   if (!fullDate(release.releaseDate) || release.releaseDate > today.slice(0, 10)) return false;
   return true;
+}
+
+// Baseline creation is still silent for old catalogue history, but a real
+// Spotify release from the normal recency window must not disappear merely
+// because it was first observed while a provider baseline was being built.
+// This bounded catch-up is what repairs missed recent albums/singles without
+// turning the first baseline into a historical flood.
+function recentSpotifyCatchupEligible(release, today) {
+  if (!spotifyReleaseReady(release, today)) return false;
+  const releaseAt = Date.parse(`${release.releaseDate}T00:00:00Z`);
+  const todayAt = Date.parse(`${today.slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(releaseAt) || !Number.isFinite(todayAt)) return false;
+  const ageDays = Math.floor((todayAt - releaseAt) / DAY);
+  return ageDays >= 0 && ageDays <= config.NEWS_RECENCY_DAYS;
 }
 
 function spotifyReleaseAlertId(bandId, release) {
@@ -48,7 +65,13 @@ releasePlan.planLifecycleAlerts = function planSpotifyReleaseAlerts({ band, rele
   const knownById = new Map((alerts || []).map((alert) => [alert.id, alert]));
   const knownBySpotifyRelease = new Map((alerts || []).filter((alert) => alert.spotifyReleaseId).map((alert) => [alert.spotifyReleaseId, alert]));
   for (const release of releases) {
-    if (!release?.lifecycleEligible || release.historical || release.baselineIncomplete) {
+    if (release?.historical || release?.baselineIncomplete) {
+      skipped.push({ release, reason: 'baseline' });
+      continue;
+    }
+    const normalLifecycleEligible = Boolean(release?.lifecycleEligible);
+    const catchupEligible = recentSpotifyCatchupEligible(release, today);
+    if (!normalLifecycleEligible && !catchupEligible) {
       skipped.push({ release, reason: 'baseline' });
       continue;
     }
@@ -64,6 +87,7 @@ releasePlan.planLifecycleAlerts = function planSpotifyReleaseAlerts({ band, rele
       enrich.push({ id: existing.id, lifecycleStage: 'spotify_release' });
       continue;
     }
+    const spotifyUrl = trustedSpotifyReleaseUrl(release.spotifyUrl);
     creates.push({
       id: generatedId,
       bandId: band.id,
@@ -79,10 +103,10 @@ releasePlan.planLifecycleAlerts = function planSpotifyReleaseAlerts({ band, rele
       releaseType: release.type,
       releaseDate: release.releaseDate,
       spotifyReleaseId: release.spotifyReleaseId,
-      spotifyUrl: release.spotifyUrl,
+      spotifyUrl,
       artworkUrl: release.artworkUrl || null,
       sourceName: 'Spotify',
-      sourceUrl: release.spotifyUrl,
+      sourceUrl: spotifyUrl,
     });
   }
   return { alertsToCreate: creates, alertsToEnrich: enrich, lifecycleUpdates, skipped };
