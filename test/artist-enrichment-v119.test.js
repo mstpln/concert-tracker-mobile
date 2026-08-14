@@ -74,6 +74,18 @@ test('official artwork from a previous official URL is refreshable and replaceab
   assert.equal(gau3.officialArtworkNeedsRefresh(band), false);
 });
 
+test('removing the official URL removes old official-site artwork authority without creating a retry loop', () => {
+  const band = spotifyBand({
+    musicbrainz: { status: 'confirmed', spotify: { id: 'spotify-artist-1', status: 'confirmed', images: [] } },
+    officialUrl: null,
+    artistArtwork: { officialSite: { url: 'https://old.example/og.jpg', sourceUrl: 'https://old.example', source: 'official_site_og_image' } },
+    artistEnrichment: { status: 'complete', lastAttemptedAt: '2026-08-13T00:00:00.000Z' },
+  });
+  assert.equal(gau3.officialArtworkUrl(band), null);
+  assert.equal(gau3.officialArtworkNeedsRefresh(band), false);
+  assert.equal(gau3.enrichmentRetryDue(band, new Date('2026-08-14T00:00:00.000Z')), false);
+});
+
 test('generated bio remains separate and visible when no user bio exists', () => {
   const band = spotifyBand();
   gau3.decorateBand(band);
@@ -98,6 +110,30 @@ test('transient failure remains retryable instead of terminally complete', () =>
   assert.equal(state.lastSuccessfulAt, undefined);
   assert.equal(state.errorCategory, 'wikipedia');
   assert.equal(gau3.enrichmentRetryDue({ artistEnrichment: state }, new Date('2026-08-14T10:00:01.000Z')), true);
+});
+
+test('stale official artwork still respects the bounded retry delay after a failed refresh', () => {
+  const band = spotifyBand({
+    officialUrl: 'https://new.example',
+    artistArtwork: { officialSite: { url: 'https://old.example/og.jpg', sourceUrl: 'https://old.example' } },
+    artistEnrichment: {
+      status: 'retryable',
+      lastAttemptedAt: '2026-08-14T00:00:00.000Z',
+      nextEligibleCheckAt: '2026-08-15T00:00:00.000Z',
+      errorCategory: 'official_site',
+    },
+  });
+  assert.equal(gau3.enrichmentRetryDue(band, new Date('2026-08-14T12:00:00.000Z')), false);
+  assert.equal(gau3.enrichmentRetryDue(band, new Date('2026-08-15T00:00:00.000Z')), true);
+});
+
+test('recovery chooses the oldest due artist rather than permanent array order', () => {
+  const rows = [
+    { id: 'recent', artistEnrichment: { status: 'retryable', nextEligibleCheckAt: '2026-08-13T12:00:00.000Z' } },
+    { id: 'oldest', artistEnrichment: { status: 'retryable', nextEligibleCheckAt: '2026-08-12T12:00:00.000Z' } },
+    { id: 'future', artistEnrichment: { status: 'retryable', nextEligibleCheckAt: '2026-08-16T12:00:00.000Z' } },
+  ];
+  assert.equal(gau3.nextRetryBand(rows, new Date('2026-08-14T12:00:00.000Z')).id, 'oldest');
 });
 
 test('soft provider absence is classified as retryable enrichment failure', () => {
