@@ -9,7 +9,6 @@ const config = require('./lib/config');
 const releasePlan = require('./lib/releaseAlertPlan');
 const releaseLifecycle = require('./lib/releaseLifecycle');
 const releaseFeedPolicy = require('./lib/releaseFeedPolicy');
-const structured = require('./lib/structuredResearch');
 const musicbrainz = require('./lib/musicbrainz');
 const spotify = require('./lib/spotify');
 const worker = require('./lib/workerClient');
@@ -46,29 +45,10 @@ function spotifyLifecycleStage(release) {
   return release?.type === 'Single' ? 'spotify_single_release' : 'spotify_album_release';
 }
 
-// Cross-provider canonicalization can merge a new Spotify observation into a
-// MusicBrainz-keyed release. The old lifecycle test then looked only at the
-// merged MusicBrainz key and lost the Spotify "new this run" signal. Restore
-// that signal by reconstructing the Spotify observation key from the merged
-// canonical observation before the generic merge result is consumed.
-const mergeLifecycleReleases = structured.mergeLifecycleReleases;
-structured.mergeLifecycleReleases = function mergeLifecycleReleasesWithSpotifyEligibility(existing, observations, now, lifecycleEligibleKeys = []) {
-  const eligibleKeys = new Set(lifecycleEligibleKeys);
-  const newSpotifyIds = new Set((observations || [])
-    .filter((release) => {
-      if (!release?.spotifyReleaseId) return false;
-      const spotifyObservationKey = structured.releaseKey({ ...release, musicbrainzReleaseGroupMbid: null });
-      return eligibleKeys.has(spotifyObservationKey);
-    })
-    .map((release) => release.spotifyReleaseId));
-  return mergeLifecycleReleases(existing, observations, now, lifecycleEligibleKeys)
-    .map((release) => newSpotifyIds.has(release.spotifyReleaseId) ? { ...release, lifecycleEligible: true } : release);
-};
-
-// Existing production baselines were built while the cross-provider bug above
-// was present. A bounded one-time catch-up makes already-observed Spotify
-// releases from the previous 30 days eligible on the first post-fix run. The
-// firstSeen cutoff means future first baselines stay silent exactly as before.
+// Existing production baselines were built while the cross-provider bug was
+// present. A bounded one-time catch-up makes already-observed Spotify releases
+// from the previous 30 days eligible on the first post-fix run. The firstSeen
+// cutoff means future first baselines stay silent exactly as before.
 function repairCatchupEligible(release, today) {
   if (!spotifyReleaseReady(release, today)) return false;
   const firstSeenAt = Date.parse(release.firstSeenAt || '');
