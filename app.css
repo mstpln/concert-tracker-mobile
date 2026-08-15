@@ -15,8 +15,6 @@
   --inactive: #40495c;
   --inactive-bg: #eceef1;
   --radius: 8px;
-  --countdown-yellow: #f2c230;
-  --countdown-yellow-light: #f7d968;
   /* News category colors — kept within the app's own black/grey/white/blue
      palette rather than introducing new hues. Concert and album share the
      blue family (album a shade deeper); ticket and hiatus are a light/dark
@@ -49,42 +47,142 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 14px; color: var(--text); background: var(--surface); }
+
+/* Unlike the extension's fixed 360x600 popup window, this fills whatever
+   screen it's installed on (phone home-screen PWA, or a browser tab while
+   testing on desktop), with a max-width so it doesn't stretch awkwardly
+   wide on a tablet or desktop browser. */
+/* Deliberately NOT using vh/dvh height units on the app shell. Android's
+   gesture-navigation overlay resizes the visual viewport transiently on
+   swipe gestures, and dvh recalculation during that resize can leave the
+   layout taller than the screen. Pinning #onboarding/#app to the four
+   viewport edges with position:fixed sidesteps that entirely — there's no
+   height calculation to get wrong, it's just anchored to the real edges at
+   all times. Internal scrolling (#content) is unaffected. */
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--surface);
+}
+
 .hidden { display: none !important; }
+
 .muted { color: var(--text-secondary); }
-button { font-family: inherit; cursor: pointer; }
-input[type="text"], input[type="url"], input[type="password"], input[type="date"], input[type="number"], select { width: 100%; font-family: inherit; font-size: 14px; padding: 9px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); margin-bottom: 8px; }
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input[type="text"], input[type="url"], input[type="password"], input[type="date"], input[type="number"], select {
+  width: 100%;
+  font-family: inherit;
+  font-size: 14px;
+  padding: 9px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  margin-bottom: 8px;
+}
 input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bottom: 0; }
+
 .error { color: var(--danger); font-size: 12.5px; }
-#onboarding.screen { position: fixed; top: 0; right: 0; bottom: 0; left: 0; max-width: 480px; margin: 0 auto; display: flex; align-items: center; overflow-y: auto; }
+
+/* Onboarding */
+#onboarding.screen {
+  position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+  max-width: 480px; margin: 0 auto;
+  display: flex; align-items: center; overflow-y: auto;
+}
 .onboarding-inner { padding: 32px 22px; text-align: left; width: 100%; }
-.onboarding-icon { width: 48px; height: 48px; margin: 0 0 14px; border-radius: 12px; background: var(--header-bg); color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.onboarding-icon {
+  width: 48px; height: 48px; margin: 0 0 14px; border-radius: 12px;
+  background: var(--header-bg); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+}
 .onboarding-icon svg { width: 26px; height: 26px; }
 #onboarding h1 { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
 #onboarding p { font-size: 13.5px; line-height: 1.5; margin: 0 0 18px; color: var(--text-secondary); }
 #onboarding label { display: block; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); margin-bottom: 5px; }
-#app { position: fixed; top: 0; right: 0; bottom: 0; left: 0; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; }
-.brand-banner { box-sizing: border-box; height: 60px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #024ddf; color: #ffffff; font-family: 'Gill Sans', 'Gill Sans MT', 'Gill Sans Nova', sans-serif; font-weight: 700; font-size: 19px; letter-spacing: 2px; -webkit-text-stroke: 0.6px #ffffff; text-stroke: 0.6px #ffffff; }
-#app-header { box-sizing: border-box; height: 60px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 14px 16px; background: var(--surface); color: var(--text-muted); border-bottom: 1px solid var(--border); }
+
+/* App shell */
+#app {
+  position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+  max-width: 480px; margin: 0 auto;
+  display: flex; flex-direction: column;
+}
+
+.brand-banner {
+  box-sizing: border-box; height: 60px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: #024ddf; color: #ffffff;
+  font-family: 'Gill Sans', 'Gill Sans MT', 'Gill Sans Nova', sans-serif;
+  font-weight: 700; font-size: 19px; letter-spacing: 2px;
+  /* Gill Sans has no heavier weight than Bold on most systems, so bumping
+     font-weight past 700 has no visual effect. A thin stroke matching the
+     fill color reliably thickens the letterforms regardless of what weights
+     the installed font actually has. */
+  -webkit-text-stroke: 0.6px #ffffff;
+  text-stroke: 0.6px #ffffff;
+}
+
+#app-header {
+  box-sizing: border-box; height: 60px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 16px;
+  background: var(--surface); color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
 .header-brand { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
 .header-icon, .header-icon svg { display: flex; }
 .header-icon svg { width: 20px; height: 20px; }
 .header-title { font-weight: 400; font-size: 15px; flex: 1; letter-spacing: 0.2px; }
 .brand-blue { color: var(--accent); }
-.icon-btn { width: 32px; height: 32px; border-radius: var(--radius); border: none; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center; }
+
+.icon-btn {
+  width: 32px; height: 32px; border-radius: var(--radius);
+  border: none; background: transparent; color: inherit;
+  display: flex; align-items: center; justify-content: center;
+}
 .icon-btn:hover { background: rgba(255,255,255,0.12); }
 #app-header .icon-btn:hover { background: rgba(255,255,255,0.12); }
 #app-header .icon-btn.active { background: var(--accent); color: var(--on-accent); }
 #app-header .icon-btn.active:hover { background: var(--accent); opacity: 0.9; }
-#europe-toggle-btn { width: auto; min-width: 34px; padding: 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .02em; border: 1px solid rgba(255,255,255,0.25); }
+
+#europe-toggle-btn {
+  width: auto; min-width: 34px; padding: 0 8px;
+  font-size: 11px; font-weight: 700; letter-spacing: .02em;
+  border: 1px solid rgba(255,255,255,0.25);
+}
 #app-header .icon-btn.active#europe-toggle-btn { border-color: var(--accent); }
+
 #nearby-toggle-btn { border: 1px solid rgba(255,255,255,0.25); }
 #app-header .icon-btn.active#nearby-toggle-btn { border-color: var(--accent); }
-.pill { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; background: var(--accent-bg); color: var(--accent); display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+
+.pill {
+  font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px;
+  background: var(--accent-bg); color: var(--accent);
+  display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;
+}
+
 #content { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px 24px; background: var(--surface); }
-.screen-empty { text-align: center; color: var(--text-muted); padding: 40px 20px; font-size: 13px; }
-.row-card { position: relative; border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 8px; background: var(--surface); }
+
+.screen-empty {
+  text-align: center; color: var(--text-muted); padding: 40px 20px; font-size: 13px;
+}
+
+/* Rows */
+.row-card {
+  position: relative;
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; margin-bottom: 8px; background: var(--surface);
+}
 .row-card.clickable { cursor: pointer; }
 .row-card.clickable:hover { border-color: var(--border-strong); }
 .row-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
@@ -97,70 +195,945 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 .row-actions .icon-btn { color: var(--text-muted); width: 28px; height: 28px; }
 .row-actions .icon-btn:hover { background: var(--surface-muted); }
 .row-card.is-past { opacity: 0.72; }
+/* My Concerts: the delete button sits in the card's bottom-right corner
+   instead of alongside the chevron up top, so it's not mistaken for part of
+   the row's primary tap target. Extra bottom padding keeps the address link/
+   row-km text from running underneath it. */
 .row-card.has-corner-delete { padding-bottom: 44px; }
-.delete-corner-btn { position: absolute; right: 8px; bottom: 8px; color: var(--text-muted); }
+.delete-corner-btn {
+  position: absolute; right: 8px; bottom: 8px;
+  color: var(--text-muted);
+}
 .delete-corner-btn:hover { background: var(--surface-muted); }
+/* My Concerts card layout — scoped entirely to .row-card-mc (only ever
+   added by myConcertRowHtml) so the Concerts tab, My Bands, and the band
+   profile page's own Upcoming section remain unaffected. */
 .row-card-mc .row-header { display: flex; gap: 12px; align-items: center; }
-.row-card-mc .row-avatar { width: 84px; height: 84px; border-radius: 50%; background: var(--header-bg); color: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; flex-shrink: 0; overflow: hidden; }
+.row-card-mc .row-avatar {
+  width: 84px; height: 84px; border-radius: 50%; background: var(--header-bg);
+  color: var(--accent); display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 20px; flex-shrink: 0; overflow: hidden;
+}
 .row-card-mc .row-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .row-card-mc .row-title-col { flex: 1; min-width: 0; }
 .row-card-mc .row-pill-row { display: flex; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
 .row-card-mc .row-name-line { display: flex; align-items: center; gap: 6px; }
-.row-card-mc .row-name-line .row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-card-mc .row-name-line .row-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .row-card-mc .row-tour { margin: 2px 0 0; color: var(--text-muted); font-size: 11.5px; }
+/* Equalized rhythm for the date/venue, address and distance rows — the
+   address row gets a touch extra margin below it (9px vs. 6px) to visually
+   compensate for its underline, which otherwise reads as tighter spacing
+   than the identical margin value actually is. */
 .row-card-mc .row-sub { margin: 10px 0 0; }
 .row-card-mc .venue-address-link { margin: 6px 0 0; }
 .row-card-mc .row-km { margin: 9px 0 0; }
+
 .pill-going { background: var(--accent-bg); color: var(--accent); }
 .pill-attended { background: var(--surface-muted); color: var(--text-secondary); }
 .pill-inactive { background: var(--inactive-bg); color: var(--inactive); }
 .pill-unknown { background: var(--surface-muted); color: var(--text-muted); }
 .pill-festival { background: var(--accent-bg); color: var(--accent); }
-.section-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .02em; color: var(--text-muted); font-weight: 600; margin: 14px 0 6px; }
+
+.section-label {
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: .02em;
+  color: var(--text-muted); font-weight: 600; margin: 14px 0 6px;
+}
 .section-label:first-child { margin-top: 0; }
+/* My Concerts: extra breathing room above "Past concerts" specifically, so
+   it reads as a clear break from the Upcoming list above it rather than
+   just another row in the same list. */
 .section-label-gap-lg { margin-top: 32px; }
-.myconcerts-past-divider { display: flex; align-items: center; gap: 12px; margin: 36px 0 14px; color: var(--text-muted); }
-.myconcerts-past-divider::before, .myconcerts-past-divider::after { content: ''; flex: 1; height: 1px; background: var(--border-strong); opacity: .72; }
-.myconcerts-past-divider span { flex: 0 0 auto; font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+
+/* Section header + filter buttons (e.g. band page "Upcoming shows"), same
+   look as the header's EU/Nearby buttons. Extra top/bottom margin vs. a
+   plain .section-label so the 32px-tall buttons have room to breathe. */
 .section-label-row { display: flex; align-items: center; justify-content: space-between; margin: 6px 0 14px; gap: 8px; }
 .section-label-row .section-label { margin: 0; }
 .section-label-filters { display: flex; gap: 8px; flex-shrink: 0; }
 .section-label-filters .icon-btn { color: var(--text); }
 .section-label-filters .icon-btn.active { background: var(--accent); color: var(--on-accent); }
-#profile-europe-toggle-btn { width: auto; min-width: 34px; padding: 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .02em; border: 1px solid var(--border-strong); }
+#profile-europe-toggle-btn {
+  width: auto; min-width: 34px; padding: 0 8px;
+  font-size: 11px; font-weight: 700; letter-spacing: .02em;
+  border: 1px solid var(--border-strong);
+}
 #profile-nearby-toggle-btn { border: 1px solid var(--border-strong); }
-.section-label-filters .icon-btn.active#profile-europe-toggle-btn, .section-label-filters .icon-btn.active#profile-nearby-toggle-btn { border-color: var(--accent); }
-#venues-europe-toggle-btn, #venues-past-toggle-btn { width: auto; min-width: 34px; padding: 0 10px; font-size: 11px; font-weight: 700; letter-spacing: .02em; border: 1px solid var(--border-strong); }
+.section-label-filters .icon-btn.active#profile-europe-toggle-btn,
+.section-label-filters .icon-btn.active#profile-nearby-toggle-btn { border-color: var(--accent); }
+
+/* Venues sub-tab filter pills (Concerts tab) — same shape as the band
+   profile's own EU/Nearby filter buttons above, plus a third "Past
+   Concerts" text pill (scoped to shows the user attended, not just any
+   past date — see venuesSubTabHtml). */
+#venues-europe-toggle-btn, #venues-past-toggle-btn {
+  width: auto; min-width: 34px; padding: 0 10px;
+  font-size: 11px; font-weight: 700; letter-spacing: .02em;
+  border: 1px solid var(--border-strong);
+}
 #venues-nearby-toggle-btn { border: 1px solid var(--border-strong); }
-.section-label-filters .icon-btn.active#venues-europe-toggle-btn, .section-label-filters .icon-btn.active#venues-past-toggle-btn, .section-label-filters .icon-btn.active#venues-nearby-toggle-btn { border-color: var(--accent); }
-.year-divider { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-secondary); }
-.year-divider-line { flex: 1; height: 2px; background: var(--border-strong); border-radius: 1px; }
-.year-divider-count { color: var(--text-muted); font-weight: 500; font-size: 11.5px; text-transform: none; letter-spacing: 0; white-space: nowrap; }
-.filter-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 0 2px; }
+.section-label-filters .icon-btn.active#venues-europe-toggle-btn,
+.section-label-filters .icon-btn.active#venues-past-toggle-btn,
+.section-label-filters .icon-btn.active#venues-nearby-toggle-btn { border-color: var(--accent); }
+
+.year-divider {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; color: var(--text-secondary);
+}
+.year-divider-line {
+  flex: 1; height: 2px; background: var(--border-strong); border-radius: 1px;
+}
+.year-divider-count {
+  color: var(--text-muted); font-weight: 500; font-size: 11.5px;
+  text-transform: none; letter-spacing: 0; white-space: nowrap;
+}
+
+/* Filter row (My Bands) */
+.filter-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; padding: 0 2px;
+}
 .filter-label { font-size: 12.5px; color: var(--text-secondary); }
-.toggle-pill { border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-secondary); border-radius: 20px; font-size: 11.5px; font-weight: 600; padding: 5px 12px; min-width: 34px; }
+.toggle-pill {
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-secondary);
+  border-radius: 20px; font-size: 11.5px; font-weight: 600; padding: 5px 12px; min-width: 34px;
+}
 .toggle-pill.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-.btn-primary { background: var(--accent); color: var(--on-accent); border: none; border-radius: var(--radius); font-size: 13.5px; font-weight: 600; padding: 10px 14px; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+
+/* Buttons */
+.btn-primary {
+  background: var(--accent); color: var(--on-accent); border: none;
+  border-radius: var(--radius); font-size: 13.5px; font-weight: 600;
+  padding: 10px 14px; display: inline-flex; align-items: center; gap: 6px;
+  text-decoration: none;
+}
 .btn-primary:hover { opacity: 0.92; }
-.btn-secondary { background: transparent; color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 13.5px; font-weight: 500; padding: 9px 13px; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.btn-secondary {
+  background: transparent; color: var(--text); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); font-size: 13.5px; font-weight: 500;
+  padding: 9px 13px; display: inline-flex; align-items: center; gap: 6px;
+  text-decoration: none;
+}
 .btn-secondary:hover { background: var(--surface-muted); }
 .btn-block { width: 100%; justify-content: center; }
 .btn-danger { color: var(--danger); }
+
+/* Add band / connect forms */
 .add-band-card { background: var(--surface-muted); border: 1px solid var(--border); }
 .add-band-card input, .add-band-card select { margin-bottom: 7px; }
 .add-band-card .form-row { display: flex; gap: 6px; }
 .add-band-card .form-row > * { flex: 1; min-width: 0; }
 .add-band-card .form-row #past-concert-type { flex: 0 0 110px; }
 .add-band-card .date-select-row #past-concert-year { flex: 1.3; }
+
+/* Tab bar — sized ~30% taller than the original 9/16/3/11/8 rhythm for
+   easier tapping/legibility (padding, icon size, gap and label size all
+   scaled together so the row grows proportionally, not just padded). */
 #tabbar { display: flex; background: var(--header-bg); padding-bottom: env(safe-area-inset-bottom); }
-.interaction-progress { position: relative; z-index: 5; flex: 0 0 0; height: 0; overflow: visible; pointer-events: none; opacity: 0; }
-.interaction-progress span { position: absolute; left: 0; bottom: 0; width: 34%; height: 3px; background: var(--accent); transform: translateX(-110%); }
-.interaction-progress.is-active { opacity: 1; }
-.interaction-progress.is-active span { animation: interaction-progress-travel 1.05s ease-in-out infinite; }
-@keyframes interaction-progress-travel { from { transform: translateX(-110%); } to { transform: translateX(395%); } }
-.tabitem { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding: 12px 1px 10px; background: none; border: none; color: var(--header-text); font-size: 13px; white-space: nowrap; }
+.tabitem {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  min-width: 0; padding: 12px 1px 10px; background: none; border: none; color: var(--header-text);
+  font-size: 13px; white-space: nowrap;
+}
 .tabitem.active { color: var(--accent); }
 .tab-icon { display: flex; }
 .tab-icon svg { width: 21px; height: 21px; }
 .tab-icon-wrap { position: relative; display: flex; }
-.tab-unread-dot { position: absolute; top: -2px; right: -5px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); border: 1.5px solid var(--surface); }
+.tab-unread-dot {
+  position: absolute; top: -2px; right: -5px; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--danger); border: 1.5px solid var(--surface);
+}
+
+/* Profile screen */
+.profile-header { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.profile-avatar {
+  width: 50px; height: 50px; border-radius: 50%; background: var(--header-bg);
+  color: var(--accent); display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 16px; flex-shrink: 0; overflow: hidden;
+}
+.profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+/* Favorite-band toggle. Deliberately the same color in both the outline
+   (not favorited) and filled (favorited) states — outline vs solid is the
+   only signal, no blue accent, per explicit design direction, so this stays
+   a single rule rather than a .is-favorite color override. */
+.profile-favorite-btn { color: var(--text-secondary); }
+/* Mute-band toggle. Same single-color treatment as favorite above — bell vs
+   bell-off is the only signal, no accent color swap, so a muted band's
+   button doesn't read as an "error" or "warning" state. */
+.profile-mute-btn { color: var(--text-secondary); }
+.profile-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.profile-name { font-weight: 700; font-size: 16px; margin: 0; }
+.profile-meta { color: var(--text-muted); font-size: 12.5px; margin: 2px 0 0; }
+.profile-links { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.profile-bio { color: var(--text-secondary); font-size: 13px; line-height: 1.5; margin: 0 0 12px; }
+.profile-divider { border-top: 1px solid var(--border); padding-top: 14px; }
+
+.show-buttons {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 8px; margin-top: 10px; flex-wrap: wrap;
+}
+.show-buttons-group { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Sized closer to what an official ticketing site would use for its own
+   buy/going/calendar buttons — bigger tap targets, bolder presence — rather
+   than the compact secondary-action sizing used elsewhere in the app. */
+.show-buttons .btn-secondary, .show-buttons .btn-primary {
+  padding: 11px 16px; font-size: 14.5px; font-weight: 600; gap: 7px; white-space: nowrap;
+}
+.show-buttons svg { width: 16px; height: 16px; }
+
+/* Venue address — shown directly on every concert card (My Concerts and
+   the band profile page's Upcoming/Past concerts alike), not behind an
+   expand toggle. Still a plain clickable link out to Google Maps, just
+   always visible. (The old collapsible .venue-details/.venue-address-text
+   toggle this replaced has been removed — nothing renders it anymore.) */
+.venue-address-link {
+  display: block; margin: 6px 0 4px; font-size: 12.5px; color: #85868a;
+  text-decoration: none; line-height: 1.4;
+}
+.venue-address-link:hover { text-decoration: underline; }
+
+/* News tab */
+.news-card {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 12px 12px 18px; margin-bottom: 8px; background: var(--surface);
+}
+.news-card-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+.news-kicker {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .03em; margin: 0 0 4px;
+}
+.news-headline-link { text-decoration: none; }
+.news-headline {
+  font-size: 14px; font-weight: 600; margin: 0 0 4px; line-height: 1.35; color: var(--text);
+}
+.news-headline-link:hover .news-headline { text-decoration: underline; }
+.news-meta { font-size: 12px; color: var(--text-muted); margin: 0; }
+
+/* Settings */
+.settings-hint { font-size: 12px; color: var(--text-muted); margin-top: 5px; }
+
+/* Settings sections — a .section-label (same uppercase-caption style used
+   elsewhere, e.g. "Upcoming shows") sits above a bordered .settings-card,
+   grouping related fields the same visual way row-card/news-card group
+   list items. Keeps every settings group looking like it belongs to the
+   same app rather than a flat, undifferentiated stack of fields. */
+.settings-card {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; background: var(--surface); margin-bottom: 4px;
+}
+.settings-card-divider { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+.settings-section-intro { margin: -7px 0 10px; }
+.settings-subtab-switch { margin-bottom: 18px; }
+.research-tools-overview { padding: 0 12px; }
+.research-tool-overview-row { border-bottom: 1px solid var(--border); }
+.research-tool-overview-row:last-child { border-bottom: none; }
+.research-tool-overview-button {
+  width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px; padding: 14px 0 12px; border: none; background: none;
+  color: var(--text); text-align: left; font: inherit;
+}
+.research-tool-overview-title { font-size: 15px; font-weight: 600; min-width: 0; }
+.research-tool-overview-percent { display: inline-flex; align-items: center; gap: 5px; font-size: 15px; white-space: nowrap; }
+.research-tool-overview-percent .details-chevron { display: flex; transition: transform .15s ease; }
+.research-tool-overview-row.is-expanded .research-tool-overview-percent .details-chevron { transform: rotate(180deg); }
+.research-tool-overview-usage { grid-column: 1 / -1; color: var(--text-muted); font-size: 12.5px; }
+.research-tool-overview-bar { grid-column: 1 / -1; display: block; height: 6px; overflow: hidden; border-radius: 3px; background: var(--surface-muted); }
+.research-tool-overview-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.research-tool-details { display: none; padding: 0 0 12px; }
+.research-tool-details.is-open { display: block; }
+.research-tool-details .usage-service-card, .research-tool-details .settings-card { margin: 0; }
+.research-tool-details .settings-groq-local-key { margin-top: 8px; }
+.identity-retry-label { margin-top: 18px; }
+.identity-candidate { border-top: 1px solid var(--border); margin-top: 9px; padding-top: 9px; }
+.identity-candidate p { color: var(--text-muted); font-size: 12px; margin: 3px 0; overflow-wrap: anywhere; }
+.provider-identity-coverage { padding-bottom: 8px; }
+.provider-identity-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 3px 10px; align-items: baseline; padding: 9px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
+.provider-identity-row:first-of-type { border-top: none; }
+.provider-identity-row strong { font-size: 13px; }
+.provider-identity-row small { grid-column: 1 / -1; color: var(--text-muted); font-size: 11.5px; }
+.provider-identity-issue-count { color: var(--text-muted); white-space: nowrap; }
+.provider-identity-summary { margin-bottom: 6px; }
+.provider-identity-details { padding: 0; overflow: hidden; }
+.provider-identity-details summary { display: flex; justify-content: space-between; gap: 12px; padding: 12px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.provider-identity-details summary::-webkit-details-marker { display: none; }
+.provider-identity-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; border-top: 1px solid var(--border); padding: 10px 12px; color: var(--text-muted); font-size: 12px; }
+.provider-identity-issues { border-top: 1px solid var(--border); }
+.provider-identity-issue { display: grid; gap: 2px; padding: 9px 12px; border-top: 1px solid var(--border); font-size: 12px; }
+.provider-identity-issue:first-child { border-top: none; }
+.provider-identity-issue span { color: var(--text-muted); overflow-wrap: anywhere; }
+.provider-identity-issue small { color: var(--text-muted); overflow-wrap: anywhere; }
+.provider-identity-candidate { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; padding-top: 5px; color: var(--text-muted); overflow-wrap: anywhere; }
+.provider-identity-candidate code { font-size: 11px; user-select: all; overflow-wrap: anywhere; }
+.provider-identity-candidate a { grid-column: 1 / -1; width: fit-content; color: var(--blue); }
+@media (max-width: 390px) { .provider-identity-row { grid-template-columns: minmax(0, 1fr) auto auto; } .provider-identity-row .provider-identity-issue-count { grid-column: 2 / -1; } }
+.identity-candidate .btn-secondary, .identity-review-card > .btn-secondary { margin-top: 5px; }
+
+.usage-bar-row { margin-bottom: 8px; }
+.usage-bar-row:last-child { margin-bottom: 0; }
+.usage-bar-label-row {
+  display: flex; justify-content: space-between;
+  font-size: 11px; color: var(--text-secondary); margin-bottom: 3px;
+}
+.usage-bar-track { height: 5px; background: var(--surface-muted); border-radius: 3px; overflow: hidden; }
+.usage-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+
+/* One card per research-pipeline service (Settings > Research pipeline) —
+   name + tiered usage bar, then icon-led detail rows (key, added date,
+   real limit, our safety cap). Same bordered-card look as .settings-card,
+   just stacked one per service instead of one shared card. */
+.usage-service-card {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; background: var(--surface); margin-bottom: 8px;
+}
+.usage-service-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.usage-provider-logo { width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; }
+.usage-provider-logo svg { display: block; width: 28px; height: 28px; }
+.usage-service-name { font-size: 13px; font-weight: 500; margin: 0; }
+
+/* Tiered bar: full track width = the service's real free-tier ceiling, not
+   our own lower cap. .usage-bar-cap-region shades 0-to-our-cap so it's
+   visually distinct from the (lighter) remainder of the real limit; the
+   accent fill sits on top of it, on the same real-limit scale; the tick
+   marks exactly where our own cap sits inside that real ceiling. */
+.usage-bar-track-tiered {
+  position: relative; height: 6px; background: var(--surface-muted);
+  border-radius: 3px;
+}
+.usage-bar-cap-region {
+  position: absolute; left: 0; top: 0; height: 100%;
+  background: var(--border-strong); border-radius: 3px;
+}
+.usage-bar-fill-tiered {
+  position: absolute; left: 0; top: 0; height: 100%;
+  background: var(--accent); border-radius: 3px;
+}
+.usage-bar-cap-tick {
+  position: absolute; top: -2px; height: 10px; width: 2px;
+  background: var(--text); transform: translateX(-1px);
+}
+
+/* A compact cap-based readout: kept content-width and allowed to wrap only
+   between its text groups so large token counts remain usable at 375px. */
+.usage-summary {
+  display: inline-block; max-width: 100%; box-sizing: border-box;
+  margin: 8px 0 10px; padding: 3px 7px;
+  border: 1px solid var(--border-strong); border-radius: 6px;
+  color: var(--text); font-size: 11px; line-height: 1.25;
+  white-space: normal;
+}
+.usage-summary-percent { color: var(--accent); white-space: nowrap; }
+
+.usage-detail-row {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text); padding: 3px 0;
+}
+.usage-detail-row svg { color: var(--text-muted); flex-shrink: 0; }
+
+.settings-version { text-align: center; color: var(--text-muted); font-size: 11px; margin: 18px 0 4px; }
+
+/* Show/hide toggle for the Groq key field — a long key is easy to mistype
+   blind behind a password mask, so this lets it be verified before saving. */
+.password-field-wrap { position: relative; }
+.password-field-wrap input { padding-right: 40px; }
+.password-toggle-btn {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  color: var(--text-muted);
+}
+.password-toggle-btn:hover { background: var(--surface-muted); }
+
+/* Concert rating and notes. Stars use the existing blue and grey tokens. */
+.stars-display, .star-picker { display: inline-flex; gap: 2px; }
+.star-btn { background: none; border: none; padding: 1px; display: flex; color: var(--border-strong); }
+.star-picker .star-btn { cursor: pointer; }
+.star-btn.filled { color: var(--accent); }
+.review-notes { color: var(--text-secondary); font-size: 13px; line-height: 1.5; margin: 6px 0 0; }
+/* Free toggle (ticketCostFormHtml) — reuses the existing .toggle-pill look
+   (same shape as the My Bands "Hide inactive bands" toggle) rather than
+   inventing a new control style. */
+.ticket-cost-free-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.ticket-cost-free-toggle { display: inline-flex; align-items: center; gap: 4px; }
+.ticket-cost-free-hint { font-size: 11px; color: var(--text-muted); margin: -4px 0 8px; }
+.review-cost {
+  display: flex; align-items: center; gap: 5px;
+  color: var(--accent); font-size: 12.5px; margin: 6px 0 14px;
+}
+.review-cost svg { flex-shrink: 0; }
+.review-photo-link {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 6px;
+  font-size: 12.5px; color: var(--accent); text-decoration: none;
+}
+.review-photo-link:hover { text-decoration: underline; }
+/* Playlist and Photos links (My Concerts) share the review block's toggle
+   chrome — same collapsed "Add" / visible-link-plus-"Edit" shape — so the
+   toggle/summary/chevron rules below apply to .review-*, .playlist-*,
+   .photo-* and .ticket-cost-* variants rather than being duplicated four
+   times. */
+.playlist-edit-toggle, .playlist-add-toggle, .photo-edit-toggle, .photo-add-toggle { margin-top: 8px; }
+.playlist-edit-toggle summary, .playlist-add-toggle summary,
+.photo-edit-toggle summary, .photo-add-toggle summary {
+  cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text-secondary);
+  display: inline-flex; align-items: center; gap: 4px; list-style: none;
+}
+.playlist-edit-toggle summary:hover, .playlist-add-toggle summary:hover,
+.photo-edit-toggle summary:hover, .photo-add-toggle summary:hover { color: var(--text); }
+.playlist-edit-toggle summary::-webkit-details-marker, .playlist-add-toggle summary::-webkit-details-marker,
+.photo-edit-toggle summary::-webkit-details-marker, .photo-add-toggle summary::-webkit-details-marker { display: none; }
+.playlist-edit-toggle summary::marker, .playlist-add-toggle summary::marker,
+.photo-edit-toggle summary::marker, .photo-add-toggle summary::marker { content: ''; }
+.playlist-edit-toggle .details-chevron, .playlist-add-toggle .details-chevron,
+.photo-edit-toggle .details-chevron, .photo-add-toggle .details-chevron { display: flex; transition: transform 0.15s ease; }
+.playlist-edit-toggle[open] .details-chevron, .playlist-add-toggle[open] .details-chevron,
+.photo-edit-toggle[open] .details-chevron, .photo-add-toggle[open] .details-chevron { transform: rotate(180deg); }
+.review-form, .ticket-cost-form { margin-top: 8px; }
+.review-form .star-picker { margin-bottom: 8px; }
+.review-form .star-picker .star-btn svg { width: 20px; height: 20px; }
+.review-notes-input {
+  width: 100%; font-family: inherit; font-size: 13px; padding: 9px 10px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); margin-bottom: 8px; resize: vertical;
+}
+.review-notes-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.review-cost-row { display: flex; gap: 10px; margin-bottom: 8px; }
+.review-cost-field { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.review-qty-field { flex: 0 0 68px; }
+.review-cost-label { font-size: 11px; color: var(--text-muted); }
+.ticket-cost-form-preparation .review-cost-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 112px;
+  align-items: end; gap: 12px;
+}
+.ticket-cost-form-preparation .review-cost-field { min-width: 0; }
+.ticket-cost-form-preparation .review-cost-label { white-space: nowrap; }
+.ticket-cost-form-preparation .ticket-qty-input { width: 100%; }
+@media (max-width: 360px) {
+  .ticket-cost-form-preparation .review-cost-row { grid-template-columns: minmax(0, 1fr) 104px; gap: 10px; }
+}
+.review-cost-input-wrap { position: relative; display: flex; align-items: center; }
+.review-price-input, .review-qty-input {
+  width: 100%; font-family: inherit; font-size: 13px; padding: 9px 10px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--surface); color: var(--text);
+}
+.review-cost-input-wrap .review-price-input { padding-right: 32px; }
+.review-cost-suffix {
+  position: absolute; right: 10px; font-size: 12px; color: var(--text-muted); pointer-events: none;
+}
+.review-price-input:focus, .review-qty-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+/* Playlist block (My Concerts, both upcoming and past). .playlist-form
+   needs no dedicated input styling — .playlist-url-input already gets the
+   app-wide input[type="url"] rule near the top of this file. */
+.playlist-block { margin-top: 8px; }
+.playlist-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; color: var(--text); text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.playlist-link:hover, .playlist-link:active, .playlist-link:visited { color: var(--text); }
+.playlist-link:hover { text-decoration: underline; }
+.playlist-form { margin-top: 8px; }
+
+/* Photos block (My Concerts, past shows only) — same standalone shape as
+   Playlist above (own link/edit-toggle, decomposed out of the old
+   rating+notes+photo review block so it can sit in the requested card
+   order: Playlist, Photos, Setlist, Stars, Notes). */
+.photo-block { margin-top: 8px; }
+.photo-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; color: var(--text); text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.photo-link:hover, .photo-link:active, .photo-link:visited { color: var(--text); }
+.photo-link:hover { text-decoration: underline; }
+.photo-form { margin-top: 8px; }
+
+/* Setlist block (My Concerts, past shows only) — read-only display, no
+   manual entry: data arrives solely via the automatic setlist.fm pipeline
+   (see scripts/lib/setlistfm.js). Renders nothing until c.setlist exists.
+   Kept the same neutral white as Playlist/Photos (never turns blue on
+   hover/tap) per the "too many blue parts" design pass — an underline is
+   the only hover feedback now, matching those two links. */
+.setlist-block { margin-top: 8px; }
+.setlist-block summary {
+  cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text);
+  display: inline-flex; align-items: center; gap: 6px; list-style: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.setlist-block summary:hover, .setlist-block summary:active { color: var(--text); text-decoration: underline; }
+.setlist-block summary::-webkit-details-marker { display: none; }
+.setlist-block summary::marker { content: ''; }
+.setlist-block .details-chevron { display: flex; transition: transform 0.15s ease; margin-left: 2px; }
+.setlist-block[open] .details-chevron { transform: rotate(180deg); }
+.setlist-song-list { margin: 8px 0 0; padding-left: 20px; font-size: 12.5px; color: var(--text-secondary); line-height: 1.6; }
+/* Extra vertical padding per row (on top of line-height) so a linked song
+   title has a comfortably large, well-separated tap target — enough room to
+   hit the right song's link without the risk of catching its neighbor's. */
+.setlist-song { padding: 3px 0; }
+.setlist-song.setlist-cover { font-style: italic; }
+.setlist-cover-tag { margin-left: 5px; font-size: 10.5px; color: var(--text-muted); font-style: normal; }
+.setlist-song-link { color: var(--accent); text-decoration: none; }
+.setlist-song-link:hover, .setlist-song-link:active { text-decoration: underline; }
+.setlist-encore-divider {
+  display: block; margin: 6px 0 2px; font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted);
+}
+.setlist-attribution { display: inline-block; margin-top: 6px; font-size: 11px; color: var(--text-muted); text-decoration: none; }
+.setlist-attribution:hover { text-decoration: underline; }
+.setlist-insight-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; vertical-align: middle; }
+.setlist-insight-tag { display: inline-flex; align-items: center; min-height: 18px; padding: 1px 5px; border: 1px solid var(--border-strong); border-radius: 9px; color: var(--text-secondary); background: var(--surface-muted); font-size: 10.5px; line-height: 1.2; white-space: nowrap; }
+.setlist-insight-context { margin: 8px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.35; }
+
+/* My Concerts row-and-panel details. Upcoming cards use this for preparation;
+   past cards reuse it for their attended-show details below. */
+.concert-prep-group { margin-top: 8px; border-top: 1px solid var(--border); }
+.concert-prep-row { width: 100%; min-height: 52px; display: flex; align-items: center; gap: 11px; padding: 9px 0; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border); text-align: left; }
+.concert-prep-row > span:nth-child(2) { flex: 1; min-width: 0; }
+.concert-prep-row strong, .concert-prep-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.concert-prep-row small { color: var(--text-muted); margin-top: 2px; font-size: 12px; }
+.concert-prep-row .ticket-summary-primary { color: var(--accent); }
+.concert-prep-row .ticket-summary-primary.is-empty, .concert-prep-row .ticket-summary-secondary { color: var(--text-muted); }
+.concert-prep-row .details-chevron { transition: transform .15s ease; }
+.concert-prep-row.is-open .details-chevron { transform: rotate(180deg); }
+.concert-prep-panel { padding: 10px 0 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--text-secondary); }
+.concert-prep-panel p { margin: 4px 0 8px; }
+.past-concert-details-group { background: transparent; }
+.past-concert-details-group .concert-prep-row { padding-left: 0; padding-right: 0; }
+.past-concert-details-group .concert-prep-panel { padding-left: 0; padding-right: 0; }
+.past-concert-details-group .past-detail-row.is-unavailable { color: var(--text-muted); }
+.past-concert-details-group .past-detail-row.is-unavailable strong,
+.past-concert-details-group .past-detail-row.is-unavailable small { color: var(--text-muted); }
+.past-rating-details .concert-prep-row { border-bottom: 0; }
+.past-rating-saved { padding: 0 0 10px 31px; }
+.past-rating-saved .stars-display { display: inline-flex; }
+.past-rating-saved .review-notes { margin: 6px 0 0; overflow-wrap: anywhere; white-space: normal; }
+.past-review-empty { color: var(--text-muted); }
+.past-link-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.past-link-panel .btn-primary, .past-link-panel .btn-secondary { margin-right: 0; }
+.past-setlist-panel .setlist-song-list { margin-top: 0; }
+.predicted-setlist-context { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin-bottom: 8px; }
+.predicted-setlist-context p { margin: 0; }
+.predicted-setlist-song-list { margin-top: 8px; margin-bottom: 0; }
+.predicted-setlist-song { padding: 5px 0; }
+.predicted-setlist-song-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; min-width: 0; }
+.predicted-setlist-song-title { color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.predicted-setlist-song-main .setlist-insight-tags { margin-left: 0; }
+.predicted-setlist-song-meta { display: block; margin-top: 2px; color: var(--text-muted); font-size: 11.5px; line-height: 1.35; }
+.predicted-setlist-footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+.predicted-setlist-footer p { margin: 2px 0; color: var(--text-muted); font-size: 11px; }
+.prep-section + .prep-section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.prep-section .btn-secondary, .prep-section button { margin-right: 7px; }
+.playlist-review input[type="text"], .playlist-review input:not([type]) { width:100%; margin:5px 0 8px; }
+.playlist-review-songs { max-height: 230px; overflow:auto; border-top:1px solid var(--border); border-bottom:1px solid var(--border); margin:8px 0; }
+.playlist-review-songs label, .playlist-review-songs p { display:block; padding:6px 2px; margin:0; line-height:1.35; }
+.playlist-review-songs input { margin-right:7px; accent-color:var(--accent); }
+.playlist-operation-status { min-height: 16px; }
+.playlist-review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.playlist-review-actions .btn-primary, .playlist-review-actions .btn-secondary { margin-right: 0; }
+.weather-hours { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin: 8px 0; }
+.weather-hour { min-width: 0; padding: 7px 4px; border: 1px solid var(--border); border-radius: 6px; text-align: center; }
+.weather-hour span, .weather-hour strong, .weather-hour small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weather-hour span { font-size: 11px; color: var(--text-muted); }
+.weather-hour span svg { width: 16px; height: 16px; margin: 4px auto; color: var(--text-secondary); }
+.weather-hour strong { font-size: 13px; color: var(--text); }
+.weather-hour small { margin-top: 3px; font-size: 10px; color: var(--text-muted); }
+.weather-updated { color: var(--text-muted); font-size: 11px; }
+.prep-checklist label { display: block; padding: 7px 0; color: var(--text); }
+.prep-checklist input { margin-right: 8px; accent-color: var(--accent); }
+.prep-save-error { color: var(--danger); }
+.owned-ticket-section { min-width: 0; }
+.ticket-operation-status { min-height: 16px; color: var(--text-secondary); }
+.owned-ticket-add-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.owned-ticket-add-actions .btn-primary, .owned-ticket-add-actions .btn-secondary { margin-right: 0; }
+.owned-ticket-open-btn { white-space: nowrap; }
+.owned-ticket-add-actions small { flex-basis: 100%; color: var(--text-muted); font-size: 11px; }
+.owned-ticket-link-form { margin-top: 8px; }
+.owned-ticket-link-form label { display: block; color: var(--text-muted); font-size: 11px; }
+.owned-ticket-link-form input { width: 100%; margin: 4px 0 8px; }
+.owned-ticket-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); }
+.owned-ticket-item > div:first-child { min-width: 0; }
+.owned-ticket-item strong, .owned-ticket-item small { display: block; }
+.owned-ticket-item strong { color: var(--text); font-size: 12.5px; }
+.owned-ticket-item small { color: var(--text-muted); font-size: 11.5px; margin-top: 2px; overflow-wrap: anywhere; }
+.owned-ticket-item-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; flex-shrink: 0; }
+.owned-ticket-item-actions .btn-secondary { margin: 0; padding: 6px 8px; font-size: 11.5px; }
+.ticket-cost-save-error { margin: 8px 0 0; }
+.ticket-cost-heading { display: block; color: var(--text); margin-bottom: 8px; }
+
+/* Total band count (top of My Bands, above the filter rows) — a lightweight
+   inline stat rather than a card, since it's only one number; echoes the
+   stats teaser's bold-number + muted-label language for consistency. */
+.bands-total-header { margin: 0 0 14px; font-size: 12.5px; color: var(--text-secondary); }
+.bands-total-value { font-weight: 700; font-size: 15px; color: var(--text); }
+
+/* Stats teaser card (top of My Concerts) — background is var(--header-bg),
+   the same always-dark literal the countdown card below it uses (not
+   var(--surface), which flips light/dark), so the two cards read as one
+   consistent dark "feature" pairing. Because --header-bg doesn't flip, the
+   number/label text colors below are hardcoded literals too (matching the
+   countdown card's own hardcoded #fff/#85868a treatment) rather than
+   var(--text)/var(--text-muted) — those flip to near-black in light mode
+   and would go invisible against this always-dark background. */
+.stats-teaser-card {
+  box-shadow: inset 0 0 0 1px var(--border); border-radius: 10px;
+  background: var(--header-bg); margin-bottom: 16px; overflow: hidden;
+}
+/* My Concerts summary cards use a 28px outer spacing rule below the shared
+   page-header divider and above the following list heading. The surrounding
+   header and card layout makes the visible separation larger than this rule.
+   The top calculation accounts for the shared #content 12px inset; the
+   stats-to-countdown 16px gap remains on the stats card itself. */
+.myconcerts-summary {
+  --myconcerts-summary-outer-gap: 28px;
+  margin-top: calc(var(--myconcerts-summary-outer-gap) - 12px);
+  margin-bottom: var(--myconcerts-summary-outer-gap);
+}
+.myconcerts-summary .countdown-card { margin-bottom: 0; }
+.stats-teaser-row { display: flex; justify-content: space-between; padding: 14px 16px; text-align: center; }
+.stats-teaser-item { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.stats-teaser-value { font-weight: 700; font-size: 17px; color: var(--header-text); white-space: nowrap; }
+.stats-teaser-label { font-size: 11px; color: #85868a; margin-top: 2px; }
+/* 4-up variant (shows/countries/traveled/spent) needs slightly smaller type
+   and tighter side padding than the original 3-up row to fit a 4th column
+   without wrapping — "traveled" and "spent" are pre-abbreviated ("34.2k km")
+   in app.js specifically so this stays stable even as the real numbers grow
+   into 6+ figures. */
+.stats-teaser-row-4up { padding: 14px 12px; }
+.stats-teaser-row-4up .stats-teaser-value { font-size: 16px; }
+.stats-teaser-row-4up .stats-teaser-label { font-size: 10.5px; }
+
+/* Countdown card (My Concerts, between the stats card and the upcoming
+   list): the next "going" show, ticket-stub shaped, with a dual progress
+   ring on the stub half (see dlCountdownParts in dataLib.js for the
+   day/hour math). Deliberately built on --header-bg rather than --surface
+   — that token is the same literal dark value in both light and dark mode
+   (see app.css :root), so this card always reads as the app's own "feature
+   dark" treatment instead of shifting with the surrounding theme. Colors
+   below are hardcoded (not --text-secondary/--text-muted) for the same
+   reason #app-header's own children use hardcoded rgba() — this card is
+   always dark regardless of system theme, so the mode-flipping text tokens
+   would go unreadable in light mode. */
+.countdown-card {
+  display: flex; box-shadow: inset 0 0 0 1px var(--border); border-radius: 10px; background: var(--header-bg);
+  margin-bottom: 16px; overflow: hidden;
+}
+/* Enlarged ~50% taller than the original build — this card is meant to draw
+   the eye first when the My Concerts tab opens, so padding, the ring SVG and
+   most text scale up together. "Next up" and the d/h/m/s breakdown stayed
+   small (12px) by request — only the band name/venue and the ring itself
+   needed to read as "bigger", not every line in the card. */
+.countdown-info { flex: 1; padding: 21px; min-width: 0; }
+.countdown-label { margin: 0 0 6px; font-size: 12px; color: #85868a; }
+.countdown-band {
+  margin: 0; font-size: 20px; font-weight: 700; color: var(--header-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.countdown-venue {
+  margin: 2px 0 0; font-size: 15px; color: #6f7176;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.countdown-breakdown { margin: 12px 0 0; font-size: 12px; color: #b7b8bb; font-variant-numeric: tabular-nums; }
+.countdown-ring-wrap {
+  position: relative; flex-shrink: 0; display: flex; align-items: center;
+  padding: 15px 21px; border-left: 2px dashed #3a3b3e;
+}
+/* The two small circles punched into the dashed divider, giving it the
+   look of a torn ticket stub — background matches --surface (the page
+   behind the card), not the card's own background, since that's what
+   would actually show through a punched hole. Sized up to match the
+   larger card (16px -> 24px, -8px -> -12px offset). */
+.countdown-ring-wrap::before, .countdown-ring-wrap::after {
+  content: ''; position: absolute; left: -12px; width: 24px; height: 24px;
+  box-shadow: 0 0 0 1px var(--border); border-radius: 50%; background: var(--surface);
+}
+.countdown-ring-wrap::before { top: -12px; }
+.countdown-ring-wrap::after { bottom: -12px; }
+.countdown-ring-track { stroke: #2c2d30; }
+#countdown-ring-outer { stroke: #4d8dff; }
+#countdown-ring-inner { stroke: #7fb0ff; }
+#countdown-ring-day { fill: #ffffff; font-size: 20px; font-weight: 700; font-family: inherit; }
+.countdown-empty {
+  padding: 16px; text-align: center;
+  border: 1px solid var(--border); background: var(--surface);
+}
+.countdown-empty-text { margin: 0; font-size: 12.5px; color: var(--text-muted); }
+/* Show-day state (countdownCardHtml's isToday branch) — replaces the
+   d/h/m/s breakdown with a "Get directions" action, since there's nothing
+   meaningful left to count down to a day granularity and the actual show
+   start time isn't reliably known. Yellow is a deliberate one-off exception
+   to the app's grey/white/black/blue palette, scoped ONLY to this ring —
+   every other element on the card (button, text) stays within the existing
+   palette. */
+.countdown-directions-btn {
+  margin-top: 10px; display: inline-flex; align-items: center; gap: 6px;
+  background: #1c1d1f; border: 1px solid #343537; color: #fff;
+  font-size: 11.5px; font-weight: 600; padding: 7px 12px; border-radius: 8px;
+  text-decoration: none; -webkit-tap-highlight-color: transparent;
+}
+.countdown-directions-btn:hover { background: #232427; }
+.countdown-directions-btn svg { flex-shrink: 0; }
+/* Show-day ticket actions stay entirely in the left half of the ticket card.
+   One saved PDF or link uses the compact stacked layout; two to four PDFs use
+   named buttons, capped so the countdown remains practical on mobile. */
+.countdown-ticket-actions { display: grid; gap: 8px; margin-top: 10px; }
+.countdown-ticket-actions-single { grid-template-columns: minmax(0, 1fr); }
+.countdown-ticket-actions-multiple { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.countdown-ticket-action {
+  min-width: 0; min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 10px; border-radius: 8px; font-size: 11.5px; font-weight: 600; line-height: 1; text-decoration: none; white-space: nowrap;
+}
+.countdown-ticket-action svg { flex-shrink: 0; }
+.countdown-ticket-open { border: 1px solid #f2c230; background: #f2c230; color: #1c1400; }
+.countdown-ticket-directions { border: 1px solid #343537; background: #1c1d1f; color: #fff; }
+.countdown-ticket-actions-multiple .countdown-ticket-directions { grid-column: 1 / -1; }
+.countdown-ticket-open:hover { background: #e7b627; }
+.countdown-ticket-directions:hover { background: #232427; }
+.countdown-ticket-action:disabled { opacity: .65; }
+.countdown-ticket-error { grid-column: 1 / -1; margin: 0; color: #ffaaa5; font-size: 11.5px; line-height: 1.35; }
+@media (max-width: 420px) {
+  .countdown-ticket-actions-multiple { grid-template-columns: minmax(0, 1fr); }
+  .countdown-ticket-actions-multiple .countdown-ticket-directions { grid-column: auto; }
+}
+.stats-teaser-footer {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  background: #4d8dff; border: none; border-top: 1px solid #2c2d30;
+  padding: 9px 16px; font-size: 12.5px; font-weight: 600; color: var(--on-accent);
+}
+.stats-teaser-footer:hover { opacity: 0.92; }
+.stats-teaser-footer svg { color: var(--on-accent); }
+
+/* Full stats screen */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+.stats-subtabs, .listening-timeframe {
+  display: flex; border: 1px solid var(--border-strong); border-radius: 10px;
+  overflow: hidden; margin: 4px 0 14px;
+}
+.stats-subtab-btn, .listening-timeframe-btn {
+  flex: 1; min-width: 0; min-height: 44px; padding: 8px; border: 0;
+  border-left: 1px solid var(--border); background: var(--surface); color: var(--text-secondary);
+  font: inherit; font-size: 14px; font-weight: 500;
+}
+.stats-subtab-btn:first-child, .listening-timeframe-btn:first-child { border-left: 0; }
+.stats-subtab-btn.active, .listening-timeframe-btn.active { background: var(--accent); color: var(--on-accent); }
+.listening-timeframe { margin: 4px 0 12px auto; max-width: 360px; }
+.listening-timeframe-btn { min-height: 38px; font-size: 12.5px; }
+.stats-subtab-btn:focus-visible, .listening-timeframe-btn:focus-visible,
+.top-band-row:focus-visible, .listening-link:focus-visible, .listening-card-footer:focus-visible,
+.genre-range-controls button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.listening-card {
+  border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface);
+  margin-bottom: 10px; overflow: hidden;
+}
+.listening-section-title, .listening-card-heading > p {
+  margin: 0; color: var(--text-secondary); font-size: 12px; font-weight: 500;
+  letter-spacing: .025em; text-transform: uppercase;
+}
+.listening-section-title { padding: 12px 12px 0; }
+.listening-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 12px 6px; }
+.listening-link { min-height: 36px; padding: 6px; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 13px; white-space: nowrap; }
+.listening-card-footer {
+  width: 100%; min-height: 46px; padding: 10px 12px; border: 0; border-top: 1px solid var(--border);
+  background: transparent; color: var(--accent); font: inherit; font-size: 13.5px;
+  display: flex; align-items: center; justify-content: space-between; text-align: left;
+}
+.listening-empty { margin: 0; padding: 26px 14px; color: var(--text-muted); text-align: center; font-size: 12.5px; }
+.listening-summary { padding: 0 10px 10px; }
+.listening-summary .listening-section-title { padding-left: 2px; }
+.listening-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 8px; }
+.listening-summary-metric {
+  min-width: 0; min-height: 94px; padding: 7px 5px; border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+}
+.listening-summary-metric:first-child { border-left: 0; }
+.listening-summary-icon { color: var(--text-muted); display: flex; margin-bottom: 8px; }
+.listening-summary-icon svg { width: 22px; height: 22px; }
+.listening-summary-metric strong { max-width: 100%; color: var(--text); font-size: 14px; line-height: 1.2; overflow-wrap: anywhere; }
+.listening-summary-metric > span:last-child { margin-top: 4px; color: var(--text-muted); font-size: 11px; line-height: 1.25; overflow-wrap: anywhere; }
+.top-bands-list { padding: 0 12px; }
+.top-band-row {
+  width: 100%; min-width: 0; min-height: 74px; display: grid;
+  grid-template-columns: 38px 52px minmax(0, 1fr) 38px; align-items: center; gap: 8px;
+  padding: 8px 0; border: 0; border-top: 1px solid var(--border); background: transparent;
+  color: var(--text); text-align: left; font: inherit;
+}
+.top-band-row:first-child { border-top: 0; }
+.top-band-row.is-compact { min-height: 66px; grid-template-columns: 34px 46px minmax(0, 1fr) 0; }
+.top-band-rank { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.listening-band-avatar {
+  position: relative; width: 52px; height: 52px; border: 1px solid var(--border-strong); border-radius: 50%;
+  overflow: hidden; background: var(--header-bg); color: var(--accent); font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.is-compact .listening-band-avatar { width: 46px; height: 46px; }
+.listening-band-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.top-band-copy { min-width: 0; display: flex; flex-direction: column; }
+.top-band-copy strong { font-size: 14px; line-height: 1.25; overflow-wrap: anywhere; }
+.top-band-copy small { margin-top: 3px; color: var(--text-muted); font-size: 11.5px; line-height: 1.25; overflow-wrap: anywhere; }
+.rank-movement { justify-self: end; color: var(--accent); font-size: 18px; font-weight: 500; white-space: nowrap; }
+.rank-movement.is-down { color: var(--text-muted); }
+.rank-movement.is-new { font-size: 12px; }
+.movement-delta { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+.start-top-bands-card { margin-bottom: 16px; }
+.start-top-bands-card .listening-card-heading { padding-bottom: 2px; }
+.start-top-bands-card .listening-card-footer { font-size: 13px; }
+.genre-card { padding-bottom: 10px; }
+.genre-range-controls { display: flex; gap: 3px; }
+.genre-range-controls button { width: 34px; height: 34px; border: 0; border-radius: 6px; background: transparent; color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.genre-range-controls button:disabled { color: var(--text-muted); opacity: .4; }
+.genre-chart { height: 250px; display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 7px; padding: 4px 12px 0; }
+.genre-axis { height: 218px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; color: var(--text-muted); font-size: 10.5px; }
+.genre-bars { min-width: 0; height: 238px; display: flex; align-items: flex-start; justify-content: space-around; gap: 8px; border-top: 1px dashed var(--border); border-bottom: 1px solid var(--border-strong); }
+.genre-year { flex: 1; max-width: 50px; min-width: 30px; height: 238px; display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--text-muted); font-size: 11px; }
+.genre-stack { width: 100%; height: 218px; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
+.genre-stack span { display: block; min-height: 0; }
+.genre-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px 13px; padding: 10px 12px 2px; color: var(--text-muted); font-size: 11px; }
+.genre-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.genre-legend i { width: 11px; height: 11px; display: inline-block; }
+.listening-card-note { margin: 8px 12px 0; color: var(--text-muted); font-size: 11.5px; }
+.listening-card-note strong { color: var(--accent); font-weight: 500; }
+.listening-chart-card { padding-bottom: 12px; }
+.listening-line-chart { display: block; width: 100%; height: auto; margin-top: 4px; overflow: visible; }
+.listening-line-chart text { fill: var(--text-muted); font: 10px sans-serif; }
+.listening-line-chart .chart-grid { stroke: var(--border-strong); stroke-width: 1; stroke-dasharray: 4 4; }
+.listening-line-chart .chart-area { fill: var(--accent); opacity: .15; }
+.listening-line-chart .chart-line { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+.listening-line-chart circle { fill: var(--accent); stroke: var(--surface); stroke-width: 1.5; }
+.top-tracks-card { padding-bottom: 0; }
+.top-tracks-list { padding: 4px 12px 0; }
+.top-track-row { min-width: 0; min-height: 58px; display: grid; grid-template-columns: 38px 44px minmax(0, 1fr); align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); }
+.top-track-row:first-child { border-top: 0; }
+.top-track-rank { font-size: 14px; font-weight: 600; }
+.track-artwork { position: relative; width: 44px; height: 44px; border: 1px solid var(--border-strong); border-radius: 5px; overflow: hidden; background: var(--surface-muted); color: var(--text-muted); display: flex; align-items: center; justify-content: center; }
+.track-artwork img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.track-artwork svg { width: 19px; height: 19px; }
+.top-track-copy { min-width: 0; display: flex; flex-direction: column; }
+.top-track-copy strong { font-size: 13.5px; line-height: 1.25; overflow-wrap: anywhere; }
+.top-track-copy small { margin-top: 2px; color: var(--text-muted); font-size: 11.5px; line-height: 1.3; }
+.listening-attribution { margin: 14px 12px 2px; color: var(--text-muted); font-size: 10.5px; line-height: 1.4; }
+.full-top-bands-card { margin-bottom: 0; }
+.full-top-bands-card .top-band-row { min-height: 78px; }
+.band-listening-panel { min-width: 0; padding-top: 2px; }
+
+@media (max-width: 390px) {
+  .tabitem { font-size: 12px; }
+  .tab-icon svg { width: 20px; height: 20px; }
+  .profile-tab-btn { padding-left: 4px; padding-right: 4px; font-size: 11.5px; }
+  .listening-summary { padding-left: 6px; padding-right: 6px; }
+  .listening-summary-metric { padding-left: 3px; padding-right: 3px; }
+  .listening-summary-metric strong { font-size: 12.5px; }
+  .listening-summary-metric > span:last-child { font-size: 10px; }
+  .top-band-row { grid-template-columns: 34px 46px minmax(0, 1fr) 34px; gap: 6px; }
+  .listening-band-avatar { width: 46px; height: 46px; }
+  .genre-chart { grid-template-columns: 36px minmax(0, 1fr); padding-left: 8px; padding-right: 8px; }
+  .genre-bars { gap: 5px; }
+  .genre-year { min-width: 26px; font-size: 10px; }
+}
+
+@media (max-width: 335px) {
+  .listening-summary-grid { grid-template-columns: 1fr 1fr; }
+  .listening-summary-metric:nth-child(3) { border-left: 0; border-top: 1px solid var(--border); }
+  .listening-summary-metric:nth-child(4) { border-top: 1px solid var(--border); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listening-card *, .stats-subtabs *, .listening-timeframe * { scroll-behavior: auto; transition: none !important; }
+}
+
+.stats-kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px; }
+.stats-kpi-tile {
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  padding: 12px; display: flex; flex-direction: column;
+}
+.stats-kpi-value { font-weight: 700; font-size: 20px; }
+.stats-kpi-label { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; line-height: 1.4; }
+.stats-kpi-caveat { font-size: 10px; color: var(--text-muted); }
+.stats-list-card {
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  padding: 4px 12px; margin-bottom: 4px;
+}
+.stats-list-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 0; font-size: 13.5px; border-top: 1px solid var(--border);
+}
+.stats-list-row:first-child { border-top: none; }
+.stats-list-value { color: var(--accent); font-weight: 600; }
+
+/* Genre filter select (My Bands) — the shared input/select rule makes every
+   select full-width by default, which would blow out this compact filter
+   row, so it's constrained back down here. */
+.filter-row select { width: auto; margin-bottom: 0; padding: 4px 8px; font-size: 12px; }
+
+/* Band profile: edit icon next to the name, delete tucked into a low-key
+   "danger zone" at the very bottom of the page instead of sitting next to
+   primary actions — both moved here from icon buttons on every My Bands row. */
+.profile-edit-btn { flex-shrink: 0; color: var(--text-muted); }
+.profile-edit-btn:hover { background: var(--surface-muted); }
+.profile-danger-zone {
+  margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); text-align: center;
+}
+.profile-remove-btn { background: none; border: none; color: var(--danger); font-size: 12.5px; padding: 8px; }
+.profile-remove-btn:hover { text-decoration: underline; }
+
+/* News/Alerts sub-tab switch + alert row */
+.news-subtab-switch {
+  display: flex; border: 1px solid var(--border-strong); border-radius: var(--radius);
+  overflow: hidden; margin-bottom: 14px;
+}
+.news-subtab-btn {
+  flex: 1; text-align: center; padding: 8px; background: none; border: none;
+  color: var(--text-secondary); font-size: 13px; font-weight: 500;
+}
+.news-subtab-btn.active { background: var(--accent); color: var(--on-accent); }
+.profile-tab-switch { margin-top: 16px; }
+.profile-tab-panel { min-width: 0; }
+.profile-tab-empty { padding: 16px 0; }
+.profile-data-card { margin-bottom: 10px; }
+.profile-data-summary { margin: 0; color: var(--text-secondary); font-size: 13px; }
+.profile-data-row { display: grid; grid-template-columns: minmax(104px, 0.75fr) minmax(0, 1.25fr); gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
+.profile-data-row span { color: var(--text-muted); }
+.profile-data-row strong { min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
+.profile-data-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; user-select: all; }
+.profile-data-note { margin: 10px 0 0; color: var(--text-secondary); font-size: 12.5px; }
+.profile-data-subhead { margin: 12px 0 4px; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.profile-data-candidate { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 12px; }
+.profile-data-candidate strong, .profile-data-candidate code { min-width: 0; overflow-wrap: anywhere; }
+.profile-data-candidate code { font-size: 11px; user-select: all; }
+.profile-data-candidate a { grid-column: 1 / -1; width: fit-content; }
+.profile-data-actions { margin-top: 10px; }
+@media (max-width: 390px) { .profile-data-row { grid-template-columns: minmax(90px, 0.7fr) minmax(0, 1.3fr); gap: 8px; } .profile-tab-btn { padding-left: 5px; padding-right: 5px; } }
+.alert-row { display: flex; gap: 8px; align-items: flex-start; }
+.alert-icon { color: var(--accent); flex-shrink: 0; margin-top: 2px; display: flex; }
+.alert-row-body { min-width: 0; flex: 1; }
+.alert-title { font-weight: 600; font-size: 14px; margin: 0; }
+.alert-meta { color: var(--text-secondary); font-size: 12.5px; margin: 2px 0 0; }
+.alert-time { color: var(--text-muted); font-size: 11.5px; margin: 2px 0 0; }
+.release-alert-card { display: flex; gap: 10px; align-items: flex-start; }
+.release-alert-artwork {
+  width: 72px; height: 72px; flex: 0 0 72px; border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden; background: var(--surface-muted); color: var(--text-muted);
+  display: flex; align-items: center; justify-content: center;
+}
+.release-alert-artwork img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.release-alert-artwork.is-placeholder svg { width: 28px; height: 28px; }
+.release-alert-tag { margin: 0 0 3px; color: var(--accent); font-size: 10.5px; font-weight: 700; letter-spacing: .04em; }
+.release-alert-copy { margin: 3px 0 0; color: var(--text-secondary); font-size: 12.5px; }
+.release-alert-spotify-action { margin-top: 8px; min-height: 40px; }
+.release-alert-spotify-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.release-alert-card .alert-time { margin-top: 7px; }
+@media (max-width: 390px) {
+  .release-alert-card { gap: 8px; }
+  .release-alert-artwork { width: 64px; height: 64px; flex-basis: 64px; }
+}
+/* Favorite-band badge on Alerts rows — top-right of the card, same single
+   grey used by the profile favorite toggle (no blue), so a favorited band's
+   alert is easy to spot while scanning down the list. .row-card already has
+   position:relative, so this just needs to place itself. has-favorite
+   reserves a little extra right-side space in the row body so the title
+   text never runs under the badge. */
+.row-card.has-favorite .alert-row-body { padding-right: 22px; }
+.alert-favorite-badge {
+  position: absolute; top: 12px; right: 12px; display: flex; color: var(--text-secondary);
+}
