@@ -93,14 +93,17 @@ test('GAU2 leaves existing listening maintenance controls usable', () => {
   assert.doesNotMatch(css, /data-v99-spotify-listening-metadata/);
 });
 
-test('GAU2 assets and v118 shell are wired', () => {
+test('GAU2 assets remain wired and the historical v118 marker is preserved', () => {
   assert.match(index, /gau2SettingsV118\.css/);
   assert.match(index, /gau2SettingsV118\.js/);
   assert.match(sw, /gau2SettingsV118\.css/);
   assert.match(sw, /gau2SettingsV118\.js/);
   assert.match(qaBuild, /gau2SettingsV118\.css/);
   assert.match(qaBuild, /gau2SettingsV118\.js/);
-  assert.match(version, /APP_VERSION = 'v118'/);
-  assert.match(sw, /CACHE_NAME_LITERAL = 'v118'/);
+  assert.match(version, /Previous merged release marker retained for regression coverage: APP_VERSION = 'v118'/);
+  assert.match(sw, /Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v118'/);
+  const appVersion = version.match(/const APP_VERSION = '([^']+)'/)?.[1];
+  const cacheVersion = sw.match(/const CACHE_NAME_LITERAL = '([^']+)'/)?.[1];
+  assert.equal(appVersion, cacheVersion);
   assert.match(css, /gau2-status\.is-failed/);
 });

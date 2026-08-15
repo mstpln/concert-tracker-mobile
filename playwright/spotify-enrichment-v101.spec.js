@@ -43,7 +43,20 @@ async function setupConnectedSpotify(page) {
   });
 }
 
-test('v103 accepts relinked artwork metadata while preserving trusted identity and shows simpler progress', async ({ page }) => {
+async function openArtworkMaintenance(page) {
+  await page.locator('#settings-btn').click();
+  const screen = page.locator('#screen-settings');
+  await screen.getByRole('tab', { name: 'Data', exact: true }).click();
+  const maintenance = screen.locator('.settings-v123-maintenance');
+  if (!(await maintenance.getAttribute('open'))) await maintenance.locator('summary').click();
+  return {
+    screen,
+    spotifyRow: screen.locator('.settings-v123-row').filter({ has: page.getByText('Spotify', { exact: true }) }).filter({ has: page.getByText('Connected', { exact: true }) }),
+    artworkRow: maintenance.locator('.settings-v123-maintenance-row').filter({ hasText: 'Missing album artwork' }),
+  };
+}
+
+test('v103 accepts relinked artwork metadata while preserving trusted identity through Settings v123', async ({ page }) => {
   await setupConnectedSpotify(page);
   await page.goto('/');
   await page.evaluate(() => {
@@ -91,21 +104,12 @@ test('v103 accepts relinked artwork metadata while preserving trusted identity a
     }];
   });
 
-  await page.locator('#settings-btn').click();
-  await page.getByRole('tab', { name: 'Data' }).click();
-  const spotifyPlaylistCard = page.locator('.settings-card').filter({
-    has: page.getByText('Connected to Spotify', { exact: true }),
-  });
-  await expect(spotifyPlaylistCard.getByRole('button', { name: 'Disconnect' })).toBeVisible();
-  await expect(page.locator('[data-v99-spotify-listening-metadata] .settings-hint').first()).toContainText('Up to 100 tracks');
-
-  const artworkButton = page.getByRole('button', { name: 'Fetch listening artwork' });
-  await artworkButton.click();
-  const status = page.locator('[data-v99-enrich-status]');
-  await expect(status).toContainText('Done. 1 of 1 checked in this run');
-  await expect(status).toContainText('1 artwork records added this time');
-  await expect(status).toContainText('1 cached in total');
-  await expect(spotifyPlaylistCard.getByRole('button', { name: 'Disconnect' })).toBeVisible();
+  const { spotifyRow, artworkRow } = await openArtworkMaintenance(page);
+  await expect(spotifyRow.getByRole('button', { name: 'Disconnect' })).toBeVisible();
+  await expect(artworkRow).toContainText('Missing album artwork');
+  await artworkRow.getByRole('button', { name: 'Refresh missing artwork' }).click();
+  await expect(artworkRow.locator('[data-v123-artwork-status]')).toContainText('1 artwork records added.');
+  await expect(spotifyRow.getByRole('button', { name: 'Disconnect' })).toBeVisible();
 
   const requests = await page.evaluate(() => window.__v103SpotifyRequests);
   expect(requests).toEqual([{
@@ -126,7 +130,7 @@ test('v103 accepts relinked artwork metadata while preserving trusted identity a
   expect(stored.records.V103RelinkedTrack789).toBeUndefined();
 });
 
-test('v103 explains Development Mode quota exhaustion without suggesting reconnect', async ({ page }) => {
+test('v103 surfaces Development Mode quota exhaustion from the Settings v123 maintenance action', async ({ page }) => {
   await setupConnectedSpotify(page);
   await page.goto('/');
   await page.evaluate(() => {
@@ -155,10 +159,9 @@ test('v103 explains Development Mode quota exhaustion without suggesting reconne
     }];
   });
 
-  await page.locator('#settings-btn').click();
-  await page.getByRole('tab', { name: 'Data' }).click();
-  await page.getByRole('button', { name: 'Fetch listening artwork' }).click();
-  const status = page.locator('[data-v99-enrich-status]');
+  const { artworkRow } = await openArtworkMaintenance(page);
+  await artworkRow.getByRole('button', { name: 'Refresh missing artwork' }).click();
+  const status = artworkRow.locator('[data-v123-artwork-status]');
   await expect(status).toContainText('Spotify has reached its Development Mode quota');
   await expect(status).toContainText('Try again later');
   await expect(status).toContainText('Reconnecting Spotify will not help');

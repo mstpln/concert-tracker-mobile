@@ -53,17 +53,14 @@ test('v91 listening review keeps alternatives pending and flattens sequential me
 
   await page.getByTestId('settings-button').click();
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
-  const card = page.locator('#listening-review-maintenance');
-  await expect(card).toContainText('QA Review Artist');
-  await expect(card).toContainText('QA Review Track');
-  await expect(card.getByRole('button', { name: 'These are the same listen' })).toHaveCount(2);
+  const screen = page.locator('#screen-settings');
+  await expect(screen).toContainText('QA Review Artist');
+  await expect(screen).toContainText('QA Review Track');
+  await expect(screen.getByRole('button', { name: 'Same listen' })).toHaveCount(2);
 
-  await card.locator('[data-listening-pair="qa-review-b|qa-review-c"]').getByRole('button', { name: 'These are the same listen' }).click();
-  await expect(card.locator('.listening-review-item')).toHaveCount(0);
-  await page.getByRole('tab', { name: 'Automation', exact: true }).click();
-  await page.getByRole('tab', { name: 'Review', exact: true }).click();
-  await expect(card.getByRole('button', { name: 'These are the same listen' })).toHaveCount(1);
-  await expect(card).toContainText('QA Review Artist');
+  await screen.locator('[data-v123-listen-merge="qa-review-b|qa-review-c"]').click();
+  await expect(screen.getByRole('button', { name: 'Same listen' })).toHaveCount(1);
+  await expect(screen).toContainText('QA Review Artist');
 
   const afterFirst = await page.evaluate(async () => ({
     a: await BandmarkrListeningDerivedStorage.getCanonical('qa-review-a'),
@@ -78,10 +75,8 @@ test('v91 listening review keeps alternatives pending and flattens sequential me
   expect(afterFirst.review.candidatePairs).toHaveLength(1);
   expect(afterFirst.review.candidatePairs[0].pairKey).toBe('qa-review-a|qa-review-b');
 
-  await card.locator('[data-listening-pair="qa-review-a|qa-review-b"]').getByRole('button', { name: 'These are the same listen' }).click();
-  await page.getByRole('tab', { name: 'Automation', exact: true }).click();
-  await page.getByRole('tab', { name: 'Review', exact: true }).click();
-  await expect(card.locator('.listening-review-item')).toHaveCount(0);
+  await screen.locator('[data-v123-listen-merge="qa-review-a|qa-review-b"]').click();
+  await expect(screen.getByRole('button', { name: 'Same listen' })).toHaveCount(0);
   const finalState = await page.evaluate(async () => ({
     a: await BandmarkrListeningDerivedStorage.getCanonical('qa-review-a'),
     b: await BandmarkrListeningDerivedStorage.getCanonical('qa-review-b'),

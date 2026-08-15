@@ -293,6 +293,12 @@
     if (!document || document.documentElement?.dataset.v101SpotifyMetadataInstalled === 'true') return;
     document.documentElement.dataset.v101SpotifyMetadataInstalled = 'true';
 
+    // v101 replaced the removed batch endpoint with exact, resumable track
+    // requests. Settings v123 owns the presentation now, so keep those
+    // corrected provider semantics at the API boundary instead of relying on
+    // the retired data-v99 click interceptor.
+    if (root.SpotifyListeningMetadataV99) root.SpotifyListeningMetadataV99.enrich = enrich;
+
     const refreshHint = () => {
       const wrapper = document.querySelector('[data-v99-spotify-listening-metadata]');
       const hint = wrapper?.querySelector('.settings-hint');

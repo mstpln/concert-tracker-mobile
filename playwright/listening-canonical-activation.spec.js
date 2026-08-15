@@ -1,5 +1,13 @@
 const { test, expect } = require('@playwright/test');
 
+async function openListeningMaintenance(page) {
+  const screen = page.locator('#screen-settings');
+  await screen.getByRole('tab', { name: 'Data', exact: true }).click();
+  const maintenance = screen.locator('.settings-v123-maintenance');
+  if (!(await maintenance.getAttribute('open'))) await maintenance.locator('summary').click();
+  return maintenance.locator('.settings-v123-maintenance-row').filter({ hasText: 'Listening statistics' });
+}
+
 test('v92 activates cleaned listening totals only after explicit confirmation and can restore originals', async ({ page }) => {
   const browserErrors = [];
   page.on('pageerror', (error) => browserErrors.push(error.message));
@@ -62,20 +70,21 @@ test('v92 activates cleaned listening totals only after explicit confirmation an
   });
 
   await page.getByTestId('settings-button').click();
-  await page.getByRole('tab', { name: 'Review', exact: true }).click();
-  const card = page.locator('[data-canonical-activation]');
-  await expect(card).toContainText('Preparation complete. 1 confirmed duplicate listen found.');
-  await expect(card.getByRole('button', { name: 'Use cleaned totals' })).toBeVisible();
+  let card = await openListeningMaintenance(page);
+  await expect(card).toContainText('Reviewed listening totals are ready to use.');
+  await expect(card.getByRole('button', { name: 'Use reviewed totals' })).toBeVisible();
   expect(await page.evaluate(() => listeningEvents.length)).toBe(2);
 
-  await card.getByRole('button', { name: 'Use cleaned totals' }).click();
-  await expect(card).toContainText('Cleaned totals are active. 1 confirmed duplicate listen is excluded.');
+  await card.getByRole('button', { name: 'Use reviewed totals' }).click();
+  card = await openListeningMaintenance(page);
+  await expect(card).toContainText('Reviewed listening totals are active.');
   await expect(card.getByRole('button', { name: 'Use original totals' })).toBeVisible();
   expect(await page.evaluate(() => listeningEvents.map((event) => event.stableListenId))).toEqual(['qa-activation-a']);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('bandmarkr-listening-canonical-activation-v1')).status)).toBe('active');
 
   await card.getByRole('button', { name: 'Use original totals' }).click();
-  await expect(card).toContainText('Preparation complete. 1 confirmed duplicate listen found.');
+  card = await openListeningMaintenance(page);
+  await expect(card).toContainText('Reviewed listening totals are ready to use.');
   expect(await page.evaluate(() => listeningEvents.map((event) => event.stableListenId))).toEqual(['qa-activation-a', 'qa-activation-b']);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('bandmarkr-listening-canonical-activation-v1')).status)).toBe('ready');
   expect(browserErrors).toEqual([]);

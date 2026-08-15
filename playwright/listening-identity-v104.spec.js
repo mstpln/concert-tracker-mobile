@@ -1,5 +1,13 @@
 const { test, expect } = require('@playwright/test');
 
+async function openIdentityMaintenance(page) {
+  const screen = page.locator('#screen-settings');
+  await screen.getByRole('tab', { name: 'Data', exact: true }).click();
+  const maintenance = screen.locator('.settings-v123-maintenance');
+  if (!(await maintenance.getAttribute('open'))) await maintenance.locator('summary').click();
+  return maintenance.locator('.settings-v123-maintenance-row').filter({ hasText: 'Missing song information' });
+}
+
 test('v106 exposes recording-only manual identity completion without automatic provider calls', async ({ page }) => {
   const externalMetadataRequests = [];
   await page.route('https://api.listenbrainz.org/1/metadata/**', async (route) => {
@@ -9,21 +17,16 @@ test('v106 exposes recording-only manual identity completion without automatic p
 
   await page.goto('/');
   await page.locator('#settings-btn').click();
-  await page.getByRole('tab', { name: 'Review', exact: true }).click();
+  const card = await openIdentityMaintenance(page);
 
-  const card = page.locator('[data-v104-listening-identity]');
   await expect(card).toBeVisible();
-  await expect(card).toContainText('Listening identity');
-  await expect(card).toContainText('at most 25 unique recording combinations per run');
-  await expect(card).toContainText('Release-group enrichment is deferred and does not block recording identity completion');
-  await expect(card.getByRole('button', { name: 'Complete listening identities' })).toBeVisible();
-  await expect(card.locator('[data-v104-identity-status]')).toContainText('uses ListenBrainz for recording identity only');
-  await expect(card.locator('[data-v104-identity-status]')).toContainText('does not call MusicBrainz release context');
-  await expect(card.locator('[data-v104-identity-status]')).toContainText('does not call MusicBrainz release context or send listening timestamps, event IDs, or full-history payloads');
+  await expect(card).toContainText('Missing song information');
+  await expect(card).toContainText('Try to fill trusted song details that are still missing.');
+  await expect(card.getByRole('button', { name: 'Fix missing song information' })).toBeVisible();
   expect(externalMetadataRequests).toEqual([]);
 });
 
-test('v106 manual button resolves recording identity without calling MusicBrainz release context', async ({ page }) => {
+test('v106 manual action resolves recording identity without calling MusicBrainz release context', async ({ page }) => {
   const artistMbid = 'fedcbafe-dcba-4fed-8cba-fedcbafedcba';
   const recordingMbid = '11111111-2222-4333-8444-555555555555';
   const releaseMbid = '12345678-1234-4234-8234-123456789abc';
@@ -71,12 +74,9 @@ test('v106 manual button resolves recording identity without calling MusicBrainz
   }, { artistMbid, recordingMbid, releaseMbid });
 
   await page.locator('#settings-btn').click();
-  await page.getByRole('tab', { name: 'Review', exact: true }).click();
-  const card = page.locator('[data-v104-listening-identity]');
-  await card.getByRole('button', { name: 'Complete listening identities' }).click();
-  await expect(card.locator('[data-v104-identity-status]')).toContainText('Done. Checked 1 recording combinations');
-  await expect(card.locator('[data-v104-identity-status]')).toContainText('1 recording IDs added');
-  await expect(card.locator('[data-v104-identity-status]')).toContainText('Release-group enrichment is deferred and did not run');
+  const card = await openIdentityMaintenance(page);
+  await card.getByRole('button', { name: 'Fix missing song information' }).click();
+  await expect(card.locator('[data-v123-identity-status]')).toContainText('1 song identities added');
 
   const result = await page.evaluate(() => ({
     urls: [...window.__v106SyntheticFetchUrls],
