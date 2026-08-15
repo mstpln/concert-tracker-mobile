@@ -45,10 +45,10 @@ test('v100 bridge reuses the authorization shown as connected', async ({ page })
   await page.goto('/');
   await page.locator('#settings-btn').click();
   await page.getByRole('tab', { name: 'Data' }).click();
-  const spotifyPlaylistCard = page.locator('.settings-card').filter({
-    has: page.getByText('Connected to Spotify', { exact: true }),
-  });
-  await expect(spotifyPlaylistCard.getByRole('button', { name: 'Disconnect' })).toBeVisible();
+  const spotifyRow = page.locator('.settings-v123-row').filter({
+    has: page.getByText('Spotify', { exact: true }),
+  }).filter({ has: page.getByText('Connected', { exact: true }) });
+  await expect(spotifyRow.getByRole('button', { name: 'Disconnect' })).toBeVisible();
 
   const bridgeResult = await page.evaluate(async () => {
     if (typeof SpotifyUser.validAuth !== 'function' || typeof SpotifyUser.request !== 'function') {
@@ -80,5 +80,5 @@ test('v100 bridge reuses the authorization shown as connected', async ({ page })
       authorization: 'Bearer synthetic-access-token',
     }],
   });
-  await expect(spotifyPlaylistCard.getByRole('button', { name: 'Disconnect' })).toBeVisible();
+  await expect(spotifyRow.getByRole('button', { name: 'Disconnect' })).toBeVisible();
 });
