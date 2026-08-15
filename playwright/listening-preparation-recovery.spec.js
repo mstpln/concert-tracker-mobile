@@ -1,11 +1,18 @@
 const { test, expect } = require('@playwright/test');
 
+async function openListeningMaintenance(page) {
+  const screen = page.locator('#screen-settings');
+  await screen.getByRole('tab', { name: 'Data', exact: true }).click();
+  const maintenance = screen.locator('.settings-v123-maintenance');
+  if (!(await maintenance.getAttribute('open'))) await maintenance.locator('summary').click();
+  return maintenance.locator('.settings-v123-maintenance-row').filter({ hasText: 'Listening statistics' });
+}
+
 test('v93 recovers a stalled preparation after a lock-style resume without reloading', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('settings-button').click();
-  await page.getByRole('tab', { name: 'Review', exact: true }).click();
 
-  const result = await page.evaluate(() => {
+  const result = await page.evaluate(async () => {
     const recovery = BandmarkrListeningPreparationRecovery;
     localStorage.setItem('bandmarkr-listening-canonical-activation-v1', JSON.stringify({
       stateVersion: 1,
@@ -24,10 +31,9 @@ test('v93 recovers a stalled preparation after a lock-style resume without reloa
       processedEvents: 1500,
       sourceEventCountAfter: 5000,
     }));
-    recovery.renderCurrentProgress(localStorage);
     recovery.checkForStalledPreparation(localStorage, 1000);
     const recovered = recovery.checkForStalledPreparation(localStorage, 1000 + recovery.STALL_TIMEOUT_MS);
-    if (recovered.recovered) recovery.renderInterruptedState();
+    await BandmarkrSettingsV123.renderUnifiedSettings();
     return {
       recovered: recovered.recovered,
       state: JSON.parse(localStorage.getItem('bandmarkr-listening-canonical-activation-v1')),
@@ -40,17 +46,16 @@ test('v93 recovers a stalled preparation after a lock-style resume without reloa
   expect(result.state.error).toContain('interrupted');
   expect(result.checkpoint.processedEvents).toBe(1500);
 
-  const card = page.locator('[data-canonical-activation]');
-  await expect(card).toContainText('Preparation stopped safely: Preparation was interrupted');
-  await expect(card.getByRole('button', { name: 'Prepare again' })).toBeVisible();
+  const card = await openListeningMaintenance(page);
+  await expect(card).toContainText('Listening statistics preparation stopped safely');
+  await expect(card.getByRole('button', { name: 'Update listening statistics' })).toBeVisible();
 });
 
 test('v93 keeps active post-migration work running while its heartbeat is fresh', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('settings-button').click();
-  await page.getByRole('tab', { name: 'Review', exact: true }).click();
 
-  const result = await page.evaluate(() => {
+  const result = await page.evaluate(async () => {
     const recovery = BandmarkrListeningPreparationRecovery;
     const now = Date.now();
     localStorage.setItem('bandmarkr-listening-canonical-activation-v1', JSON.stringify({
@@ -69,6 +74,7 @@ test('v93 keeps active post-migration work running while its heartbeat is fresh'
     }));
     recovery.checkForStalledPreparation(localStorage, now - recovery.STALL_TIMEOUT_MS);
     const checked = recovery.checkForStalledPreparation(localStorage, now);
+    await BandmarkrSettingsV123.renderUnifiedSettings();
     return {
       recovered: checked.recovered,
       state: JSON.parse(localStorage.getItem('bandmarkr-listening-canonical-activation-v1')),
@@ -81,6 +87,7 @@ test('v93 keeps active post-migration work running while its heartbeat is fresh'
   expect(result.state.preparationPhase).toBe('persisting-candidates');
   expect(result.checkpoint.status).toBe('complete');
 
-  const card = page.locator('[data-canonical-activation]');
-  await expect(card.getByRole('button', { name: 'Prepare again' })).toBeHidden();
+  const card = await openListeningMaintenance(page);
+  await expect(card).toContainText('Listening statistics');
+  await expect(card.getByRole('button', { name: 'Update listening statistics' })).toBeVisible();
 });
