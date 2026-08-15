@@ -89,20 +89,26 @@
     } finally { db.close(); }
   }
 
+  function bandNames(band) {
+    return [band?.name, ...(Array.isArray(band?.listeningAliases) ? band.listeningAliases : [])]
+      .map(normalizeText)
+      .filter(Boolean);
+  }
+
   function bandLookup(bands = []) {
-    const byName = new Map();
-    const ambiguous = new Set();
+    const owners = new Map();
     for (const band of bands || []) {
       const bandId = clean(band?.id);
-      const name = normalizeText(band?.name);
-      if (!bandId || !name || ambiguous.has(name)) continue;
-      const existing = byName.get(name);
-      if (existing && existing !== bandId) {
-        byName.delete(name);
-        ambiguous.add(name);
-      } else if (!existing) {
-        byName.set(name, bandId);
+      if (!bandId) continue;
+      for (const name of bandNames(band)) {
+        const ids = owners.get(name) || new Set();
+        ids.add(bandId);
+        owners.set(name, ids);
       }
+    }
+    const byName = new Map();
+    for (const [name, ids] of owners) {
+      if (ids.size === 1) byName.set(name, [...ids][0]);
     }
     return byName;
   }
@@ -196,6 +202,7 @@
     openSourceDb,
     sourceCount,
     readSourcePage,
+    bandNames,
     bandLookup,
     compactIdentityEnvelope,
     deriveRecords,
