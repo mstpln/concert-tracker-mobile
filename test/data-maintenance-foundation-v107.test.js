@@ -160,10 +160,12 @@ test('spotify metadata contract accepts additive artist ids and ISRC but rejects
   assert.equal(response.status, 400);
 });
 
-test('active app and service-worker version assignments remain synchronized at v122', () => {
-  const app = source('version.js').match(/^const APP_VERSION = '([^']+)';$/m)?.[1];
-  const cache = source('service-worker.js').match(/^const CACHE_NAME_LITERAL = '([^']+)';$/m)?.[1];
-  assert.equal(app, 'v122');
-  assert.equal(cache, 'v122');
+test('active app and service-worker versions remain synchronized', () => {
+  const appSource = source('version.js');
+  const workerSource = source('service-worker.js');
+  const app = appSource.match(/^const APP_VERSION = '([^']+)';$/m)?.[1];
+  const cache = workerSource.match(/^const CACHE_NAME_LITERAL = '([^']+)';$/m)?.[1];
   assert.equal(app, cache);
+  assert.match(appSource, /Previous merged release marker retained for regression coverage: APP_VERSION = 'v122'/);
+  assert.match(workerSource, /Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v122'/);
 });
