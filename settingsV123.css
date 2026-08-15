@@ -146,6 +146,12 @@
   white-space: nowrap;
 }
 
+.settings-v123-status {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 3px 7px;
+}
+
 .settings-v123-metric-value i,
 .settings-v123-status i {
   display: block;
@@ -325,6 +331,7 @@
   .settings-v123-row-head { gap: 8px; }
   .settings-v123-metric-value,
   .settings-v123-status { font-size: 11px; }
+  .settings-v123-status { padding: 3px 6px; }
   .settings-v123-candidates > div { align-items: flex-start; flex-direction: column; }
   .settings-v123-actions { gap: 6px; }
   .settings-v123-actions .btn-primary,
