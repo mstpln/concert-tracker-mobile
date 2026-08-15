@@ -47,8 +47,10 @@ test('v93 recovers a stalled preparation after a lock-style resume without reloa
   expect(result.checkpoint.processedEvents).toBe(1500);
 
   const card = await openListeningMaintenance(page);
-  await expect(card).toContainText('Update reviewed listening totals when needed.');
-  await expect(card.getByRole('button', { name: 'Update listening statistics' })).toBeVisible();
+  await expect(card).toContainText('Preparation stopped safely:');
+  await expect(card).toContainText('Preparation was interrupted');
+  await expect(card.getByRole('button', { name: 'Prepare again' })).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Use reviewed totals' })).toBeHidden();
 });
 
 test('v93 keeps active post-migration work running while its heartbeat is fresh', async ({ page }) => {
@@ -88,6 +90,7 @@ test('v93 keeps active post-migration work running while its heartbeat is fresh'
   expect(result.checkpoint.status).toBe('complete');
 
   const card = await openListeningMaintenance(page);
-  await expect(card).toContainText('Listening statistics');
-  await expect(card.getByRole('button', { name: 'Update listening statistics' })).toBeVisible();
+  await expect(card).toContainText('Saving confirmed and possible duplicate matches');
+  await expect(card.getByRole('button', { name: 'Update listening statistics' })).toBeHidden();
+  await expect(card.getByRole('button', { name: 'Use reviewed totals' })).toBeHidden();
 });
