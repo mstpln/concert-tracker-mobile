@@ -5,6 +5,30 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.LiveVaultUiPerformanceV127 = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
+  function getBands() {
+    try {
+      if (typeof bands !== 'undefined') return bands;
+    } catch (_) {}
+    return root.bands;
+  }
+
+  function getListeningEvents() {
+    try {
+      if (typeof listeningEvents !== 'undefined') return listeningEvents;
+    } catch (_) {}
+    return root.listeningEvents;
+  }
+
+  function setListeningEvents(value) {
+    try {
+      if (typeof listeningEvents !== 'undefined') {
+        listeningEvents = value;
+        return;
+      }
+    } catch (_) {}
+    root.listeningEvents = value;
+  }
+
   function lowerBound(items, target) {
     let low = 0;
     let high = items.length;
@@ -89,16 +113,28 @@
   }
 
   function withRenderIndex(render, thisArg, args) {
-    if (activeIndex || !Array.isArray(root.listeningEvents) || !Array.isArray(root.bands) || !root.ListeningStats) {
+    const currentEvents = getListeningEvents();
+    const currentBands = getBands();
+    if (activeIndex || !Array.isArray(currentEvents) || !Array.isArray(currentBands) || !root.ListeningStats) {
       return render.apply(thisArg, args);
     }
-    activeIndex = buildListeningIndex(root.listeningEvents, root.bands, root.ListeningStats);
+    activeIndex = buildListeningIndex(currentEvents, currentBands, root.ListeningStats);
     activeNow = typeof root.listeningNow === 'function' ? root.listeningNow() : new Date();
     try {
       return render.apply(thisArg, args);
     } finally {
       activeIndex = null;
       activeNow = null;
+    }
+  }
+
+  function withoutLegacyListeningScan(render) {
+    const sourceEvents = getListeningEvents();
+    setListeningEvents([]);
+    try {
+      return render();
+    } finally {
+      setListeningEvents(sourceEvents);
     }
   }
 
@@ -110,16 +146,10 @@
     if (typeof originalMyConcertRowHtml === 'function') {
       root.myConcertRowHtml = function myConcertRowHtmlV127(concert, isPast, options = {}) {
         if (!activeIndex) return originalMyConcertRowHtml.call(this, concert, isPast, options);
-        const sourceEvents = root.listeningEvents;
-        root.listeningEvents = [];
-        try {
-          let html = originalMyConcertRowHtml.call(this, concert, isPast, options);
-          const row = fastListeningRow(concert, isPast);
-          if (row) html = injectBefore(html, '<div class="concert-prep-group', row);
-          return html;
-        } finally {
-          root.listeningEvents = sourceEvents;
-        }
+        let html = withoutLegacyListeningScan(() => originalMyConcertRowHtml.call(this, concert, isPast, options));
+        const row = fastListeningRow(concert, isPast);
+        if (row) html = injectBefore(html, '<div class="concert-prep-group', row);
+        return html;
       };
     }
 
@@ -127,16 +157,10 @@
     if (typeof originalProfileUpcomingRowHtml === 'function') {
       root.profileUpcomingRowHtml = function profileUpcomingRowHtmlV127(concert) {
         if (!activeIndex) return originalProfileUpcomingRowHtml.call(this, concert);
-        const sourceEvents = root.listeningEvents;
-        root.listeningEvents = [];
-        try {
-          let html = originalProfileUpcomingRowHtml.call(this, concert);
-          const row = fastListeningRow(concert, false);
-          if (row) html = injectBefore(html, '<div class="show-buttons">', row);
-          return html;
-        } finally {
-          root.listeningEvents = sourceEvents;
-        }
+        let html = withoutLegacyListeningScan(() => originalProfileUpcomingRowHtml.call(this, concert));
+        const row = fastListeningRow(concert, false);
+        if (row) html = injectBefore(html, '<div class="show-buttons">', row);
+        return html;
       };
     }
 
