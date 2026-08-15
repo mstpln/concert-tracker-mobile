@@ -66,6 +66,11 @@ test('NB2 never overwrites populated user/profile fields', () => {
   assert.deepEqual(changes, []);
 });
 
+test('formed year rejects malformed and future values', () => {
+  assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', formedYear: 'unknown' }]), /four-digit year/);
+  assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', formedYear: '3026' }]), /four-digit year/);
+});
+
 test('trusted Spotify artwork counts as an existing visible image and is not replaced', () => {
   const band = baseBand({
     officialUrl: 'https://band.example/',
@@ -86,6 +91,27 @@ test('trusted Spotify artwork counts as an existing visible image and is not rep
   }]);
   assert.equal(bands[0].artistArtwork, undefined);
   assert.deepEqual(changes, []);
+});
+
+test('exact trusted Spotify oEmbed artwork can fill an empty Spotify image list', () => {
+  const { bands, changes } = applyBackfill([baseBand()], [{
+    bandId: 'synthetic-band',
+    spotifyOembedImage: {
+      spotifyId: 'spotify-1',
+      url: 'https://i.scdn.co/image/example',
+      width: 640,
+      height: 640,
+    },
+  }]);
+  assert.deepEqual(bands[0].musicbrainz.spotify.images, [{ url: 'https://i.scdn.co/image/example', width: 640, height: 640 }]);
+  assert.equal(visibleArtistImageUrl(bands[0]), 'https://i.scdn.co/image/example');
+  assert.deepEqual(changes, [{ bandId: 'synthetic-band', fields: ['musicbrainz.spotify.images'] }]);
+});
+
+test('Spotify oEmbed artwork fails closed on identity mismatch, untrusted status, or foreign host', () => {
+  assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', spotifyOembedImage: { spotifyId: 'other', url: 'https://i.scdn.co/image/example', width: 640, height: 640 } }]), /match the trusted Spotify artist id exactly/);
+  assert.throws(() => applyBackfill([baseBand({ musicbrainz: { spotify: { id: 'spotify-1', status: 'rejected', images: [] } } })], [{ bandId: 'synthetic-band', spotifyOembedImage: { spotifyId: 'spotify-1', url: 'https://i.scdn.co/image/example', width: 640, height: 640 } }]), /requires an existing trusted Spotify artist identity/);
+  assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', spotifyOembedImage: { spotifyId: 'spotify-1', url: 'https://evil.example/image.jpg', width: 640, height: 640 } }]), /Spotify CDN HTTPS image URL/);
 });
 
 test('official artwork uses GAU3 provenance and does not write provider art into photoUrl', () => {
