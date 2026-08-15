@@ -24,7 +24,28 @@ test('Settings v123 uses one consistent Automation presentation', async ({ page 
   await expect(divider).toHaveCSS('border-top-width','2px');
   await expect(divider).toHaveCSS('border-top-color','rgb(11, 99, 246)');
   expect(await screen.locator('.settings-v123-progress').count()).toBeGreaterThan(0);
+
+  const groqRow = screen.locator('.settings-v123-provider-wrap').filter({ hasText:'Groq' });
+  await groqRow.getByRole('button', { name:'Details' }).click();
+  await expect(groqRow.getByText('Device key (optional)', { exact:true })).toBeVisible();
+  await expect(groqRow.locator('[data-v123-groq-key]')).toBeVisible();
   await expectNoHorizontalOverflow(page);
+});
+
+test('Settings tabs support roving keyboard navigation', async ({ page }) => {
+  await openSettings(page);
+  const screen = page.locator('#screen-settings');
+  const automation = screen.getByRole('tab', { name:'Automation' });
+  await automation.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(screen.getByRole('tab', { name:'Review' })).toHaveAttribute('aria-selected','true');
+  await expect(screen.getByRole('tab', { name:'Review' })).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(screen.getByRole('tab', { name:'Data' })).toHaveAttribute('aria-selected','true');
+  await expect(screen.getByRole('tab', { name:'Data' })).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(screen.getByRole('tab', { name:'Automation' })).toHaveAttribute('aria-selected','true');
+  await expect(screen.getByRole('tab', { name:'Automation' })).toBeFocused();
 });
 
 test('Review summary stays neutral, truthful and horizontal on narrow mobile widths', async ({ page }) => {
