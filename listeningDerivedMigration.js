@@ -90,7 +90,10 @@
   }
 
   function bandNames(band) {
-    return [band?.name, ...(Array.isArray(band?.listeningAliases) ? band.listeningAliases : [])]
+    const aliases = Array.isArray(band?.listeningAliases)
+      ? band.listeningAliases.filter((value) => typeof value === 'string')
+      : [];
+    return [band?.name, ...aliases]
       .map(normalizeText)
       .filter(Boolean);
   }
