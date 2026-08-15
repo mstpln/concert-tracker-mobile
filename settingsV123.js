@@ -32,6 +32,7 @@
   let renderToken = 0;
   let reviewNotice = '';
   let connectionNotice = '';
+  const deferredReviewKeys = new Set();
 
   const esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
   const clean = (value) => String(value == null ? '' : value).trim();
@@ -113,7 +114,7 @@
     const setlists = eligible.filter(concertHasActualSetlist).length;
     return [
       { key:'Venue information', matched:venueMatched, total:rows.length, percent:pct(venueMatched,rows.length), detail:`${venueMatched.toLocaleString()} of ${rows.length.toLocaleString()} concerts have a named venue` },
-      { key:'Setlists', matched:setlists, total:eligible.length, percent:pct(setlists,eligible.length), detail:`${setlists.toLocaleString()} of ${eligible.length.toLocaleString()} eligible attended concerts` },
+      { key:'Setlists', matched:setlists, total:eligible.length, percent:pct(setlists,eligible.length), detail:eligible.length ? `${setlists.toLocaleString()} of ${eligible.length.toLocaleString()} eligible attended concerts` : 'No eligible attended concerts yet' },
     ];
   }
   function listeningCoverage(bandRows = [], events = []) {
@@ -124,29 +125,31 @@
     const albums = new Map();
     for (const event of followedEvents) {
       const bandId = clean(event?.localBandId || event?.bandId);
+      const recordingId = clean(event?.musicbrainzRecordingId || event?.recordingMbid || event?.spotifyTrackId);
       const title = normalizedText(event?.recordingTitle);
       if (title) {
-        const key = `${bandId}\n${title}`;
-        songs.set(key, Boolean(songs.get(key) || clean(event?.musicbrainzRecordingId || event?.recordingMbid || event?.spotifyTrackId)));
+        const key = recordingId ? `${bandId}\nid:${recordingId}` : `${bandId}\ntitle:${title}`;
+        songs.set(key, Boolean(songs.get(key) || recordingId));
       }
+      const releaseId = clean(event?.spotifyAlbumId || event?.musicbrainzReleaseId || event?.releaseMbid || event?.releaseGroupMbid);
       const release = normalizedText(event?.releaseTitle);
       if (release) {
-        const key = `${bandId}\n${release}`;
+        const key = releaseId ? `${bandId}\nid:${releaseId}` : `${bandId}\ntitle:${release}`;
         albums.set(key, Boolean(albums.get(key) || clean(event?.albumArtworkUrl || event?.artworkPath || event?.artworkUrl)));
       }
     }
     const identifiedSongs = [...songs.values()].filter(Boolean).length;
     const artworkAlbums = [...albums.values()].filter(Boolean).length;
     return [
-      { key:'Artists matched', matched:matchedBandIds.size, total:bandRows.length, percent:pct(matchedBandIds.size,bandRows.length), detail:`${matchedBandIds.size.toLocaleString()} of ${bandRows.length.toLocaleString()} followed artists linked` },
-      { key:'Songs identified', matched:identifiedSongs, total:songs.size, percent:pct(identifiedSongs,songs.size), detail:`${identifiedSongs.toLocaleString()} of ${songs.size.toLocaleString()} unique songs` },
-      { key:'Album artwork', matched:artworkAlbums, total:albums.size, percent:pct(artworkAlbums,albums.size), detail:`${artworkAlbums.toLocaleString()} of ${albums.size.toLocaleString()} listened albums` },
+      { key:'Artists matched', matched:matchedBandIds.size, total:bandRows.length, percent:pct(matchedBandIds.size,bandRows.length), detail:bandRows.length ? `${matchedBandIds.size.toLocaleString()} of ${bandRows.length.toLocaleString()} followed artists linked` : 'No followed artists yet' },
+      { key:'Songs identified', matched:identifiedSongs, total:songs.size, percent:pct(identifiedSongs,songs.size), detail:songs.size ? `${identifiedSongs.toLocaleString()} of ${songs.size.toLocaleString()} unique songs` : 'No followed-band songs in listening history yet' },
+      { key:'Album artwork', matched:artworkAlbums, total:albums.size, percent:pct(artworkAlbums,albums.size), detail:albums.size ? `${artworkAlbums.toLocaleString()} of ${albums.size.toLocaleString()} listened albums` : 'No followed-band albums in listening history yet' },
     ];
   }
   function identityCoverage(rows = []) {
     const coverage = root.ProviderIdentityState?.identityCoverage?.(rows);
     if (!coverage) return [];
-    const metric = (key, data, verb, attention = 0) => ({ key, matched:data.confirmed, total:data.total, percent:data.coveragePercent, detail:`${data.confirmed.toLocaleString()} of ${data.total.toLocaleString()} artists ${verb}`, attention });
+    const metric = (key, data, verb, attention = 0) => ({ key, matched:data.confirmed, total:data.total, percent:data.coveragePercent, detail:data.total ? `${data.confirmed.toLocaleString()} of ${data.total.toLocaleString()} artists ${verb}` : 'No followed artists yet', attention });
     return [
       metric('MusicBrainz',coverage.musicbrainz,'identified'),
       metric('Spotify',coverage.spotify,'identified',coverage.spotify.issueCount || 0),
@@ -237,6 +240,9 @@
   function sectionHeader(title,intro) { return `<div class="settings-v123-section-head"><span class="settings-v123-section-accent" aria-hidden="true"></span><div><h3>${esc(title)}</h3>${intro ? `<p>${esc(intro)}</p>` : ''}</div></div>`; }
   function tabsHtml(active) { return `<div class="settings-v123-tabs" role="tablist" aria-label="Settings sections">${[['research','Automation'],['review','Review'],['data','Data']].map(([key,label])=>`<button type="button" class="settings-v123-tab${active===key?' is-selected':''}" data-settings-tab="${key}" role="tab" aria-selected="${active===key?'true':'false'}"${active===key?'':' tabindex="-1"'}>${label}</button>`).join('')}</div>`; }
   function progressRow(row,mode='coverage') {
+    if (mode === 'coverage' && finite(row.total) && Number(row.total) <= 0) {
+      return `<div class="settings-v123-row" data-v123-metric="${esc(row.key || row.name)}"><div class="settings-v123-row-head"><div><strong>${esc(row.key || row.name)}</strong><p>${esc(row.detail)}</p></div><span class="settings-v123-status is-neutral"><i></i>Not applicable</span></div></div>`;
+    }
     const percent = Math.max(0,Math.round(Number(row.percent)||0));
     const level = mode === 'usage' ? usageLevel(percent) : coverageLevel(percent);
     return `<div class="settings-v123-row" data-v123-metric="${esc(row.key || row.name)}"><div class="settings-v123-row-head"><div><strong>${esc(row.key || row.name)}</strong><p>${esc(row.detail)}</p></div><span class="settings-v123-metric-value is-${level.key}"><i></i>${percent}%</span></div><div class="settings-v123-progress" role="progressbar" aria-label="${esc(row.key || row.name)} ${percent}%" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.min(100,percent)}"><span class="is-${level.key}" style="width:${Math.min(100,percent)}%"></span></div>${row.attention ? `<p class="settings-v123-note">${plural(row.attention,'artist')} need attention.</p>` : ''}</div>`;
@@ -261,6 +267,14 @@
   }
   function connectionRow(name,status,level,detail,actions='') { return `<div class="settings-v123-row"><div class="settings-v123-row-head"><div><strong>${esc(name)}</strong><p>${esc(detail)}</p></div><span class="settings-v123-status is-${level}"><i></i>${esc(status)}</span></div>${actions?`<div class="settings-v123-actions">${actions}</div>`:''}</div>`; }
 
+  function reviewItemKey(item) {
+    if (item?.kind === 'musicbrainz') return `artist:musicbrainz:${clean(item.band?.id) || normalizedText(item.band?.name)}`;
+    if (item?.kind === 'spotify') return `artist:spotify:${clean(item.row?.bandId || item.row?.localBandId) || normalizedText(item.row?.bandName)}`;
+    const explicit = clean(item?.reviewGroupId || item?.groupId || item?.id);
+    if (explicit) return `listening:${explicit}`;
+    const pairs = (item?.candidatePairs || []).map((pair) => clean(pair?.pairKey)).filter(Boolean).sort();
+    return `listening:${pairs.join(',')}`;
+  }
   function musicbrainzReviewItems(rows) {
     return rows.filter((band)=>band?.musicbrainz?.status==='needs_review' && Array.isArray(band.musicbrainz.reviewCandidates) && band.musicbrainz.reviewCandidates.length).map((band)=>({kind:'musicbrainz',band,candidates:band.musicbrainz.reviewCandidates.slice(0,5)}));
   }
@@ -270,7 +284,10 @@
     let spotify=[]; let listening=[];
     try { spotify=(root.ListeningSpotifyIdentityReview?.auditSpotifyArtistIdentities?.(rows,events,{identityState:root.ProviderIdentityState})||[]).filter((row)=>row.actionState==='candidate_available').map((row)=>({kind:'spotify',row})); } catch (_) {}
     try { listening=await root.BandmarkrListeningReviewRollout?.reviewQueue?.({maxItems:20}) || []; } catch (_) {}
-    return { artist:[...musicbrainzReviewItems(rows),...spotify],listening };
+    return {
+      artist:[...musicbrainzReviewItems(rows),...spotify].filter((item)=>!deferredReviewKeys.has(reviewItemKey(item))),
+      listening:listening.filter((item)=>!deferredReviewKeys.has(reviewItemKey(item))),
+    };
   }
   function artistReview(item,index) {
     if (item.kind==='musicbrainz') {
@@ -289,21 +306,43 @@
   }
   function reviewHtml(model) {
     const artistCount=model.artist.length; const listeningCount=model.listening.length; const total=artistCount+listeningCount; const resolved=!total;
-    return `<div class="settings-v123-section">${sectionHeader('REVIEW SUMMARY','Only decisions BANDMARKR cannot make safely appear here.')}<div class="settings-v123-card"><div class="settings-v123-summary"><strong>${resolved?'Everything is resolved.':`${plural(total,'item')} need your attention`}</strong><p>${resolved?'No artist or listening matches need your attention.':`${plural(artistCount,'artist match','artist matches')} · ${plural(listeningCount,'listening match','listening matches')}`}</p><div class="settings-v123-summary-grid"><span><b>${artistCount}</b><small>Artist matches</small></span><span><b>${listeningCount}</b><small>Listening match${listeningCount===1?'':'es'}</small></span><span><b>0</b><small>Critical blockers</small></span></div>${reviewNotice?`<p class="settings-v123-note" role="status">${esc(reviewNotice)}</p>`:''}</div></div></div>${artistCount?`<div class="settings-v123-section">${sectionHeader('ARTIST MATCHES','Check artists BANDMARKR could not identify with confidence.')}<div class="settings-v123-card">${model.artist.map(artistReview).join('')}</div></div>`:''}${listeningCount?`<div class="settings-v123-section">${sectionHeader('LISTENING MATCHES','Check listens that may be duplicates.')}<div class="settings-v123-card">${model.listening.map(listeningReview).join('')}</div></div>`:''}`;
+    return `<div class="settings-v123-section">${sectionHeader('REVIEW SUMMARY','Only decisions BANDMARKR cannot make safely appear here.')}<div class="settings-v123-card"><div class="settings-v123-summary"><strong>${resolved?'Everything is resolved.':`${plural(total,'item')} need your attention`}</strong><p>${resolved?'No artist or listening matches need your attention.':`${plural(artistCount,'artist match','artist matches')} · ${plural(listeningCount,'listening match','listening matches')}`}</p><div class="settings-v123-summary-grid"><span><b>${artistCount}</b><small>Artist matches</small></span><span><b>${listeningCount}</b><small>Listening match${listeningCount===1?'':'es'}</small></span><span><b>${total}</b><small>Total items</small></span></div>${reviewNotice?`<p class="settings-v123-note" role="status">${esc(reviewNotice)}</p>`:''}</div></div></div>${artistCount?`<div class="settings-v123-section">${sectionHeader('ARTIST MATCHES','Check artists BANDMARKR could not identify with confidence.')}<div class="settings-v123-card">${model.artist.map(artistReview).join('')}</div></div>`:''}${listeningCount?`<div class="settings-v123-section">${sectionHeader('LISTENING MATCHES','Check listens that may be duplicates.')}<div class="settings-v123-card">${model.listening.map(listeningReview).join('')}</div></div>`:''}`;
+  }
+
+  function activationPresentation(activation, gau5State, storage = root.localStorage) {
+    const status = clean(activation?.status) || 'inactive';
+    if (status === 'active') return { text:'Reviewed listening totals are active.', prepareLabel:'Update listening statistics', showPrepare:true, showActivate:false, showDeactivate:true };
+    if (status === 'ready') return { text:'Reviewed listening totals are ready to use.', prepareLabel:'Update listening statistics', showPrepare:true, showActivate:true, showDeactivate:false };
+    if (status === 'stale') return { text:'Listening history changed. Update listening statistics before using reviewed totals.', prepareLabel:'Update listening statistics', showPrepare:true, showActivate:false, showDeactivate:false };
+    if (status === 'preparing') {
+      const text = root.BandmarkrListeningPreparationRecovery?.progressText?.(storage) || 'Preparing listening statistics on this device…';
+      return { text, prepareLabel:'Preparing…', showPrepare:false, showActivate:false, showDeactivate:false };
+    }
+    if (status === 'gau5_preparing') {
+      const current = gau5State || {};
+      if (current.status === 'error') return { text:`Preparation stopped safely: ${current.error || activation?.error || 'Listening preparation stopped safely.'}`, prepareLabel:'Resume preparation', showPrepare:true, showActivate:false, showDeactivate:false };
+      if (current.status === 'paused') return { text:root.BandmarkrListeningPreparationV121?.progressText?.(current) || 'Paused safely. Preparation will resume from the saved checkpoint.', prepareLabel:'Resume preparation', showPrepare:true, showActivate:false, showDeactivate:false };
+      if (current.status === 'complete') return { text:'Reviewed listening totals are ready to use.', prepareLabel:'Update listening statistics', showPrepare:true, showActivate:true, showDeactivate:false };
+      return { text:root.BandmarkrListeningPreparationV121?.progressText?.(current) || 'Preparing listening statistics on this device…', prepareLabel:'Preparing…', showPrepare:false, showActivate:false, showDeactivate:false };
+    }
+    if (status === 'error') return { text:`Preparation stopped safely: ${activation?.error || 'Listening preparation stopped safely.'}`, prepareLabel:'Prepare again', showPrepare:true, showActivate:false, showDeactivate:false };
+    return { text:'Reviewed listening totals have not been prepared.', prepareLabel:'Update listening statistics', showPrepare:true, showActivate:false, showDeactivate:false };
   }
   async function maintenanceHtml() {
     let meta=null; try { meta=await root.LiveVaultSpotifyHistory?.getMeta?.(); } catch (_) {}
     const activation=root.BandmarkrListeningCanonicalActivation?.stateStore?.(root.localStorage)?.load?.() || null;
-    const activationText=activation?.status==='active'?'Reviewed listening totals are active.':activation?.status==='ready'?'Reviewed listening totals are ready to use.':'Update reviewed listening totals when needed.';
-    return `<details class="settings-v123-maintenance"><summary>Maintenance & recovery</summary><div class="settings-v123-maintenance-row"><strong>Listening history import</strong><p>${meta?`${count(meta.eventCount).toLocaleString()} listens are stored on this device.`:'Use this only to restore a prepared listening-history file.'}</p><input type="file" data-v123-history-file accept=".json,.gz,application/json,application/gzip" hidden><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-history-import>Import history</button>${meta?'<button type="button" class="btn-secondary" data-v123-history-clear>Remove imported history</button>':''}</div><p class="settings-v123-note" data-v123-history-status aria-live="polite"></p></div><div class="settings-v123-maintenance-row"><strong>Listening statistics</strong><p>${esc(activationText)}</p><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-prepare-listening>Update listening statistics</button>${activation?.status==='ready'?'<button type="button" class="btn-primary" data-v123-activate-listening>Use reviewed totals</button>':''}${activation?.status==='active'?'<button type="button" class="btn-secondary" data-v123-deactivate-listening>Use original totals</button>':''}</div><p class="settings-v123-note" data-v123-activation-status aria-live="polite"></p></div><div class="settings-v123-maintenance-row"><strong>Missing song information</strong><p>Try to fill trusted song details that are still missing.</p><button type="button" class="btn-secondary" data-v123-complete-identities>Fix missing song information</button><p class="settings-v123-note" data-v123-identity-status aria-live="polite"></p></div><div class="settings-v123-maintenance-row"><strong>Missing album artwork</strong><p>Try again for listened albums that still have trusted Spotify track IDs but no artwork.</p><button type="button" class="btn-secondary" data-v123-refresh-artwork>Refresh missing artwork</button><p class="settings-v123-note" data-v123-artwork-status aria-live="polite"></p></div></details>`;
+    const gau5State=root.BandmarkrGau5PreparationIntegrationV121?.gau5Store?.()?.load?.() || null;
+    const presentation=activationPresentation(activation,gau5State,root.localStorage);
+    return `<details class="settings-v123-maintenance"><summary>Maintenance & recovery</summary><div class="settings-v123-maintenance-row"><strong>Listening history import</strong><p>${meta?`${count(meta.eventCount).toLocaleString()} listens are stored on this device.`:'Use this only to restore a prepared listening-history file.'}</p><input type="file" data-v123-history-file accept=".json,.gz,application/json,application/gzip" hidden><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-history-import>Import history</button>${meta?'<button type="button" class="btn-secondary" data-v123-history-clear>Remove imported history</button>':''}</div><p class="settings-v123-note" data-v123-history-status aria-live="polite"></p></div><div class="settings-v123-maintenance-row"><strong>Listening statistics</strong><p data-v123-activation-copy>${esc(presentation.text)}</p><div class="settings-v123-actions">${presentation.showPrepare?`<button type="button" class="btn-secondary" data-v123-prepare-listening>${esc(presentation.prepareLabel)}</button>`:''}${presentation.showActivate?'<button type="button" class="btn-primary" data-v123-activate-listening>Use reviewed totals</button>':''}${presentation.showDeactivate?'<button type="button" class="btn-secondary" data-v123-deactivate-listening>Use original totals</button>':''}</div><p class="settings-v123-note" data-v123-activation-status aria-live="polite"></p></div><div class="settings-v123-maintenance-row"><strong>Missing song information</strong><p>Try to fill trusted song details that are still missing.</p><button type="button" class="btn-secondary" data-v123-complete-identities>Fix missing song information</button><p class="settings-v123-note" data-v123-identity-status aria-live="polite"></p></div><div class="settings-v123-maintenance-row"><strong>Missing album artwork</strong><p>Try again for listened albums that still have trusted Spotify track IDs but no artwork.</p><button type="button" class="btn-secondary" data-v123-refresh-artwork>Refresh missing artwork</button><p class="settings-v123-note" data-v123-artwork-status aria-live="polite"></p></div></details>`;
   }
   async function dataHtml() {
     const rows=bandState(); const spotify=await spotifyState(); const lb=root.LiveVaultListenBrainz?.connection?.() || null; const connection=remoteState();
-    const profiles=profileCoverage(rows).map((row)=>({...row,detail:`${row.matched.toLocaleString()} of ${row.total.toLocaleString()} artist profiles`}));
-    const spotifyStatus=spotify.clientId && spotify.auth?'Connected':spotify.clientId?'Ready to connect':'Not configured';
+    const profiles=profileCoverage(rows).map((row)=>({...row,detail:row.total ? `${row.matched.toLocaleString()} of ${row.total.toLocaleString()} artist profiles` : 'No followed artists yet'}));
+    const spotifyConnected=Boolean(spotify.clientId && spotify.auth);
+    const spotifyStatus=spotifyConnected?'Connected':spotify.clientId?'Ready to connect':'Not configured';
     const spotifyActions=!spotify.clientId?'<label class="settings-v123-inline-field"><span>Public Client ID</span><input class="settings-v123-input" data-v123-spotify-client-id autocomplete="off"></label><button type="button" class="btn-primary" data-v123-save-spotify-client>Save Client ID</button>':!spotify.auth?'<button type="button" class="btn-primary" data-v123-connect-spotify>Connect</button><button type="button" class="btn-secondary" data-v123-remove-spotify-client>Remove Client ID</button>':'<button type="button" class="btn-secondary" data-v123-disconnect-spotify>Disconnect</button>';
     const lbActions=lb?'<button type="button" class="btn-primary" data-v123-listenbrainz-sync>Sync now</button><button type="button" class="btn-secondary" data-v123-listenbrainz-disconnect>Disconnect</button>':'<label class="settings-v123-inline-field"><span>User token</span><input class="settings-v123-input" type="password" data-v123-listenbrainz-token autocomplete="off"></label><button type="button" class="btn-primary" data-v123-listenbrainz-connect>Connect</button>';
-    return `<div class="settings-v123-section">${sectionHeader('DATA COVERAGE','How complete your artist, concert and listening data is.')}<div class="settings-v123-card">${groupHtml('ARTIST IDS',identityCoverage(rows))}${groupHtml('ARTIST PROFILES',profiles)}${groupHtml('CONCERT DATA',concertCoverage(concertState()))}${groupHtml('LISTENING DATA',listeningCoverage(rows,listeningState()))}</div></div><div class="settings-v123-section">${sectionHeader('CONNECTIONS','Services connected to this device.')}<div class="settings-v123-card">${connectionRow('Data storage',connection?.endpoint&&connection?.token?'Connected':'Not connected',connection?.endpoint&&connection?.token?'good':'warning','Stores your data privately in Cloudflare.',connection?.endpoint&&connection?.token?'<button type="button" class="btn-secondary" data-v123-disconnect-data>Disconnect</button>':'<button type="button" class="btn-primary" data-v123-connect-data>Connect</button>')}${connectionRow('Spotify',spotifyStatus,spotify.auth?'good':'warning','Creates playlists and supplies trusted music information.',spotifyActions)}${connectionRow('ListenBrainz',lb?'Connected':'Not connected',lb?'good':'warning',lb?.lastSyncAt?`Keeps your listening history current · last sync ${dateTime(lb.lastSyncAt)}`:'Keeps your listening history current.',lbActions)}<p class="settings-v123-note settings-v123-connection-message" data-v123-connection-status aria-live="polite">${esc(connectionNotice)}</p></div></div><div class="settings-v123-section">${sectionHeader('EXPORT','Download a copy of your BANDMARKR data.')}<div class="settings-v123-card"><div class="settings-v123-row"><strong>Export your data</strong><p>Bands, concerts, ratings, notes, costs and setlists.</p><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-export-csv>Export CSV</button><button type="button" class="btn-secondary" data-v123-export-excel>Export Excel</button></div><p class="settings-v123-note" data-v123-export-status aria-live="polite"></p></div></div></div><div class="settings-v123-section">${sectionHeader('DEVICE','Manage BANDMARKR data saved only on this device.')}<div class="settings-v123-card"><div class="settings-v123-row"><strong>Disconnect this device</strong><p>Removes the saved data connection. Local listening history and settings stay.</p><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-disconnect-data>Disconnect</button></div></div><div class="settings-v123-row"><strong>Erase this device</strong><p>Removes data stored only in this browser. Remote concert data is not deleted.</p><div class="settings-v123-actions"><button type="button" class="btn-secondary btn-danger" data-v123-erase-device>Erase this device</button></div></div>${await maintenanceHtml()}</div><p class="settings-v123-version">Version ${esc(typeof APP_VERSION!=='undefined'?APP_VERSION:'?')}</p></div>`;
+    return `<div class="settings-v123-section">${sectionHeader('DATA COVERAGE','How complete your artist, concert and listening data is.')}<div class="settings-v123-card">${groupHtml('ARTIST IDS',identityCoverage(rows))}${groupHtml('ARTIST PROFILES',profiles)}${groupHtml('CONCERT DATA',concertCoverage(concertState()))}${groupHtml('LISTENING DATA',listeningCoverage(rows,listeningState()))}</div></div><div class="settings-v123-section">${sectionHeader('CONNECTIONS','Services connected to this device.')}<div class="settings-v123-card">${connectionRow('Data storage',connection?.endpoint&&connection?.token?'Connected':'Not connected',connection?.endpoint&&connection?.token?'good':'warning','Stores your data privately in Cloudflare.',connection?.endpoint&&connection?.token?'<button type="button" class="btn-secondary" data-v123-disconnect-data>Disconnect</button>':'<button type="button" class="btn-primary" data-v123-connect-data>Connect</button>')}${connectionRow('Spotify',spotifyStatus,spotifyConnected?'good':'warning','Creates playlists and supplies trusted music information.',spotifyActions)}${connectionRow('ListenBrainz',lb?'Connected':'Not connected',lb?'good':'warning',lb?.lastSyncAt?`Keeps your listening history current · last sync ${dateTime(lb.lastSyncAt)}`:'Keeps your listening history current.',lbActions)}<p class="settings-v123-note settings-v123-connection-message" data-v123-connection-status aria-live="polite">${esc(connectionNotice)}</p></div></div><div class="settings-v123-section">${sectionHeader('EXPORT','Download a copy of your BANDMARKR data.')}<div class="settings-v123-card"><div class="settings-v123-row"><strong>Export your data</strong><p>Bands, concerts, ratings, notes, costs and setlists.</p><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-export-csv>Export CSV</button><button type="button" class="btn-secondary" data-v123-export-excel>Export Excel</button></div><p class="settings-v123-note" data-v123-export-status aria-live="polite"></p></div></div></div><div class="settings-v123-section">${sectionHeader('DEVICE','Manage BANDMARKR data saved only on this device.')}<div class="settings-v123-card"><div class="settings-v123-row"><strong>Disconnect this device</strong><p>Removes the saved data connection. Local listening history and settings stay.</p><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-disconnect-data>Disconnect</button></div></div><div class="settings-v123-row"><strong>Erase this device</strong><p>Removes data stored only in this browser. Remote concert data is not deleted.</p><div class="settings-v123-actions"><button type="button" class="btn-secondary btn-danger" data-v123-erase-device>Erase this device</button></div></div>${await maintenanceHtml()}</div><p class="settings-v123-version">Version ${esc(typeof APP_VERSION!=='undefined'?APP_VERSION:'?')}</p></div>`;
   }
 
   function setStatus(screen,selector,text) { const node=screen.querySelector(selector); if (node) node.textContent=text; }
@@ -316,6 +355,11 @@
       return candidate ? root.MusicbrainzState?.confirmedIdentity?.(candidate,state) : null;
     });
   }
+  async function deferReview(item) {
+    deferredReviewKeys.add(reviewItemKey(item));
+    reviewNotice='Deferred for this session.';
+    await renderUnifiedSettings();
+  }
   async function wireReview(screen,model) {
     screen.querySelectorAll('[data-v123-artist-review]').forEach((article)=>{
       const item=model.artist[Number(article.dataset.v123ArtistReview)]; if (!item) return;
@@ -323,13 +367,13 @@
       article.querySelector('[data-v123-mb-none]')?.addEventListener('click',async(event)=>{event.currentTarget.disabled=true;try{await saveMusicbrainz(item,null);reviewNotice=`${item.band.name} candidates were rejected.`;await renderUnifiedSettings();}catch(error){reviewNotice=error?.message||'The artist decision could not be saved.';event.currentTarget.disabled=false;}});
       article.querySelectorAll('[data-v123-spotify-use]').forEach((button)=>button.addEventListener('click',async()=>{button.disabled=true;try{await root.ListeningSpotifyIdentityReviewUi.saveDecision(item.row,'confirm',button.dataset.v123SpotifyUse);reviewNotice=`${item.row.bandName} was linked to Spotify.`;await renderUnifiedSettings();}catch(error){reviewNotice=error?.message||'The Spotify match could not be saved.';button.disabled=false;}}));
       article.querySelector('[data-v123-spotify-none]')?.addEventListener('click',async(event)=>{event.currentTarget.disabled=true;try{await root.ListeningSpotifyIdentityReviewUi.saveDecision(item.row,'reject',null);reviewNotice=`${item.row.bandName} candidates were rejected.`;await renderUnifiedSettings();}catch(error){reviewNotice=error?.message||'The Spotify decision could not be saved.';event.currentTarget.disabled=false;}});
-      article.querySelector('[data-v123-review-later]')?.addEventListener('click',()=>{article.hidden=true;});
+      article.querySelector('[data-v123-review-later]')?.addEventListener('click',()=>deferReview(item));
     });
     screen.querySelectorAll('[data-v123-listening-review]').forEach((article)=>{
       const item=model.listening[Number(article.dataset.v123ListeningReview)]; if (!item) return;
       article.querySelectorAll('[data-v123-listen-merge]').forEach((button)=>button.addEventListener('click',async()=>{button.disabled=true;try{await root.BandmarkrListeningReviewRollout.applyReview(item,'merge',{pairKey:button.dataset.v123ListenMerge});reviewNotice='Listening match saved.';await renderUnifiedSettings();}catch(error){reviewNotice=error?.message||'The listening decision could not be saved.';button.disabled=false;}}));
       article.querySelector('[data-v123-listen-separate]')?.addEventListener('click',async(event)=>{event.currentTarget.disabled=true;try{await root.BandmarkrListeningReviewRollout.applyReview(item,'keep_separate',{});reviewNotice='Listening records will stay separate.';await renderUnifiedSettings();}catch(error){reviewNotice=error?.message||'The listening decision could not be saved.';event.currentTarget.disabled=false;}});
-      article.querySelector('[data-v123-review-later]')?.addEventListener('click',()=>{article.hidden=true;});
+      article.querySelector('[data-v123-review-later]')?.addEventListener('click',()=>deferReview(item));
     });
   }
   function wireAutomation(screen) {
@@ -375,5 +419,5 @@
   }
   if(typeof root.document!=='undefined')install();
 
-  return { COVERAGE_THRESHOLDS,USAGE_THRESHOLDS,PROVIDER_PURPOSES,coverageLevel,usageLevel,normalizedText,profileCoverage,concertHasNamedVenue,concertHasActualSetlist,concertWasAttended,concertIsPast,concertCoverage,listeningCoverage,providerUsageRows,statusFromRun,nextMwfUtc,nextFocusedWebUtc,updateActivityRows,renderUnifiedSettings,install };
+  return { COVERAGE_THRESHOLDS,USAGE_THRESHOLDS,PROVIDER_PURPOSES,coverageLevel,usageLevel,normalizedText,profileCoverage,concertHasNamedVenue,concertHasActualSetlist,concertWasAttended,concertIsPast,concertCoverage,listeningCoverage,providerUsageRows,statusFromRun,nextMwfUtc,nextFocusedWebUtc,updateActivityRows,reviewItemKey,activationPresentation,renderUnifiedSettings,install };
 });
