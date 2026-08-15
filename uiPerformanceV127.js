@@ -47,19 +47,19 @@
       if (!bandId || !tracked.has(bandId)) continue;
       const time = typeof statsApi?.listenTimeMs === 'function' ? statsApi.listenTimeMs(listen) : new Date(listen?.listenedAt).getTime();
       if (!Number.isFinite(time)) continue;
-      const count = typeof statsApi?.listenCount === 'function'
-        ? Number(statsApi.listenCount([listen])) || 0
-        : (typeof statsApi?.isValidListen !== 'function' || statsApi.isValidListen(listen) ? 1 : 0);
-      const durationMs = typeof statsApi?.totalDurationMs === 'function'
-        ? Number(statsApi.totalDurationMs([listen])) || 0
-        : (typeof statsApi?.validDurationMs === 'function' ? statsApi.validDurationMs(listen) : Math.max(0, Number(listen?.listenedDurationMs) || 0));
-      if (count <= 0 && durationMs <= 0) continue;
+      const durationMs = typeof statsApi?.validDurationMs === 'function'
+        ? Number(statsApi.validDurationMs(listen)) || 0
+        : Math.max(0, Number(listen?.listenedDurationMs) || 0);
+      const valid = typeof statsApi?.isValidListen === 'function'
+        ? statsApi.isValidListen(listen)
+        : durationMs > 0;
+      if (!valid) continue;
       let items = byBand.get(bandId);
       if (!items) {
         items = [];
         byBand.set(bandId, items);
       }
-      items.push({ time, durationMs, count });
+      items.push({ time, durationMs, count: 1 });
     }
 
     for (const [bandId, items] of byBand) {
@@ -96,6 +96,25 @@
     const index = String(source || '').indexOf(marker);
     if (index < 0) return source;
     return source.slice(0, index) + html + source.slice(index);
+  }
+
+  function wrapBootstrap(api, onReady) {
+    if (!api || typeof api.bootstrap !== 'function' || api.__uiPerformanceV127BootstrapWrapped) return false;
+    const original = api.bootstrap;
+    api.bootstrap = async function bootstrapWithUiPerformanceV127(...args) {
+      try {
+        return await original.apply(this, args);
+      } finally {
+        onReady();
+      }
+    };
+    Object.defineProperty(api, '__uiPerformanceV127BootstrapWrapped', {
+      value: true,
+      configurable: false,
+      enumerable: false,
+      writable: false,
+    });
+    return true;
   }
 
   let activeIndex = null;
@@ -176,10 +195,14 @@
     return true;
   }
 
-  // v72 installs its canonical concert-row wrappers from an async DOMContentLoaded
-  // bootstrap. Install v127 on the following task so it wraps those final owners
-  // instead of being wrapped by them and producing duplicate listening rows.
-  if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', () => root.setTimeout(install, 0), { once: true });
+  // v72 registers its DOMContentLoaded listener before this script is loaded.
+  // Wrap that public bootstrap now, so v127 installs only after v72's async
+  // compatibility bootstrap has finished owning the concert row renderers.
+  // This avoids timing races from storage latency and guarantees one wrapper.
+  if (typeof document !== 'undefined') {
+    const wrapped = wrapBootstrap(root.LiveVaultV72, install);
+    if (!wrapped) document.addEventListener('DOMContentLoaded', install, { once: true });
+  }
 
-  return Object.freeze({ buildListeningIndex, aggregateWindow, lowerBound, install });
+  return Object.freeze({ buildListeningIndex, aggregateWindow, lowerBound, wrapBootstrap, install });
 });
