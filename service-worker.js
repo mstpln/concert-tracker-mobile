@@ -1,6 +1,7 @@
 'use strict';
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v126';
+const CACHE_NAME_LITERAL = 'v127';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v126'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v125'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v124'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v123'.
@@ -109,6 +110,7 @@ const SHELL_FILES = [
   './spotifyListeningMetadataV101.js',
   './trustedListeningV99.js',
   './uiPerformanceV126.js',
+  './uiPerformanceV127.js',
   './dataLib.js',
   './listeningStats.js',
   './listeningStatsV81.js',
