@@ -193,10 +193,20 @@
   function identityCoverage(rows = []) {
     const coverage = root.ProviderIdentityState?.identityCoverage?.(rows);
     if (!coverage) return [];
-    const metric = (key, data, verb, attention = 0) => ({ key, matched:data.confirmed, total:data.total, percent:data.coveragePercent, detail:data.total ? `${data.confirmed.toLocaleString()} of ${data.total.toLocaleString()} artists ${verb}` : 'No followed artists yet', attention });
+    const metric = (key, data, verb) => {
+      const gap = Math.max(0, Number(data.total || 0) - Number(data.confirmed || 0));
+      return {
+        key,
+        matched:data.confirmed,
+        total:data.total,
+        percent:data.coveragePercent,
+        detail:data.total ? `${data.confirmed.toLocaleString()} of ${data.total.toLocaleString()} artists ${verb}` : 'No followed artists yet',
+        note:gap ? `${plural(gap,'artist')} not yet ${verb}.` : '',
+      };
+    };
     return [
       metric('MusicBrainz',coverage.musicbrainz,'identified'),
-      metric('Spotify',coverage.spotify,'identified',coverage.spotify.issueCount || 0),
+      metric('Spotify',coverage.spotify,'identified'),
       metric('Ticketmaster',coverage.ticketmaster,'identified'),
       metric('setlist.fm',coverage.setlistfm,'linked'),
     ];
@@ -311,7 +321,7 @@
     }
     const percent = Math.max(0,Math.round(Number(row.percent)||0));
     const level = mode === 'usage' ? usageLevel(percent) : coverageLevel(percent);
-    return `<div class="settings-v123-row" data-v123-metric="${esc(row.key || row.name)}"><div class="settings-v123-row-head"><div><strong>${esc(row.key || row.name)}</strong><p>${esc(row.detail)}</p></div><span class="settings-v123-metric-value is-${level.key}"><i></i>${percent}%</span></div><div class="settings-v123-progress" role="progressbar" aria-label="${esc(row.key || row.name)} ${percent}%" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.min(100,percent)}"><span class="is-${level.key}" style="width:${Math.min(100,percent)}%"></span></div>${row.attention ? `<p class="settings-v123-note">${plural(row.attention,'artist')} need attention.</p>` : ''}</div>`;
+    return `<div class="settings-v123-row" data-v123-metric="${esc(row.key || row.name)}"><div class="settings-v123-row-head"><div><strong>${esc(row.key || row.name)}</strong><p>${esc(row.detail)}</p></div><span class="settings-v123-metric-value is-${level.key}"><i></i>${percent}%</span></div><div class="settings-v123-progress" role="progressbar" aria-label="${esc(row.key || row.name)} ${percent}%" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.min(100,percent)}"><span class="is-${level.key}" style="width:${Math.min(100,percent)}%"></span></div>${row.note ? `<p class="settings-v123-note">${esc(row.note)}</p>` : ''}</div>`;
   }
 
   function providerRow(row, extraDetail = '') {
@@ -379,9 +389,13 @@
     let listening=[];
     try { spotify=(root.ListeningSpotifyIdentityReview?.auditSpotifyArtistIdentities?.(rows,events,{identityState:root.ProviderIdentityState})||[]).filter((row)=>row.actionState==='candidate_available').map((row)=>({kind:'spotify',row})); } catch (_) {}
     try { listening=await root.BandmarkrListeningReviewRollout?.reviewQueue?.({maxItems:20}) || []; } catch (_) {}
+    const allArtist=[...musicbrainzReviewItems(rows),...spotify];
+    const artist=allArtist.filter((item)=>!deferredReviewKeys.has(reviewItemKey(item)));
+    const visibleListening=listening.filter((item)=>!deferredReviewKeys.has(reviewItemKey(item)));
     return {
-      artist:[...musicbrainzReviewItems(rows),...spotify].filter((item)=>!deferredReviewKeys.has(reviewItemKey(item))),
-      listening:listening.filter((item)=>!deferredReviewKeys.has(reviewItemKey(item))),
+      artist,
+      listening:visibleListening,
+      deferredCount:(allArtist.length - artist.length) + (listening.length - visibleListening.length),
     };
   }
 
@@ -409,9 +423,21 @@
   function reviewHtml(model) {
     const artistCount=model.artist.length;
     const listeningCount=model.listening.length;
-    const total=artistCount+listeningCount;
-    const resolved=!total;
-    return `<div class="settings-v123-section">${sectionHeader('REVIEW SUMMARY','Only decisions BANDMARKR cannot make safely appear here.')}<div class="settings-v123-card"><div class="settings-v123-summary"><strong>${resolved?'Everything is resolved.':`${plural(total,'item')} need your attention`}</strong><p>${resolved?'No artist or listening matches need your attention.':`${plural(artistCount,'artist match','artist matches')} · ${plural(listeningCount,'listening match','listening matches')}`}</p><div class="settings-v123-summary-grid"><span><b>${artistCount}</b><small>Artist matches</small></span><span><b>${listeningCount}</b><small>Listening match${listeningCount===1?'':'es'}</small></span><span><b>${total}</b><small>Total items</small></span></div>${reviewNotice?`<p class="settings-v123-note" role="status">${esc(reviewNotice)}</p>`:''}</div></div></div>${artistCount?`<div class="settings-v123-section">${sectionHeader('ARTIST MATCHES','Check artists BANDMARKR could not identify with confidence.')}<div class="settings-v123-card">${model.artist.map(artistReview).join('')}</div></div>`:''}${listeningCount?`<div class="settings-v123-section">${sectionHeader('LISTENING MATCHES','Check listens that may be duplicates.')}<div class="settings-v123-card">${model.listening.map(listeningReview).join('')}</div></div>`:''}`;
+    const deferredCount=model.deferredCount || 0;
+    const visibleTotal=artistCount+listeningCount;
+    const rawTotal=visibleTotal+deferredCount;
+    const resolved=rawTotal===0;
+    const headline=resolved
+      ? 'Everything is resolved.'
+      : visibleTotal
+        ? `${plural(visibleTotal,'item')} need your attention`
+        : 'No items need attention right now.';
+    const detail=resolved
+      ? 'No artist or listening matches need your attention.'
+      : visibleTotal
+        ? `${plural(artistCount,'artist match','artist matches')} · ${plural(listeningCount,'listening match','listening matches')}${deferredCount ? ` · ${plural(deferredCount,'item')} deferred` : ''}`
+        : `${plural(deferredCount,'item')} deferred for this session.`;
+    return `<div class="settings-v123-section">${sectionHeader('REVIEW SUMMARY','Only decisions BANDMARKR cannot make safely appear here.')}<div class="settings-v123-card"><div class="settings-v123-summary"><strong>${esc(headline)}</strong><p>${esc(detail)}</p><div class="settings-v123-summary-grid"><span><b>${artistCount}</b><small>Artist matches</small></span><span><b>${listeningCount}</b><small>Listening match${listeningCount===1?'':'es'}</small></span><span><b>${deferredCount}</b><small>Deferred</small></span></div>${reviewNotice?`<p class="settings-v123-note" role="status">${esc(reviewNotice)}</p>`:''}</div></div></div>${artistCount?`<div class="settings-v123-section">${sectionHeader('ARTIST MATCHES','Check artists BANDMARKR could not identify with confidence.')}<div class="settings-v123-card">${model.artist.map(artistReview).join('')}</div></div>`:''}${listeningCount?`<div class="settings-v123-section">${sectionHeader('LISTENING MATCHES','Check listens that may be duplicates.')}<div class="settings-v123-card">${model.listening.map(listeningReview).join('')}</div></div>`:''}`;
   }
 
   function activationPresentation(activation, gau5State, storage = root.localStorage) {
