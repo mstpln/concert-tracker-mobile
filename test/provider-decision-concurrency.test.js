@@ -80,6 +80,62 @@ test('pre-write protection preserves whole reviewed provider objects in stable-i
   assert.deepEqual(merged[0].musicbrainz.metadata, { artistName: 'Dollface' });
 });
 
+test('newer reviewed provider decision wins over a stale reviewed provider decision', () => {
+  const newerSpotify = {
+    ...manualSpotify,
+    reviewedAt: '2026-08-15T11:30:00.000Z',
+    reason: 'newer_user_rejection',
+  };
+  const staleReviewedSpotify = {
+    id: 'spotify-old-confirmation',
+    status: 'manual_confirmed',
+    reviewedAt: '2026-08-15T10:00:00.000Z',
+    reviewedBy: 'user',
+  };
+  const current = [{
+    id: 'dollface',
+    musicbrainz: {
+      mbid: 'mbid-dollface',
+      status: 'manual_confirmed',
+      spotify: newerSpotify,
+      metadata: { artistName: 'Old metadata' },
+    },
+  }];
+  const intended = [{
+    id: 'dollface',
+    musicbrainz: {
+      mbid: 'mbid-dollface',
+      status: 'manual_confirmed',
+      spotify: staleReviewedSpotify,
+      metadata: { artistName: 'Fresh metadata' },
+    },
+  }];
+
+  const protectedValue = conflictMerge.preserveReviewedDecisions(current, intended);
+  assert.deepEqual(protectedValue[0].musicbrainz.spotify, newerSpotify);
+  assert.deepEqual(protectedValue[0].musicbrainz.metadata, { artistName: 'Fresh metadata' });
+});
+
+test('newer reviewed decision for an unknown future provider is protected as a whole object', () => {
+  const current = [{
+    id: 'future-band',
+    musicbrainz: {
+      status: 'auto_confirmed',
+      futureProvider: { id: null, status: 'manual_rejected', reason: 'user_owned', unknownFutureField: true },
+    },
+  }];
+  const intended = [{
+    id: 'future-band',
+    musicbrainz: {
+      status: 'auto_confirmed',
+      futureProvider: { id: 'stale-id', status: 'manual_confirmed', reviewedBy: 'stale_automation_input' },
+    },
+  }];
+
+  const protectedValue = conflictMerge.preserveReviewedDecisions(current, intended);
+  assert.deepEqual(protectedValue[0].musicbrainz.futureProvider, current[0].musicbrainz.futureProvider);
+});
+
 test('normal bands write cannot erase a manual provider decision made after automation starts', async () => {
   const latest = [{ id: 'dollface', musicbrainz: { status: 'pending', spotify: manualSpotify, ticketmaster: manualTicketmaster } }];
   const stale = [{ id: 'dollface', musicbrainz: { status: 'auto_confirmed', spotify: { id: 'auto', status: 'confirmed' }, ticketmaster: { id: 'tm-auto', status: 'confirmed' } } }];
@@ -96,6 +152,32 @@ test('normal bands write cannot erase a manual provider decision made after auto
   await client.readJson('bands.json', []);
   await client.writeJson('bands.json', stale);
   assert.equal(requests.length, 2);
+});
+
+test('normal bands write keeps newer reviewed provider decision over stale reviewed payload', async () => {
+  const latestSpotify = {
+    id: null,
+    status: 'manual_rejected',
+    reviewedAt: '2026-08-15T11:30:00.000Z',
+    reason: 'newer_user_rejection',
+  };
+  const staleSpotify = {
+    id: 'spotify-old-confirmation',
+    status: 'manual_confirmed',
+    reviewedAt: '2026-08-15T10:00:00.000Z',
+  };
+  const latest = [{ id: 'dollface', musicbrainz: { status: 'manual_confirmed', mbid: 'mbid', spotify: latestSpotify } }];
+  const stale = [{ id: 'dollface', musicbrainz: { status: 'manual_confirmed', mbid: 'mbid', spotify: staleSpotify, metadata: { artistName: 'Fresh metadata' } } }];
+  const fetchImpl = async (_url, options = {}) => {
+    if (!options.method) return response(200, latest, 'v2');
+    const written = JSON.parse(options.body);
+    assert.deepEqual(written[0].musicbrainz.spotify, latestSpotify);
+    assert.deepEqual(written[0].musicbrainz.metadata, { artistName: 'Fresh metadata' });
+    return response(200, undefined, 'v3');
+  };
+  const client = createWorkerClient({ env: fakeWorkerEnv, fetchImpl });
+  await client.readJson('bands.json', []);
+  await client.writeJson('bands.json', stale);
 });
 
 test('reviewed-decision pre-write protection is not applied to unrelated documents', async () => {
@@ -123,6 +205,28 @@ test('ETag retry keeps a reviewed provider decision made between GET and PUT', a
     if (step === 3) return response(200, latest, 'v2');
     const written = JSON.parse(options.body);
     assert.deepEqual(written[0].musicbrainz.spotify, manualSpotify);
+    return response(200, undefined, 'v3');
+  };
+  const client = createWorkerClient({ env: fakeWorkerEnv, fetchImpl });
+  await client.readJson('bands.json', []);
+  await client.writeJson('bands.json', intended);
+  assert.equal(step, 4);
+});
+
+test('ETag retry keeps newer reviewed provider decision over stale reviewed payload', async () => {
+  const base = [{ id: 'dollface', musicbrainz: { status: 'manual_confirmed', mbid: 'mbid', spotify: { id: 'old', status: 'manual_confirmed' } } }];
+  const intended = [{ id: 'dollface', musicbrainz: { status: 'manual_confirmed', mbid: 'mbid', spotify: { id: 'stale-new', status: 'manual_confirmed' }, metadata: { artistName: 'Fresh metadata' } } }];
+  const latestSpotify = { id: null, status: 'manual_rejected', reviewedAt: '2026-08-15T11:30:00.000Z', reason: 'newer_user_rejection' };
+  const latest = [{ id: 'dollface', musicbrainz: { status: 'manual_confirmed', mbid: 'mbid', spotify: latestSpotify } }];
+  let step = 0;
+  const fetchImpl = async (_url, options = {}) => {
+    step += 1;
+    if (step === 1) return response(200, base, 'v1');
+    if (step === 2) return response(412, undefined);
+    if (step === 3) return response(200, latest, 'v2');
+    const written = JSON.parse(options.body);
+    assert.deepEqual(written[0].musicbrainz.spotify, latestSpotify);
+    assert.deepEqual(written[0].musicbrainz.metadata, { artistName: 'Fresh metadata' });
     return response(200, undefined, 'v3');
   };
   const client = createWorkerClient({ env: fakeWorkerEnv, fetchImpl });
