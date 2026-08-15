@@ -11,10 +11,11 @@ const integration = fs.readFileSync(path.join(__dirname, '..', 'stateFeedbackInt
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const serviceWorker = fs.readFileSync(path.join(__dirname, '..', 'service-worker.js'), 'utf8');
 
-test('v129 separates Past Concerts and scopes Deep Graphite to historical My Concerts cards', () => {
+test('v129 separates Past Concerts and trusts the existing renderer past-state class', () => {
   assert.match(integration, /myconcerts-past-divider/);
   assert.match(css, /\.myconcerts-past-divider::before/);
-  assert.match(integration, /#screen-myconcerts \.row-card-mc\.is-past \{ background: #1d2124; \}/);
+  assert.match(css, /#screen-myconcerts \.row-card-mc\.is-past \{ background: #1d2124; \}/);
+  assert.doesNotMatch(integration, /attended-badge|classList\.toggle\('is-past'/);
 });
 
 test('v129 countdown uses the approved two-tone show-day yellow family', () => {
@@ -47,17 +48,24 @@ test('v129 processing controller keeps overlapping operations independent', () =
   assert.equal(feedback.snapshot().pending, 0);
 });
 
-test('v129 processing line has no layout height, uses app blue and is cached for installed PWAs', () => {
+test('v129 processing line has no layout height, uses app blue and reduced motion is static', () => {
   assert.match(css, /\.interaction-progress \{[\s\S]*flex: 0 0 0;[\s\S]*height: 0;/);
   assert.match(css, /background: var\(--accent\)/);
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*animation: none;[\s\S]*transform: translateX\(0\)/);
   assert.match(serviceWorker, /'\.\/interactionFeedbackV129\.js'/);
   assert.match(serviceWorker, /'\.\/stateFeedbackIntegrationV129\.js'/);
   assert.match(serviceWorker, /'\.\/stateFeedbackV129\.css'/);
 });
 
-test('v129 duplicate suppression is scoped to user actions, not provider/background work', () => {
+test('v129 feedback follows user-initiated fetch lifetime instead of a fixed timeout', () => {
+  assert.match(integration, /function installFetchTracking/);
+  assert.match(integration, /context\.inFlight \+= 1/);
+  assert.match(integration, /Promise\.resolve\(request\)\.finally/);
+  assert.doesNotMatch(integration, /setTimeout\(finish,\s*180\)/);
+});
+
+test('v129 duplicate suppression applies only after a user action owns real async work', () => {
   assert.match(integration, /feedback\.isPending\(key\)/);
   assert.match(integration, /event\.stopImmediatePropagation\(\)/);
-  assert.doesNotMatch(integration, /ListenBrainz|artwork|provider|scheduled/i);
+  assert.match(integration, /if \(!context\.handle\) \{[\s\S]*feedback\.begin/);
 });
