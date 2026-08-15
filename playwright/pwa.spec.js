@@ -14,9 +14,15 @@ test('QA PWA installs an isolated service worker and serves the shell offline', 
     const active = ready.active;
     if (active && active.state !== 'activated') {
       await Promise.race([
-        new Promise((resolve) => active.addEventListener('statechange', () => {
-          if (active.state === 'activated') resolve();
-        })),
+        new Promise((resolve) => {
+          const onStateChange = () => {
+            if (active.state !== 'activated') return;
+            active.removeEventListener('statechange', onStateChange);
+            resolve();
+          };
+          active.addEventListener('statechange', onStateChange);
+          onStateChange();
+        }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Service worker activation timed out')), 10000)),
       ]);
     }
