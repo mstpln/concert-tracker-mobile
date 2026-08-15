@@ -7,27 +7,12 @@
   const feedback = root.LiveVaultInteractionFeedbackV129;
   if (!feedback) return;
 
-  function installStyles() {
-    if (typeof document === 'undefined' || document.getElementById('state-feedback-v129-runtime')) return;
-    const style = document.createElement('style');
-    style.id = 'state-feedback-v129-runtime';
-    style.textContent = `
-      @media (prefers-color-scheme: dark) {
-        #screen-myconcerts .row-card-mc.is-past { background: #1d2124; }
-      }
-    `;
-    document.head.appendChild(style);
-  }
+  let armedContext = null;
+  const pendingContexts = new Set();
 
-  function decoratePastRowsAndDivider() {
+  function decoratePastDivider() {
     const screen = document.getElementById('screen-myconcerts');
     if (!screen) return;
-
-    for (const row of screen.querySelectorAll('.row-card-mc')) {
-      const attended = row.querySelector('.attended-badge');
-      row.classList.toggle('is-past', Boolean(attended));
-    }
-
     for (const label of screen.querySelectorAll('.section-label')) {
       if (label.textContent?.trim().toLowerCase() !== 'past concerts') continue;
       label.className = 'myconcerts-past-divider';
@@ -40,7 +25,7 @@
     const original = root.renderMyConcertsScreen;
     const wrapped = function renderMyConcertsScreenV129(...args) {
       const result = original.apply(this, args);
-      decoratePastRowsAndDivider();
+      decoratePastDivider();
       return result;
     };
     Object.defineProperty(wrapped, '__stateFeedbackV129', { value: true });
@@ -48,9 +33,8 @@
   }
 
   function userActionKey(target) {
-    const actionable = target?.closest?.('button, a, [role="button"], select, input[type="submit"]');
-    if (!actionable) return null;
-    if (actionable.closest('#onboarding')) return null;
+    const actionable = target?.closest?.('button, a, [role="button"], input[type="submit"]');
+    if (!actionable || actionable.closest('#onboarding')) return null;
     const tab = actionable.closest('.tabitem')?.dataset?.tab;
     if (tab) return `tab:${tab}`;
     if (actionable.id) return `control:${actionable.id}`;
@@ -61,13 +45,77 @@
     return `action:${actionable.textContent?.trim() || actionable.getAttribute?.('aria-label') || actionable.tagName}`;
   }
 
+  function clearArmed(context) {
+    if (armedContext === context) armedContext = null;
+    if (context.armTimer) {
+      root.clearTimeout(context.armTimer);
+      context.armTimer = null;
+    }
+  }
+
+  function finishContext(context) {
+    if (context.inFlight > 0 || !context.handle) return;
+    if (context.settleTimer) root.clearTimeout(context.settleTimer);
+    context.settleTimer = root.setTimeout(() => {
+      context.settleTimer = null;
+      if (context.inFlight > 0) return;
+      pendingContexts.delete(context);
+      context.actionable?.removeAttribute?.('aria-busy');
+      feedback.end(context.handle);
+      context.handle = null;
+    }, 0);
+  }
+
+  function contextForFetch() {
+    if (armedContext) return armedContext;
+    if (pendingContexts.size === 1) return pendingContexts.values().next().value;
+    return null;
+  }
+
+  function installFetchTracking() {
+    if (typeof root.fetch !== 'function' || root.fetch.__stateFeedbackV129) return;
+    const originalFetch = root.fetch.bind(root);
+    const trackedFetch = function trackedFetchV129(...args) {
+      const context = contextForFetch();
+      if (!context) return originalFetch(...args);
+
+      clearArmed(context);
+      if (!context.handle) {
+        context.handle = feedback.begin({ key: context.key });
+        if (!context.handle) return originalFetch(...args);
+        context.actionable?.setAttribute?.('aria-busy', 'true');
+        pendingContexts.add(context);
+      }
+      if (context.settleTimer) {
+        root.clearTimeout(context.settleTimer);
+        context.settleTimer = null;
+      }
+      context.inFlight += 1;
+
+      let request;
+      try {
+        request = originalFetch(...args);
+      } catch (error) {
+        context.inFlight -= 1;
+        finishContext(context);
+        throw error;
+      }
+      return Promise.resolve(request).finally(() => {
+        context.inFlight -= 1;
+        finishContext(context);
+      });
+    };
+    Object.defineProperty(trackedFetch, '__stateFeedbackV129', { value: true });
+    root.fetch = trackedFetch;
+  }
+
   function installUserActionFeedback() {
     if (typeof document === 'undefined' || document.__stateFeedbackV129Installed) return;
     document.__stateFeedbackV129Installed = true;
-    const handles = new WeakMap();
 
     document.addEventListener('click', (event) => {
-      if (!document.getElementById('app') || document.getElementById('app').classList.contains('hidden')) return;
+      const app = document.getElementById('app');
+      if (!app || app.classList.contains('hidden')) return;
       const actionable = event.target?.closest?.('button, a, [role="button"]');
       if (!actionable || actionable.disabled || actionable.getAttribute('aria-disabled') === 'true') return;
       const key = userActionKey(actionable);
@@ -79,40 +127,24 @@
         return;
       }
 
-      const handle = feedback.begin({ key });
-      if (!handle) return;
-      handles.set(actionable, handle);
-      actionable.setAttribute('aria-busy', 'true');
-
-      // Synchronous navigation/rendering completes before the next paint, so
-      // it never crosses the controller's 140 ms display threshold. Genuine
-      // waits remain pending until the browser reaches an idle turn after the
-      // initiating event; overlapping actions are reference-counted by the
-      // controller rather than sharing a fragile boolean.
-      const finish = () => {
-        if (handles.get(actionable) !== handle) return;
-        handles.delete(actionable);
-        actionable.removeAttribute('aria-busy');
-        feedback.end(handle);
-      };
-      root.setTimeout(finish, 180);
+      if (armedContext) clearArmed(armedContext);
+      const context = { key, actionable, handle: null, inFlight: 0, settleTimer: null, armTimer: null };
+      armedContext = context;
+      context.armTimer = root.setTimeout(() => clearArmed(context), 500);
     }, true);
   }
 
   function install() {
-    installStyles();
     wrapMyConcertsRender();
+    installFetchTracking();
     installUserActionFeedback();
-    if (typeof root.renderMyConcertsScreen === 'function') decoratePastRowsAndDivider();
+    if (typeof root.renderMyConcertsScreen === 'function') decoratePastDivider();
   }
 
-  // uiPerformanceV127 installs after the v72 bootstrap and may replace the
-  // My Concerts renderer. Install after the same startup work so this wrapper
-  // remains outermost and decorates the final DOM.
   root.addEventListener?.('load', install, { once: true });
 
   root.LiveVaultStateFeedbackIntegrationV129 = Object.freeze({
-    decoratePastRowsAndDivider,
+    decoratePastDivider,
     userActionKey,
     install,
   });
