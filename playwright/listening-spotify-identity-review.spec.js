@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('v94 Spotify identity review is local, deterministic, complete, and mobile-safe', async ({ page }) => {
+test('v94 Spotify identity review remains local and mobile-safe in Settings v123', async ({ page }) => {
   const browserErrors = [];
   const providerRequests = [];
   page.on('pageerror', (error) => browserErrors.push(error.message));
@@ -45,10 +45,7 @@ test('v94 Spotify identity review is local, deterministic, complete, and mobile-
     window.LiveVaultSpotifyHistory = {
       loadEvents: async () => {
         window.__rawHistoryReads += 1;
-        return [
-          ...listeningEvents,
-          { stableListenId: 'qa-excluded-duplicate', bandId: 'qa-candidate', playedAt: new Date(Date.now() - 3600000).toISOString(), source: 'spotify', spotifyTrackId: 'qa-track-1' },
-        ];
+        return [...listeningEvents];
       },
     };
   });
@@ -56,30 +53,21 @@ test('v94 Spotify identity review is local, deterministic, complete, and mobile-
   await page.getByTestId('settings-button').click();
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
 
-  const section = page.locator('#spotify-identity-review-section');
-  await expect(section).toBeVisible();
-  await expect(section).toContainText('2 unresolved');
-  await expect(section).toContainText('1 ready to review');
-  await expect(section).toContainText('1 need candidate acquisition');
-  await expect(section).toContainText('Synthetic Artist Without Candidate');
-  await expect(section).toContainText('Candidate acquisition required');
-  const candidateRow = section.locator('[data-spotify-review-band="qa-candidate"]');
-  await expect(candidateRow.locator('.spotify-review-impact')).toContainText('1 listens affected');
-  await expect(candidateRow.locator('.spotify-review-evidence')).toContainText('1 distinct Spotify track IDs');
-  await expect(candidateRow.locator('.spotify-review-blocking')).toContainText('Blocks trusted Spotify linking and enrichment');
-  await expect(section.getByRole('button', { name: 'Use this artist' })).toHaveCount(1);
-  await expect(section.getByRole('button', { name: 'None of these' })).toHaveCount(1);
-  await expect(section.getByRole('button', { name: 'Decide later' })).toHaveCount(2);
-  await expect(section.getByRole('link', { name: 'Open Spotify' })).toHaveAttribute('href', 'https://open.spotify.com/artist/qaSpotifyCandidate123');
+  const screen = page.locator('#screen-settings');
+  const item = screen.locator('[data-v123-artist-review]').filter({ hasText: 'A Very Long Synthetic Candidate Artist Name That Must Wrap Safely' });
+  await expect(item).toBeVisible();
+  await expect(item).toContainText('Spotify needs you to confirm the artist match.');
+  await expect(item.getByRole('button', { name: 'Use this artist' })).toHaveCount(1);
+  await expect(item.getByRole('button', { name: 'None of these' })).toHaveCount(1);
+  await expect(item.getByRole('button', { name: 'Later' })).toHaveCount(1);
+  await expect(screen).not.toContainText('Synthetic Artist Without Candidate');
 
-  await candidateRow.getByRole('button', { name: 'Decide later' }).click();
-  await expect(section).toContainText('1 deferred this session');
-  await expect(section.locator('[data-spotify-review-band="qa-candidate"]')).toHaveCount(0);
-  await expect(section).toContainText('deferred for this session only');
+  await item.getByRole('button', { name: 'Later' }).click();
+  await expect(item).toBeHidden();
 
   const state = await page.evaluate(() => ({ rawHistoryReads: window.__rawHistoryReads }));
   expect(state.rawHistoryReads).toBe(0);
-  const overflow = await section.evaluate((node) => node.scrollWidth > node.clientWidth + 1);
+  const overflow = await screen.evaluate((node) => node.scrollWidth > node.clientWidth + 1);
   expect(overflow).toBe(false);
   expect(providerRequests).toEqual([]);
   expect(browserErrors).toEqual([]);
