@@ -45,26 +45,33 @@
       sourceVisits += 1;
       const bandId = listen?.localBandId == null ? null : String(listen.localBandId);
       if (!bandId || !tracked.has(bandId)) continue;
-      if (typeof statsApi?.isValidListen === 'function' && !statsApi.isValidListen(listen)) continue;
       const time = typeof statsApi?.listenTimeMs === 'function' ? statsApi.listenTimeMs(listen) : new Date(listen?.listenedAt).getTime();
       if (!Number.isFinite(time)) continue;
-      const durationMs = typeof statsApi?.validDurationMs === 'function' ? statsApi.validDurationMs(listen) : Math.max(0, Number(listen?.listenedDurationMs) || 0);
+      const count = typeof statsApi?.listenCount === 'function'
+        ? Number(statsApi.listenCount([listen])) || 0
+        : (typeof statsApi?.isValidListen !== 'function' || statsApi.isValidListen(listen) ? 1 : 0);
+      const durationMs = typeof statsApi?.totalDurationMs === 'function'
+        ? Number(statsApi.totalDurationMs([listen])) || 0
+        : (typeof statsApi?.validDurationMs === 'function' ? statsApi.validDurationMs(listen) : Math.max(0, Number(listen?.listenedDurationMs) || 0));
+      if (count <= 0 && durationMs <= 0) continue;
       let items = byBand.get(bandId);
       if (!items) {
         items = [];
         byBand.set(bandId, items);
       }
-      items.push({ time, durationMs });
+      items.push({ time, durationMs, count });
     }
 
     for (const [bandId, items] of byBand) {
       items.sort((a, b) => a.time - b.time);
       let durationTotal = 0;
-      items.forEach((item, index) => {
+      let countTotal = 0;
+      for (const item of items) {
         durationTotal += item.durationMs;
+        countTotal += item.count;
         item.prefixDurationMs = durationTotal;
-        item.prefixCount = index + 1;
-      });
+        item.prefixCount = countTotal;
+      }
       byBand.set(bandId, items);
     }
 
