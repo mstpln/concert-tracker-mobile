@@ -2,17 +2,19 @@
 
 // v126 responsiveness layer.
 //
-// The My Bands renderer asks dlBandActivity once for every stored band. The
-// legacy helper obtains each band's latest show by scanning the complete
-// concerts array, so one render grows as bands x concerts. With the larger
-// production catalogue that repeated synchronous work became visible as tap
-// latency.
+// My Bands was doing two kinds of synchronous work on every visit: rebuilding
+// hundreds of row elements and asking dlBandActivity once per stored band,
+// where the legacy helper rescans the complete concerts array each time.
+// Those costs became visible as the real collection grew.
 //
-// Keep the existing renderer and data helpers authoritative. For the duration
-// of one My Bands render only, build a fresh latest-concert index and let
-// dlBandActivity read from it. The index is discarded immediately after the
-// render, so there is no cross-render cache, stale-data risk, new stored state,
-// or invalidation contract to maintain.
+// This layer is intentionally narrow. It optimizes only My Bands, whose render
+// dependencies are explicit and small. A compact render key is derived from
+// every field that can affect the visible list plus the latest concert date
+// for each band. If that key is unchanged, the already-rendered DOM (and its
+// listeners) is reused. Otherwise the existing renderer remains authoritative.
+// During a real render a fresh latest-concert index also replaces the previous
+// bands x concerts scan pattern with one concerts pass. No production data,
+// schema, provider state, or browser-local listening state is cached here.
 (function installUiPerformanceV126(root) {
   if (root.__LIVEVAULT_UI_PERFORMANCE_V126__) return;
   root.__LIVEVAULT_UI_PERFORMANCE_V126__ = true;
@@ -26,6 +28,8 @@
     || typeof originalBandActivity !== 'function'
     || typeof originalEffectiveLastShowDate !== 'function'
   ) return;
+
+  let lastRenderKey = null;
 
   function parseStoredDate(value) {
     if (!value) return null;
@@ -54,12 +58,45 @@
     return concertDate > stored ? concertDate : stored;
   }
 
-  root.renderMyBandsScreen = function renderMyBandsScreenV126(...args) {
-    // Build from the live in-memory array every render. This intentionally
-    // trades one O(concerts) pass for the previous O(bands * concerts) scans.
-    const latestByBand = buildLatestConcertByBand(concerts);
-    const priorBandActivity = root.dlBandActivity;
+  function buildMyBandsRenderKey(bandList, latestByBand, viewState) {
+    // Do not stringify whole band records: production records contain large
+    // research/provider histories that never appear on this root list. Only
+    // include fields read by renderMyBandsScreen and its activity/genre filters.
+    const bandParts = (bandList || []).map((band) => [
+      band?.id || '',
+      band?.name || '',
+      band?.genre || '',
+      band?.muted === true ? 1 : 0,
+      band?._enriching === true ? 1 : 0,
+      band?.lastKnownConcertDate || '',
+      latestByBand.get(band?.id)?.getTime() || 0,
+    ]);
+    return JSON.stringify([
+      viewState.dateKey,
+      viewState.hideInactiveBands === true ? 1 : 0,
+      Number(viewState.inactivityYears) || 0,
+      viewState.selectedGenre || 'all',
+      viewState.mutedOnly === true ? 1 : 0,
+      bandParts,
+    ]);
+  }
 
+  root.renderMyBandsScreen = function renderMyBandsScreenV126(...args) {
+    // Rebuild this small index from live data on every invocation. That makes
+    // in-place concert edits observable without any invalidation protocol.
+    const latestByBand = buildLatestConcertByBand(concerts);
+    const renderKey = buildMyBandsRenderKey(bands, latestByBand, {
+      dateKey: dlCurrentDate().toDateString(),
+      hideInactiveBands,
+      inactivityYears,
+      selectedGenre,
+      mutedOnly,
+    });
+    const container = el('screen-mybands');
+
+    if (renderKey === lastRenderKey && container?.childElementCount > 0) return;
+
+    const priorBandActivity = root.dlBandActivity;
     root.dlBandActivity = function dlBandActivityV126(band, _concertList, thresholdYears, today = dlCurrentDate()) {
       const lastDate = indexedEffectiveLastShowDate(band, latestByBand);
       if (!lastDate) return { status: 'unknown', lastDate: null, lastYear: null };
@@ -78,7 +115,9 @@
     };
 
     try {
-      return originalRenderMyBandsScreen.apply(this, args);
+      const result = originalRenderMyBandsScreen.apply(this, args);
+      lastRenderKey = renderKey;
+      return result;
     } finally {
       root.dlBandActivity = priorBandActivity;
     }
@@ -87,5 +126,6 @@
   root.LiveVaultUiPerformanceV126 = Object.freeze({
     buildLatestConcertByBand,
     indexedEffectiveLastShowDate,
+    buildMyBandsRenderKey,
   });
 })(globalThis);
