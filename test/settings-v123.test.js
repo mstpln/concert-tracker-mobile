@@ -72,7 +72,7 @@ test('concert coverage treats only named venues and past attended setlists as co
   ]);
 });
 
-test('listening coverage groups unique followed-band songs and albums instead of raw listen count', () => {
+test('listening coverage stays scoped to followed bands and unique song/album evidence', () => {
   const bands = [{ id:'band-a' }, { id:'band-b' }];
   const events = [
     { stableListenId:'1', localBandId:'band-a', artistCreditName:'Band A', recordingTitle:'Song One', releaseTitle:'Album One', musicbrainzRecordingId:'mbid-1', albumArtworkUrl:'https://example.invalid/one.jpg' },
@@ -86,4 +86,40 @@ test('listening coverage groups unique followed-band songs and albums instead of
     ['Songs identified',1,2],
     ['Album artwork',1,2],
   ]);
+});
+
+test('review item keys are stable enough for session-only defer without source mutation', () => {
+  assert.equal(settings.reviewItemKey({ kind:'musicbrainz', band:{ id:'band-a', name:'Band A' } }), 'artist:musicbrainz:band-a');
+  assert.equal(settings.reviewItemKey({ kind:'spotify', row:{ bandId:'band-a', bandName:'Band A' } }), 'artist:spotify:band-a');
+  assert.equal(settings.reviewItemKey({ candidatePairs:[{ pairKey:'b|c' }, { pairKey:'a|b' }] }), 'listening:a|b,b|c');
+});
+
+test('listening maintenance presentation preserves active, paused, preparing, stale and error states', () => {
+  const paused = settings.activationPresentation(
+    { status:'gau5_preparing' },
+    { status:'paused', phase:'candidates', stagedEventCount:12, candidateCount:3 },
+    null
+  );
+  assert.match(paused.text, /Paused safely/);
+  assert.equal(paused.prepareLabel, 'Resume preparation');
+  assert.equal(paused.showPrepare, true);
+
+  const running = settings.activationPresentation(
+    { status:'gau5_preparing' },
+    { status:'running', phase:'verification', verifiedCanonicalCount:20 },
+    null
+  );
+  assert.match(running.text, /Verifying prepared totals/);
+  assert.equal(running.showPrepare, false);
+
+  const interrupted = settings.activationPresentation({ status:'error', error:'Preparation was interrupted.' }, null, null);
+  assert.match(interrupted.text, /Preparation stopped safely/);
+  assert.equal(interrupted.prepareLabel, 'Prepare again');
+
+  const stale = settings.activationPresentation({ status:'stale' }, null, null);
+  assert.match(stale.text, /Listening history changed/);
+  assert.equal(stale.showActivate, false);
+
+  const active = settings.activationPresentation({ status:'active' }, null, null);
+  assert.equal(active.showDeactivate, true);
 });
