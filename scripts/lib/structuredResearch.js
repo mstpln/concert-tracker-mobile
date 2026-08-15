@@ -5,7 +5,7 @@
 // payloads.  Keeping this independent of the live clients makes the safety
 // rules inexpensive to test with fixtures.
 const config = require('./config');
-const { normalize } = require('./musicbrainz');
+const { normalize, reviewedProviderDecisions } = require('./musicbrainz');
 const { daysAgo } = require('./util');
 const { canonicalReleaseId } = require('./releaseLifecycle');
 
@@ -155,7 +155,10 @@ function mergeStructuredBandUpdates(latestBands, updates) {
     const incomingMb = update.musicbrainz || {};
     // A newer human MB choice is authoritative. Provider identities and
     // feature state are still additive, but automation may never replace it.
-    const musicbrainz = ['manual_confirmed', 'manual_rejected'].includes(currentMb.status) ? { ...incomingMb, ...currentMb } : { ...currentMb, ...incomingMb };
+    const reviewedProviders = reviewedProviderDecisions(currentMb);
+    const musicbrainz = ['manual_confirmed', 'manual_rejected'].includes(currentMb.status)
+      ? { ...incomingMb, ...currentMb }
+      : { ...currentMb, ...incomingMb, ...reviewedProviders };
     const currentStructured = band.structuredResearch || {};
     const incomingStructured = update.structuredResearch || {};
     const currentReleases = currentStructured.releases || {};

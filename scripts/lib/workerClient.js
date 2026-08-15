@@ -36,6 +36,9 @@ function createWorkerClient({ endpointEnv = config.WORKER.endpointEnv, tokenEnv 
   const documentState = new Map();
   const endpoint = () => getEnvOrThrow(endpointEnv, env).replace(/\/+$/, '');
   const token = () => getEnvOrThrow(tokenEnv, env);
+  const protectReviewedBandDecisions = (filename, current, intended) => filename === 'bands.json'
+    ? conflictMerge.preserveReviewedDecisions(current, intended)
+    : intended;
 
   async function readJson(filename, fallback) {
     const res = await fetchImpl(`${endpoint()}/${filename}`, { headers: { Authorization: `Bearer ${token()}` } });
@@ -63,13 +66,19 @@ function createWorkerClient({ endpointEnv = config.WORKER.endpointEnv, tokenEnv 
       await readJson(filename, undefined);
       state = documentState.get(filename);
     }
-    let intended = clone(data);
+    // bands.json may already contain a user-reviewed nested provider decision
+    // made after automation started. Preserve those whole objects before the
+    // first PUT so a stale generated payload cannot erase them without a 412.
+    let intended = protectReviewedBandDecisions(filename, state?.value, clone(data));
     let res = await putJson(filename, intended, state);
     if (res.status === 412) {
       const base = clone(state?.value);
       const latest = await readJson(filename, undefined);
       const latestState = documentState.get(filename);
       intended = conflictMerge.merge(base, intended, latest);
+      // The user decision may have arrived between the previous GET and PUT.
+      // Re-apply the band-specific ownership rule after the three-way merge.
+      intended = protectReviewedBandDecisions(filename, latest, intended);
       res = await putJson(filename, intended, latestState);
     }
     if (!res.ok) throw new Error(`PUT ${filename} failed: ${res.status} ${await res.text()}`);

@@ -157,12 +157,22 @@ async function fetchReleaseGroups(mbid, usage, { offset = 0, limit = 100, fetchI
   return { kind: 'ok', offset, count: result.data['release-group-count'] || 0, releaseGroups: result.data['release-groups'] };
 }
 
+function reviewedProviderDecisions(prior) {
+  const preserved = {};
+  for (const [key, value] of Object.entries(prior || {})) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    if (['manual_confirmed', 'manual_rejected'].includes(value.status)) preserved[key] = value;
+  }
+  return preserved;
+}
+
 function identityResult(band, result, now = new Date().toISOString()) {
   // A skipped lookup made no MusicBrainz request and carries no match result.
   if (result.kind === 'skipped') return null;
   const prior = band.musicbrainz || {};
   if (['manual_confirmed', 'auto_confirmed'].includes(prior.status)) return null;
   if (result.kind === 'fatal') return { ...prior, status: 'error', lastAttemptedAt: now, source: 'MusicBrainz' };
+  const reviewedProviders = reviewedProviderDecisions(prior);
   const rejectedCandidateMbids = [...new Set(prior.rejectedCandidateMbids || [])];
   if (result.automatic) return {
     mbid: result.automatic.mbid, artistName: result.automatic.artistName, area: result.automatic.area || null,
@@ -170,14 +180,16 @@ function identityResult(band, result, now = new Date().toISOString()) {
     disambiguation: result.automatic.disambiguation || null, confidence: result.automatic.score,
     status: 'auto_confirmed', matchMethod: 'automatic', source: 'MusicBrainz', matchedAt: now,
     reviewedAt: prior.reviewedAt || null, lastAttemptedAt: now, rejectedCandidateMbids, reviewCandidates: [],
+    ...reviewedProviders,
   };
   const unresolved = (status, reviewCandidates) => ({
     mbid: null, artistName: null, area: null, country: null, artistType: null, disambiguation: null,
     confidence: null, status, matchMethod: null, source: prior.source || 'MusicBrainz', matchedAt: null,
     reviewedAt: prior.reviewedAt || null, lastAttemptedAt: now, rejectedCandidateMbids, reviewCandidates,
+    ...reviewedProviders,
   });
   if (!result.candidates?.length) return unresolved('no_match', []);
   return unresolved('needs_review', result.candidates);
 }
 
-module.exports = { normalize, escapeLucenePhrase, countryFrom, candidateFrom, searchArtist, identityResult, spotifyArtistIdFromRelations, fetchArtistMetadata, fetchReleaseGroups };
+module.exports = { normalize, escapeLucenePhrase, countryFrom, candidateFrom, searchArtist, identityResult, reviewedProviderDecisions, spotifyArtistIdFromRelations, fetchArtistMetadata, fetchReleaseGroups };

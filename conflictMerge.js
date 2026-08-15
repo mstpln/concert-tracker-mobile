@@ -75,6 +75,35 @@
     return output;
   }
 
+  function isReviewedDecision(value) {
+    return isPlainObject(value) && ['manual_confirmed', 'manual_rejected'].includes(value.status);
+  }
+
+  function preserveReviewedDecisions(current, intended, path = []) {
+    const isDirectMusicbrainzProvider = path.length >= 2 && path[path.length - 2] === 'musicbrainz';
+    // A newer reviewed provider decision already present in bands.json owns
+    // the whole provider record, even if a stale automation payload also
+    // contains an older reviewed decision. Keep top-level reviewed objects
+    // recursively mergeable so additive MusicBrainz metadata can still land.
+    if (isReviewedDecision(current) && (!isReviewedDecision(intended) || isDirectMusicbrainzProvider)) return clone(current);
+    if (Array.isArray(current) && Array.isArray(intended) && isStableIdArray(current, intended)) {
+      const currentById = new Map(current.map((item) => [String(item.id), item]));
+      return intended.map((item) => {
+        const prior = currentById.get(String(item.id));
+        return prior === undefined ? clone(item) : preserveReviewedDecisions(prior, item, path);
+      });
+    }
+    if (isPlainObject(current) && isPlainObject(intended)) {
+      const output = clone(intended) || {};
+      for (const [key, value] of Object.entries(current)) {
+        if (isReviewedDecision(value) && !isReviewedDecision(intended[key])) output[key] = clone(value);
+        else if (Object.prototype.hasOwnProperty.call(intended, key)) output[key] = preserveReviewedDecisions(value, intended[key], [...path, key]);
+      }
+      return output;
+    }
+    return clone(intended);
+  }
+
   function mergeValue(base, intended, latest) {
     if (equal(intended, base)) return clone(latest);
     if (equal(latest, base)) return clone(intended);
@@ -89,5 +118,5 @@
     return clone(intended);
   }
 
-  return { merge: mergeValue, equal };
+  return { merge: mergeValue, equal, preserveReviewedDecisions };
 });
