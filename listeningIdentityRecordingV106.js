@@ -160,6 +160,12 @@
   function install() {
     if (!root?.document || root.__bandmarkrIdentityRecordingOnlyV106Installed) return false;
     root.__bandmarkrIdentityRecordingOnlyV106Installed = true;
+    // v106 made user-initiated identity completion recording-only. Settings v123
+    // owns the presentation now, so preserve that provider boundary at the API
+    // entry point instead of relying on the retired DOM takeover.
+    if (root.BandmarkrListeningIdentityCompletionV104) {
+      root.BandmarkrListeningIdentityCompletionV104.complete = completeRecordingIdentities;
+    }
     root.document.addEventListener('DOMContentLoaded', takeOverSettingsUi, { once: true });
     const observer = new root.MutationObserver(takeOverSettingsUi);
     observer.observe(root.document.documentElement, { subtree: true, childList: true });
