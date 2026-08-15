@@ -27,7 +27,7 @@ test('Settings v123 uses one consistent Automation presentation', async ({ page 
   await expectNoHorizontalOverflow(page);
 });
 
-test('Review summary stays neutral and horizontal on narrow mobile widths', async ({ page }) => {
+test('Review summary stays neutral, truthful and horizontal on narrow mobile widths', async ({ page }) => {
   await page.setViewportSize({ width:360, height:800 });
   await openSettings(page);
   const screen = page.locator('#screen-settings');
@@ -36,6 +36,9 @@ test('Review summary stays neutral and horizontal on narrow mobile widths', asyn
   await expect(screen.getByText('REVIEW SUMMARY', { exact:true })).toBeVisible();
   const pills = screen.locator('.settings-v123-summary-grid > span');
   await expect(pills).toHaveCount(3);
+  await expect(pills.nth(2)).toContainText('Total items');
+  const pillValues = await pills.locator('b').allTextContents();
+  expect(Number(pillValues[2])).toBe(Number(pillValues[0]) + Number(pillValues[1]));
   const boxes = await pills.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().toJSON()));
   expect(Math.max(...boxes.map((box) => box.y)) - Math.min(...boxes.map((box) => box.y))).toBeLessThan(2);
   expect(boxes.every((box) => box.width > 70)).toBe(true);
