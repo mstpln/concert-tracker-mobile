@@ -6,16 +6,12 @@
   if (root) root.LiveVaultUiPerformanceV127 = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   function getBands() {
-    try {
-      if (typeof bands !== 'undefined') return bands;
-    } catch (_) {}
+    try { if (typeof bands !== 'undefined') return bands; } catch (_) {}
     return root.bands;
   }
 
   function getListeningEvents() {
-    try {
-      if (typeof listeningEvents !== 'undefined') return listeningEvents;
-    } catch (_) {}
+    try { if (typeof listeningEvents !== 'undefined') return listeningEvents; } catch (_) {}
     return root.listeningEvents;
   }
 
@@ -50,13 +46,9 @@
       const bandId = listen?.localBandId == null ? null : String(listen.localBandId);
       if (!bandId || !tracked.has(bandId)) continue;
       if (typeof statsApi?.isValidListen === 'function' && !statsApi.isValidListen(listen)) continue;
-      const time = typeof statsApi?.listenTimeMs === 'function'
-        ? statsApi.listenTimeMs(listen)
-        : new Date(listen?.listenedAt).getTime();
+      const time = typeof statsApi?.listenTimeMs === 'function' ? statsApi.listenTimeMs(listen) : new Date(listen?.listenedAt).getTime();
       if (!Number.isFinite(time)) continue;
-      const durationMs = typeof statsApi?.validDurationMs === 'function'
-        ? statsApi.validDurationMs(listen)
-        : Math.max(0, Number(listen?.listenedDurationMs) || 0);
+      const durationMs = typeof statsApi?.validDurationMs === 'function' ? statsApi.validDurationMs(listen) : Math.max(0, Number(listen?.listenedDurationMs) || 0);
       let items = byBand.get(bandId);
       if (!items) {
         items = [];
@@ -115,9 +107,7 @@
   function withRenderIndex(render, thisArg, args) {
     const currentEvents = getListeningEvents();
     const currentBands = getBands();
-    if (activeIndex || !Array.isArray(currentEvents) || !Array.isArray(currentBands) || !root.ListeningStats) {
-      return render.apply(thisArg, args);
-    }
+    if (activeIndex || !Array.isArray(currentEvents) || !Array.isArray(currentBands) || !root.ListeningStats) return render.apply(thisArg, args);
     activeIndex = buildListeningIndex(currentEvents, currentBands, root.ListeningStats);
     activeNow = typeof root.listeningNow === 'function' ? root.listeningNow() : new Date();
     try {
@@ -179,7 +169,7 @@
     return true;
   }
 
-  if (typeof document !== 'undefined') install();
+  if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', install, { once: true });
 
   return Object.freeze({ buildListeningIndex, aggregateWindow, lowerBound, install });
 });
