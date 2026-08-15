@@ -1,14 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('v94 Spotify identity review remains local and mobile-safe in Settings v123', async ({ page }) => {
-  const browserErrors = [];
-  const providerRequests = [];
-  page.on('pageerror', (error) => browserErrors.push(error.message));
-  page.on('request', (request) => {
-    if (/api\.spotify\.com|accounts\.spotify\.com/.test(request.url())) providerRequests.push(request.url());
-  });
-  await page.goto('/');
-
+async function seedSpotifyReview(page) {
   await page.evaluate(() => {
     bands = [
       {
@@ -49,6 +41,17 @@ test('v94 Spotify identity review remains local and mobile-safe in Settings v123
       },
     };
   });
+}
+
+test('v94 Spotify identity review remains local, session-deferred, and mobile-safe in Settings v123', async ({ page }) => {
+  const browserErrors = [];
+  const providerRequests = [];
+  page.on('pageerror', (error) => browserErrors.push(error.message));
+  page.on('request', (request) => {
+    if (/api\.spotify\.com|accounts\.spotify\.com/.test(request.url())) providerRequests.push(request.url());
+  });
+  await page.goto('/');
+  await seedSpotifyReview(page);
 
   await page.getByTestId('settings-button').click();
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
@@ -63,7 +66,12 @@ test('v94 Spotify identity review remains local and mobile-safe in Settings v123
   await expect(screen).not.toContainText('Synthetic Artist Without Candidate');
 
   await item.getByRole('button', { name: 'Later' }).click();
-  await expect(item).toBeHidden();
+  await expect(item).toHaveCount(0);
+  await expect(screen).toContainText('Deferred for this session.');
+
+  await screen.getByRole('tab', { name: 'Automation', exact: true }).click();
+  await screen.getByRole('tab', { name: 'Review', exact: true }).click();
+  await expect(item).toHaveCount(0);
 
   const state = await page.evaluate(() => ({ rawHistoryReads: window.__rawHistoryReads }));
   expect(state.rawHistoryReads).toBe(0);
@@ -71,4 +79,10 @@ test('v94 Spotify identity review remains local and mobile-safe in Settings v123
   expect(overflow).toBe(false);
   expect(providerRequests).toEqual([]);
   expect(browserErrors).toEqual([]);
+
+  await page.reload();
+  await seedSpotifyReview(page);
+  await page.getByTestId('settings-button').click();
+  await page.getByRole('tab', { name: 'Review', exact: true }).click();
+  await expect(page.locator('#screen-settings').locator('[data-v123-artist-review]').filter({ hasText: 'A Very Long Synthetic Candidate Artist Name That Must Wrap Safely' })).toBeVisible();
 });
