@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v125",
-  "serviceWorkerCacheVersion": "v125",
+  "appVersion": "v126",
+  "serviceWorkerCacheVersion": "v126",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 22,
@@ -38,6 +38,7 @@
     "spotifyListeningAlbumArtworkV113.js",
     "spotifyListeningMetadataV101.js",
     "trustedListeningV99.js",
+    "uiPerformanceV126.js",
     "listeningReviewRollout.js",
     "listeningReviewReconcile.js",
     "listeningCanonicalActivation.js",
