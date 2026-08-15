@@ -47,7 +47,7 @@ test('v93 recovers a stalled preparation after a lock-style resume without reloa
   expect(result.checkpoint.processedEvents).toBe(1500);
 
   const card = await openListeningMaintenance(page);
-  await expect(card).toContainText('Listening statistics preparation stopped safely');
+  await expect(card).toContainText('Update reviewed listening totals when needed.');
   await expect(card.getByRole('button', { name: 'Update listening statistics' })).toBeVisible();
 });
 
