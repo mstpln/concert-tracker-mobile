@@ -102,11 +102,6 @@
   function mergeValue(base, intended, latest) {
     if (equal(intended, base)) return clone(latest);
     if (equal(latest, base)) return clone(intended);
-    // On a true concurrent write, a reviewed decision is user-owned. The
-    // remote/latest reviewed object wins over stale automation; otherwise a
-    // reviewed intended object wins over non-reviewed remote automation.
-    if (isReviewedDecision(latest)) return clone(latest);
-    if (isReviewedDecision(intended)) return clone(intended);
 
     if (base === undefined && Array.isArray(intended) && Array.isArray(latest)) base = [];
     if (base === undefined && isPlainObject(intended) && isPlainObject(latest)) base = {};
