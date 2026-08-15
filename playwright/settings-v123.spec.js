@@ -57,9 +57,8 @@ test('Review summary stays neutral, truthful and horizontal on narrow mobile wid
   await expect(screen.getByText('REVIEW SUMMARY', { exact:true })).toBeVisible();
   const pills = screen.locator('.settings-v123-summary-grid > span');
   await expect(pills).toHaveCount(3);
-  await expect(pills.nth(2)).toContainText('Total items');
-  const pillValues = await pills.locator('b').allTextContents();
-  expect(Number(pillValues[2])).toBe(Number(pillValues[0]) + Number(pillValues[1]));
+  await expect(pills.nth(2)).toContainText('Deferred');
+  expect(Number((await pills.nth(2).locator('b').textContent()) || 0)).toBe(0);
   const boxes = await pills.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().toJSON()));
   expect(Math.max(...boxes.map((box) => box.y)) - Math.min(...boxes.map((box) => box.y))).toBeLessThan(2);
   expect(boxes.every((box) => box.width > 70)).toBe(true);
