@@ -63,7 +63,11 @@ function createWorkerClient({ endpointEnv = config.WORKER.endpointEnv, tokenEnv 
       await readJson(filename, undefined);
       state = documentState.get(filename);
     }
-    let intended = clone(data);
+    // The state cached by the latest GET may already contain a user-reviewed
+    // nested provider decision made after automation started. Preserve those
+    // whole objects before the first PUT so a stale generated payload cannot
+    // erase them even when no ETag conflict occurs.
+    let intended = conflictMerge.preserveReviewedDecisions(state?.value, clone(data));
     let res = await putJson(filename, intended, state);
     if (res.status === 412) {
       const base = clone(state?.value);
