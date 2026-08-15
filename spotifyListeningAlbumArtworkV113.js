@@ -13,6 +13,13 @@
     .replace(/\s+/g, ' ')
     .toLocaleLowerCase('en');
 
+  function bandNames(band) {
+    const aliases = Array.isArray(band?.listeningAliases)
+      ? band.listeningAliases.filter((value) => typeof value === 'string')
+      : [];
+    return [band?.name, ...aliases].map(normalizeText).filter(Boolean);
+  }
+
   function currentBands() {
     try { if (typeof bands !== 'undefined' && Array.isArray(bands)) return bands; } catch (_) { /* global lexical may be absent */ }
     return Array.isArray(root.bands) ? root.bands : [];
@@ -37,11 +44,12 @@
     const owners = new Map();
     for (const band of bandList || []) {
       const id = safeString(band?.id);
-      const name = normalizeText(band?.name);
-      if (!id || !name) continue;
-      const ids = owners.get(name) || new Set();
-      ids.add(id);
-      owners.set(name, ids);
+      if (!id) continue;
+      for (const name of bandNames(band)) {
+        const ids = owners.get(name) || new Set();
+        ids.add(id);
+        owners.set(name, ids);
+      }
     }
     const unique = new Map();
     for (const [name, ids] of owners) {
@@ -207,6 +215,7 @@
 
   return {
     normalizeText,
+    bandNames,
     currentBands,
     currentEvents,
     uniqueBandNameMap,
