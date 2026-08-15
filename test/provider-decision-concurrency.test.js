@@ -80,7 +80,7 @@ test('pre-write protection preserves whole reviewed provider objects in stable-i
   assert.deepEqual(merged[0].musicbrainz.metadata, { artistName: 'Dollface' });
 });
 
-test('normal worker write cannot erase a manual provider decision made after automation starts', async () => {
+test('normal bands write cannot erase a manual provider decision made after automation starts', async () => {
   const latest = [{ id: 'dollface', musicbrainz: { status: 'pending', spotify: manualSpotify, ticketmaster: manualTicketmaster } }];
   const stale = [{ id: 'dollface', musicbrainz: { status: 'auto_confirmed', spotify: { id: 'auto', status: 'confirmed' }, ticketmaster: { id: 'tm-auto', status: 'confirmed' } } }];
   const requests = [];
@@ -96,6 +96,19 @@ test('normal worker write cannot erase a manual provider decision made after aut
   await client.readJson('bands.json', []);
   await client.writeJson('bands.json', stale);
   assert.equal(requests.length, 2);
+});
+
+test('reviewed-decision pre-write protection is not applied to unrelated documents', async () => {
+  const current = [{ id: 'news-1', state: manualSpotify }];
+  const intended = [{ id: 'news-1', state: { id: 'generated', status: 'confirmed' } }];
+  const fetchImpl = async (_url, options = {}) => {
+    if (!options.method) return response(200, current, 'v1');
+    assert.deepEqual(JSON.parse(options.body), intended);
+    return response(200, undefined, 'v2');
+  };
+  const client = createWorkerClient({ env: fakeWorkerEnv, fetchImpl });
+  await client.readJson('news.json', []);
+  await client.writeJson('news.json', intended);
 });
 
 test('ETag retry keeps a reviewed provider decision made between GET and PUT', async () => {
