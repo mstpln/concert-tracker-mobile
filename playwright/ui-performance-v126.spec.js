@@ -32,22 +32,22 @@ test('v126 reuses an unchanged large My Bands DOM and rerenders visible changes'
     renderMyBandsScreen();
     const firstRowCount = screen.querySelectorAll('.row-card[data-band-id]').length;
 
-    let mutations = 0;
-    const observer = new MutationObserver((records) => { mutations += records.length; });
+    const observer = new MutationObserver(() => {});
     observer.observe(screen, { childList: true, subtree: true });
     renderMyBandsScreen();
+    const unchangedMutations = observer.takeRecords().length;
     observer.disconnect();
 
     bands[0].name = 'Performance Band Renamed';
-    let changedMutations = 0;
-    const changedObserver = new MutationObserver((records) => { changedMutations += records.length; });
+    const changedObserver = new MutationObserver(() => {});
     changedObserver.observe(screen, { childList: true, subtree: true });
     renderMyBandsScreen();
+    const changedMutations = changedObserver.takeRecords().length;
     changedObserver.disconnect();
 
     return {
       firstRowCount,
-      unchangedMutations: mutations,
+      unchangedMutations,
       changedMutations,
       renamedVisible: screen.textContent.includes('Performance Band Renamed'),
     };
