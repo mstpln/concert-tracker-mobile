@@ -20,6 +20,12 @@ function normalizeText(value) {
     .toLocaleLowerCase('en');
 }
 
+function bandNames(band) {
+  return [band?.name, ...(Array.isArray(band?.listeningAliases) ? band.listeningAliases : [])]
+    .map(normalizeText)
+    .filter(Boolean);
+}
+
 function listenTime(value) {
   const text = safeString(value);
   if (!text) return 0;
@@ -40,13 +46,13 @@ function bandOwnershipIndex(bands = []) {
   const owners = new Map();
   for (const band of bands || []) {
     const id = safeString(band?.id);
-    const name = normalizeText(band?.name);
     if (!id) continue;
     byId.add(id);
-    if (!name) continue;
-    const set = owners.get(name) || new Set();
-    set.add(id);
-    owners.set(name, set);
+    for (const name of bandNames(band)) {
+      const set = owners.get(name) || new Set();
+      set.add(id);
+      owners.set(name, set);
+    }
   }
   const byUniqueName = new Map();
   for (const [name, ids] of owners) {
@@ -284,6 +290,7 @@ function planAlbumArtwork({ events = [], bands = [], metadata = {} } = {}) {
 module.exports = {
   validSpotifyId,
   normalizeText,
+  bandNames,
   listenTime,
   albumGroupKey,
   bandOwnershipIndex,
