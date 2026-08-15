@@ -20,6 +20,33 @@
     return String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('en');
   }
 
+  function bandNames(band) {
+    const aliases = Array.isArray(band?.listeningAliases)
+      ? band.listeningAliases.filter((value) => typeof value === 'string')
+      : [];
+    return [band?.name, ...aliases]
+      .map(normalizeText)
+      .filter(Boolean);
+  }
+
+  function bandNameLookup(bandList = []) {
+    const owners = new Map();
+    for (const band of bandList || []) {
+      if (!band?.id) continue;
+      const id = String(band.id);
+      for (const name of bandNames(band)) {
+        const ids = owners.get(name) || new Set();
+        ids.add(id);
+        owners.set(name, ids);
+      }
+    }
+    const byName = new Map();
+    for (const [name, ids] of owners) {
+      if (ids.size === 1) byName.set(name, [...ids][0]);
+    }
+    return byName;
+  }
+
   function sanitizeEvent(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const listenedAt = String(raw.listenedAt || '');
@@ -109,7 +136,7 @@
     const tx = db.transaction(STORE_NAME, 'readonly');
     const events = await requestResult(tx.objectStore(STORE_NAME).getAll());
     db.close();
-    const bandByName = new Map((bandList || []).filter((band) => band?.id && band?.name).map((band) => [normalizeText(band.name), String(band.id)]));
+    const bandByName = bandNameLookup(bandList);
     return events.map((event) => ({ ...event, localBandId: bandByName.get(normalizeText(event.artistCreditName)) || null }));
   }
 
@@ -257,6 +284,9 @@
   return {
     ALLOWED_EVENT_KEYS,
     MIN_DURATION_MS,
+    normalizeText,
+    bandNames,
+    bandNameLookup,
     sanitizeEvent,
     validatePayload,
     importFile,
