@@ -62,6 +62,14 @@ async function seedInterruptedPreparation(page) {
   });
 }
 
+async function openListeningMaintenance(page) {
+  const screen = page.locator('#screen-settings');
+  await screen.getByRole('tab', { name: 'Data', exact: true }).click();
+  const maintenance = screen.locator('.settings-v123-maintenance');
+  if (!(await maintenance.getAttribute('open'))) await maintenance.locator('summary').click();
+  return maintenance.locator('.settings-v123-maintenance-row').filter({ hasText: 'Listening statistics' });
+}
+
 test('GAU5 resumes a persisted listening preparation after reload without activating cleaned totals', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await page.setViewportSize(testInfo.project.name === 'mobile-chromium'
@@ -88,12 +96,11 @@ test('GAU5 resumes a persisted listening preparation after reload without activa
   expect(states.activation.activatedAt).toBeNull();
 
   await page.locator('#settings-btn').click();
-  await page.getByRole('tab', { name: 'Review', exact: true }).click();
-  const card = page.locator('[data-canonical-activation]');
+  const card = await openListeningMaintenance(page);
   await expect(card).toBeVisible();
-  await expect(card.locator('[data-canonical-activation-status]')).toContainText('Preparation complete');
-  await expect(card.locator('[data-canonical-activate]')).toBeVisible();
-  await expect(card.locator('[data-canonical-deactivate]')).toBeHidden();
+  await expect(card).toContainText('Reviewed listening totals are ready to use.');
+  await expect(card.getByRole('button', { name: 'Use reviewed totals' })).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Use original totals' })).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await card.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-gau5-resumable-preparation.png`) });
 });
