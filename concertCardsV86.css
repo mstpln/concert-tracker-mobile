@@ -25,11 +25,3 @@
 #screen-profile .profile-divider .row-card {
   background: var(--concert-card-background-v86);
 }
-
-/* v129: only the My Concerts historical list gets the approved Deep Graphite
-   treatment. Upcoming cards and every other concert-list surface retain v86. */
-@media (prefers-color-scheme: dark) {
-  #screen-myconcerts .row-card-mc.is-past {
-    background: #1d2124;
-  }
-}
