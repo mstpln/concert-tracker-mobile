@@ -1,0 +1,28 @@
+/* NB1 / v128 — approved concert-card polish. */
+
+/* Thin neutral border around artist imagery in My Concerts rows. */
+#screen-myconcerts .row-avatar,
+#screen-myconcerts .row-avatar img {
+  border: 1px solid rgba(190, 194, 200, 0.42);
+}
+
+/* Band Detail hero artwork uses the same restrained border treatment. */
+#screen-profile .profile-avatar,
+#screen-profile .profile-avatar img,
+#screen-profile .profile-photo,
+#screen-profile .profile-photo img {
+  border: 1px solid rgba(190, 194, 200, 0.42);
+}
+
+/* Distance + countdown remain one compact BANDMARKR-blue metadata line. */
+#screen-myconcerts .nb1-concert-meta,
+#screen-myconcerts .nb1-concert-meta .nb1-meta-dot {
+  color: #0b63ff;
+}
+
+#screen-myconcerts .nb1-concert-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
