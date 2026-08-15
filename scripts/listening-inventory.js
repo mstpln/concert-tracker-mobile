@@ -23,6 +23,12 @@ function normalizeText(value) {
   return String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('en');
 }
 
+function bandNames(band) {
+  return [band?.name, ...(Array.isArray(band?.listeningAliases) ? band.listeningAliases : [])]
+    .map(normalizeText)
+    .filter(Boolean);
+}
+
 function validSpotifyId(value) {
   const text = clean(value);
   return text && SPOTIFY_ID.test(text) ? text : null;
@@ -43,22 +49,24 @@ function stableHash(value) {
 
 function bandIndex(bands = []) {
   const byId = new Map();
-  const byName = new Map();
-  const ambiguousNames = new Set();
+  const owners = new Map();
 
   for (const band of bands || []) {
     const id = clean(band?.id);
-    const name = normalizeText(band?.name);
     if (!id) continue;
     byId.set(id, band);
-    if (!name || ambiguousNames.has(name)) continue;
-    const existing = byName.get(name);
-    if (existing && existing !== id) {
-      byName.delete(name);
-      ambiguousNames.add(name);
-    } else if (!existing) {
-      byName.set(name, id);
+    for (const name of bandNames(band)) {
+      const ids = owners.get(name) || new Set();
+      ids.add(id);
+      owners.set(name, ids);
     }
+  }
+
+  const byName = new Map();
+  const ambiguousNames = new Set();
+  for (const [name, ids] of owners) {
+    if (ids.size === 1) byName.set(name, [...ids][0]);
+    else ambiguousNames.add(name);
   }
 
   return { byId, byName, ambiguousNames };
@@ -426,6 +434,7 @@ module.exports = {
   clean,
   cleanList,
   normalizeText,
+  bandNames,
   validSpotifyId,
   validMbid,
   validDate,
