@@ -17,9 +17,9 @@
     return `${days} days until concert`;
   }
 
-  function addUpcomingCountdown(html, concert, isPast) {
+  function addUpcomingCountdown(html, concert, isPast, now = new Date()) {
     if (isPast) return html;
-    const label = countdownLabel(concert);
+    const label = countdownLabel(concert, now);
     if (!label) return html;
     const kmPattern = /<p class="row-km">([^<]+ away)<\/p>/;
     if (kmPattern.test(html)) {
