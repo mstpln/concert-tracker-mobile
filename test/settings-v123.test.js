@@ -28,18 +28,22 @@ test('usage status thresholds move from green to red as safety-budget use rises'
   assert.equal(settings.usageLevel(96).key, 'bad');
 });
 
-test('provider usage does not invent missing safety-budget denominators', () => {
+test('provider usage uses only reported or directly enforced safety-budget denominators', () => {
   const rows = settings.providerUsageRows({
-    ticketmaster:{ callsToday:12 },
+    ticketmaster:{ callsToday:12, freeTierDailyLimit:5000 },
     tavily:{ callsThisMonth:20 },
     groq:{ tokensToday:30 },
     setlistfm:{ callsToday:4 },
     spotify:{ callsToday:5 },
   });
-  for (const row of rows.slice(0,5)) {
+  assert.equal(rows[0].cap, 2500);
+  assert.equal(rows[0].used, 12);
+  for (const row of rows.slice(1,5)) {
     assert.equal(row.cap, undefined);
     assert.equal(row.status, 'Usage unavailable');
   }
+  assert.equal(settings.ticketmasterSafetyCap({ freeTierDailyLimit:4000 }), 2000);
+  assert.equal(settings.ticketmasterSafetyCap({ dailyCap:1700, freeTierDailyLimit:4000 }), 1700);
 });
 
 test('artist profile coverage counts visible information without mutating records', () => {
@@ -72,19 +76,19 @@ test('concert coverage treats only named venues and past attended setlists as co
   ]);
 });
 
-test('listening coverage stays scoped to followed bands and unique song/album evidence', () => {
-  const bands = [{ id:'band-a' }, { id:'band-b' }];
+test('listening coverage measures listened followed artists and does not penalize never-listened bands', () => {
+  const bands = [{ id:'band-a', name:'Band A' }, { id:'band-b', name:'Band B' }, { id:'band-c', name:'Never Listened Band' }];
   const events = [
     { stableListenId:'1', localBandId:'band-a', artistCreditName:'Band A', recordingTitle:'Song One', releaseTitle:'Album One', musicbrainzRecordingId:'mbid-1', albumArtworkUrl:'https://example.invalid/one.jpg' },
-    { stableListenId:'2', localBandId:'band-a', artistCreditName:'Band A', recordingTitle:'Song One', releaseTitle:'Album One', musicbrainzRecordingId:'mbid-1' },
-    { stableListenId:'3', localBandId:'band-b', artistCreditName:'Band B', recordingTitle:'Song Two', releaseTitle:'Album Two' },
+    { stableListenId:'2', localBandId:'band-a', artistCreditName:'Band A', recordingTitle:'Song One', releaseTitle:'Album One' },
+    { stableListenId:'3', artistCreditName:'Band B', recordingTitle:'Song Two', releaseTitle:'Album Two' },
     { stableListenId:'4', artistCreditName:'Unfollowed Artist', recordingTitle:'Song Three', releaseTitle:'Album Three', spotifyTrackId:'track-3', albumArtworkUrl:'https://example.invalid/three.jpg' },
   ];
   const result = settings.listeningCoverage(bands, events);
   assert.deepEqual(result.map((row) => [row.key,row.matched,row.total]), [
-    ['Artists matched',2,2],
-    ['Songs identified',1,2],
-    ['Album artwork',1,2],
+    ['Artists matched',1,2],
+    ['Songs identified',1,1],
+    ['Album artwork',1,1],
   ]);
 });
 
@@ -122,4 +126,11 @@ test('listening maintenance presentation preserves active, paused, preparing, st
 
   const active = settings.activationPresentation({ status:'active' }, null, null);
   assert.equal(active.showDeactivate, true);
+});
+
+test('artist artwork automation state stays unreported when the trusted-local scheduler is not visible to the device', () => {
+  const artwork = settings.updateActivityRows({}, new Date('2026-08-15T08:00:00Z')).find((row) => row.name === 'Artist artwork');
+  assert.equal(artwork.label, 'Not reported');
+  assert.equal(artwork.key, 'neutral');
+  assert.match(artwork.result, /not reported to this device/);
 });
