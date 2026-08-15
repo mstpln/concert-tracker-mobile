@@ -176,7 +176,10 @@
     return true;
   }
 
-  if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', install, { once: true });
+  // v72 installs its canonical concert-row wrappers from an async DOMContentLoaded
+  // bootstrap. Install v127 on the following task so it wraps those final owners
+  // instead of being wrapped by them and producing duplicate listening rows.
+  if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', () => root.setTimeout(install, 0), { once: true });
 
   return Object.freeze({ buildListeningIndex, aggregateWindow, lowerBound, install });
 });
