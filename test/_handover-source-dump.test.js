@@ -1,21 +1,25 @@
 'use strict';
 const test = require('node:test');
 const fs = require('node:fs');
-const zlib = require('node:zlib');
+const path = require('node:path');
 
 test('temporary handover source capture', () => {
   const paths = [
     'scripts/research.js',
     'scripts/lib/structuredResearch.js',
+    'scripts/lib/musicbrainz.js',
+    'conflictMerge.js',
+    'scripts/lib/workerClient.js',
     'test/musicbrainz.test.js',
     'test/structured-research.test.js',
     'docs/LIVEVAULT_STATE.md',
+    'docs/LIVEVAULT_DECISIONS.md',
+    'docs/LIVEVAULT_BUILD_STATE.json',
   ];
-  const files = Object.fromEntries(paths.map((path) => [path, fs.readFileSync(path, 'utf8')]));
-  const payload = zlib.gzipSync(JSON.stringify(files)).toString('base64');
-  const size = 3000;
-  for (let i = 0; i < payload.length; i += size) {
-    const index = String(i / size).padStart(4, '0');
-    console.log(`HANDOVER_SOURCE_DUMP_${index}:${payload.slice(i, i + size)}`);
+  const root = path.join('test-results', 'handover-source');
+  for (const source of paths) {
+    const target = path.join(root, source);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(source, target);
   }
 });
