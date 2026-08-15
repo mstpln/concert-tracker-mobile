@@ -109,7 +109,7 @@ test('listening maintenance presentation preserves active, paused, preparing, st
     { status:'running', phase:'verification', verifiedCanonicalCount:20 },
     null
   );
-  assert.match(running.text, /Verifying prepared totals/);
+  assert.match(running.text, /Preparing listening statistics/);
   assert.equal(running.showPrepare, false);
 
   const interrupted = settings.activationPresentation({ status:'error', error:'Preparation was interrupted.' }, null, null);
