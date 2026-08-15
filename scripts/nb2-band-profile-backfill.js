@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 
-const ALLOWED_PATCH_FIELDS = new Set(['officialUrl', 'genre', 'origin', 'formedYear', 'officialArtwork']);
+const ALLOWED_PATCH_FIELDS = new Set(['officialUrl', 'genre', 'origin', 'formedYear', 'officialArtwork', 'spotifyOembedImage']);
 const TRUSTED_SPOTIFY_STATUSES = new Set(['confirmed', 'manual_confirmed']);
 const OFFICIAL_ARTWORK_SOURCE = 'official_site_og_image';
 
@@ -16,6 +16,17 @@ function safeHttpsUrl(value) {
   try {
     const url = new URL(raw);
     return url.protocol === 'https:' ? url.href : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function safeSpotifyImageUrl(value) {
+  const safe = safeHttpsUrl(value);
+  if (!safe) return null;
+  try {
+    const host = new URL(safe).hostname.toLowerCase();
+    return host === 'i.scdn.co' || host.endsWith('.spotifycdn.com') ? safe : null;
   } catch (_) {
     return null;
   }
@@ -99,12 +110,28 @@ function mergeOfficialArtwork(band, value) {
   band.artistArtwork = {
     ...(band.artistArtwork && typeof band.artistArtwork === 'object' && !Array.isArray(band.artistArtwork) ? band.artistArtwork : {}),
     officialSite: {
-      ...(band.artistArtwork?.officialSite && typeof band.artistArtwork.officialSite === 'object' && !Array.isArray(band.artistArtwork.officialSite) ? band.artistArtwork.officialSite : {}),
+      ...(band.artistArtwork?.officialSite && typeof band.artistArtwork.officialSite === 'object' && !Array.isArray(band.artistArtwork?.officialSite) ? band.artistArtwork.officialSite : {}),
       url: imageUrl,
       sourceUrl: officialUrl,
       source: OFFICIAL_ARTWORK_SOURCE,
     },
   };
+  return true;
+}
+
+function mergeSpotifyOembedImage(band, value) {
+  if (visibleArtistImageUrl(band)) return false;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`spotifyOembedImage for ${band.id} must be an object`);
+  const spotify = band?.musicbrainz?.spotify;
+  if (!spotify?.id || !TRUSTED_SPOTIFY_STATUSES.has(spotify.status)) throw new Error(`spotifyOembedImage for ${band.id} requires an existing trusted Spotify artist identity`);
+  const spotifyId = nonEmptyString(value.spotifyId);
+  if (!spotifyId || spotifyId !== spotify.id) throw new Error(`spotifyOembedImage for ${band.id} must match the trusted Spotify artist id exactly`);
+  const url = safeSpotifyImageUrl(value.url);
+  if (!url) throw new Error(`spotifyOembedImage for ${band.id} must use a Spotify CDN HTTPS image URL`);
+  const width = Number(value.width);
+  const height = Number(value.height);
+  if (!Number.isInteger(width) || width <= 0 || !Number.isInteger(height) || height <= 0) throw new Error(`spotifyOembedImage for ${band.id} must include positive integer dimensions`);
+  spotify.images = [{ url, width, height }];
   return true;
 }
 
@@ -134,6 +161,7 @@ function applyBackfill(rows, patchEntries) {
       changedFields.push(field);
     }
 
+    if ('spotifyOembedImage' in entry && mergeSpotifyOembedImage(band, entry.spotifyOembedImage)) changedFields.push('musicbrainz.spotify.images');
     if ('officialArtwork' in entry && mergeOfficialArtwork(band, entry.officialArtwork)) changedFields.push('artistArtwork.officialSite');
     if (changedFields.length) changes.push({ bandId, fields: changedFields });
   }
@@ -169,4 +197,4 @@ function main(argv = process.argv.slice(2)) {
 
 if (require.main === module) main();
 
-module.exports = { audit, applyBackfill, visibleArtistImageUrl, selectTrustedSpotifyImage, officialArtworkUrl, validFormedYear };
+module.exports = { audit, applyBackfill, visibleArtistImageUrl, selectTrustedSpotifyImage, officialArtworkUrl, validFormedYear, safeSpotifyImageUrl };
