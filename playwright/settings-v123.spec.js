@@ -22,7 +22,7 @@ test('Settings v123 uses one consistent Automation presentation', async ({ page 
   await expect(screen.locator('.settings-v123-section')).toHaveCount(2);
   const divider = screen.locator('.settings-v123-section').nth(1);
   await expect(divider).toHaveCSS('border-top-width','2px');
-  await expect(divider).toHaveCSS('border-top-color','rgb(11, 99, 246)');
+  await expect(divider).toHaveCSS('border-top-color','rgb(2, 77, 223)');
   expect(await screen.locator('.settings-v123-progress').count()).toBeGreaterThan(0);
 
   const groqRow = screen.locator('.settings-v123-provider-wrap').filter({ hasText:'Groq' });
@@ -97,6 +97,26 @@ test('Data presents coverage, connections, export and device controls without ol
   await expect(screen.locator('.settings-v123-maintenance')).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });
+
+for (const colorScheme of ['light','dark']) {
+  test(`Settings v123 follows the ${colorScheme} app theme`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme });
+    await openSettings(page);
+    const card = page.locator('#screen-settings .settings-v123-card').first();
+    const values = await card.evaluate((node) => ({
+      card: getComputedStyle(node).backgroundColor,
+      surface: getComputedStyle(document.documentElement).getPropertyValue('--surface').trim(),
+      muted: getComputedStyle(document.documentElement).getPropertyValue('--surface-muted').trim(),
+    }));
+    const rgb = (hex) => {
+      const value = hex.replace('#','');
+      return `rgb(${parseInt(value.slice(0,2),16)}, ${parseInt(value.slice(2,4),16)}, ${parseInt(value.slice(4,6),16)})`;
+    };
+    expect(values.card).toBe(rgb(values.surface));
+    expect(values.muted).not.toBe('');
+    await expectNoHorizontalOverflow(page);
+  });
+}
 
 for (const width of [360,390,430]) {
   test(`Settings remains contained at ${width}px`, async ({ page }) => {
