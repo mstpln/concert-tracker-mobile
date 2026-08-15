@@ -18,6 +18,7 @@ const manualTicketmaster = {
   reviewedAt: '2026-08-15T11:00:00.000Z',
   futureField: { keep: true },
 };
+const fakeWorkerEnv = { CF_WORKER_ENDPOINT: 'https://example.test', CF_WORKER_TOKEN: 'fake' };
 
 function response(status, body, etag) {
   return new Response(body === undefined ? '' : JSON.stringify(body), {
@@ -91,7 +92,7 @@ test('normal worker write cannot erase a manual provider decision made after aut
     assert.deepEqual(written[0].musicbrainz.ticketmaster, manualTicketmaster);
     return response(200, undefined, 'v3');
   };
-  const client = createWorkerClient({ env: { WORKER_API_URL: 'https://example.test', RESEARCH_TOKEN: 'fake' }, fetchImpl });
+  const client = createWorkerClient({ env: fakeWorkerEnv, fetchImpl });
   await client.readJson('bands.json', []);
   await client.writeJson('bands.json', stale);
   assert.equal(requests.length, 2);
@@ -111,7 +112,7 @@ test('ETag retry keeps a reviewed provider decision made between GET and PUT', a
     assert.deepEqual(written[0].musicbrainz.spotify, manualSpotify);
     return response(200, undefined, 'v3');
   };
-  const client = createWorkerClient({ env: { WORKER_API_URL: 'https://example.test', RESEARCH_TOKEN: 'fake' }, fetchImpl });
+  const client = createWorkerClient({ env: fakeWorkerEnv, fetchImpl });
   await client.readJson('bands.json', []);
   await client.writeJson('bands.json', intended);
   assert.equal(step, 4);
