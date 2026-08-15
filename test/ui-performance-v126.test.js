@@ -12,9 +12,17 @@ function createHarness({ bandCount = 1, concertCount = 1 } = {}) {
   const context = vm.createContext({ console });
   vm.runInContext(`
     let activityCalls = 0;
+    let renderCalls = 0;
+    let hideInactiveBands = false;
+    let inactivityYears = 3;
+    let selectedGenre = 'all';
+    let mutedOnly = false;
+    const screen = { childElementCount: 1 };
     let bands = Array.from({ length: ${bandCount} }, (_, index) => ({
       id: 'band-' + index,
       name: 'Band ' + index,
+      genre: index % 2 ? 'Rock' : 'Metal',
+      muted: false,
       lastKnownConcertDate: index % 3 === 0 ? '2020-01-01' : null,
     }));
     let concerts = Array.from({ length: ${concertCount} }, (_, index) => ({
@@ -22,6 +30,7 @@ function createHarness({ bandCount = 1, concertCount = 1 } = {}) {
       bandId: 'band-' + (index % Math.max(1, ${bandCount})),
       date: String(2020 + (index % 6)) + '-06-01',
     }));
+    function el(id) { return id === 'screen-mybands' ? screen : null; }
     function dlCurrentDate() { return new Date('2026-08-15T12:00:00Z'); }
     function dlEffectiveLastShowDate(band, concertList) {
       let latest = band.lastKnownConcertDate ? new Date(band.lastKnownConcertDate + 'T00:00:00') : null;
@@ -43,12 +52,18 @@ function createHarness({ bandCount = 1, concertCount = 1 } = {}) {
       return { status: yearsAgo >= thresholdYears ? 'inactive' : 'active', lastDate, lastYear };
     }
     function renderMyBandsScreen() {
-      return bands.map((band) => dlBandActivity(band, concerts, 3));
+      renderCalls += 1;
+      return bands.map((band) => dlBandActivity(band, concerts, inactivityYears));
     }
     globalThis.__harness = {
       render: () => renderMyBandsScreen(),
-      originalActivity: (band, list, years, today) => dlBandActivity(band, list, years, today),
       getActivityCalls: () => activityCalls,
+      getRenderCalls: () => renderCalls,
+      mutateName: (index, name) => { bands[index].name = name; },
+      mutateGenre: (index, genre) => { bands[index].genre = genre; },
+      mutateConcertDate: (index, date) => { concerts[index].date = date; },
+      setMutedOnly: (value) => { mutedOnly = value; },
+      emptyScreen: () => { screen.childElementCount = 0; },
     };
   `, context);
   vm.runInContext(source, context);
@@ -71,58 +86,46 @@ test('latest-concert index returns the newest valid date for each band', () => {
   assert.equal(index.size, 2);
 });
 
-test('indexed effective date preserves stored last-known concert precedence semantics', () => {
+test('indexed effective date preserves stored last-known concert precedence', () => {
   const harness = createHarness();
   const latest = harness.api.buildLatestConcertByBand([
     { bandId: 'a', date: '2025-05-01' },
     { bandId: 'b', date: '2024-05-01' },
   ]);
-  assert.equal(
-    harness.api.indexedEffectiveLastShowDate({ id: 'a', lastKnownConcertDate: '2023-01-01' }, latest).toISOString().slice(0, 10),
-    '2025-05-01'
-  );
-  assert.equal(
-    harness.api.indexedEffectiveLastShowDate({ id: 'b', lastKnownConcertDate: '2026-01-01' }, latest).toISOString().slice(0, 10),
-    '2026-01-01'
-  );
+  assert.equal(harness.api.indexedEffectiveLastShowDate({ id: 'a', lastKnownConcertDate: '2023-01-01' }, latest).toISOString().slice(0, 10), '2025-05-01');
+  assert.equal(harness.api.indexedEffectiveLastShowDate({ id: 'b', lastKnownConcertDate: '2026-01-01' }, latest).toISOString().slice(0, 10), '2026-01-01');
   assert.equal(harness.api.indexedEffectiveLastShowDate({ id: 'c' }, latest), null);
 });
 
-test('wrapped My Bands renderer preserves activity results', () => {
-  const harness = createHarness({ bandCount: 12, concertCount: 80 });
-  const expected = vm.runInNewContext(`
-    const bands = Array.from({ length: 12 }, (_, index) => ({ id: 'band-' + index, lastKnownConcertDate: index % 3 === 0 ? '2020-01-01' : null }));
-    const concerts = Array.from({ length: 80 }, (_, index) => ({ bandId: 'band-' + (index % 12), date: String(2020 + (index % 6)) + '-06-01' }));
-    function effective(band) {
-      let latest = band.lastKnownConcertDate ? new Date(band.lastKnownConcertDate + 'T00:00:00') : null;
-      for (const concert of concerts) {
-        if (concert.bandId !== band.id) continue;
-        const date = new Date(concert.date + 'T00:00:00');
-        if (!latest || date > latest) latest = date;
-      }
-      return latest;
-    }
-    bands.map((band) => {
-      const lastDate = effective(band);
-      if (!lastDate) return ['unknown', null];
-      const current = new Date('2026-08-15T12:00:00Z'); current.setHours(0, 0, 0, 0);
-      const yearsAgo = (current - lastDate) / (1000 * 60 * 60 * 24 * 365.25);
-      return [yearsAgo >= 3 ? 'inactive' : 'active', lastDate.getFullYear()];
-    });
-  `);
-  const actual = harness.render().map((item) => [item.status, item.lastYear]);
-  assert.deepEqual(actual, expected);
-});
-
-test('large synthetic render builds one index and does not retain stale concert state', () => {
+test('unchanged My Bands view reuses existing DOM after the first render', () => {
   const harness = createHarness({ bandCount: 400, concertCount: 5000 });
   const first = harness.render();
   assert.equal(first.length, 400);
-  assert.equal(harness.getActivityCalls(), 0, 'legacy per-band activity helper should be bypassed during wrapped render');
-
-  // A second render rebuilds from current in-memory data rather than reusing a
-  // cross-render cache. This is the safety property that prevents stale UI.
+  assert.equal(harness.getRenderCalls(), 1);
+  assert.equal(harness.getActivityCalls(), 0, 'legacy O(bands x concerts) activity helper is bypassed');
   const second = harness.render();
-  assert.equal(second.length, 400);
-  assert.equal(harness.getActivityCalls(), 0);
+  assert.equal(second, undefined);
+  assert.equal(harness.getRenderCalls(), 1, 'unchanged view does not rebuild hundreds of rows');
+});
+
+test('every visible My Bands dependency invalidates render reuse', () => {
+  const harness = createHarness({ bandCount: 4, concertCount: 12 });
+  harness.render();
+  harness.mutateName(0, 'Renamed Band');
+  harness.render();
+  harness.mutateGenre(1, 'Pop');
+  harness.render();
+  harness.setMutedOnly(true);
+  harness.render();
+  harness.mutateConcertDate(0, '2030-01-01');
+  harness.render();
+  assert.equal(harness.getRenderCalls(), 5);
+});
+
+test('empty My Bands DOM is rebuilt even when the data key is unchanged', () => {
+  const harness = createHarness({ bandCount: 3, concertCount: 6 });
+  harness.render();
+  harness.emptyScreen();
+  harness.render();
+  assert.equal(harness.getRenderCalls(), 2);
 });
