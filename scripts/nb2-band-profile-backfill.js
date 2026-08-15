@@ -21,6 +21,14 @@ function safeHttpsUrl(value) {
   }
 }
 
+function validFormedYear(value) {
+  const raw = nonEmptyString(value);
+  if (!raw || !/^\d{4}$/.test(raw)) return null;
+  const year = Number(raw);
+  const currentYear = new Date().getUTCFullYear();
+  return year >= 1900 && year <= currentYear ? raw : null;
+}
+
 function selectTrustedSpotifyImage(band) {
   const spotify = band?.musicbrainz?.spotify;
   if (!spotify?.id || !TRUSTED_SPOTIFY_STATUSES.has(spotify.status) || !Array.isArray(spotify.images) || spotify.images.length === 0) return null;
@@ -121,6 +129,7 @@ function applyBackfill(rows, patchEntries) {
       const value = nonEmptyString(entry[field]);
       if (!value) throw new Error(`${field} for ${bandId} must be a non-empty string`);
       if (field === 'officialUrl' && !safeHttpsUrl(value)) throw new Error(`officialUrl for ${bandId} must be HTTPS`);
+      if (field === 'formedYear' && !validFormedYear(value)) throw new Error(`formedYear for ${bandId} must be a four-digit year from 1900 through the current year`);
       band[field] = field === 'officialUrl' ? safeHttpsUrl(value) : value;
       changedFields.push(field);
     }
@@ -160,4 +169,4 @@ function main(argv = process.argv.slice(2)) {
 
 if (require.main === module) main();
 
-module.exports = { audit, applyBackfill, visibleArtistImageUrl, selectTrustedSpotifyImage, officialArtworkUrl };
+module.exports = { audit, applyBackfill, visibleArtistImageUrl, selectTrustedSpotifyImage, officialArtworkUrl, validFormedYear };
