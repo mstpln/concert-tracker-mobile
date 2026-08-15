@@ -68,10 +68,16 @@ test('v94 Spotify identity review remains local, session-deferred, and mobile-sa
   await item.getByRole('button', { name: 'Later' }).click();
   await expect(item).toHaveCount(0);
   await expect(screen).toContainText('Deferred for this session.');
+  await expect(screen).toContainText('No items need attention right now.');
+  await expect(screen).not.toContainText('Everything is resolved.');
+  const deferredPill = screen.locator('.settings-v123-summary-grid > span').filter({ hasText:'Deferred' });
+  await expect(deferredPill.locator('b')).toHaveText('1');
 
   await screen.getByRole('tab', { name: 'Automation', exact: true }).click();
   await screen.getByRole('tab', { name: 'Review', exact: true }).click();
   await expect(item).toHaveCount(0);
+  await expect(screen).toContainText('1 item deferred for this session.');
+  await expect(screen).not.toContainText('Everything is resolved.');
 
   const state = await page.evaluate(() => ({ rawHistoryReads: window.__rawHistoryReads }));
   expect(state.rawHistoryReads).toBe(0);
@@ -84,5 +90,7 @@ test('v94 Spotify identity review remains local, session-deferred, and mobile-sa
   await seedSpotifyReview(page);
   await page.getByTestId('settings-button').click();
   await page.getByRole('tab', { name: 'Review', exact: true }).click();
-  await expect(page.locator('#screen-settings').locator('[data-v123-artist-review]').filter({ hasText: 'A Very Long Synthetic Candidate Artist Name That Must Wrap Safely' })).toBeVisible();
+  const reloadedScreen = page.locator('#screen-settings');
+  await expect(reloadedScreen.locator('[data-v123-artist-review]').filter({ hasText: 'A Very Long Synthetic Candidate Artist Name That Must Wrap Safely' })).toBeVisible();
+  await expect(reloadedScreen.locator('.settings-v123-summary-grid > span').filter({ hasText:'Deferred' }).locator('b')).toHaveText('0');
 });
