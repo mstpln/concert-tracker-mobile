@@ -27,6 +27,11 @@
   text-transform: uppercase;
 }
 
+/* The existing My Concerts renderer owns past/upcoming classification. */
+@media (prefers-color-scheme: dark) {
+  #screen-myconcerts .row-card-mc.is-past { background: #1d2124; }
+}
+
 /* v129: the countdown and show-day ticket disc now share one warm state family. */
 #countdown-ring-outer { stroke: var(--countdown-yellow); }
 #countdown-ring-inner { stroke: var(--countdown-yellow-light); }
@@ -58,5 +63,8 @@
   to { transform: translateX(395%); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .interaction-progress.is-active span { animation-duration: 2.4s; }
+  .interaction-progress.is-active span {
+    animation: none;
+    transform: translateX(0);
+  }
 }
