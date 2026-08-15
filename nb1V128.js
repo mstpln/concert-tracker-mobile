@@ -33,6 +33,25 @@
     return html.replace(subPattern, `$1<p class="row-km nb1-concert-meta">${label}</p>`);
   }
 
+  function wrapBootstrap(api, onReady) {
+    if (!api || typeof api.bootstrap !== 'function' || api.__nb1V128BootstrapWrapped) return false;
+    const original = api.bootstrap;
+    api.bootstrap = async function bootstrapWithNb1V128(...args) {
+      try {
+        return await original.apply(this, args);
+      } finally {
+        onReady();
+      }
+    };
+    Object.defineProperty(api, '__nb1V128BootstrapWrapped', {
+      value: true,
+      configurable: false,
+      enumerable: false,
+      writable: false,
+    });
+    return true;
+  }
+
   function install() {
     if (typeof root.myConcertRowHtml !== 'function' || root.myConcertRowHtml.__nb1V128Wrapped) return false;
     const original = root.myConcertRowHtml;
@@ -44,6 +63,14 @@
     return true;
   }
 
-  install();
-  root.LiveVaultNb1V128 = Object.freeze({ calendarDayDiff, countdownLabel, addUpcomingCountdown, install });
+  // v72 owns the canonical concert-row compatibility renderer, and v127
+  // deliberately installs its performance wrapper only after that async
+  // bootstrap finishes. Wrap the already-v127-wrapped bootstrap so NB1 is
+  // installed last and cannot be lost to either compatibility layer.
+  if (typeof document !== 'undefined') {
+    const wrapped = wrapBootstrap(root.LiveVaultV72, install);
+    if (!wrapped) document.addEventListener('DOMContentLoaded', install, { once: true });
+  }
+
+  root.LiveVaultNb1V128 = Object.freeze({ calendarDayDiff, countdownLabel, addUpcomingCountdown, wrapBootstrap, install });
 })(typeof globalThis !== 'undefined' ? globalThis : this);
