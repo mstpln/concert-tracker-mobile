@@ -98,6 +98,56 @@
     return source.slice(0, index) + html + source.slice(index);
   }
 
+  function concertCountdownLabel(dateValue, now = new Date()) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateValue || ''));
+    const current = now instanceof Date ? now : new Date(now);
+    if (!match || !Number.isFinite(current.getTime())) return '';
+    const targetDay = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    const currentDay = Date.UTC(current.getFullYear(), current.getMonth(), current.getDate());
+    const days = Math.round((targetDay - currentDay) / 86400000);
+    if (days < 0) return '';
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Tomorrow';
+    return `${days} days until concert`;
+  }
+
+  function decorateUpcomingConcertMeta(source, concert, isPast, now = new Date()) {
+    if (isPast) return source;
+    const label = concertCountdownLabel(concert?.date, now);
+    if (!label) return source;
+    let html = String(source || '');
+    const rowMarker = '<p class="row-km">';
+    const rowStart = html.indexOf(rowMarker);
+    if (rowStart >= 0) {
+      const rowEnd = html.indexOf('</p>', rowStart + rowMarker.length);
+      if (rowEnd >= 0) {
+        html = `${html.slice(0, rowEnd)}<span class="concert-countdown-inline"> · ${label}</span>${html.slice(rowEnd)}`;
+        return html;
+      }
+    }
+    const countdownRow = `<p class="row-km concert-countdown-only">${label}</p>`;
+    if (html.includes('<div class="concert-listening-row">')) return injectBefore(html, '<div class="concert-listening-row">', countdownRow);
+    return injectBefore(html, '<div class="concert-prep-group', countdownRow);
+  }
+
+  function installNb1Styles() {
+    if (typeof document === 'undefined' || document.getElementById('nb1-concert-card-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'nb1-concert-card-styles';
+    style.textContent = `
+      .row-card-mc .row-avatar img,
+      .profile-avatar img {
+        border: 1px solid var(--border-strong);
+        border-radius: 50%;
+      }
+      .row-card-mc .concert-countdown-inline,
+      .row-card-mc .concert-countdown-only {
+        color: inherit;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   function wrapBootstrap(api, onReady) {
     if (!api || typeof api.bootstrap !== 'function' || api.__uiPerformanceV127BootstrapWrapped) return false;
     const original = api.bootstrap;
@@ -157,14 +207,20 @@
   function install() {
     if (installed || typeof root.renderMyConcertsScreen !== 'function') return false;
     installed = true;
+    installNb1Styles();
 
     const originalMyConcertRowHtml = root.myConcertRowHtml;
     if (typeof originalMyConcertRowHtml === 'function') {
       root.myConcertRowHtml = function myConcertRowHtmlV127(concert, isPast, options = {}) {
-        if (!activeIndex) return originalMyConcertRowHtml.call(this, concert, isPast, options);
-        let html = withoutLegacyListeningScan(() => originalMyConcertRowHtml.call(this, concert, isPast, options));
-        const row = fastListeningRow(concert, isPast);
-        if (row) html = injectBefore(html, '<div class="concert-prep-group', row);
+        let html = activeIndex
+          ? withoutLegacyListeningScan(() => originalMyConcertRowHtml.call(this, concert, isPast, options))
+          : originalMyConcertRowHtml.call(this, concert, isPast, options);
+        const now = activeNow || (typeof root.listeningNow === 'function' ? root.listeningNow() : new Date());
+        html = decorateUpcomingConcertMeta(html, concert, isPast, now);
+        if (activeIndex) {
+          const row = fastListeningRow(concert, isPast);
+          if (row) html = injectBefore(html, '<div class="concert-prep-group', row);
+        }
         return html;
       };
     }
@@ -204,5 +260,13 @@
     if (!wrapped) document.addEventListener('DOMContentLoaded', install, { once: true });
   }
 
-  return Object.freeze({ buildListeningIndex, aggregateWindow, lowerBound, wrapBootstrap, install });
+  return Object.freeze({
+    buildListeningIndex,
+    aggregateWindow,
+    lowerBound,
+    concertCountdownLabel,
+    decorateUpcomingConcertMeta,
+    wrapBootstrap,
+    install,
+  });
 });
