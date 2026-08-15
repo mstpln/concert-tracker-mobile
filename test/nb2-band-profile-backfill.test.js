@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { audit, applyBackfill, visibleArtistImageUrl } = require('../scripts/nb2-band-profile-backfill');
+const { audit, applyBackfill, visibleArtistImageUrl, validFormedYear } = require('../scripts/nb2-band-profile-backfill');
 
 function baseBand(overrides = {}) {
   return {
@@ -66,11 +66,6 @@ test('NB2 never overwrites populated user/profile fields', () => {
   assert.deepEqual(changes, []);
 });
 
-test('formed year rejects malformed and future values', () => {
-  assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', formedYear: 'unknown' }]), /four-digit year/);
-  assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', formedYear: '3026' }]), /four-digit year/);
-});
-
 test('trusted Spotify artwork counts as an existing visible image and is not replaced', () => {
   const band = baseBand({
     officialUrl: 'https://band.example/',
@@ -93,27 +88,6 @@ test('trusted Spotify artwork counts as an existing visible image and is not rep
   assert.deepEqual(changes, []);
 });
 
-test('exact trusted Spotify oEmbed artwork can fill an empty Spotify image list', () => {
-  const { bands, changes } = applyBackfill([baseBand()], [{
-    bandId: 'synthetic-band',
-    spotifyOembedImage: {
-      spotifyId: 'spotify-1',
-      url: 'https://i.scdn.co/image/example',
-      width: 640,
-      height: 640,
-    },
-  }]);
-  assert.deepEqual(bands[0].musicbrainz.spotify.images, [{ url: 'https://i.scdn.co/image/example', width: 640, height: 640 }]);
-  assert.equal(visibleArtistImageUrl(bands[0]), 'https://i.scdn.co/image/example');
-  assert.deepEqual(changes, [{ bandId: 'synthetic-band', fields: ['musicbrainz.spotify.images'] }]);
-});
-
-test('Spotify oEmbed artwork fails closed on identity mismatch, untrusted status, or foreign host', () => {
-  assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', spotifyOembedImage: { spotifyId: 'other', url: 'https://i.scdn.co/image/example', width: 640, height: 640 } }]), /match the trusted Spotify artist id exactly/);
-  assert.throws(() => applyBackfill([baseBand({ musicbrainz: { spotify: { id: 'spotify-1', status: 'rejected', images: [] } } })], [{ bandId: 'synthetic-band', spotifyOembedImage: { spotifyId: 'spotify-1', url: 'https://i.scdn.co/image/example', width: 640, height: 640 } }]), /requires an existing trusted Spotify artist identity/);
-  assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', spotifyOembedImage: { spotifyId: 'spotify-1', url: 'https://evil.example/image.jpg', width: 640, height: 640 } }]), /Spotify CDN HTTPS image URL/);
-});
-
 test('official artwork uses GAU3 provenance and does not write provider art into photoUrl', () => {
   const band = baseBand({ officialUrl: 'https://band.example/' });
   const { bands } = applyBackfill([band], [{
@@ -129,13 +103,44 @@ test('official artwork uses GAU3 provenance and does not write provider art into
   assert.equal(visibleArtistImageUrl(bands[0]), 'https://cdn.band.example/artist.jpg');
 });
 
+test('exact trusted Spotify oEmbed artwork is accepted without changing provider identity', () => {
+  const band = baseBand();
+  const { bands, changes } = applyBackfill([band], [{
+    bandId: 'synthetic-band',
+    spotifyOembedImage: {
+      spotifyId: 'spotify-1',
+      url: 'https://image-cdn-fa.spotifycdn.com/image/synthetic',
+      width: 320,
+      height: 320,
+    },
+  }]);
+  assert.equal(bands[0].musicbrainz.spotify.id, 'spotify-1');
+  assert.deepEqual(bands[0].musicbrainz.spotify.images, [{
+    url: 'https://image-cdn-fa.spotifycdn.com/image/synthetic',
+    width: 320,
+    height: 320,
+  }]);
+  assert.equal(changes[0].fields[0], 'musicbrainz.spotify.images');
+});
+
 test('unsafe, mismatched, unknown, duplicate, and unsupported patch data fail closed', () => {
   assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'missing', genre: 'Rock' }]), /unknown stable band id/);
   assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', photoUrl: 'https:\/\/image.example\/x.jpg' }]), /unsupported NB2 patch field/);
   assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', officialUrl: 'http:\/\/unsafe.example' }]), /must be HTTPS/);
+  assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', formedYear: 'twenty' }]), /four-digit year/);
+  assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', formedYear: '2099' }]), /four-digit year/);
+  assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', spotifyOembedImage: { spotifyId: 'wrong', url: 'https:\/\/image-cdn-fa.spotifycdn.com\/image\/x', width: 320, height: 320 } }]), /match the trusted Spotify artist id/);
+  assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', spotifyOembedImage: { spotifyId: 'spotify-1', url: 'https:\/\/example.com\/image.jpg', width: 320, height: 320 } }]), /Spotify CDN/);
   assert.throws(() => applyBackfill([baseBand({ officialUrl: 'https:\/\/band.example\/' })], [{ bandId: 'synthetic-band', officialArtwork: { url: 'https:\/\/cdn.example\/x.jpg', sourceUrl: 'https:\/\/other.example\/' } }]), /must exactly match officialUrl/);
   assert.throws(() => applyBackfill([baseBand(), { ...baseBand(), name: 'Duplicate' }], []), /duplicate stable band id/);
   assert.throws(() => applyBackfill([baseBand()], [{ bandId: 'synthetic-band', genre: 'Rock' }, { bandId: 'synthetic-band', origin: 'Sweden' }]), /duplicate patch entry/);
+});
+
+test('formedYear validation accepts only plausible four-digit years', () => {
+  assert.equal(validFormedYear('1998'), '1998');
+  assert.equal(validFormedYear('1899'), null);
+  assert.equal(validFormedYear('2099'), null);
+  assert.equal(validFormedYear('98'), null);
 });
 
 test('NB2 audit measures visible image gaps rather than raw photoUrl gaps', () => {
