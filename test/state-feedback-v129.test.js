@@ -63,7 +63,7 @@ test('v130 feedback follows user-initiated async lifetime and rendered DOM settl
   assert.match(integration, /IDBDatabase\?\.prototype/);
   assert.match(integration, /transaction\.addEventListener\('complete', finish/);
   assert.match(integration, /transaction\.addEventListener\('abort', finish/);
-  assert.match(integration, /transaction\.addEventListener\('error', finish/);
+  assert.doesNotMatch(integration, /transaction\.addEventListener\('error', finish/);
   assert.match(integration, /context\.inFlight \+= 1/);
   assert.match(integration, /function trackPromise\(context, work\)/);
   assert.match(integration, /Promise\.resolve\(work\)\.finally/);
