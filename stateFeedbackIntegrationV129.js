@@ -152,7 +152,6 @@
       };
       transaction.addEventListener('complete', finish, { once: true });
       transaction.addEventListener('abort', finish, { once: true });
-      transaction.addEventListener('error', finish, { once: true });
       return transaction;
     };
     Object.defineProperty(trackedTransaction, '__stateFeedbackV130', { value: true });
