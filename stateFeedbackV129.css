@@ -42,32 +42,38 @@
   border: 0;
 }
 
-/* NF1: match the listening summary row to the established preparation-row icon
-   rhythm and text start position. */
+/* NF1 physical-device correction: use the exact preparation-row flex rhythm.
+   The previous grid rule enlarged the headphones glyph and moved the copy. */
 .concert-listening-row {
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: 10px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 52px;
+  padding: 9px 0;
 }
 .concert-listening-row > svg {
-  width: 18px;
-  height: 18px;
-  justify-self: center;
-  align-self: center;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
 }
 .concert-listening-row > span {
-  align-self: center;
+  flex: 1;
+  min-width: 0;
 }
 
-/* Global user-action processing feedback. It occupies no layout height and
-   appears only after the controller delay, so fast actions do not flicker. */
+/* NF1 physical-device correction: the line is an immediate, app-width overlay
+   directly above the bottom navigation. Clipping the travelling segment here
+   prevents it escaping the 480px app shell on desktop. */
 .interaction-progress {
   position: relative;
   z-index: 5;
-  flex: 0 0 0;
-  height: 0;
-  overflow: visible;
+  flex: 0 0 3px;
+  height: 3px;
+  margin-top: -3px;
+  overflow: hidden;
   pointer-events: none;
   opacity: 0;
+  width: 100%;
 }
 .interaction-progress span {
   position: absolute;
@@ -82,7 +88,7 @@
 .interaction-progress.is-active span { animation: interaction-progress-travel 1.05s ease-in-out infinite; }
 @keyframes interaction-progress-travel {
   from { transform: translateX(-110%); }
-  to { transform: translateX(395%); }
+  to { transform: translateX(295%); }
 }
 @media (prefers-reduced-motion: reduce) {
   .interaction-progress.is-active span {

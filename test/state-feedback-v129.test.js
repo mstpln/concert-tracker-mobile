@@ -48,8 +48,8 @@ test('v130 processing controller keeps overlapping operations independent', () =
   assert.equal(feedback.snapshot().pending, 0);
 });
 
-test('v130 processing line has no layout height, uses app blue and reduced motion is static', () => {
-  assert.match(css, /\.interaction-progress \{[\s\S]*flex: 0 0 0;[\s\S]*height: 0;/);
+test('v131 processing line remains layout-neutral while clipping to the app shell', () => {
+  assert.match(css, /\.interaction-progress \{[\s\S]*flex: 0 0 3px;[\s\S]*height: 3px;[\s\S]*margin-top: -3px;[\s\S]*overflow: hidden;/);
   assert.match(css, /background: var\(--accent\)/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*animation: none;[\s\S]*transform: translateX\(0\)/);
   assert.match(serviceWorker, /'\.\/interactionFeedbackV129\.js'/);
