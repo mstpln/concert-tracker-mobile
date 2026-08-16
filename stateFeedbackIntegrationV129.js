@@ -135,6 +135,35 @@
     root.fetch = trackedFetch;
   }
 
+  function installIndexedDbTracking() {
+    const prototype = root.IDBDatabase?.prototype;
+    if (!prototype || typeof prototype.transaction !== 'function' || prototype.transaction.__stateFeedbackV130) return;
+    const originalTransaction = prototype.transaction;
+    const trackedTransaction = function trackedIndexedDbTransactionV130(...args) {
+      const context = contextForAsyncWork();
+      const transaction = originalTransaction.apply(this, args);
+      if (!context || !beginAsyncWork(context)) return transaction;
+
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        endAsyncWork(context);
+      };
+      transaction.addEventListener('complete', finish, { once: true });
+      transaction.addEventListener('abort', finish, { once: true });
+      transaction.addEventListener('error', finish, { once: true });
+      return transaction;
+    };
+    Object.defineProperty(trackedTransaction, '__stateFeedbackV130', { value: true });
+    try {
+      prototype.transaction = trackedTransaction;
+    } catch (_) {
+      // Some browser implementations may expose a non-writable prototype method.
+      // Fetch and DOM settlement tracking remain available in that environment.
+    }
+  }
+
   function installUserActionFeedback() {
     if (typeof document === 'undefined' || document.__stateFeedbackV129Installed) return;
     document.__stateFeedbackV129Installed = true;
@@ -176,6 +205,7 @@
 
   function install() {
     installFetchTracking();
+    installIndexedDbTracking();
     installUserActionFeedback();
   }
 
