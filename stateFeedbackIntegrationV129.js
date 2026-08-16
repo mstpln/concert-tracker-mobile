@@ -53,6 +53,18 @@
     }
   }
 
+  function restorePreviewedTab(context) {
+    if (!context?.previewedTab || context.clicked) return;
+    const tabbar = context.previewedTab.closest?.('#tabbar');
+    if (!tabbar) return;
+    tabbar.querySelectorAll('.tabitem').forEach((item) => {
+      const active = item === context.previousActiveTab;
+      item.classList.toggle('active', active);
+      if (active) item.setAttribute('aria-current', 'page');
+      else item.removeAttribute('aria-current');
+    });
+  }
+
   function releaseContext(context) {
     if (!context?.handle) return;
     if (pointerContext === context) pointerContext = null;
@@ -62,6 +74,7 @@
     context.observer = null;
     pendingContexts.delete(context);
     context.actionable?.removeAttribute?.('aria-busy');
+    restorePreviewedTab(context);
     feedback.end(context.handle);
     context.handle = null;
   }
@@ -152,15 +165,26 @@
       return transaction;
     };
     Object.defineProperty(trackedTransaction, '__stateFeedbackV130', { value: true });
-    try { prototype.transaction = trackedTransaction; } catch (_) {}
+    try {
+      prototype.transaction = trackedTransaction;
+    } catch (_) {}
   }
 
   function createContext(actionable, key) {
     const handle = feedback.begin({ key, delayMs: LOCAL_ACTION_DELAY_MS });
     if (!handle) return null;
     const context = {
-      key, actionable, handle, inFlight: 0, clicked: false,
-      armTimer: null, failsafeTimer: null, observer: null, settleGeneration: 0,
+      key,
+      actionable,
+      handle,
+      inFlight: 0,
+      clicked: false,
+      armTimer: null,
+      failsafeTimer: null,
+      observer: null,
+      settleGeneration: 0,
+      previewedTab: null,
+      previousActiveTab: null,
     };
     pendingContexts.add(context);
     actionable.setAttribute?.('aria-busy', 'true');
@@ -168,10 +192,12 @@
     return context;
   }
 
-  function paintBottomTabImmediately(actionable) {
-    const tab = actionable?.closest?.('.tabitem');
+  function paintBottomTabImmediately(context) {
+    const tab = context?.actionable?.closest?.('.tabitem');
     const tabbar = tab?.closest?.('#tabbar');
     if (!tab || !tabbar) return;
+    context.previewedTab = tab;
+    context.previousActiveTab = tabbar.querySelector('.tabitem.active');
     tabbar.querySelectorAll('.tabitem').forEach((item) => {
       const active = item === tab;
       item.classList.toggle('active', active);
@@ -197,7 +223,13 @@
       if (!key || feedback.isPending(key)) return;
       if (pointerContext?.handle) releaseContext(pointerContext);
       pointerContext = createContext(actionable, key);
-      paintBottomTabImmediately(actionable);
+      paintBottomTabImmediately(pointerContext);
+    }, true);
+
+    document.addEventListener('pointercancel', (event) => {
+      if (!pointerContext?.handle) return;
+      const actionable = event.target?.closest?.(ACTIONABLE_SELECTOR);
+      if (actionable === pointerContext.actionable) releaseContext(pointerContext);
     }, true);
 
     document.addEventListener('click', (event) => {
@@ -219,7 +251,7 @@
         }
         context = createContext(actionable, key);
         if (!context) return;
-        paintBottomTabImmediately(actionable);
+        paintBottomTabImmediately(context);
       }
 
       if (armedContext?.handle && armedContext !== context) releaseContext(armedContext);
