@@ -47,10 +47,6 @@
 
   function clearSettlement(context) {
     context.settleGeneration += 1;
-    if (context.releaseTimer) {
-      root.clearTimeout(context.releaseTimer);
-      context.releaseTimer = null;
-    }
     if (context.failsafeTimer) {
       root.clearTimeout(context.failsafeTimer);
       context.failsafeTimer = null;
@@ -65,24 +61,8 @@
     context.observer = null;
     pendingContexts.delete(context);
     context.actionable?.removeAttribute?.('aria-busy');
-    feedback.end(context.handle);
+    feedback.end(context.handle, { minVisibleMs: LOCAL_ACTION_MIN_VISIBLE_MS });
     context.handle = null;
-  }
-
-  function releaseAfterMinimumVisibility(context, generation) {
-    if (!context?.handle || context.inFlight > 0 || generation !== context.settleGeneration) return;
-    const elapsed = Date.now() - context.startedAt;
-    const remaining = Math.max(0, LOCAL_ACTION_MIN_VISIBLE_MS - elapsed);
-    if (remaining === 0) {
-      releaseContext(context);
-      return;
-    }
-    if (context.releaseTimer) root.clearTimeout(context.releaseTimer);
-    context.releaseTimer = root.setTimeout(() => {
-      context.releaseTimer = null;
-      if (!context.handle || context.inFlight > 0 || generation !== context.settleGeneration) return;
-      releaseContext(context);
-    }, remaining);
   }
 
   function scheduleDomSettlement(context) {
@@ -90,7 +70,7 @@
     const generation = ++context.settleGeneration;
     const settle = () => {
       if (!context.handle || context.inFlight > 0 || generation !== context.settleGeneration) return;
-      releaseAfterMinimumVisibility(context, generation);
+      releaseContext(context);
     };
     if (typeof root.requestAnimationFrame === 'function') {
       root.requestAnimationFrame(() => root.requestAnimationFrame(settle));
@@ -122,10 +102,6 @@
     if (!context?.handle) return false;
     clearArmed(context);
     context.settleGeneration += 1;
-    if (context.releaseTimer) {
-      root.clearTimeout(context.releaseTimer);
-      context.releaseTimer = null;
-    }
     context.inFlight += 1;
     return true;
   }
@@ -211,9 +187,7 @@
         actionable,
         handle,
         inFlight: 0,
-        startedAt: Date.now(),
         armTimer: null,
-        releaseTimer: null,
         failsafeTimer: null,
         observer: null,
         settleGeneration: 0,
