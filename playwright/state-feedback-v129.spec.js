@@ -85,30 +85,43 @@ test('v132 renders aligned two-line listening row and contained visible feedback
   expect(pageErrors).toEqual([]);
 });
 
-test('v132 keeps fast local click feedback visible long enough to perceive', async ({ page }) => {
+test('v132 keeps fast local feedback visible without keeping the action blocked', async ({ page }) => {
   await page.goto('/');
   const lifecycle = await page.evaluate(async () => {
     const button = document.createElement('button');
     button.id = 'qa-fast-local-action';
     button.textContent = 'Fast local action';
     document.body.appendChild(button);
+    let clicks = 0;
     button.addEventListener('click', () => {
+      clicks += 1;
       document.getElementById('screen-myconcerts').setAttribute('data-qa-fast-action', String(Date.now()));
     });
 
     button.click();
     const progress = document.getElementById('interaction-progress');
     const visibleImmediately = progress.classList.contains('is-active');
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const busyAfterSettlement = button.hasAttribute('aria-busy');
+    button.click();
+    const secondClickAccepted = clicks === 2;
     await new Promise((resolve) => setTimeout(resolve, 120));
     const visibleAt120ms = progress.classList.contains('is-active');
     await new Promise((resolve) => setTimeout(resolve, 180));
     const visibleAfter300ms = progress.classList.contains('is-active');
     const busyAfter300ms = button.hasAttribute('aria-busy');
     button.remove();
-    return { visibleImmediately, visibleAt120ms, visibleAfter300ms, busyAfter300ms };
+    return { visibleImmediately, busyAfterSettlement, secondClickAccepted, visibleAt120ms, visibleAfter300ms, busyAfter300ms };
   });
 
-  expect(lifecycle).toEqual({ visibleImmediately: true, visibleAt120ms: true, visibleAfter300ms: false, busyAfter300ms: false });
+  expect(lifecycle).toEqual({
+    visibleImmediately: true,
+    busyAfterSettlement: false,
+    secondClickAccepted: true,
+    visibleAt120ms: true,
+    visibleAfter300ms: false,
+    busyAfter300ms: false,
+  });
 });
 
 test('v132 keeps processing feedback active for perceptible local IndexedDB work and stops at completion', async ({ page }) => {
