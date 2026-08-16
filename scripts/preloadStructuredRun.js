@@ -24,4 +24,4 @@ installMusicbrainzScheduledGate({ musicbrainz, worker, config });
 installUsageTrackerSpotifyCircuit(UsageTracker);
 installSpotifyModuleCircuit(spotify);
 installSpotifyNonPlaylistReuse(spotify);
-installSpotifyDiagnosticsV135(spotify);
+installSpotifyDiagnosticsV135(spotify, UsageTracker);
