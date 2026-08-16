@@ -11,6 +11,7 @@
   let sequence = 0;
   let visible = false;
   let timer = null;
+  let hideTimer = null;
 
   function indicator() {
     return root.document?.getElementById?.('interaction-progress') || null;
@@ -19,8 +20,15 @@
   function render() {
     const node = indicator();
     if (!node) return;
-    node.classList.toggle('is-active', visible && pendingTokens.size > 0);
-    node.setAttribute('aria-hidden', visible && pendingTokens.size > 0 ? 'false' : 'true');
+    const active = visible && (pendingTokens.size > 0 || !!hideTimer);
+    node.classList.toggle('is-active', active);
+    node.setAttribute('aria-hidden', active ? 'false' : 'true');
+  }
+
+  function clearHideTimer() {
+    if (!hideTimer) return;
+    root.clearTimeout(hideTimer);
+    hideTimer = null;
   }
 
   function schedule(delayMs = DEFAULT_DELAY_MS) {
@@ -41,14 +49,15 @@
 
   function begin({ key = null, delayMs = DEFAULT_DELAY_MS } = {}) {
     if (key && pendingKeys.has(key)) return null;
+    clearHideTimer();
     const token = `interaction-${++sequence}`;
     pendingTokens.add(token);
     if (key) pendingKeys.add(key);
     schedule(delayMs);
-    return Object.freeze({ token, key });
+    return Object.freeze({ token, key, startedAt: Date.now() });
   }
 
-  function end(handle) {
+  function end(handle, options = {}) {
     if (!handle?.token || !pendingTokens.has(handle.token)) return false;
     pendingTokens.delete(handle.token);
     if (handle.key) pendingKeys.delete(handle.key);
@@ -57,7 +66,19 @@
         root.clearTimeout(timer);
         timer = null;
       }
-      visible = false;
+      const minimum = Math.max(0, Number(options.minVisibleMs) || 0);
+      const elapsed = Date.now() - (Number(handle.startedAt) || Date.now());
+      const remaining = visible ? Math.max(0, minimum - elapsed) : 0;
+      clearHideTimer();
+      if (remaining > 0) {
+        hideTimer = root.setTimeout(() => {
+          hideTimer = null;
+          if (!pendingTokens.size) visible = false;
+          render();
+        }, remaining);
+      } else {
+        visible = false;
+      }
     }
     render();
     return true;
@@ -69,7 +90,7 @@
     try {
       return { duplicate: false, value: await work() };
     } finally {
-      end(handle);
+      end(handle, { minVisibleMs: options.minVisibleMs });
     }
   }
 

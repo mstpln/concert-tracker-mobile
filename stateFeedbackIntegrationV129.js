@@ -9,6 +9,7 @@
 
   const ACTIONABLE_SELECTOR = 'button, a, [role="button"], input[type="submit"], .clickable';
   const LOCAL_ACTION_DELAY_MS = 0;
+  const LOCAL_ACTION_MIN_VISIBLE_MS = 240;
   const LOCAL_ACTION_FAILSAFE_MS = 10000;
   let armedContext = null;
   const pendingContexts = new Set();
@@ -60,7 +61,7 @@
     context.observer = null;
     pendingContexts.delete(context);
     context.actionable?.removeAttribute?.('aria-busy');
-    feedback.end(context.handle);
+    feedback.end(context.handle, { minVisibleMs: LOCAL_ACTION_MIN_VISIBLE_MS });
     context.handle = null;
   }
 
