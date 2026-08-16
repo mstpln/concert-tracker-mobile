@@ -8,8 +8,18 @@
   if (!feedback) return;
 
   const ACTIONABLE_SELECTOR = 'button, a, [role="button"], input[type="submit"], .clickable';
+  const LOCAL_ACTION_DELAY_MS = 140;
+  const LOCAL_ACTION_FAILSAFE_MS = 10000;
   let armedContext = null;
   const pendingContexts = new Set();
+
+  function ownDataKey(actionable) {
+    const entries = Object.entries(actionable?.dataset || {})
+      .filter(([, value]) => value !== undefined && value !== '')
+      .sort(([a], [b]) => a.localeCompare(b));
+    if (!entries.length) return null;
+    return entries.map(([name, value]) => `${name}=${value}`).join('&');
+  }
 
   function userActionKey(target) {
     const actionable = target?.closest?.(ACTIONABLE_SELECTOR);
@@ -19,6 +29,8 @@
     if (actionable.id) return `control:${actionable.id}`;
     const href = actionable.getAttribute?.('href');
     if (href && href !== '#') return `link:${href}`;
+    const ownData = ownDataKey(actionable);
+    if (ownData) return `data:${ownData}`;
     const row = actionable.closest('[data-id], [data-concert-id], [data-band-id]');
     if (row) return `row:${row.dataset.id || row.dataset.concertId || row.dataset.bandId}:${actionable.textContent?.trim() || actionable.tagName}`;
     return `action:${actionable.textContent?.trim() || actionable.getAttribute?.('aria-label') || actionable.tagName}`;
@@ -32,60 +44,123 @@
     }
   }
 
-  function finishContext(context) {
-    if (context.inFlight > 0 || !context.handle) return;
-    if (context.settleTimer) root.clearTimeout(context.settleTimer);
-    context.settleTimer = root.setTimeout(() => {
-      context.settleTimer = null;
-      if (context.inFlight > 0) return;
-      pendingContexts.delete(context);
-      context.actionable?.removeAttribute?.('aria-busy');
-      feedback.end(context.handle);
-      context.handle = null;
-    }, 0);
+  function clearSettlement(context) {
+    context.settleGeneration += 1;
+    if (context.failsafeTimer) {
+      root.clearTimeout(context.failsafeTimer);
+      context.failsafeTimer = null;
+    }
   }
 
-  function contextForFetch() {
-    if (armedContext) return armedContext;
-    if (pendingContexts.size === 1) return pendingContexts.values().next().value;
+  function releaseContext(context) {
+    if (!context?.handle) return;
+    clearArmed(context);
+    clearSettlement(context);
+    context.observer?.disconnect?.();
+    context.observer = null;
+    pendingContexts.delete(context);
+    context.actionable?.removeAttribute?.('aria-busy');
+    feedback.end(context.handle);
+    context.handle = null;
+  }
+
+  function scheduleDomSettlement(context) {
+    if (!context?.handle || context.inFlight > 0) return;
+    const generation = ++context.settleGeneration;
+    const settle = () => {
+      if (!context.handle || context.inFlight > 0 || generation !== context.settleGeneration) return;
+      releaseContext(context);
+    };
+    if (typeof root.requestAnimationFrame === 'function') {
+      root.requestAnimationFrame(() => root.requestAnimationFrame(settle));
+    } else {
+      root.setTimeout(settle, 0);
+    }
+  }
+
+  function observeLocalSettlement(context) {
+    const target = document.getElementById('content') || document.getElementById('app') || document.body;
+    if (typeof root.MutationObserver === 'function' && target) {
+      context.observer = new root.MutationObserver(() => scheduleDomSettlement(context));
+      context.observer.observe(target, { subtree: true, childList: true, attributes: true, characterData: true });
+    }
+    scheduleDomSettlement(context);
+    context.failsafeTimer = root.setTimeout(() => {
+      if (context.handle && context.inFlight === 0) releaseContext(context);
+    }, LOCAL_ACTION_FAILSAFE_MS);
+  }
+
+  function contextForAsyncWork() {
+    if (armedContext?.handle) return armedContext;
+    const active = [...pendingContexts].filter((context) => context.handle);
+    if (active.length === 1) return active[0];
     return null;
+  }
+
+  function beginAsyncWork(context) {
+    if (!context?.handle) return false;
+    clearArmed(context);
+    context.settleGeneration += 1;
+    context.inFlight += 1;
+    return true;
+  }
+
+  function endAsyncWork(context) {
+    if (!context?.handle) return;
+    context.inFlight = Math.max(0, context.inFlight - 1);
+    scheduleDomSettlement(context);
+  }
+
+  function trackPromise(context, work) {
+    if (!beginAsyncWork(context)) return work;
+    return Promise.resolve(work).finally(() => endAsyncWork(context));
   }
 
   function installFetchTracking() {
     if (typeof root.fetch !== 'function' || root.fetch.__stateFeedbackV129) return;
     const originalFetch = root.fetch.bind(root);
     const trackedFetch = function trackedFetchV129(...args) {
-      const context = contextForFetch();
+      const context = contextForAsyncWork();
       if (!context) return originalFetch(...args);
-
-      clearArmed(context);
-      if (!context.handle) {
-        context.handle = feedback.begin({ key: context.key });
-        if (!context.handle) return originalFetch(...args);
-        context.actionable?.setAttribute?.('aria-busy', 'true');
-        pendingContexts.add(context);
-      }
-      if (context.settleTimer) {
-        root.clearTimeout(context.settleTimer);
-        context.settleTimer = null;
-      }
-      context.inFlight += 1;
-
       let request;
       try {
         request = originalFetch(...args);
       } catch (error) {
-        context.inFlight -= 1;
-        finishContext(context);
+        if (beginAsyncWork(context)) endAsyncWork(context);
         throw error;
       }
-      return Promise.resolve(request).finally(() => {
-        context.inFlight -= 1;
-        finishContext(context);
-      });
+      return trackPromise(context, request);
     };
     Object.defineProperty(trackedFetch, '__stateFeedbackV129', { value: true });
     root.fetch = trackedFetch;
+  }
+
+  function installIndexedDbTracking() {
+    const prototype = root.IDBDatabase?.prototype;
+    if (!prototype || typeof prototype.transaction !== 'function' || prototype.transaction.__stateFeedbackV130) return;
+    const originalTransaction = prototype.transaction;
+    const trackedTransaction = function trackedIndexedDbTransactionV130(...args) {
+      const context = contextForAsyncWork();
+      const transaction = originalTransaction.apply(this, args);
+      if (!context || !beginAsyncWork(context)) return transaction;
+
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        endAsyncWork(context);
+      };
+      transaction.addEventListener('complete', finish, { once: true });
+      transaction.addEventListener('abort', finish, { once: true });
+      return transaction;
+    };
+    Object.defineProperty(trackedTransaction, '__stateFeedbackV130', { value: true });
+    try {
+      prototype.transaction = trackedTransaction;
+    } catch (_) {
+      // Some browser implementations may expose a non-writable prototype method.
+      // Fetch and DOM settlement tracking remain available in that environment.
+    }
   }
 
   function installUserActionFeedback() {
@@ -106,15 +181,30 @@
         return;
       }
 
-      if (armedContext) clearArmed(armedContext);
-      const context = { key, actionable, handle: null, inFlight: 0, settleTimer: null, armTimer: null };
+      if (armedContext?.handle) releaseContext(armedContext);
+      const handle = feedback.begin({ key, delayMs: LOCAL_ACTION_DELAY_MS });
+      if (!handle) return;
+      const context = {
+        key,
+        actionable,
+        handle,
+        inFlight: 0,
+        armTimer: null,
+        failsafeTimer: null,
+        observer: null,
+        settleGeneration: 0,
+      };
       armedContext = context;
-      context.armTimer = root.setTimeout(() => clearArmed(context), 500);
+      pendingContexts.add(context);
+      actionable.setAttribute?.('aria-busy', 'true');
+      context.armTimer = root.setTimeout(() => clearArmed(context), 750);
+      observeLocalSettlement(context);
     }, true);
   }
 
   function install() {
     installFetchTracking();
+    installIndexedDbTracking();
     installUserActionFeedback();
   }
 

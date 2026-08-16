@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('v129 renders past state, divider and perceptible request feedback', async ({ page }) => {
+test('v130 renders past state, divider and perceptible request feedback', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -41,10 +41,81 @@ test('v129 renders past state, divider and perceptible request feedback', async 
   });
 
   expect(lifecycle).toEqual({ visibleDuring: true, duplicateWasSuppressed: true, visibleAfter: false });
+
+  const keys = await page.evaluate(() => {
+    const host = document.createElement('div');
+    host.innerHTML = `
+      <button data-v123-listen-merge="qa-review-a|qa-review-c">Same listen</button>
+      <button data-v123-listen-merge="qa-review-a|qa-review-b">Same listen</button>
+    `;
+    document.body.appendChild(host);
+    const buttons = host.querySelectorAll('button');
+    const result = [...buttons].map((button) => LiveVaultStateFeedbackIntegrationV129.userActionKey(button));
+    host.remove();
+    return result;
+  });
+  expect(keys[0]).not.toBe(keys[1]);
+  expect(keys).toEqual([
+    'data:v123ListenMerge=qa-review-a|qa-review-c',
+    'data:v123ListenMerge=qa-review-a|qa-review-b',
+  ]);
   expect(pageErrors).toEqual([]);
 });
 
-test('v129 reduced motion keeps the processing segment static', async ({ page }) => {
+test('v130 keeps processing feedback active for perceptible local IndexedDB work', async ({ page }) => {
+  await page.goto('/');
+  const lifecycle = await page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('qa-state-feedback-v130', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('items');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+
+    const button = document.createElement('button');
+    button.id = 'qa-local-idb-action';
+    button.textContent = 'Local IndexedDB action';
+    document.body.appendChild(button);
+
+    let resolveDone;
+    const done = new Promise((resolve) => { resolveDone = resolve; });
+    button.addEventListener('click', () => {
+      const transaction = db.transaction('items', 'readwrite');
+      const store = transaction.objectStore('items');
+      let index = 0;
+      const keepBusy = () => {
+        const request = store.put(index, `key-${index}`);
+        request.onsuccess = () => {
+          index += 1;
+          if (performance.now() < deadline) {
+            keepBusy();
+          }
+        };
+      };
+      const deadline = performance.now() + 220;
+      transaction.addEventListener('complete', resolveDone, { once: true });
+      keepBusy();
+    });
+
+    button.click();
+    await new Promise((resolve) => setTimeout(resolve, 165));
+    const visibleDuring = document.getElementById('interaction-progress').classList.contains('is-active');
+    const busyDuring = button.getAttribute('aria-busy') === 'true';
+    await done;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const visibleAfter = document.getElementById('interaction-progress').classList.contains('is-active');
+    const busyAfter = button.hasAttribute('aria-busy');
+
+    button.remove();
+    db.close();
+    indexedDB.deleteDatabase('qa-state-feedback-v130');
+    return { visibleDuring, busyDuring, visibleAfter, busyAfter };
+  });
+
+  expect(lifecycle).toEqual({ visibleDuring: true, busyDuring: true, visibleAfter: false, busyAfter: false });
+});
+
+test('v130 reduced motion keeps the processing segment static', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   const style = await page.evaluate(async () => {
