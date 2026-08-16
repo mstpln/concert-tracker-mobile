@@ -9,9 +9,9 @@
 
   const ACTIONABLE_SELECTOR = 'button, a, [role="button"], input[type="submit"], .clickable';
   const LOCAL_ACTION_DELAY_MS = 0;
-  const LOCAL_ACTION_MIN_VISIBLE_MS = 240;
   const LOCAL_ACTION_FAILSAFE_MS = 10000;
   let armedContext = null;
+  let pointerContext = null;
   const pendingContexts = new Set();
 
   function ownDataKey(actionable) {
@@ -53,20 +53,34 @@
     }
   }
 
+  function restorePreviewedTab(context) {
+    if (!context?.previewedTab || context.clicked) return;
+    const tabbar = context.previewedTab.closest?.('#tabbar');
+    if (!tabbar) return;
+    tabbar.querySelectorAll('.tabitem').forEach((item) => {
+      const active = item === context.previousActiveTab;
+      item.classList.toggle('active', active);
+      if (active) item.setAttribute('aria-current', 'page');
+      else item.removeAttribute('aria-current');
+    });
+  }
+
   function releaseContext(context) {
     if (!context?.handle) return;
+    if (pointerContext === context) pointerContext = null;
     clearArmed(context);
     clearSettlement(context);
     context.observer?.disconnect?.();
     context.observer = null;
     pendingContexts.delete(context);
     context.actionable?.removeAttribute?.('aria-busy');
-    feedback.end(context.handle, { minVisibleMs: LOCAL_ACTION_MIN_VISIBLE_MS });
+    restorePreviewedTab(context);
+    feedback.end(context.handle);
     context.handle = null;
   }
 
   function scheduleDomSettlement(context) {
-    if (!context?.handle || context.inFlight > 0) return;
+    if (!context?.handle || context.inFlight > 0 || !context.clicked) return;
     const generation = ++context.settleGeneration;
     const settle = () => {
       if (!context.handle || context.inFlight > 0 || generation !== context.settleGeneration) return;
@@ -85,15 +99,11 @@
       context.observer = new root.MutationObserver(() => scheduleDomSettlement(context));
       context.observer.observe(target, { subtree: true, childList: true, attributes: true, characterData: true });
     }
-    scheduleDomSettlement(context);
     context.failsafeTimer = root.setTimeout(() => {
       if (context.handle) releaseContext(context);
     }, LOCAL_ACTION_FAILSAFE_MS);
   }
 
-  /* Async work belongs to a click only while that click is armed. Falling back
-     to the sole pending context allowed unrelated background IndexedDB/fetch
-     activity to continually adopt an old click and keep its bar alive. */
   function contextForAsyncWork() {
     return armedContext?.handle ? armedContext : null;
   }
@@ -144,7 +154,6 @@
       const context = contextForAsyncWork();
       const transaction = originalTransaction.apply(this, args);
       if (!context || !beginAsyncWork(context)) return transaction;
-
       let finished = false;
       const finish = () => {
         if (finished) return;
@@ -161,9 +170,75 @@
     } catch (_) {}
   }
 
+  function createContext(actionable, key) {
+    const handle = feedback.begin({ key, delayMs: LOCAL_ACTION_DELAY_MS });
+    if (!handle) return null;
+    const context = {
+      key,
+      actionable,
+      handle,
+      inFlight: 0,
+      clicked: false,
+      armTimer: null,
+      failsafeTimer: null,
+      observer: null,
+      settleGeneration: 0,
+      previewedTab: null,
+      previousActiveTab: null,
+    };
+    pendingContexts.add(context);
+    actionable.setAttribute?.('aria-busy', 'true');
+    observeLocalSettlement(context);
+    return context;
+  }
+
+  function paintBottomTabImmediately(context) {
+    const tab = context?.actionable?.closest?.('.tabitem');
+    const tabbar = tab?.closest?.('#tabbar');
+    if (!tab || !tabbar) return;
+    context.previewedTab = tab;
+    context.previousActiveTab = tabbar.querySelector('.tabitem.active');
+    tabbar.querySelectorAll('.tabitem').forEach((item) => {
+      const active = item === tab;
+      item.classList.toggle('active', active);
+      if (active) item.setAttribute('aria-current', 'page');
+      else item.removeAttribute('aria-current');
+    });
+  }
+
   function installUserActionFeedback() {
     if (typeof document === 'undefined' || document.__stateFeedbackV129Installed) return;
     document.__stateFeedbackV129Installed = true;
+
+    /* Pointerdown is a separate browser task before click. Starting the visual
+       state here gives Chromium a paint opportunity before a heavy synchronous
+       listening render begins in the click handler. */
+    document.addEventListener('pointerdown', (event) => {
+      if (event.button != null && event.button !== 0) return;
+      const app = document.getElementById('app');
+      if (!app || app.classList.contains('hidden')) return;
+      const actionable = event.target?.closest?.(ACTIONABLE_SELECTOR);
+      if (!actionable || actionable.disabled || actionable.getAttribute('aria-disabled') === 'true') return;
+      const key = userActionKey(actionable);
+      if (!key || feedback.isPending(key)) return;
+      if (pointerContext?.handle) releaseContext(pointerContext);
+      pointerContext = createContext(actionable, key);
+      paintBottomTabImmediately(pointerContext);
+    }, true);
+
+    document.addEventListener('pointercancel', (event) => {
+      if (!pointerContext?.handle) return;
+      const actionable = event.target?.closest?.(ACTIONABLE_SELECTOR);
+      if (actionable === pointerContext.actionable) releaseContext(pointerContext);
+    }, true);
+
+    document.addEventListener('pointerup', () => {
+      const context = pointerContext;
+      if (!context?.handle) return;
+      root.setTimeout(() => {
+        if (pointerContext === context && !context.clicked) releaseContext(context);
+      }, 0);
+    }, true);
 
     document.addEventListener('click', (event) => {
       const app = document.getElementById('app');
@@ -173,33 +248,25 @@
       const key = userActionKey(actionable);
       if (!key) return;
 
-      if (feedback.isPending(key)) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        return;
+      let context = pointerContext?.handle && pointerContext.actionable === actionable ? pointerContext : null;
+      if (context) {
+        pointerContext = null;
+      } else {
+        if (feedback.isPending(key)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
+        context = createContext(actionable, key);
+        if (!context) return;
+        paintBottomTabImmediately(context);
       }
 
-      if (armedContext?.handle) releaseContext(armedContext);
-      const handle = feedback.begin({ key, delayMs: LOCAL_ACTION_DELAY_MS });
-      if (!handle) return;
-      const context = {
-        key,
-        actionable,
-        handle,
-        inFlight: 0,
-        armTimer: null,
-        failsafeTimer: null,
-        observer: null,
-        settleGeneration: 0,
-      };
+      if (armedContext?.handle && armedContext !== context) releaseContext(armedContext);
+      context.clicked = true;
       armedContext = context;
-      pendingContexts.add(context);
-      actionable.setAttribute?.('aria-busy', 'true');
-      /* Keep ownership through the current event turn so synchronous handlers
-         can start fetch/IndexedDB work, but do not let later background work
-         attach itself to this click. */
       context.armTimer = root.setTimeout(() => clearArmed(context), 0);
-      observeLocalSettlement(context);
+      scheduleDomSettlement(context);
     }, true);
   }
 
@@ -211,8 +278,5 @@
 
   root.addEventListener?.('load', install, { once: true });
 
-  root.LiveVaultStateFeedbackIntegrationV129 = Object.freeze({
-    userActionKey,
-    install,
-  });
+  root.LiveVaultStateFeedbackIntegrationV129 = Object.freeze({ userActionKey, install });
 })(globalThis);
