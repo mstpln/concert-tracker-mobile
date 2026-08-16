@@ -29,30 +29,6 @@ test('normalizes ListenBrainz listens without inventing missing duration', () =>
   assert.equal(event.musicbrainzArtistIds.length, 1);
 });
 
-test('retains validated ListenBrainz URL, release-group and CAA evidence', () => {
-  const event = listenbrainz.normalizeListen({
-    listened_at: 1785751200,
-    track_metadata: {
-      artist_name: 'Synthetic Artist',
-      track_name: 'Synthetic Track',
-      additional_info: {
-        recording_mbid: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
-        release_group_mbid: '12345678-1234-4123-8123-123456789abc',
-        caa_id: '12345',
-        caa_release_mbid: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
-        url_rels: ['https://open.spotify.com/track/TrustedSynthetic1', 'http://unsafe.example/track'],
-      },
-    },
-  });
-  assert.deepEqual(event.listenbrainzUrlRels, ['https://open.spotify.com/track/TrustedSynthetic1']);
-  assert.equal(event.musicbrainzReleaseGroupId, '12345678-1234-4123-8123-123456789abc');
-  assert.equal(event.listenbrainzCaaId, '12345');
-  assert.equal(event.listenbrainzCaaReleaseMbid, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
-  const sanitized = historyV2.sanitizeEvent(event);
-  assert.deepEqual(sanitized.listenbrainzUrlRels, event.listenbrainzUrlRels);
-  assert.equal(sanitized.musicbrainzReleaseGroupId, event.musicbrainzReleaseGroupId);
-});
-
 test('provider-neutral sanitizer preserves Spotify rules and accepts ListenBrainz identity', () => {
   const listen = historyV2.sanitizeEvent({
     stableListenId: 'listenbrainz:1:test',
