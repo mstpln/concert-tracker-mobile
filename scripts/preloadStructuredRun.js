@@ -1,13 +1,11 @@
 'use strict';
 
-// Loaded with Node's -r flag before scripts/research.js. It keeps the
-// existing mature structured pipeline intact while disabling every Tavily
-// route for this more frequent run, narrowing release alerts to actual
-// Spotify catalogue releases, gating MusicBrainz to a small fair queue of
-// due work, and sharing Spotify rate/quota backoff through apiUsage.json.
+// Loaded with Node's -r flag before scripts/research.js. The frequent
+// structured run keeps Tavily disabled, gates MusicBrainz to the DAB5 fair
+// queue, and shares Spotify rate/quota backoff through apiUsage.json.
+// v135 deliberately does not install any release planner or release refresh
+// override: album/EP/single discovery is no longer a BANDMARKR product lane.
 const config = require('./lib/config');
-const releasePlan = require('./lib/releaseAlertPlan');
-const { planSpotifyReleaseAlerts } = require('./lib/spotifyReleaseAlertPlan');
 const musicbrainz = require('./lib/musicbrainz');
 const spotify = require('./lib/spotify');
 const worker = require('./lib/workerClient');
@@ -16,16 +14,8 @@ const { installMusicbrainzScheduledGate } = require('./lib/musicbrainzScheduledG
 const { installUsageTrackerSpotifyCircuit, installSpotifyModuleCircuit } = require('./lib/spotifyCircuitBreaker');
 
 config.STRUCTURED_RESEARCH.targetedTavilyRoutingEnabled = false;
-// Spotify remains the frequent catalogue source. MusicBrainz retains the
-// base configured refresh interval and is additionally bounded by DAB5's
-// demand/fair scheduler below.
-config.STRUCTURED_RESEARCH.spotifyReleaseRefreshDays = 3;
+config.STRUCTURED_RESEARCH.structuredReleaseMonitoringEnabled = false;
 
 installMusicbrainzScheduledGate({ musicbrainz, worker, config });
 installUsageTrackerSpotifyCircuit(UsageTracker);
 installSpotifyModuleCircuit(spotify);
-
-// The research entry point is loaded after this preload, so its destructured
-// planner reference receives the Spotify-only lifecycle implementation while
-// the planner itself remains pure and independently testable.
-releasePlan.planLifecycleAlerts = planSpotifyReleaseAlerts;
