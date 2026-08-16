@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const config = require('../scripts/lib/config');
+const listenbrainz = require('../listenbrainzSync.js');
+const historyV2 = require('../listeningHistoryV2.js');
 const { createResolver, evidenceSpotifyUrl } = require('../scripts/lib/nonPlaylistTrackLinks');
 const diagnostics = require('../scripts/lib/spotifyDiagnosticsV135');
 
@@ -30,6 +32,19 @@ test('v135 cleanup override preserves listening and removes Releases tabs', () =
   assert.match(source, /\['data', 'Data'\]/);
   assert.doesNotMatch(source, /\['news', 'Releases'\]/);
   assert.match(source, /No new concerts found in the last 90 days/);
+});
+
+test('ListenBrainz normalization retains bounded provider-neutral relationship evidence', () => {
+  const event = listenbrainz.normalizeListen({ listened_at: 1785751200, track_metadata: { artist_name: 'Synthetic Artist', track_name: 'Synthetic Track', additional_info: {
+    release_group_mbid: '12345678-1234-4123-8123-123456789abc', caa_id: '12345',
+    url_rels: ['https://open.spotify.com/track/ListenBrainz123', 'http://unsafe.example/track'],
+  } } });
+  assert.deepEqual(event.listenbrainzUrlRels, ['https://open.spotify.com/track/ListenBrainz123']);
+  assert.equal(event.musicbrainzReleaseGroupId, '12345678-1234-4123-8123-123456789abc');
+  assert.equal(event.listenbrainzCaaId, '12345');
+  const sanitized = historyV2.sanitizeEvent(event);
+  assert.deepEqual(sanitized.listenbrainzUrlRels, event.listenbrainzUrlRels);
+  assert.equal(sanitized.musicbrainzReleaseGroupId, event.musicbrainzReleaseGroupId);
 });
 
 test('trusted local Spotify identity resolves without provider work', () => {
