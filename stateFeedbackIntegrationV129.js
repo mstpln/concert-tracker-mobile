@@ -8,7 +8,7 @@
   if (!feedback) return;
 
   const ACTIONABLE_SELECTOR = 'button, a, [role="button"], input[type="submit"], .clickable';
-  const LOCAL_ACTION_DELAY_MS = 140;
+  const LOCAL_ACTION_DELAY_MS = 0;
   const LOCAL_ACTION_FAILSAFE_MS = 10000;
   let armedContext = null;
   const pendingContexts = new Set();
@@ -86,15 +86,15 @@
     }
     scheduleDomSettlement(context);
     context.failsafeTimer = root.setTimeout(() => {
-      if (context.handle && context.inFlight === 0) releaseContext(context);
+      if (context.handle) releaseContext(context);
     }, LOCAL_ACTION_FAILSAFE_MS);
   }
 
+  /* Async work belongs to a click only while that click is armed. Falling back
+     to the sole pending context allowed unrelated background IndexedDB/fetch
+     activity to continually adopt an old click and keep its bar alive. */
   function contextForAsyncWork() {
-    if (armedContext?.handle) return armedContext;
-    const active = [...pendingContexts].filter((context) => context.handle);
-    if (active.length === 1) return active[0];
-    return null;
+    return armedContext?.handle ? armedContext : null;
   }
 
   function beginAsyncWork(context) {
@@ -157,10 +157,7 @@
     Object.defineProperty(trackedTransaction, '__stateFeedbackV130', { value: true });
     try {
       prototype.transaction = trackedTransaction;
-    } catch (_) {
-      // Some browser implementations may expose a non-writable prototype method.
-      // Fetch and DOM settlement tracking remain available in that environment.
-    }
+    } catch (_) {}
   }
 
   function installUserActionFeedback() {
@@ -197,7 +194,10 @@
       armedContext = context;
       pendingContexts.add(context);
       actionable.setAttribute?.('aria-busy', 'true');
-      context.armTimer = root.setTimeout(() => clearArmed(context), 750);
+      /* Keep ownership through the current event turn so synchronous handlers
+         can start fetch/IndexedDB work, but do not let later background work
+         attach itself to this click. */
+      context.armTimer = root.setTimeout(() => clearArmed(context), 0);
       observeLocalSettlement(context);
     }, true);
   }
