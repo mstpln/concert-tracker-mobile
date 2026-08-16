@@ -6,16 +6,23 @@ const PATCH = Symbol.for('bandmarkr.v135.spotifyDiagnostics');
 const ENDPOINTS = new Set(['token', 'artist_exact', 'artist_search', 'artist_albums', 'track_exact', 'track_search', 'album_exact_tracks', 'other']);
 const LANES = new Set(['structured_identity', 'artist_image', 'album_artwork', 'predicted_playlist', 'historical_non_playlist', 'other']);
 
+function circuitSnapshot(usage) {
+  const circuit = usage?.state?.spotify?.circuit;
+  if (!circuit || typeof circuit !== 'object') return null;
+  return { status: circuit.status || null, reason: circuit.reason || null };
+}
+
 function ensure(usage) {
   if (!usage?.state?.spotify) return null;
   const spotify = usage.state.spotify;
   if (!spotify.diagnostics || typeof spotify.diagnostics !== 'object' || Array.isArray(spotify.diagnostics)) {
-    spotify.diagnostics = { callsByLane: {}, callsByEndpoint: {}, outcomes: {}, circuitEvents: [], circuitStart: null, circuitFinish: null };
+    spotify.diagnostics = { callsByLane: {}, callsByEndpoint: {}, outcomes: {}, circuitEvents: [], circuitStart: circuitSnapshot(usage), circuitFinish: null };
   }
   for (const key of ['callsByLane', 'callsByEndpoint', 'outcomes']) {
     if (!spotify.diagnostics[key] || typeof spotify.diagnostics[key] !== 'object' || Array.isArray(spotify.diagnostics[key])) spotify.diagnostics[key] = {};
   }
   if (!Array.isArray(spotify.diagnostics.circuitEvents)) spotify.diagnostics.circuitEvents = [];
+  if (spotify.diagnostics.circuitStart === undefined) spotify.diagnostics.circuitStart = circuitSnapshot(usage);
   return spotify.diagnostics;
 }
 
@@ -37,7 +44,14 @@ function outcomeKind(result) {
   return null;
 }
 
-function recordOperation(usage, { lane, endpoint, before, result }) {
+function safeRetryAfter(result) {
+  const value = result?.retryAfter ?? result?.retryAfterSeconds ?? null;
+  if (value == null || value === '') return null;
+  const text = String(value);
+  return text.length <= 40 ? text : null;
+}
+
+function recordOperation(usage, { lane, endpoint, before, beforeCircuit = null, result }) {
   const diagnostics = ensure(usage);
   if (!diagnostics) return;
   lane = LANES.has(lane) ? lane : 'other';
@@ -56,6 +70,20 @@ function recordOperation(usage, { lane, endpoint, before, result }) {
   }
   const outcome = outcomeKind(result);
   if (outcome) count(diagnostics.outcomes, outcome);
+
+  const afterCircuit = circuitSnapshot(usage);
+  diagnostics.circuitFinish = afterCircuit;
+  if (beforeCircuit?.status !== 'open' && afterCircuit?.status === 'open') {
+    diagnostics.circuitEvents.push({
+      lane,
+      endpoint,
+      callOrdinal: calls(usage),
+      httpStatus: Number.isFinite(Number(result?.status)) ? Number(result.status) : null,
+      reason: afterCircuit.reason,
+      retryAfter: safeRetryAfter(result),
+    });
+    diagnostics.circuitEvents = diagnostics.circuitEvents.slice(-10);
+  }
 }
 
 function wrap(spotify, name, lane, endpoint) {
@@ -64,12 +92,13 @@ function wrap(spotify, name, lane, endpoint) {
   spotify[name] = async function v135Diagnosed(...args) {
     const usage = name === 'resolveArtistIdentity' ? args[0]?.usage : args[2]?.state?.spotify ? args[2] : args[1]?.state?.spotify ? args[1] : null;
     const before = calls(usage);
+    const beforeCircuit = circuitSnapshot(usage);
     try {
       const result = await original.apply(this, args);
-      recordOperation(usage, { lane, endpoint, before, result });
+      recordOperation(usage, { lane, endpoint, before, beforeCircuit, result });
       return result;
     } catch (error) {
-      recordOperation(usage, { lane, endpoint, before, result: { kind: 'error', error: error?.message || 'request_failed' } });
+      recordOperation(usage, { lane, endpoint, before, beforeCircuit, result: { kind: 'error', status: error?.status, retryAfter: error?.retryAfter, error: error?.code || 'request_failed' } });
       throw error;
     }
   };
@@ -88,4 +117,4 @@ function installSpotifyDiagnosticsV135(spotify) {
   return true;
 }
 
-module.exports = { ensure, calls, outcomeKind, recordOperation, installSpotifyDiagnosticsV135 };
+module.exports = { circuitSnapshot, ensure, calls, outcomeKind, recordOperation, installSpotifyDiagnosticsV135 };
