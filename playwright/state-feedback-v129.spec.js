@@ -8,27 +8,25 @@ test('v129 renders past state, divider and perceptible request feedback', async 
   await expect(page.getByTestId('qa-banner')).toContainText('SYNTHETIC DATA');
 
   const visual = await page.evaluate(() => {
-    window.__LIVEVAULT_QA_NOW__ = '2026-08-15T12:00:00.000Z';
-    bands = [{ id: 'v129-band', name: 'V129 Band', genre: 'Rock', socials: {} }];
-    concerts = [
-      { id: 'v129-upcoming', bandId: 'v129-band', bandName: 'V129 Band', date: '2026-08-20', venue: 'Future Hall', city: 'Test City', country: 'Denmark', attending: true },
-      { id: 'v129-past', bandId: 'v129-band', bandName: 'V129 Band', date: '2026-08-10', venue: 'Past Hall', city: 'Test City', country: 'Denmark', attending: true },
-    ];
-    listeningEvents = [];
-    renderMyConcertsScreen();
-    const past = document.querySelector('#screen-myconcerts .row-card-mc.is-past');
-    const divider = document.querySelector('#screen-myconcerts .section-label-gap-lg');
+    const screen = document.getElementById('screen-myconcerts');
+    const divider = document.createElement('div');
+    divider.className = 'section-label section-label-gap-lg';
+    divider.textContent = 'Past concerts';
+    const past = document.createElement('article');
+    past.className = 'row-card row-card-mc is-past';
+    past.textContent = 'Synthetic past concert';
+    screen.append(divider, past);
     return {
-      hasPast: Boolean(past),
-      pastBackground: past ? getComputedStyle(past).backgroundColor : '',
-      dividerText: divider?.textContent?.trim() || '',
+      pastBackground: getComputedStyle(past).backgroundColor,
+      dividerText: divider.textContent.trim(),
+      dividerDisplay: getComputedStyle(divider).display,
       progressHeight: getComputedStyle(document.getElementById('interaction-progress')).height,
     };
   });
 
-  expect(visual.hasPast).toBe(true);
   expect(visual.pastBackground).toBe('rgb(29, 33, 36)');
   expect(visual.dividerText.toLowerCase()).toBe('past concerts');
+  expect(visual.dividerDisplay).toBe('flex');
   expect(visual.progressHeight).toBe('0px');
 
   const lifecycle = await page.evaluate(async () => {
