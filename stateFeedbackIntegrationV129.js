@@ -8,6 +8,8 @@
   if (!feedback) return;
 
   const ACTIONABLE_SELECTOR = 'button, a, [role="button"], input[type="submit"], .clickable';
+  const LOCAL_ACTION_DELAY_MS = 140;
+  const LOCAL_ACTION_SETTLE_MS = 180;
   let armedContext = null;
   const pendingContexts = new Set();
 
@@ -32,17 +34,32 @@
     }
   }
 
+  function releaseContext(context) {
+    clearArmed(context);
+    pendingContexts.delete(context);
+    context.actionable?.removeAttribute?.('aria-busy');
+    if (context.handle) feedback.end(context.handle);
+    context.handle = null;
+  }
+
   function finishContext(context) {
     if (context.inFlight > 0 || !context.handle) return;
     if (context.settleTimer) root.clearTimeout(context.settleTimer);
     context.settleTimer = root.setTimeout(() => {
       context.settleTimer = null;
       if (context.inFlight > 0) return;
-      pendingContexts.delete(context);
-      context.actionable?.removeAttribute?.('aria-busy');
-      feedback.end(context.handle);
-      context.handle = null;
+      releaseContext(context);
     }, 0);
+  }
+
+  function finishLocalContext(context) {
+    if (context.inFlight > 0 || !context.handle) return;
+    if (context.localTimer) root.clearTimeout(context.localTimer);
+    context.localTimer = root.setTimeout(() => {
+      context.localTimer = null;
+      if (context.inFlight > 0) return;
+      releaseContext(context);
+    }, LOCAL_ACTION_SETTLE_MS);
   }
 
   function contextForFetch() {
@@ -59,6 +76,10 @@
       if (!context) return originalFetch(...args);
 
       clearArmed(context);
+      if (context.localTimer) {
+        root.clearTimeout(context.localTimer);
+        context.localTimer = null;
+      }
       if (!context.handle) {
         context.handle = feedback.begin({ key: context.key });
         if (!context.handle) return originalFetch(...args);
@@ -106,10 +127,15 @@
         return;
       }
 
-      if (armedContext) clearArmed(armedContext);
-      const context = { key, actionable, handle: null, inFlight: 0, settleTimer: null, armTimer: null };
+      if (armedContext) releaseContext(armedContext);
+      const context = { key, actionable, handle: feedback.begin({ key, delayMs: LOCAL_ACTION_DELAY_MS }), inFlight: 0, settleTimer: null, localTimer: null, armTimer: null };
+      if (!context.handle) return;
       armedContext = context;
+      pendingContexts.add(context);
+      actionable.setAttribute?.('aria-busy', 'true');
       context.armTimer = root.setTimeout(() => clearArmed(context), 500);
+      root.requestAnimationFrame?.(() => root.requestAnimationFrame?.(() => finishLocalContext(context)));
+      if (typeof root.requestAnimationFrame !== 'function') finishLocalContext(context);
     }, true);
   }
 
