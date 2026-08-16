@@ -16,9 +16,8 @@ test('v129 renders past state, divider and perceptible request feedback', async 
     ];
     listeningEvents = [];
     renderMyConcertsScreen();
-    LiveVaultStateFeedbackIntegrationV129.decoratePastDivider();
     const past = document.querySelector('#screen-myconcerts .row-card-mc.is-past');
-    const divider = document.querySelector('#screen-myconcerts .myconcerts-past-divider');
+    const divider = document.querySelector('#screen-myconcerts .section-label-gap-lg');
     return {
       hasPast: Boolean(past),
       pastBackground: past ? getComputedStyle(past).backgroundColor : '',
@@ -28,6 +27,7 @@ test('v129 renders past state, divider and perceptible request feedback', async 
   });
 
   expect(visual.hasPast).toBe(true);
+  expect(visual.pastBackground).toBe('rgb(29, 33, 36)');
   expect(visual.dividerText.toLowerCase()).toBe('past concerts');
   expect(visual.progressHeight).toBe('0px');
 
