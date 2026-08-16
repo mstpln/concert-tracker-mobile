@@ -3,6 +3,7 @@
 // Sanitized v135 observability. Counts only lane/endpoint families and provider
 // outcomes; never stores provider IDs, query text, URLs, tokens or payloads.
 const PATCH = Symbol.for('bandmarkr.v135.spotifyDiagnostics');
+const LOAD_PATCH = Symbol.for('bandmarkr.v135.spotifyDiagnosticsLoad');
 const ENDPOINTS = new Set(['token', 'artist_exact', 'artist_search', 'artist_albums', 'track_exact', 'track_search', 'album_exact_tracks', 'other']);
 const LANES = new Set(['structured_identity', 'artist_image', 'album_artwork', 'predicted_playlist', 'historical_non_playlist', 'other']);
 
@@ -12,11 +13,28 @@ function circuitSnapshot(usage) {
   return { status: circuit.status || null, reason: circuit.reason || null };
 }
 
+function freshDiagnostics(usage) {
+  return {
+    callsByLane: {},
+    callsByEndpoint: {},
+    outcomes: {},
+    circuitEvents: [],
+    circuitStart: circuitSnapshot(usage),
+    circuitFinish: null,
+  };
+}
+
+function resetDiagnostics(usage) {
+  if (!usage?.state?.spotify) return null;
+  usage.state.spotify.diagnostics = freshDiagnostics(usage);
+  return usage.state.spotify.diagnostics;
+}
+
 function ensure(usage) {
   if (!usage?.state?.spotify) return null;
   const spotify = usage.state.spotify;
   if (!spotify.diagnostics || typeof spotify.diagnostics !== 'object' || Array.isArray(spotify.diagnostics)) {
-    spotify.diagnostics = { callsByLane: {}, callsByEndpoint: {}, outcomes: {}, circuitEvents: [], circuitStart: circuitSnapshot(usage), circuitFinish: null };
+    spotify.diagnostics = freshDiagnostics(usage);
   }
   for (const key of ['callsByLane', 'callsByEndpoint', 'outcomes']) {
     if (!spotify.diagnostics[key] || typeof spotify.diagnostics[key] !== 'object' || Array.isArray(spotify.diagnostics[key])) spotify.diagnostics[key] = {};
@@ -104,17 +122,27 @@ function wrap(spotify, name, lane, endpoint) {
   };
 }
 
-function installSpotifyDiagnosticsV135(spotify) {
+function installSpotifyDiagnosticsV135(spotify, UsageTracker = null) {
   if (!spotify || typeof spotify !== 'object') throw new Error('Spotify diagnostics require the Spotify module.');
-  if (spotify[PATCH]) return false;
-  Object.defineProperty(spotify, PATCH, { value: true, enumerable: false });
-  wrap(spotify, 'searchTrackOutcome', 'historical_non_playlist', 'track_search');
-  wrap(spotify, 'resolveArtistIdentity', 'structured_identity', 'artist_search');
-  wrap(spotify, 'getArtistExact', 'artist_image', 'artist_exact');
-  wrap(spotify, 'listArtistReleases', 'other', 'artist_albums');
-  wrap(spotify, 'getReleaseTracks', 'other', 'album_exact_tracks');
-  wrap(spotify, 'matchPredictedSong', 'predicted_playlist', 'track_search');
+  if (!spotify[PATCH]) {
+    Object.defineProperty(spotify, PATCH, { value: true, enumerable: false });
+    wrap(spotify, 'searchTrackOutcome', 'historical_non_playlist', 'track_search');
+    wrap(spotify, 'resolveArtistIdentity', 'structured_identity', 'artist_search');
+    wrap(spotify, 'getArtistExact', 'artist_image', 'artist_exact');
+    wrap(spotify, 'listArtistReleases', 'other', 'artist_albums');
+    wrap(spotify, 'getReleaseTracks', 'other', 'album_exact_tracks');
+    wrap(spotify, 'matchPredictedSong', 'predicted_playlist', 'track_search');
+  }
+  if (UsageTracker && typeof UsageTracker.load === 'function' && !UsageTracker[LOAD_PATCH]) {
+    const originalLoad = UsageTracker.load;
+    UsageTracker.load = async function v135LoadWithFreshSpotifyDiagnostics(...args) {
+      const usage = await originalLoad.apply(this, args);
+      resetDiagnostics(usage);
+      return usage;
+    };
+    Object.defineProperty(UsageTracker, LOAD_PATCH, { value: true, enumerable: false });
+  }
   return true;
 }
 
-module.exports = { circuitSnapshot, ensure, calls, outcomeKind, recordOperation, installSpotifyDiagnosticsV135 };
+module.exports = { circuitSnapshot, freshDiagnostics, resetDiagnostics, ensure, calls, outcomeKind, recordOperation, installSpotifyDiagnosticsV135 };
