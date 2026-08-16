@@ -42,13 +42,12 @@
   border: 0;
 }
 
-/* v133: the 15px headphones glyph uses a 9px gap so its copy lands on the same
-   24px visual axis as the smaller preparation glyphs. An explicit border-box
-   height prevents inherited padding from making this section taller. */
+/* v133: match the preparation-row text axis and section rhythm while keeping
+   the existing 15px listening glyph and two-line copy. */
 .concert-listening-row {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 11px;
   box-sizing: border-box;
   height: 52px;
   min-height: 52px;
