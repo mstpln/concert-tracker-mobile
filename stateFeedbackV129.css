@@ -3,6 +3,9 @@
   --countdown-yellow-light: #f7d968;
 }
 
+/* v129: clearer separation between upcoming and historical shows on My Concerts.
+   The existing renderer already owns the Past concerts label; style it directly
+   instead of mutating renderer output after each render. */
 #screen-myconcerts .section-label-gap-lg {
   display: flex;
   align-items: center;
@@ -20,11 +23,16 @@
   opacity: .72;
 }
 
+/* The existing My Concerts renderer owns past/upcoming classification. */
 #screen-myconcerts .row-card-mc.is-past { background: #1d2124; }
 
+/* v129: the countdown and show-day ticket disc now share one warm state family. */
 #countdown-ring-outer { stroke: var(--countdown-yellow); }
 #countdown-ring-inner { stroke: var(--countdown-yellow-light); }
 
+/* NF1: keep the established avatar outline on the avatar container rather than
+   only on image children. This makes initials fallbacks and image-backed avatars
+   share the same outline without changing the avatar box or image crop. */
 .row-card-mc .row-avatar,
 .profile-avatar {
   box-shadow: inset 0 0 0 1px var(--border-strong);
