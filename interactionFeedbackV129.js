@@ -25,12 +25,18 @@
 
   function schedule(delayMs = DEFAULT_DELAY_MS) {
     if (visible || timer || pendingTokens.size === 0) return;
+    const delay = Math.max(0, Number(delayMs) || 0);
+    if (delay === 0) {
+      visible = true;
+      render();
+      return;
+    }
     timer = root.setTimeout(() => {
       timer = null;
       if (!pendingTokens.size) return;
       visible = true;
       render();
-    }, Math.max(0, Number(delayMs) || 0));
+    }, delay);
   }
 
   function begin({ key = null, delayMs = DEFAULT_DELAY_MS } = {}) {
