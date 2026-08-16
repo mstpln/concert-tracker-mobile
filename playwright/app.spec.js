@@ -81,7 +81,7 @@ test('primary screens, settings, and v135 band profile tabs remain navigable', a
   await expect(page.locator('#screen-concerts')).toBeVisible();
   await page.getByRole('button', { name: 'Alerts' }).click();
   await expect(page.locator('#screen-news')).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Concerts', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#screen-news [role="tablist"]')).toHaveCount(0);
   await expect(page.getByRole('tab', { name: 'Releases', exact: true })).toHaveCount(0);
   await expect(page.locator('.release-alert-card')).toHaveCount(0);
   await page.getByRole('button', { name: 'Bands' }).click();
@@ -183,7 +183,7 @@ test('v135 release surfaces stay retired in light and dark mode', async ({ page 
     await page.emulateMedia({ colorScheme });
     await page.goto('/');
     await page.getByRole('button', { name: 'Alerts' }).click();
-    await expect(page.getByRole('tab', { name: 'Concerts', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#screen-news [role="tablist"]')).toHaveCount(0);
     await expect(page.getByRole('tab', { name: 'Releases', exact: true })).toHaveCount(0);
     await expect(page.locator('.release-alert-card')).toHaveCount(0);
     await page.getByRole('button', { name: 'Bands' }).click();
