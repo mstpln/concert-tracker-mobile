@@ -52,12 +52,15 @@ test('priority is bucket, trusted-id subgroup, count, recency, then stable id an
   assert.deepEqual(plan.items.slice(0, 3).map((item) => item.bandId), ['b01', 'b00', 'b03']);
 });
 
-test('older all-time activity outranks no history and stale aggregate data disables the lane', () => {
+test('older all-time activity outranks no history and stale aggregate data falls back safely', () => {
   const rows = [band('older', { musicbrainz: { spotify: trusted('older') } }), band('none', { musicbrainz: { spotify: trusted('none') } })];
   const aggregate = aggregateFor(rows, [{ localBandId: 'older', listenedAt: '2024-01-01T00:00:00.000Z' }]);
   assert.deepEqual(maintenance.planArtistImageMaintenance(rows, aggregate, { now: NOW }).items.map((item) => item.bandId), ['older', 'none']);
   aggregate.generatedAt = '2026-08-01T00:00:00.000Z';
-  assert.equal(maintenance.planArtistImageMaintenance(rows, aggregate, { now: NOW }).enabled, false);
+  const fallback = maintenance.planArtistImageMaintenance(rows, aggregate, { now: NOW });
+  assert.equal(fallback.enabled, true);
+  assert.equal(fallback.prioritySource, 'fallback_no_listening');
+  assert.deepEqual(fallback.items.map((item) => item.bandId), ['none', 'older']);
 });
 
 test('exact lookup stores only validated provider images and preserves unrelated and manual fields', async () => {
@@ -114,12 +117,78 @@ test('duplicate trusted Spotify identities fail closed without consuming slots',
   assert.deepEqual(plan.items.map((item) => item.bandId), ['safe']);
 });
 
-test('exact no-image outcome is not refreshed unless the trusted identity changes', () => {
-  const future = new Date('2027-08-16T12:00:00.000Z');
+test('exact no-image outcome waits six months, then becomes eligible without an identity change', () => {
+  const beforeRetry = new Date(NOW.getTime() + maintenance.NO_IMAGE_RETRY_MS - 1);
+  const atRetry = new Date(NOW.getTime() + maintenance.NO_IMAGE_RETRY_MS);
   const rows = [band('alpha', { musicbrainz: { spotify: { ...trusted('alpha'), artistImageMaintenance: maintenance.attemptState('spotify-alpha', { kind: 'ok', artist: { images: [] } }, NOW) } } })];
-  assert.equal(maintenance.planArtistImageMaintenance(rows, activity.buildAggregate([], rows, future), { now: future }).items.length, 0);
+  assert.equal(maintenance.planArtistImageMaintenance(rows, activity.buildAggregate([], rows, beforeRetry), { now: beforeRetry }).items.length, 0);
+  assert.equal(maintenance.planArtistImageMaintenance(rows, activity.buildAggregate([], rows, atRetry), { now: atRetry }).items.length, 1);
   rows[0].musicbrainz.spotify.id = 'spotify-new';
-  assert.equal(maintenance.planArtistImageMaintenance(rows, activity.buildAggregate([], rows, future), { now: future }).items.length, 1);
+  assert.equal(maintenance.planArtistImageMaintenance(rows, activity.buildAggregate([], rows, beforeRetry), { now: beforeRetry }).items.length, 1);
+});
+
+test('an identity trusted earlier in the same research run receives and persists exact artwork', async () => {
+  const planned = [band('alpha')];
+  const current = [band('alpha', { musicbrainz: { spotify: trusted('alpha') } })];
+  let written; let resolveCalls = 0;
+  await maintenance.runArtistImageMaintenance({
+    plan: maintenance.planArtistImageMaintenance(planned, aggregateFor(planned), { now: NOW }),
+    plannedBands: planned, bands: current, usage: { state: { spotify: { callsThisRun: 0 } } }, spotify: {},
+    resolveIdentity: async () => { resolveCalls += 1; throw new Error('name search must not run'); },
+    getArtist: async (id) => ({ kind: 'ok', artist: { id, images: [{ url: 'https://images.test/same-run.jpg', width: 640, height: 640 }] } }),
+    worker: { readJson: async () => structuredClone(current), writeJsonStrict: async (_path, value) => { written = value; } }, log: () => {},
+  });
+  assert.equal(resolveCalls, 0);
+  assert.equal(written[0].musicbrainz.spotify.images[0].url, 'https://images.test/same-run.jpg');
+});
+
+test('runtime enforcement attempts at most ten unique bands even with an oversized duplicate plan', async () => {
+  const rows = Array.from({ length: 12 }, (_, index) => band(`cap${index}`, { musicbrainz: { spotify: trusted(`cap${index}`) } }));
+  const oversized = { enabled: true, eligible: 13, items: [
+    ...rows.map((row) => ({ bandId: row.id, spotifyId: row.musicbrainz.spotify.id })),
+    { bandId: rows[0].id, spotifyId: rows[0].musicbrainz.spotify.id },
+  ] };
+  let exactCalls = 0;
+  const result = await maintenance.runArtistImageMaintenance({
+    plan: oversized, plannedBands: rows, bands: rows, usage: { state: { spotify: { callsThisRun: 0 } } }, spotify: {},
+    getArtist: async (id) => { exactCalls += 1; return { kind: 'ok', artist: { id, images: [] } }; },
+    worker: { readJson: async () => structuredClone(rows), writeJsonStrict: async () => {} }, log: () => {},
+  });
+  assert.equal(result.planned, 10);
+  assert.equal(exactCalls, 10);
+});
+
+test('identity-stage 429 stops later bands before exact lookup', async () => {
+  const rows = [band('alpha'), band('beta')];
+  let resolveCalls = 0; let exactCalls = 0;
+  await maintenance.runArtistImageMaintenance({
+    plan: maintenance.planArtistImageMaintenance(rows, aggregateFor(rows), { now: NOW }), plannedBands: rows, bands: rows,
+    usage: { state: { spotify: { callsThisRun: 0 } } }, spotify: {},
+    resolveIdentity: async () => { resolveCalls += 1; return { kind: 'error', status: 429, identity: { status: 'error', nextEligibleCheckAt: '2026-08-17T12:00:00.000Z' } }; },
+    getArtist: async () => { exactCalls += 1; return { kind: 'ok' }; },
+    worker: { readJson: async () => structuredClone(rows), writeJsonStrict: async () => {} }, log: () => {},
+  });
+  assert.equal(resolveCalls, 1);
+  assert.equal(exactCalls, 0);
+});
+
+test('a newly resolved duplicate Spotify identity becomes review state and receives no artwork', async () => {
+  const rows = [
+    band('owner', { photoUrl: 'https://images.test/manual.jpg', musicbrainz: { spotify: trusted('duplicate') } }),
+    band('candidate'),
+  ];
+  let exactCalls = 0; let written;
+  await maintenance.runArtistImageMaintenance({
+    plan: maintenance.planArtistImageMaintenance(rows, aggregateFor(rows), { now: NOW }), plannedBands: rows, bands: rows,
+    usage: { state: { spotify: { callsThisRun: 0 } } }, spotify: {},
+    resolveIdentity: async () => ({ kind: 'confirmed', identity: trusted('duplicate') }),
+    getArtist: async () => { exactCalls += 1; return { kind: 'ok' }; },
+    worker: { readJson: async () => structuredClone(rows), writeJsonStrict: async (_path, value) => { written = value; } }, log: () => {},
+  });
+  assert.equal(exactCalls, 0);
+  assert.equal(written[1].musicbrainz.spotify.status, 'needs_review');
+  assert.equal(written[1].musicbrainz.spotify.id, null);
+  assert.equal(written[1].musicbrainz.spotify.errorCategory, 'duplicate_spotify_identity');
 });
 
 test('malformed images fail closed, transient outcomes remain retryable, and conditional conflicts propagate', async () => {

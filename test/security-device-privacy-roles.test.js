@@ -18,8 +18,8 @@ function workerUnderTest() {
   vm.runInNewContext(code, context);
   return context.globalThis.worker;
 }
-function bucket() {
-  const activity = JSON.stringify({ kind: 'livevault-listening-band-activity', schemaVersion: 1, generatedAt: '2026-08-16T12:00:00.000Z', catalogueFingerprint: 'fnv1a32:1234abcd', mappedListenCount: 0, sourceLastListenedAt: null, records: {} });
+function bucket(activityOverride = null) {
+  const activity = JSON.stringify(activityOverride || { kind: 'livevault-listening-band-activity', schemaVersion: 1, generatedAt: '2026-08-16T12:00:00.000Z', catalogueFingerprint: 'fnv1a32:1234abcd', mappedListenCount: 0, records: {} });
   const items = new Map([
     ['bands.json', { value: '[]', etag: 'bands-1' }],
     ['concerts.json', { value: '[]', etag: 'concerts-1' }],
@@ -104,11 +104,20 @@ test('Worker separates browser and automation roles while retaining staged legac
   assert.equal((await get('/listening/spotify-history/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.gz', 'automation')).status, 403);
   assert.equal((await worker.fetch(new Request('https://worker.test/listening/band-activity.json', { method: 'PUT', headers: { Authorization: 'Bearer automation', 'Content-Type': 'application/json', 'If-Match': '"activity-1"' }, body: '{}' }), env)).status, 403);
   assert.equal((await worker.fetch(new Request('https://worker.test/listening/band-activity.json', { method: 'PUT', headers: { Authorization: 'Bearer browser', 'Content-Type': 'application/json', 'If-Match': '"activity-1"' }, body: '{}' }), env)).status, 400);
-  const emptyActivity = { kind: 'livevault-listening-band-activity', schemaVersion: 1, generatedAt: '2026-08-16T12:00:00.000Z', catalogueFingerprint: 'fnv1a32:1234abcd', mappedListenCount: 0, sourceLastListenedAt: null, records: {} };
+  const emptyActivity = { kind: 'livevault-listening-band-activity', schemaVersion: 1, generatedAt: '2026-08-16T12:00:00.000Z', catalogueFingerprint: 'fnv1a32:1234abcd', mappedListenCount: 0, records: {} };
   assert.equal((await worker.fetch(new Request('https://worker.test/listening/band-activity.json', { method: 'PUT', headers: { Authorization: 'Bearer browser', 'Content-Type': 'application/json', 'If-Match': '"activity-1"' }, body: JSON.stringify(emptyActivity) }), env)).status, 200);
   assert.equal((await get('/ticket-files/show-1/ticket-1.pdf', 'browser')).status, 404);
   assert.equal((await get('/bands.json', 'smoke')).status, 401);
   assert.equal((await get('/qa-smoke', 'smoke')).status, 200);
+});
+
+test('Worker never returns a stored band-activity object containing unapproved privacy fields', async () => {
+  const worker = workerUnderTest();
+  const invalid = { kind: 'livevault-listening-band-activity', schemaVersion: 1, generatedAt: '2026-08-16T12:00:00.000Z', catalogueFingerprint: 'fnv1a32:1234abcd', mappedListenCount: 0, records: {}, rawListeningHistory: [{ private: true }] };
+  const env = { BROWSER_TOKEN: 'browser', AUTOMATION_TOKEN: 'automation', BUCKET: bucket(invalid) };
+  const response = await worker.fetch(new Request('https://worker.test/listening/band-activity.json', { headers: { Authorization: 'Bearer automation' } }), env);
+  assert.equal(response.status, 422);
+  assert.doesNotMatch(await response.text(), /private/);
 });
 
 test('shell and production workflow retain the approved security hardening', () => {

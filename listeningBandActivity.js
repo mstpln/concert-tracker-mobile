@@ -1,7 +1,7 @@
 'use strict';
 
 // Privacy boundary between local listening history and server automation.
-// Only stable band ids and exclusive activity-window counts leave the browser;
+// Only stable band ids, exclusive activity-window counts and ordinal ranks leave the browser;
 // artist/track names, listen ids, timestamps per listen, and provider payloads
 // remain in private listening storage.
 (function attachListeningBandActivity(root, factory) {
@@ -40,7 +40,7 @@
   }
 
   function emptyBuckets() {
-    return Object.fromEntries(BUCKETS.map((bucket) => [bucket, { listenCount: 0, lastListenedAt: null }]));
+    return Object.fromEntries(BUCKETS.map((bucket) => [bucket, { listenCount: 0, recencyRank: null }]));
   }
 
   function activityBucket(timestamp, now) {
@@ -54,20 +54,30 @@
     const generatedAt = new Date(now).toISOString();
     const records = {};
     for (const bandId of stableBandIds(bands)) records[bandId] = { bandId, buckets: emptyBuckets() };
+    const latestByBandAndBucket = new Map();
     let mappedListenCount = 0;
-    let sourceLastListenedAt = null;
     for (const event of events || []) {
       const bandId = String(event?.localBandId || '').trim();
       const timestamp = Date.parse(event?.listenedAt);
       if (!records[bandId] || !Number.isFinite(timestamp) || timestamp > Date.parse(generatedAt)) continue;
-      const listenedAt = new Date(timestamp).toISOString();
-      const bucket = records[bandId].buckets[activityBucket(timestamp, new Date(generatedAt))];
+      const bucketName = activityBucket(timestamp, new Date(generatedAt));
+      const bucket = records[bandId].buckets[bucketName];
       bucket.listenCount += 1;
-      if (!bucket.lastListenedAt || listenedAt > bucket.lastListenedAt) bucket.lastListenedAt = listenedAt;
-      if (!sourceLastListenedAt || listenedAt > sourceLastListenedAt) sourceLastListenedAt = listenedAt;
+      const latestKey = `${bandId}\n${bucketName}`;
+      if (!latestByBandAndBucket.has(latestKey) || timestamp > latestByBandAndBucket.get(latestKey)) latestByBandAndBucket.set(latestKey, timestamp);
       mappedListenCount += 1;
     }
-    return { kind: KIND, schemaVersion: SCHEMA_VERSION, generatedAt, catalogueFingerprint: catalogueFingerprint(bands), mappedListenCount, sourceLastListenedAt, records };
+    // Exact listen timestamps stay browser-private. Only ordinal recency
+    // ranks leave private storage, which is sufficient for deterministic
+    // queue tie-breaking without revealing an individual listening event.
+    for (const bucketName of BUCKETS) {
+      Object.values(records)
+        .filter((record) => record.buckets[bucketName].listenCount > 0)
+        .sort((left, right) => (latestByBandAndBucket.get(`${right.bandId}\n${bucketName}`) - latestByBandAndBucket.get(`${left.bandId}\n${bucketName}`))
+          || left.bandId.localeCompare(right.bandId))
+        .forEach((record, index) => { record.buckets[bucketName].recencyRank = index + 1; });
+    }
+    return { kind: KIND, schemaVersion: SCHEMA_VERSION, generatedAt, catalogueFingerprint: catalogueFingerprint(bands), mappedListenCount, records };
   }
 
   function validIso(value, nullable = false) {
@@ -76,27 +86,42 @@
     try { return value === new Date(value).toISOString(); } catch (_) { return false; }
   }
 
+  function hasExactKeys(value, keys) {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      && Object.keys(value).sort().join(',') === [...keys].sort().join(',');
+  }
+
   function validateAggregate(value, { bands = null } = {}) {
     if (!value || typeof value !== 'object' || Array.isArray(value) || value.kind !== KIND || value.schemaVersion !== SCHEMA_VERSION) return false;
-    if (!validIso(value.generatedAt) || !validIso(value.sourceLastListenedAt, true) || !Number.isInteger(value.mappedListenCount) || value.mappedListenCount < 0) return false;
+    if (!hasExactKeys(value, ['kind', 'schemaVersion', 'generatedAt', 'catalogueFingerprint', 'mappedListenCount', 'records'])) return false;
+    if (!validIso(value.generatedAt) || !Number.isSafeInteger(value.mappedListenCount) || value.mappedListenCount < 0) return false;
     if (!/^fnv1a32:[0-9a-f]{8}$/.test(value.catalogueFingerprint || '') || !value.records || typeof value.records !== 'object' || Array.isArray(value.records)) return false;
     const entries = Object.entries(value.records);
     if (entries.length > 10000) return false;
     let counted = 0;
-    let latest = null;
+    const recencyRanks = Object.fromEntries(BUCKETS.map((bucket) => [bucket, []]));
     for (const [key, record] of entries) {
-      if (!key || record?.bandId !== key || !record.buckets || Object.keys(record.buckets).sort().join(',') !== [...BUCKETS].sort().join(',')) return false;
+      if (!key || !hasExactKeys(record, ['bandId', 'buckets']) || record.bandId !== key || !hasExactKeys(record.buckets, BUCKETS)) return false;
       for (const bucket of BUCKETS) {
         const row = record.buckets[bucket];
-        if (!row || !Number.isInteger(row.listenCount) || row.listenCount < 0 || !validIso(row.lastListenedAt, true)) return false;
-        if ((row.listenCount === 0) !== (row.lastListenedAt == null)) return false;
-        if (row.lastListenedAt && row.lastListenedAt > value.generatedAt) return false;
+        if (!hasExactKeys(row, ['listenCount', 'recencyRank']) || !Number.isSafeInteger(row.listenCount) || row.listenCount < 0) return false;
+        if ((row.listenCount === 0) !== (row.recencyRank == null)) return false;
+        if (row.recencyRank != null && (!Number.isSafeInteger(row.recencyRank) || row.recencyRank < 1)) return false;
         counted += row.listenCount;
-        if (row.lastListenedAt && (!latest || row.lastListenedAt > latest)) latest = row.lastListenedAt;
+        if (!Number.isSafeInteger(counted)) return false;
+        if (row.recencyRank != null) recencyRanks[bucket].push(row.recencyRank);
       }
     }
-    if (counted !== value.mappedListenCount || latest !== value.sourceLastListenedAt) return false;
-    if (bands && (value.catalogueFingerprint !== catalogueFingerprint(bands) || entries.length !== stableBandIds(bands).length)) return false;
+    if (counted !== value.mappedListenCount) return false;
+    for (const ranks of Object.values(recencyRanks)) {
+      ranks.sort((left, right) => left - right);
+      if (ranks.some((rank, index) => rank !== index + 1)) return false;
+    }
+    if (bands) {
+      const expectedIds = stableBandIds(bands);
+      const actualIds = entries.map(([key]) => key).sort();
+      if (value.catalogueFingerprint !== catalogueFingerprint(bands) || actualIds.length !== expectedIds.length || actualIds.some((id, index) => id !== expectedIds[index])) return false;
+    }
     return true;
   }
 
@@ -112,5 +137,5 @@
     return { kind: 'updated', aggregate: next };
   }
 
-  return { PATH, KIND, SCHEMA_VERSION, REFRESH_MS, BUCKETS, stableBandIds, catalogueFingerprint, subtractCalendarMonths, activityBucket, buildAggregate, validateAggregate, publishFromBrowser };
+  return { PATH, KIND, SCHEMA_VERSION, REFRESH_MS, BUCKETS, stableBandIds, catalogueFingerprint, subtractCalendarMonths, activityBucket, buildAggregate, hasExactKeys, validateAggregate, publishFromBrowser };
 });

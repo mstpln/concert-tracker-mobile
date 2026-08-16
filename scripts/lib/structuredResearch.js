@@ -159,6 +159,13 @@ function mergeStructuredBandUpdates(latestBands, updates) {
     const musicbrainz = ['manual_confirmed', 'manual_rejected'].includes(currentMb.status)
       ? { ...incomingMb, ...currentMb }
       : { ...currentMb, ...incomingMb, ...reviewedProviders };
+    // Root MusicBrainz review protects the MB identity, not stale automatic
+    // provider gaps. Merge known provider records additively while keeping a
+    // provider-specific human decision authoritative as a complete object.
+    for (const provider of ['ticketmaster', 'spotify']) {
+      if (reviewedProviders[provider]) musicbrainz[provider] = reviewedProviders[provider];
+      else if (incomingMb[provider]) musicbrainz[provider] = { ...(currentMb[provider] || {}), ...incomingMb[provider] };
+    }
     const currentStructured = band.structuredResearch || {};
     const incomingStructured = update.structuredResearch || {};
     const currentReleases = currentStructured.releases || {};

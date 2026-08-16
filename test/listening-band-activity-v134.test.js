@@ -20,14 +20,20 @@ test('privacy-safe aggregate uses mutually exclusive calendar buckets and contai
   assert.equal(aggregate.records.beta.buckets.oneYear.listenCount, 1);
   assert.equal(aggregate.records.beta.buckets.allTime.listenCount, 1);
   assert.equal(aggregate.records.silent.buckets.fourteenDays.listenCount, 0);
+  assert.equal(aggregate.records.alpha.buckets.fourteenDays.recencyRank, 1);
+  assert.equal(aggregate.records.silent.buckets.fourteenDays.recencyRank, null);
   assert.equal(aggregate.mappedListenCount, 4);
   assert.equal(activity.validateAggregate(aggregate, { bands }), true);
-  assert.doesNotMatch(JSON.stringify(aggregate), /private title|private-id|recordingTitle|stableListenId/);
+  assert.doesNotMatch(JSON.stringify(aggregate), /private title|private-id|recordingTitle|stableListenId|2026-08-15T12:00:00\.000Z/);
 });
 
 test('aggregate validation fails closed on catalogue mismatch and malformed counts', () => {
   const aggregate = activity.buildAggregate([], bands, NOW);
   assert.equal(activity.validateAggregate(aggregate, { bands: [...bands, { id: 'new-band' }] }), false);
+  const wrongSameSize = structuredClone(aggregate);
+  wrongSameSize.records.other = { ...wrongSameSize.records.silent, bandId: 'other' };
+  delete wrongSameSize.records.silent;
+  assert.equal(activity.validateAggregate(wrongSameSize, { bands }), false);
   aggregate.records.alpha.buckets.allTime.listenCount = -1;
   assert.equal(activity.validateAggregate(aggregate, { bands }), false);
   aggregate.generatedAt = 'not-a-date';
@@ -35,12 +41,28 @@ test('aggregate validation fails closed on catalogue mismatch and malformed coun
   assert.equal(activity.validateAggregate(aggregate, { bands }), false);
 });
 
-test('aggregate totals and latest timestamp must reconcile with every bucket', () => {
-  const aggregate = activity.buildAggregate([{ localBandId: 'alpha', listenedAt: '2026-08-15T12:00:00.000Z' }], bands, NOW);
-  aggregate.mappedListenCount = 2;
+test('aggregate validation rejects unknown fields at every privacy boundary', () => {
+  const cases = [
+    (value) => { value.rawListeningHistory = [{ private: true }]; },
+    (value) => { value.records.alpha.rawEvents = [{ private: true }]; },
+    (value) => { value.records.alpha.buckets.fourteenDays.recordingTitle = 'private'; },
+  ];
+  for (const mutate of cases) {
+    const aggregate = activity.buildAggregate([], bands, NOW);
+    mutate(aggregate);
+    assert.equal(activity.validateAggregate(aggregate, { bands }), false);
+  }
+});
+
+test('aggregate totals and ordinal recency ranks must reconcile with every bucket', () => {
+  const aggregate = activity.buildAggregate([
+    { localBandId: 'alpha', listenedAt: '2026-08-15T12:00:00.000Z' },
+    { localBandId: 'beta', listenedAt: '2026-08-14T12:00:00.000Z' },
+  ], bands, NOW);
+  aggregate.mappedListenCount = 3;
   assert.equal(activity.validateAggregate(aggregate, { bands }), false);
-  aggregate.mappedListenCount = 1;
-  aggregate.sourceLastListenedAt = '2026-08-14T12:00:00.000Z';
+  aggregate.mappedListenCount = 2;
+  aggregate.records.beta.buckets.fourteenDays.recencyRank = 1;
   assert.equal(activity.validateAggregate(aggregate, { bands }), false);
 });
 

@@ -125,7 +125,7 @@ async function processStructuredResearch({
     const nextMb = { ...mb, ...(metadata ? { metadata } : {}) };
     if (config.STRUCTURED_RESEARCH.providerIdentityResolutionEnabled && metadata) {
       const spotifyResult = await resolveSpotify({ band: { ...band, musicbrainz: nextMb }, metadata, usage, now });
-      if (spotifyResult.identity) nextMb.spotify = spotifyResult.identity;
+      if (spotifyResult.identity) nextMb.spotify = { ...(nextMb.spotify || {}), ...spotifyResult.identity };
       const ticketmasterResult = await resolveTicketmaster({ band: { ...band, musicbrainz: nextMb }, metadata, usage, now });
       if (ticketmasterResult.identity) nextMb.ticketmaster = ticketmasterResult.identity;
     }
@@ -868,7 +868,7 @@ async function main() {
   catch (error) { usage.note(`Artist image maintenance aggregate unavailable: ${error.message}`); }
   const imageMaintenanceBands = bands;
   const imageMaintenancePlan = artistImageMaintenance.planArtistImageMaintenance(bands, imageMaintenanceAggregate);
-  if (!imageMaintenancePlan.enabled) usage.note(`Artist image maintenance deferred: ${imageMaintenancePlan.reason}`);
+  if (imageMaintenancePlan.prioritySource === 'fallback_no_listening') usage.note(`Artist image maintenance using no-listening fallback: ${imageMaintenancePlan.reason}`);
 
   // Disabled by default; this cannot alter existing concert/news lookups.
   await processMusicbrainzIdentities({ bands, usage });
@@ -1199,7 +1199,7 @@ async function main() {
     setlistsAdded,
     spotifyConcertsProcessed,
     spotifyLinksAdded,
-    artistImagesUpdated: imageMaintenanceRun.updated,
+    artistImagesUpdated: imageMaintenanceRun.imagesUpdated,
     setlistInsightUpdates: setlistInsightRun.updates,
     status: 'ok',
   });
