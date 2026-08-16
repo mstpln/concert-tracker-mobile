@@ -14,6 +14,7 @@ test('v135 retires structured release monitoring and lifecycle alerts at the sch
   const preload = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'preloadStructuredRun.js'), 'utf8');
   assert.match(preload, /structuredReleaseMonitoringEnabled = false/);
   assert.match(preload, /releaseAlertPlan\.planLifecycleAlerts = \(\) => \(\{ alertsToCreate: \[\], alertsToEnrich: \[\], lifecycleUpdates: \[\], skipped: \[\] \}\)/);
+  assert.match(preload, /installSpotifyDiagnosticsV135\(spotify, UsageTracker\)/);
   assert.doesNotMatch(preload, /installSpotifyReleaseAlertPlan/);
 });
 
@@ -76,4 +77,41 @@ test('Spotify diagnostics remain aggregate and sanitized', () => {
   assert.equal(value.outcomes.successful, 1);
   const serialized = JSON.stringify(value);
   assert.doesNotMatch(serialized, /private-id|open\.spotify\.com/);
+});
+
+test('Spotify diagnostics reset at each scheduled UsageTracker load', async () => {
+  const persisted = {
+    spotify: {
+      callsThisRun: 0,
+      diagnostics: {
+        callsByLane: { historical_non_playlist: 8 },
+        callsByEndpoint: { token: 1, track_search: 7 },
+        outcomes: { successful: 7 },
+        circuitEvents: [{ lane: 'historical_non_playlist' }],
+        circuitStart: { status: 'closed', reason: null },
+        circuitFinish: { status: 'open', reason: 'old_run' },
+      },
+    },
+  };
+  class FakeUsageTracker {}
+  FakeUsageTracker.load = async () => ({ state: persisted });
+  diagnostics.installSpotifyDiagnosticsV135({}, FakeUsageTracker);
+
+  const first = await FakeUsageTracker.load();
+  assert.deepEqual(first.state.spotify.diagnostics.callsByEndpoint, {});
+  assert.deepEqual(first.state.spotify.diagnostics.callsByLane, {});
+  assert.deepEqual(first.state.spotify.diagnostics.outcomes, {});
+  assert.deepEqual(first.state.spotify.diagnostics.circuitEvents, []);
+  assert.deepEqual(first.state.spotify.diagnostics.circuitStart, null);
+
+  first.state.spotify.callsThisRun = 2;
+  diagnostics.recordOperation(first, { lane: 'historical_non_playlist', endpoint: 'track_search', before: 0, result: { kind: 'ok' } });
+  assert.equal(first.state.spotify.diagnostics.callsByEndpoint.token, 1);
+  assert.equal(first.state.spotify.diagnostics.callsByEndpoint.track_search, 1);
+
+  persisted.spotify.callsThisRun = 0;
+  const second = await FakeUsageTracker.load();
+  assert.deepEqual(second.state.spotify.diagnostics.callsByEndpoint, {});
+  assert.deepEqual(second.state.spotify.diagnostics.callsByLane, {});
+  assert.deepEqual(second.state.spotify.diagnostics.outcomes, {});
 });
