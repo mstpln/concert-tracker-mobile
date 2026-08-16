@@ -42,15 +42,22 @@
   border: 0;
 }
 
-/* NF1 v132 correction: mirror the preparation-row rhythm exactly. The icon stays
-   visually compact while the title and listening totals use the same two-line
-   text stack as Ticket, Playlist, Weather, Predicted setlist and Checklist. */
+/* v133: keep the compact headphones glyph, but compensate for its 15px width so
+   the copy starts on the same visual axis as the 13px Ticket/Playlist/Setlist
+   glyphs below. Remove the legacy inter-row margin inherited from v72 so the
+   listening row and first preparation row share the same 52px section rhythm. */
 .concert-listening-row {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 9px;
   min-height: 52px;
   padding: 9px 0;
+  margin-top: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.concert-listening-row + .concert-prep-group {
+  margin-top: 0;
+  border-top: 0;
 }
 .concert-listening-row > svg {
   width: 15px;
@@ -73,8 +80,15 @@
   margin-top: 2px;
 }
 
-/* NF1 v132 correction: the blue segment is visible at the left edge on the very
-   first active frame and travels only within the clipped app-width track. */
+/* v133: the selected bottom destination uses the same BANDMARKR blue as the top
+   banner, with white icon/text. Pointer feedback applies the class before the
+   destination render so this state can paint before expensive listening work. */
+#tabbar .tabitem.active {
+  background: #024ddf;
+  color: #ffffff;
+}
+
+/* The blue segment starts inside the app-width track and remains clipped there. */
 .interaction-progress {
   position: relative;
   z-index: 5;
