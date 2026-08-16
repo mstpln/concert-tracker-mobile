@@ -57,13 +57,19 @@ test('v130 processing line has no layout height, uses app blue and reduced motio
   assert.match(serviceWorker, /'\.\/stateFeedbackV129\.css'/);
 });
 
-test('v130 feedback follows user-initiated fetch lifetime and rendered DOM settlement', () => {
+test('v130 feedback follows user-initiated async lifetime and rendered DOM settlement', () => {
   assert.match(integration, /function installFetchTracking/);
+  assert.match(integration, /function installIndexedDbTracking/);
+  assert.match(integration, /IDBDatabase\?\.prototype/);
+  assert.match(integration, /transaction\.addEventListener\('complete', finish/);
+  assert.match(integration, /transaction\.addEventListener\('abort', finish/);
+  assert.match(integration, /transaction\.addEventListener\('error', finish/);
   assert.match(integration, /context\.inFlight \+= 1/);
   assert.match(integration, /function trackPromise\(context, work\)/);
   assert.match(integration, /Promise\.resolve\(work\)\.finally/);
   assert.match(integration, /new root\.MutationObserver/);
   assert.match(integration, /root\.requestAnimationFrame\(\(\) => root\.requestAnimationFrame\(settle\)\)/);
+  assert.match(integration, /installFetchTracking\(\);\s*installIndexedDbTracking\(\);\s*installUserActionFeedback\(\);/);
   assert.doesNotMatch(integration, /setTimeout\(finish,\s*180\)/);
 });
 
