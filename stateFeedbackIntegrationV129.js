@@ -135,29 +135,6 @@
     root.fetch = trackedFetch;
   }
 
-  function installStorageTracking() {
-    const storage = root.chrome?.storage?.local;
-    if (!storage || storage.__stateFeedbackV130) return;
-    for (const method of ['get', 'set', 'remove', 'clear']) {
-      if (typeof storage[method] !== 'function') continue;
-      const original = storage[method].bind(storage);
-      storage[method] = function trackedStorageV130(...args) {
-        const context = contextForAsyncWork();
-        if (!context) return original(...args);
-        let request;
-        try {
-          request = original(...args);
-        } catch (error) {
-          if (beginAsyncWork(context)) endAsyncWork(context);
-          throw error;
-        }
-        if (!request || typeof request.then !== 'function') return request;
-        return trackPromise(context, request);
-      };
-    }
-    Object.defineProperty(storage, '__stateFeedbackV130', { value: true });
-  }
-
   function installUserActionFeedback() {
     if (typeof document === 'undefined' || document.__stateFeedbackV129Installed) return;
     document.__stateFeedbackV129Installed = true;
@@ -199,7 +176,6 @@
 
   function install() {
     installFetchTracking();
-    installStorageTracking();
     installUserActionFeedback();
   }
 
