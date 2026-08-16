@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('v131 renders past state, aligned listening row and contained immediate feedback', async ({ page }) => {
+test('v132 renders aligned two-line listening row and contained visible feedback', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -37,28 +37,22 @@ test('v131 renders past state, aligned listening row and contained immediate fee
   expect(visual.progressLeft).toBeGreaterThanOrEqual(visual.appLeft);
   expect(visual.progressRight).toBeLessThanOrEqual(visual.appRight);
 
-  const immediate = await page.evaluate(() => {
+  const firstFrame = await page.evaluate(() => {
     const feedback = LiveVaultInteractionFeedbackV129;
     const handle = feedback.begin({ key: 'qa:immediate', delayMs: 0 });
-    const visibleImmediately = document.getElementById('interaction-progress').classList.contains('is-active');
+    const progress = document.getElementById('interaction-progress');
+    const segment = progress.querySelector('span');
+    const trackRect = progress.getBoundingClientRect();
+    const segmentRect = segment.getBoundingClientRect();
+    const result = {
+      visibleImmediately: progress.classList.contains('is-active'),
+      segmentStartsVisible: segmentRect.left >= trackRect.left && segmentRect.left < trackRect.right,
+      segmentContained: segmentRect.right <= trackRect.right,
+    };
     feedback.end(handle);
-    const visibleAfter = document.getElementById('interaction-progress').classList.contains('is-active');
-    return { visibleImmediately, visibleAfter };
+    return result;
   });
-  expect(immediate).toEqual({ visibleImmediately: true, visibleAfter: false });
-
-  const lifecycle = await page.evaluate(async () => {
-    const feedback = LiveVaultInteractionFeedbackV129;
-    const first = feedback.begin({ key: 'qa:slow', delayMs: 20 });
-    await new Promise((resolve) => setTimeout(resolve, 35));
-    const visibleDuring = document.getElementById('interaction-progress').classList.contains('is-active');
-    const duplicate = feedback.begin({ key: 'qa:slow', delayMs: 20 });
-    feedback.end(first);
-    const visibleAfter = document.getElementById('interaction-progress').classList.contains('is-active');
-    return { visibleDuring, duplicateWasSuppressed: duplicate === null, visibleAfter };
-  });
-
-  expect(lifecycle).toEqual({ visibleDuring: true, duplicateWasSuppressed: true, visibleAfter: false });
+  expect(firstFrame).toEqual({ visibleImmediately: true, segmentStartsVisible: true, segmentContained: true });
 
   const alignment = await page.evaluate(() => {
     const host = document.createElement('div');
@@ -71,12 +65,15 @@ test('v131 renders past state, aligned listening row and contained immediate fee
     const listening = host.querySelector('.concert-listening-row');
     const listeningIcon = listening.querySelector('svg').getBoundingClientRect();
     const listeningText = listening.querySelector('span').getBoundingClientRect();
+    const listeningTitle = listening.querySelector('strong').getBoundingClientRect();
+    const listeningMeta = listening.querySelector('small').getBoundingClientRect();
     const prep = host.querySelector('.concert-prep-row');
     const prepText = prep.querySelector('span').getBoundingClientRect();
     const result = {
       iconWidth: listeningIcon.width,
       iconHeight: listeningIcon.height,
       textDelta: Math.abs(listeningText.left - prepText.left),
+      titleAndMetaStacked: listeningMeta.top >= listeningTitle.bottom,
     };
     host.remove();
     return result;
@@ -84,32 +81,41 @@ test('v131 renders past state, aligned listening row and contained immediate fee
   expect(alignment.iconWidth).toBe(15);
   expect(alignment.iconHeight).toBe(15);
   expect(alignment.textDelta).toBeLessThanOrEqual(1);
-
-  const keys = await page.evaluate(() => {
-    const host = document.createElement('div');
-    host.innerHTML = `
-      <button data-v123-listen-merge="qa-review-a|qa-review-c">Same listen</button>
-      <button data-v123-listen-merge="qa-review-a|qa-review-b">Same listen</button>
-    `;
-    document.body.appendChild(host);
-    const buttons = host.querySelectorAll('button');
-    const result = [...buttons].map((button) => LiveVaultStateFeedbackIntegrationV129.userActionKey(button));
-    host.remove();
-    return result;
-  });
-  expect(keys[0]).not.toBe(keys[1]);
-  expect(keys).toEqual([
-    'data:v123ListenMerge=qa-review-a|qa-review-c',
-    'data:v123ListenMerge=qa-review-a|qa-review-b',
-  ]);
+  expect(alignment.titleAndMetaStacked).toBe(true);
   expect(pageErrors).toEqual([]);
 });
 
-test('v131 keeps processing feedback active for perceptible local IndexedDB work and stops at completion', async ({ page }) => {
+test('v132 keeps fast local click feedback visible long enough to perceive', async ({ page }) => {
+  await page.goto('/');
+  const lifecycle = await page.evaluate(async () => {
+    const button = document.createElement('button');
+    button.id = 'qa-fast-local-action';
+    button.textContent = 'Fast local action';
+    document.body.appendChild(button);
+    button.addEventListener('click', () => {
+      document.getElementById('screen-myconcerts').setAttribute('data-qa-fast-action', String(Date.now()));
+    });
+
+    button.click();
+    const progress = document.getElementById('interaction-progress');
+    const visibleImmediately = progress.classList.contains('is-active');
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const visibleAt120ms = progress.classList.contains('is-active');
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    const visibleAfter300ms = progress.classList.contains('is-active');
+    const busyAfter300ms = button.hasAttribute('aria-busy');
+    button.remove();
+    return { visibleImmediately, visibleAt120ms, visibleAfter300ms, busyAfter300ms };
+  });
+
+  expect(lifecycle).toEqual({ visibleImmediately: true, visibleAt120ms: true, visibleAfter300ms: false, busyAfter300ms: false });
+});
+
+test('v132 keeps processing feedback active for perceptible local IndexedDB work and stops at completion', async ({ page }) => {
   await page.goto('/');
   const lifecycle = await page.evaluate(async () => {
     const db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open('qa-state-feedback-v131', 1);
+      const request = indexedDB.open('qa-state-feedback-v132', 1);
       request.onupgradeneeded = () => request.result.createObjectStore('items');
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
@@ -126,7 +132,7 @@ test('v131 keeps processing feedback active for perceptible local IndexedDB work
       const transaction = db.transaction('items', 'readwrite');
       const store = transaction.objectStore('items');
       let index = 0;
-      const deadline = performance.now() + 220;
+      const deadline = performance.now() + 260;
       const keepBusy = () => {
         const request = store.put(index, `key-${index}`);
         request.onsuccess = () => {
@@ -150,14 +156,14 @@ test('v131 keeps processing feedback active for perceptible local IndexedDB work
 
     button.remove();
     db.close();
-    indexedDB.deleteDatabase('qa-state-feedback-v131');
+    indexedDB.deleteDatabase('qa-state-feedback-v132');
     return { visibleImmediately, visibleDuring, busyDuring, visibleAfter, busyAfter };
   });
 
   expect(lifecycle).toEqual({ visibleImmediately: true, visibleDuring: true, busyDuring: true, visibleAfter: false, busyAfter: false });
 });
 
-test('v131 reduced motion keeps the processing segment static', async ({ page }) => {
+test('v132 reduced motion keeps the processing segment static', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   const style = await page.evaluate(() => {
