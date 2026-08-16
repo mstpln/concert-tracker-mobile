@@ -42,8 +42,9 @@
   border: 0;
 }
 
-/* NF1 physical-device correction: use the exact preparation-row flex rhythm.
-   The previous grid rule enlarged the headphones glyph and moved the copy. */
+/* NF1 v132 correction: mirror the preparation-row rhythm exactly. The icon stays
+   visually compact while the title and listening totals use the same two-line
+   text stack as Ticket, Playlist, Weather, Predicted setlist and Checklist. */
 .concert-listening-row {
   display: flex;
   align-items: center;
@@ -57,13 +58,23 @@
   flex: 0 0 15px;
 }
 .concert-listening-row > span {
+  display: block;
   flex: 1;
   min-width: 0;
 }
+.concert-listening-row > span > strong,
+.concert-listening-row > span > small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.concert-listening-row > span > small {
+  margin-top: 2px;
+}
 
-/* NF1 physical-device correction: the line is an immediate, app-width overlay
-   directly above the bottom navigation. Clipping the travelling segment here
-   prevents it escaping the 480px app shell on desktop. */
+/* NF1 v132 correction: the blue segment is visible at the left edge on the very
+   first active frame and travels only within the clipped app-width track. */
 .interaction-progress {
   position: relative;
   z-index: 5;
@@ -82,13 +93,13 @@
   width: 34%;
   height: 3px;
   background: var(--accent);
-  transform: translateX(-110%);
+  transform: translateX(0);
 }
 .interaction-progress.is-active { opacity: 1; }
 .interaction-progress.is-active span { animation: interaction-progress-travel 1.05s ease-in-out infinite; }
 @keyframes interaction-progress-travel {
-  from { transform: translateX(-110%); }
-  to { transform: translateX(295%); }
+  from { transform: translateX(0); }
+  to { transform: translateX(194%); }
 }
 @media (prefers-reduced-motion: reduce) {
   .interaction-progress.is-active span {
