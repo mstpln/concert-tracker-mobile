@@ -124,10 +124,9 @@ test('v133 fast local feedback stops after paint without keeping the action bloc
   });
 });
 
-test('v133 paints bottom navigation on pointerdown and restores a cancelled preview', async ({ page }) => {
+test('v133 paints bottom navigation on pointerdown and restores cancelled or abandoned previews', async ({ page }) => {
   await page.goto('/');
   const tabs = page.locator('#tabbar .tabitem');
-  const initial = tabs.filter({ has: page.locator('.active') });
   const target = tabs.nth(1);
   const initialIndex = await tabs.evaluateAll((items) => items.findIndex((item) => item.classList.contains('active')));
 
@@ -138,7 +137,12 @@ test('v133 paints bottom navigation on pointerdown and restores a cancelled prev
   await target.dispatchEvent('pointercancel', { button: 0, pointerType: 'touch' });
   await expect(tabs.nth(initialIndex)).toHaveClass(/active/);
   await expect(target).not.toHaveAttribute('aria-busy');
-  expect(await initial.count()).toBeGreaterThanOrEqual(0);
+
+  await target.dispatchEvent('pointerdown', { button: 0, pointerType: 'touch' });
+  await expect(target).toHaveClass(/active/);
+  await target.dispatchEvent('pointerup', { button: 0, pointerType: 'touch' });
+  await expect(tabs.nth(initialIndex)).toHaveClass(/active/);
+  await expect(target).not.toHaveAttribute('aria-busy');
 });
 
 test('v133 keeps processing feedback active for perceptible local IndexedDB work and stops at completion', async ({ page }) => {
