@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('v129 renders past state, divider and perceptible request feedback', async ({ page }) => {
+test('v130 renders past state, divider and perceptible request feedback', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -41,10 +41,28 @@ test('v129 renders past state, divider and perceptible request feedback', async 
   });
 
   expect(lifecycle).toEqual({ visibleDuring: true, duplicateWasSuppressed: true, visibleAfter: false });
+
+  const keys = await page.evaluate(() => {
+    const host = document.createElement('div');
+    host.innerHTML = `
+      <button data-v123-listen-merge="qa-review-a|qa-review-c">Same listen</button>
+      <button data-v123-listen-merge="qa-review-a|qa-review-b">Same listen</button>
+    `;
+    document.body.appendChild(host);
+    const buttons = host.querySelectorAll('button');
+    const result = [...buttons].map((button) => LiveVaultStateFeedbackIntegrationV129.userActionKey(button));
+    host.remove();
+    return result;
+  });
+  expect(keys[0]).not.toBe(keys[1]);
+  expect(keys).toEqual([
+    'data:v123ListenMerge=qa-review-a|qa-review-c',
+    'data:v123ListenMerge=qa-review-a|qa-review-b',
+  ]);
   expect(pageErrors).toEqual([]);
 });
 
-test('v129 reduced motion keeps the processing segment static', async ({ page }) => {
+test('v130 reduced motion keeps the processing segment static', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   const style = await page.evaluate(async () => {
