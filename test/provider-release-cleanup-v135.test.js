@@ -7,11 +7,12 @@ const config = require('../scripts/lib/config');
 const { createResolver, evidenceSpotifyUrl } = require('../scripts/lib/nonPlaylistTrackLinks');
 const diagnostics = require('../scripts/lib/spotifyDiagnosticsV135');
 
-test('v135 retires structured release monitoring at the scheduled workflow boundary', () => {
+test('v135 retires structured release monitoring and lifecycle alerts at the scheduled workflow boundary', () => {
   assert.equal(config.STRUCTURED_RESEARCH.structuredReleaseMonitoringEnabled, false);
   const preload = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'preloadStructuredRun.js'), 'utf8');
   assert.match(preload, /structuredReleaseMonitoringEnabled = false/);
-  assert.doesNotMatch(preload, /installSpotifyReleaseAlertPlan|releaseAlertPlan/);
+  assert.match(preload, /releaseAlertPlan\.planLifecycleAlerts = \(\) => \(\{ alertsToCreate: \[\], alertsToEnrich: \[\], lifecycleUpdates: \[\], skipped: \[\] \}\)/);
+  assert.doesNotMatch(preload, /installSpotifyReleaseAlertPlan/);
 });
 
 test('v135 shell removes release alert compatibility script and loads cleanup UI', () => {
