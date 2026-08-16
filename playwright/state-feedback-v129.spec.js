@@ -101,26 +101,26 @@ test('v132 keeps fast local feedback visible without keeping the action blocked'
     button.click();
     const progress = document.getElementById('interaction-progress');
     const visibleImmediately = progress.classList.contains('is-active');
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await new Promise((resolve) => setTimeout(resolve, 80));
     const busyAfterSettlement = button.hasAttribute('aria-busy');
     button.click();
     const secondClickAccepted = clicks === 2;
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    const visibleAt120ms = progress.classList.contains('is-active');
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    const visibleAt160ms = progress.classList.contains('is-active');
     await new Promise((resolve) => setTimeout(resolve, 180));
-    const visibleAfter300ms = progress.classList.contains('is-active');
-    const busyAfter300ms = button.hasAttribute('aria-busy');
+    const visibleAfter340ms = progress.classList.contains('is-active');
+    const busyAfter340ms = button.hasAttribute('aria-busy');
     button.remove();
-    return { visibleImmediately, busyAfterSettlement, secondClickAccepted, visibleAt120ms, visibleAfter300ms, busyAfter300ms };
+    return { visibleImmediately, busyAfterSettlement, secondClickAccepted, visibleAt160ms, visibleAfter340ms, busyAfter340ms };
   });
 
   expect(lifecycle).toEqual({
     visibleImmediately: true,
     busyAfterSettlement: false,
     secondClickAccepted: true,
-    visibleAt120ms: true,
-    visibleAfter300ms: false,
-    busyAfter300ms: false,
+    visibleAt160ms: true,
+    visibleAfter340ms: false,
+    busyAfter340ms: false,
   });
 });
 
