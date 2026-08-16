@@ -158,6 +158,7 @@
       tx.onerror = () => reject(tx.error || new Error('Could not clear listening history.'));
     });
     db.close();
+    if (typeof bands !== 'undefined') root.LiveVaultListeningBandActivity?.publishFromBrowser?.([], bands).catch(() => {});
   }
 
   async function readFileText(file) {
@@ -185,6 +186,9 @@
       if (typeof bands === 'undefined' || typeof listeningEvents === 'undefined') return 0;
       const events = await loadEvents(bands);
       listeningEvents = events;
+      // Fire-and-forget: UI hydration never waits for the privacy-safe
+      // scheduler aggregate and aggregate failures never expose raw events.
+      root.LiveVaultListeningBandActivity?.publishFromBrowser?.(events, bands).catch(() => {});
       if (typeof currentScreen !== 'undefined' && currentScreen === 'stats' && typeof renderStatsScreen === 'function') renderStatsScreen();
       if (typeof currentScreen !== 'undefined' && currentScreen === 'top-bands' && typeof renderTopBandsScreen === 'function') renderTopBandsScreen();
       if (typeof currentScreen !== 'undefined' && currentScreen === 'profile' && typeof profileTab !== 'undefined' && profileTab === 'listening' && typeof renderProfileScreen === 'function') renderProfileScreen(activeProfileBandId);

@@ -228,7 +228,10 @@ function spotifyArtistImages(candidate) {
 function spotifyIdentity(mbidMetadata, candidate, now = new Date().toISOString(), method = 'search_exact') {
   return {
     id: candidate.id, url: candidate.url || candidate.external_urls?.spotify || `https://open.spotify.com/artist/${candidate.id}`,
-    artistName: candidate.name || null, images: spotifyArtistImages(candidate), status: 'confirmed', matchMethod: method, confidence: 100,
+    // Search results establish identity only. Trusted artwork is populated by
+    // a later exact /artists/{id} response in the low-priority maintenance
+    // lane, so search-result thumbnails can never short-circuit verification.
+    artistName: candidate.name || null, images: [], status: 'confirmed', matchMethod: method, confidence: 100,
     matchedAt: now, lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: now, nextEligibleCheckAt: null, errorCategory: null, reviewCandidates: [],
   };
 }
@@ -307,6 +310,21 @@ async function listArtistReleases(artistId, usage, { offset = 0, limit = 50, fet
   return { kind: 'ok', items: result.data.items, total: result.data.total || 0, offset };
 }
 
+// Artwork maintenance always uses this exact-id endpoint. It deliberately
+// never falls back to name search, and an unexpected response id fails
+// closed before any provider-owned image state can be persisted.
+async function getArtistExact(artistId, usage, options = {}) {
+  const expectedId = String(artistId || '').trim();
+  if (!expectedId) return { kind: 'error', error: 'missing_artist_id' };
+  const url = `https://api.spotify.com/v1/artists/${encodeURIComponent(expectedId)}`;
+  let result = await spotifyRequest(url, usage, options);
+  const transient = result.kind === 'error' && (result.status >= 500 || (!result.status && result.error && !/(?:token|credential|environment|client)/i.test(result.error)));
+  if (transient && usage.canCallSpotify()) result = await spotifyRequest(url, usage, options);
+  if (result.kind !== 'ok') return result;
+  if (result.data?.id !== expectedId) return { kind: 'error', error: 'artist_id_mismatch' };
+  return { kind: 'ok', artist: result.data };
+}
+
 async function getReleaseTracks(releaseId, usage, options = {}) {
   return spotifyRequest(`https://api.spotify.com/v1/albums/${encodeURIComponent(releaseId)}/tracks?market=SE&limit=50`, usage, options);
 }
@@ -353,4 +371,4 @@ async function matchPredictedSong(song, spotifyArtistId, usage, { bandName = '',
   return { kind: 'no_match' };
 }
 
-module.exports = { resolveSongLinks, searchTrack, searchTrackOutcome, resolveArtistIdentity, listArtistReleases, getReleaseTracks, spotifyIdentity, retryableIdentity, spotifyReviewCandidates, artistMatches, predictedTrackCandidate, predictedTrackFields, matchPredictedSong, spotifyRetryAfter, spotifyQuotaExceeded, spotify429Outcome };
+module.exports = { resolveSongLinks, searchTrack, searchTrackOutcome, resolveArtistIdentity, getArtistExact, listArtistReleases, getReleaseTracks, spotifyIdentity, retryableIdentity, spotifyReviewCandidates, artistMatches, predictedTrackCandidate, predictedTrackFields, matchPredictedSong, spotifyRetryAfter, spotifyQuotaExceeded, spotify429Outcome };

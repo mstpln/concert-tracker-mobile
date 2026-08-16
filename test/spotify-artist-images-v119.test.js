@@ -19,16 +19,13 @@ function candidate(overrides = {}) {
   };
 }
 
-test('confirmed Spotify artist identity retains artwork returned by the same search response', () => {
+test('confirmed Spotify artist identity defers search-result artwork to exact-id maintenance', () => {
   const source = candidate();
   const identity = spotifyIdentity({}, source, NOW);
 
   assert.equal(identity.status, 'confirmed');
   assert.equal(identity.id, source.id);
-  assert.deepEqual(identity.images, source.images);
-  assert.notEqual(identity.images, source.images);
-  assert.notEqual(identity.images[0], source.images[0]);
-  assert.equal(identity.images[0].futureImageField, 'keep');
+  assert.deepEqual(identity.images, []);
 });
 
 test('review candidates retain artwork metadata without becoming trusted identities', () => {

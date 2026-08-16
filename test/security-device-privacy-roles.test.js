@@ -19,11 +19,13 @@ function workerUnderTest() {
   return context.globalThis.worker;
 }
 function bucket() {
+  const activity = JSON.stringify({ kind: 'livevault-listening-band-activity', schemaVersion: 1, generatedAt: '2026-08-16T12:00:00.000Z', catalogueFingerprint: 'fnv1a32:1234abcd', mappedListenCount: 0, sourceLastListenedAt: null, records: {} });
   const items = new Map([
     ['bands.json', { value: '[]', etag: 'bands-1' }],
     ['concerts.json', { value: '[]', etag: 'concerts-1' }],
     ['news.json', { value: '[]', etag: 'news-1' }],
     ['apiUsage.json', { value: '{}', etag: 'usage-1' }],
+    ['listening/band-activity.json', { value: activity, etag: 'activity-1' }],
   ]);
   const object = (entry) => entry && ({ body: entry.value, text: async () => entry.value, etag: entry.etag, httpEtag: `"${entry.etag}"` });
   return {
@@ -97,6 +99,13 @@ test('Worker separates browser and automation roles while retaining staged legac
   assert.equal((await get('/bands.json', 'automation')).status, 200);
   assert.equal((await get('/bands.json', 'legacy')).status, 200);
   assert.equal((await get('/ticket-files/show-1/ticket-1.pdf', 'automation')).status, 403);
+  assert.equal((await get('/listening/band-activity.json', 'automation')).status, 200);
+  assert.equal((await get('/listening/manifest.json', 'automation')).status, 403);
+  assert.equal((await get('/listening/spotify-history/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.gz', 'automation')).status, 403);
+  assert.equal((await worker.fetch(new Request('https://worker.test/listening/band-activity.json', { method: 'PUT', headers: { Authorization: 'Bearer automation', 'Content-Type': 'application/json', 'If-Match': '"activity-1"' }, body: '{}' }), env)).status, 403);
+  assert.equal((await worker.fetch(new Request('https://worker.test/listening/band-activity.json', { method: 'PUT', headers: { Authorization: 'Bearer browser', 'Content-Type': 'application/json', 'If-Match': '"activity-1"' }, body: '{}' }), env)).status, 400);
+  const emptyActivity = { kind: 'livevault-listening-band-activity', schemaVersion: 1, generatedAt: '2026-08-16T12:00:00.000Z', catalogueFingerprint: 'fnv1a32:1234abcd', mappedListenCount: 0, sourceLastListenedAt: null, records: {} };
+  assert.equal((await worker.fetch(new Request('https://worker.test/listening/band-activity.json', { method: 'PUT', headers: { Authorization: 'Bearer browser', 'Content-Type': 'application/json', 'If-Match': '"activity-1"' }, body: JSON.stringify(emptyActivity) }), env)).status, 200);
   assert.equal((await get('/ticket-files/show-1/ticket-1.pdf', 'browser')).status, 404);
   assert.equal((await get('/bands.json', 'smoke')).status, 401);
   assert.equal((await get('/qa-smoke', 'smoke')).status, 200);
