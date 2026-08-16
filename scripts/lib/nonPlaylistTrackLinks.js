@@ -92,11 +92,11 @@ function installSpotifyNonPlaylistReuse(spotify) {
   const resolver = createResolver();
 
   spotify.resolveSongLinks = async function reusedResolveSongLinks(songs, bandName, usage, options = {}) {
-    const artist = { spotifyArtistId: options.spotifyArtistId || null, artistName: bandName };
-    for (const song of songs || []) resolver.add({ ...artist, recordingTitle: song?.name, spotifyUrl: song?.spotifyUrl, spotifyTrackId: song?.spotifyTrackId });
+    const artist = { bandId: options.bandId || null, spotifyArtistId: options.spotifyArtistId || null, artistName: bandName };
+    for (const song of songs || []) resolver.add({ ...song, ...artist, recordingTitle: song?.recordingTitle || song?.name });
     const providerSearch = typeof options.search === 'function' ? options.search : spotify.searchTrackOutcome;
     const search = async (title, currentBandName, currentUsage, searchOptions = {}) => {
-      const query = { spotifyArtistId: searchOptions.spotifyArtistId || artist.spotifyArtistId, artistName: currentBandName, recordingTitle: title };
+      const query = { bandId: searchOptions.bandId || artist.bandId, spotifyArtistId: searchOptions.spotifyArtistId || artist.spotifyArtistId, artistName: currentBandName, recordingTitle: title };
       const known = resolver.resolve(query);
       if (known) return { kind: 'ok', url: known, reused: true };
       const outcome = await providerSearch(title, currentBandName, currentUsage, searchOptions);
