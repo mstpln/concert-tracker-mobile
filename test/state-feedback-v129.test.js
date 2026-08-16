@@ -11,11 +11,11 @@ const integration = fs.readFileSync(path.join(__dirname, '..', 'stateFeedbackInt
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const serviceWorker = fs.readFileSync(path.join(__dirname, '..', 'service-worker.js'), 'utf8');
 
-test('v129 separates Past Concerts and trusts the existing renderer past-state class', () => {
-  assert.match(integration, /myconcerts-past-divider/);
-  assert.match(css, /\.myconcerts-past-divider::before/);
+test('v129 separates Past Concerts while trusting existing renderer ownership', () => {
+  assert.match(css, /#screen-myconcerts \.section-label-gap-lg/);
+  assert.match(css, /#screen-myconcerts \.section-label-gap-lg::before/);
   assert.match(css, /#screen-myconcerts \.row-card-mc\.is-past \{ background: #1d2124; \}/);
-  assert.doesNotMatch(integration, /attended-badge|classList\.toggle\('is-past'/);
+  assert.doesNotMatch(integration, /renderMyConcertsScreen|innerHTML|classList\.toggle\('is-past'/);
 });
 
 test('v129 countdown uses the approved two-tone show-day yellow family', () => {
@@ -68,4 +68,5 @@ test('v129 duplicate suppression applies only after a user action owns real asyn
   assert.match(integration, /feedback\.isPending\(key\)/);
   assert.match(integration, /event\.stopImmediatePropagation\(\)/);
   assert.match(integration, /if \(!context\.handle\) \{[\s\S]*feedback\.begin/);
+  assert.match(integration, /\.clickable/);
 });
