@@ -37,17 +37,17 @@ test('retains validated ListenBrainz URL, release-group and CAA evidence', () =>
       track_name: 'Synthetic Track',
       additional_info: {
         recording_mbid: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
-        release_group_mbid: '11111111-2222-4333-8444-555555555555',
+        release_group_mbid: '12345678-1234-4123-8123-123456789abc',
         caa_id: '12345',
-        caa_release_mbid: '99999999-8888-4777-8666-555555555555',
+        caa_release_mbid: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
         url_rels: ['https://open.spotify.com/track/TrustedSynthetic1', 'http://unsafe.example/track'],
       },
     },
   });
   assert.deepEqual(event.listenbrainzUrlRels, ['https://open.spotify.com/track/TrustedSynthetic1']);
-  assert.equal(event.musicbrainzReleaseGroupId, '11111111-2222-4333-8444-555555555555');
+  assert.equal(event.musicbrainzReleaseGroupId, '12345678-1234-4123-8123-123456789abc');
   assert.equal(event.listenbrainzCaaId, '12345');
-  assert.equal(event.listenbrainzCaaReleaseMbid, '99999999-8888-4777-8666-555555555555');
+  assert.equal(event.listenbrainzCaaReleaseMbid, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
   const sanitized = historyV2.sanitizeEvent(event);
   assert.deepEqual(sanitized.listenbrainzUrlRels, event.listenbrainzUrlRels);
   assert.equal(sanitized.musicbrainzReleaseGroupId, event.musicbrainzReleaseGroupId);
