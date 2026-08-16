@@ -109,6 +109,10 @@ test('DAB6 scheduled Spotify wrappers persist 429 state and close only after a r
     searchTrackOutcome: async () => ({ kind: 'error', status: 429, retryAfter: '9' }),
     resolveSongLinks: async (songs, bandName, passedUsage, options) => options.search(songs[0].name, bandName, passedUsage),
     resolveArtistIdentity: async () => ({ kind: 'error', identity: { errorCategory: 'http_429' } }),
+    getArtistExact: async (artistId, passedUsage) => {
+      await passedUsage.recordSpotifyCall();
+      return { kind: 'error', status: 429, retryAfter: '15' };
+    },
     listArtistReleases: async (artistId, passedUsage) => {
       await passedUsage.recordSpotifyCall();
       return { kind: 'error', status: 429, retryAfter: '15' };
@@ -121,7 +125,7 @@ test('DAB6 scheduled Spotify wrappers persist 429 state and close only after a r
   };
   circuit.installSpotifyModuleCircuit(spotify);
 
-  const result = await spotify.listArtistReleases('artist', usage);
+  const result = await spotify.getArtistExact('artist', usage);
   assert.equal(result.status, 429);
   assert.equal(usage.state.spotify.circuit.reason, 'rate_limited');
   assert.equal(usage.state.spotify.circuit.blockedUntil, '2026-08-12T20:00:16.000Z');

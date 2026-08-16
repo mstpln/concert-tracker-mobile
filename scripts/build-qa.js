@@ -13,7 +13,7 @@ const shell = [
   'browserFetchPolicy.js', 'v72Corrections.js', 'v72FinalAdjustments.js',
   'securityHardening.js', 'listeningInsightsV81.js', 'listeningV81BootFix.js', 'listeningV81ReviewFix.js', 'listeningV82Corrections.js', 'listeningV82GenreFix.js', 'listeningV82FailSafe.js', 'listeningV83ChartFix.js', 'listeningV83WindowFix.js', 'listeningV84ChartRenderFix.js', 'listeningV85RankingAndStatsUnits.js', 'toplistStatsV96.js', 'toplistV96.js', 'spotifyListeningMetadataV99.js', 'spotifyListeningAlbumArtworkV113.js', 'spotifyListeningMetadataV101.js', 'trustedListeningV99.js', 'uiPerformanceV126.js', 'uiPerformanceV127.js', 'dataLib.js', 'listeningStats.js', 'listeningStatsV81.js',
   'listeningFixtures.js', 'listeningFixturesV99.js', 'listeningIdentityContracts.js', 'listeningDerivedStorage.js', 'listeningDerivedMigration.js',
-  'spotifyHistoryImport.js', 'listeningVaultBridge.js', 'listeningVault.js', 'listeningHistoryV2.js',
+  'listeningBandActivity.js', 'spotifyHistoryImport.js', 'listeningVaultBridge.js', 'listeningVault.js', 'listeningHistoryV2.js',
   'listeningIncrementalVault.js', 'listenbrainzSync.js', 'spotifyHistoryBootstrap.js', 'icons.js',
   'conflictMerge.js', 'remoteStore.js', 'ownedTickets.js', 'musicbrainzState.js',
   'providerIdentityState.js', 'weather.js', 'spotifyUser.js', 'spotifyUserV100.js', 'version.js',
@@ -41,6 +41,7 @@ html = html.replace(
   '<script src="qa-fixtures.js"></script><script src="qa-v77-fixtures.js"></script><script src="qa-build-config.js"></script><script src="qa-bootstrap.js"></script><script src="ownedTickets.js"></script>'
 );
 html = html
+  .replace('<script src="listeningBandActivity.js"></script>', '')
   .replace('<script src="spotifyHistoryImport.js"></script>', '')
   .replace('<script src="listeningVaultBridge.js"></script>', '')
   .replace('<script src="listeningVault.js"></script>', '')

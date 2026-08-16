@@ -35,6 +35,7 @@ const { planLifecycleAlerts } = require('./lib/releaseAlertPlan');
 const { persistLifecyclePlan } = require('./lib/releaseAlertPersistence');
 const setlistInsights = require('./lib/setlistInsights');
 const predictedSetlist = require('./lib/predictedSetlist');
+const artistImageMaintenance = require('./lib/artistImageMaintenance');
 const { slugify, isValidFullDate, daysAgo, truncate, todayIso } = require('./lib/util');
 const config = require('./lib/config');
 
@@ -124,7 +125,7 @@ async function processStructuredResearch({
     const nextMb = { ...mb, ...(metadata ? { metadata } : {}) };
     if (config.STRUCTURED_RESEARCH.providerIdentityResolutionEnabled && metadata) {
       const spotifyResult = await resolveSpotify({ band: { ...band, musicbrainz: nextMb }, metadata, usage, now });
-      if (spotifyResult.identity) nextMb.spotify = spotifyResult.identity;
+      if (spotifyResult.identity) nextMb.spotify = { ...(nextMb.spotify || {}), ...spotifyResult.identity };
       const ticketmasterResult = await resolveTicketmaster({ band: { ...band, musicbrainz: nextMb }, metadata, usage, now });
       if (ticketmasterResult.identity) nextMb.ticketmaster = ticketmasterResult.identity;
     }
@@ -859,6 +860,16 @@ async function main() {
   ]);
   sharedUsage = usage;
 
+  // Plan before identity work so newly trusted identities selected for this
+  // run still receive the required exact-id artwork lookup. The aggregate is
+  // the only listening-derived file available to the automation credential.
+  let imageMaintenanceAggregate = null;
+  try { imageMaintenanceAggregate = await worker.readJson(artistImageMaintenance.PATH, null); }
+  catch (error) { usage.note(`Artist image maintenance aggregate unavailable: ${error.message}`); }
+  const imageMaintenanceBands = bands;
+  const imageMaintenancePlan = artistImageMaintenance.planArtistImageMaintenance(bands, imageMaintenanceAggregate);
+  if (imageMaintenancePlan.prioritySource === 'fallback_no_listening') usage.note(`Artist image maintenance using no-listening fallback: ${imageMaintenancePlan.reason}`);
+
   // Disabled by default; this cannot alter existing concert/news lookups.
   await processMusicbrainzIdentities({ bands, usage });
 
@@ -1159,6 +1170,12 @@ async function main() {
     await worker.writeJson('news.json', [...news, ...freshNews]);
   }
 
+  // Intentionally last among provider work. DAB7 still owns the run lease,
+  // and DAB6/UsageTracker remain the only path to Spotify and its backoff.
+  const imageMaintenanceRun = await artistImageMaintenance.runArtistImageMaintenance({
+    plan: imageMaintenancePlan, plannedBands: imageMaintenanceBands, bands, usage, spotify, worker,
+  });
+
   // Advance the rotation by exactly how many bands actually got a news
   // attempt this run — if the budget ran out early, that's fewer than
   // bands.length, so next week picks up right where this run left off
@@ -1182,6 +1199,7 @@ async function main() {
     setlistsAdded,
     spotifyConcertsProcessed,
     spotifyLinksAdded,
+    artistImagesUpdated: imageMaintenanceRun.imagesUpdated,
     setlistInsightUpdates: setlistInsightRun.updates,
     status: 'ok',
   });

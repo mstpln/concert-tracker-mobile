@@ -1,6 +1,6 @@
 # BANDMARKR Final Automation Audit
 
-Date: 2026-08-14
+Date: 2026-08-16
 
 This document is the current maintenance model for BANDMARKR automation after Data Automation Builds 1-8 and General App Updates 1-5. GitHub `main` remains authoritative. This audit does not authorize provider calls, production workflow runs, scheduler activation, deployment, secret changes, R2 writes, or production-data changes.
 
@@ -10,7 +10,7 @@ This document is the current maintenance model for BANDMARKR automation after Da
 
 | Automation | Schedule | Providers / role | Safety boundary |
 | --- | --- | --- | --- |
-| Structured concert and release research | Monday, Wednesday, Friday at 01:00 UTC | Ticketmaster, setlist.fm, Spotify, bounded MusicBrainz work | `live-vault-data-writes` concurrency group, DAB7 persisted scheduler lease, UsageTracker caps/pacing, conditional Worker writes |
+| Structured concert, release and missing artist-image research | Monday, Wednesday, Friday at 01:00 UTC | Ticketmaster, setlist.fm, Spotify, bounded MusicBrainz work | `live-vault-data-writes` concurrency group, DAB7 persisted scheduler lease, UsageTracker caps/pacing, conditional Worker writes; image work is last and capped at ten bands |
 | Focused web concert research | 1st and 15th at 02:00 UTC | Tavily, Groq, Open-Meteo geocoding | same concurrency group and scheduler lease; no Ticketmaster or Spotify credentials |
 
 There is no production GitHub schedule for listening maintenance. `.github/workflows/listening-maintenance-dry-run.yml` is manual and synthetic only.
@@ -19,7 +19,7 @@ There is no production GitHub schedule for listening maintenance. `.github/workf
 
 - ListenBrainz remains device-driven: startup due check, six-hour active-use timer, foreground-resume due check, plus manual **Sync now**.
 - Spotify listening artwork has a trusted-local DAB8 scheduler gate, but the repository does not install or activate a host scheduler. A real trusted-host schedule remains a separately authorized operational action.
-- GAU3 manual-band enrichment is browser-side and bounded. It is not a replacement for a server-side provider scheduler.
+- GAU3 manual-band enrichment remains browser-side and bounded. v134 adds a separate exact-ID missing-image lane to the existing structured server scheduler without adding a schedule.
 - GAU5 listening preparation is local, chunked and resumable. It never activates cleaned totals automatically.
 
 ## 2. Manual production/provider workflows
@@ -62,6 +62,7 @@ Changing any of these limits or pacing rules is outside this audit and requires 
 - DAB5 makes scheduled MusicBrainz work demand-driven and fair while retaining the five-call run cap and two-second pacing.
 - DAB6 persists Spotify rate-limit/quota state across Node invocations. A usable `Retry-After` is honored with a safety margin; otherwise a conservative rate-limit block is used. Explicit quota exhaustion opens the project cooldown rather than triggering repeated probes.
 - DAB7 serializes independent provider processes with a fail-closed persisted lease. Malformed, active, conflicting, or overlong lease state prevents provider work.
+- v134 artist-image maintenance stops the remaining image lane when DAB6 blocks either identity resolution or exact artist lookup. A valid exact no-image response is retried after 180 days so later provider artwork can be discovered without refreshing any band that already has usable artwork.
 - Persistence, ETag/concurrency, integrity, authorization, or ownership failures remain global stops where continuing could make data unsafe.
 
 ## 5. Ownership and persistence boundaries
@@ -71,6 +72,8 @@ Changing any of these limits or pacing rules is outside this audit and requires 
 - `listening/track-identities.json` is derived BANDMARKR identity state; reviewed decisions and unknown fields are preserved.
 - `listening/musicbrainz-catalogue.json` is rebuildable MusicBrainz-derived catalogue cache, not source listening data.
 - `listening/spotify-metadata.json` is Spotify-owned presentation metadata, separate from recording identity and source observations.
+- `listening/band-activity.json` is a narrow browser-produced scheduling aggregate containing stable band IDs and exclusive activity counts only. Automation has GET-only access to this object and no access to raw listening history. The Worker rejects unknown root, record or bucket fields on write and revalidates the stored object before returning it, preventing an invalid object from carrying extra raw fields across the boundary.
+- The band-activity schema is `kind: livevault-listening-band-activity`, `schemaVersion: 1`, aggregate `generatedAt`, `catalogueFingerprint`, `mappedListenCount`, and a `records` object keyed by stable band ID. Each record repeats only its band ID and the four exclusive `fourteenDays`, `threeMonths`, `oneYear`, and `allTime` buckets; a bucket contains only `listenCount` and ordinal `recencyRank`. Zero counts require null ranks, positive ranks must be a contiguous permutation inside each bucket, safe-integer bucket totals must reconcile to the aggregate total, and scheduled planning requires the exact current band-ID set plus its fingerprint. No exact listen timestamp crosses the browser boundary. Missing, stale or mismatched state degrades to stable no-listening ordering instead of disabling the maintenance lane.
 - Browser, automation, data-maintenance, and read-only smoke credentials remain separate roles. Values must never appear in source, logs, screenshots, docs, PR text, or QA artifacts.
 - Whole-document production writes use conditional ETag/create-only semantics. The shared Worker client supports one bounded reread/merge retry for ordinary ownership-aware writes and a strict fail-on-conflict path for lease/safety state.
 
@@ -102,13 +105,13 @@ These are separate future product/architecture decisions and are not silently im
 
 1. Server-side scheduled ListenBrainz ingestion / listening maintenance without the PWA being open.
 2. Scheduled weather-data cutover from the current browser weather fetch path.
-3. Whether GAU3 + DAB5 fully supersede the older future-band identity-automation proposal or whether a separate automatic candidate-acquisition lane is still wanted.
+3. The first production artist-image rollout remains separately authorized and must validate the aggregate boundary and ten-band result before any later run processes the remaining backlog; ambiguous identities remain user-reviewed.
 4. Removal of remaining routine maintenance buttons only after their automatic replacements are physically verified.
 
 The former GitHub Actions Node.js 20 deprecation/toolchain warning is no longer an outstanding architecture item in this branch: project scripts and updated workflows are aligned on Node 22 with reviewed immutable action pins. This change does not authorize running production smoke or any provider-writing workflow.
 
 ## 9. Final audit conclusion
 
-The current automation architecture has one coherent safety model: scheduled provider work is narrow and serialized; manual provider work remains explicitly gated; provider calls are bounded and paced; Spotify shares persisted backoff; MusicBrainz is demand-driven; writes are conditional; provider/source ownership remains separated; and private listening work stays outside public QA and ordinary GitHub provider workflows.
+The current automation architecture has one coherent safety model: scheduled provider work is narrow and serialized; manual provider work remains explicitly gated; provider calls are bounded and paced; Spotify shares persisted backoff; MusicBrainz is demand-driven; writes are conditional; provider/source ownership remains separated; raw private listening stays outside public QA and GitHub provider workflows, and only the validated aggregate-only activity boundary is readable by scheduled automation.
 
 The workflow drift and Node toolchain inconsistency identified during this audit are corrected in the open audit PR. The items remaining in section 8 are intentionally separate future product/architecture decisions, not hidden incompleteness in the current automation safety model.

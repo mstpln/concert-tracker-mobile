@@ -62,6 +62,23 @@ test('40b a newly discovered eligible single fetches tracks once, never during b
   await processStructuredResearch({ bands: [subject], news: [], usage: usage(), enabled: true, now, fetchReleaseGroups: async () => ({ kind: 'skipped' }), resolveSpotify: async () => ({}), resolveTicketmaster: async () => ({}), listSpotifyReleases: async () => ({ kind: 'ok', items: [{ id: 'new', name: 'New', album_type: 'single', release_date: '2026-07-01', release_date_precision: 'day', artists: [{ id: 's' }] }], total: 1, offset: 0 }), getSpotifyTracks: async () => { trackCalls++; return { kind: 'ok', data: { items: [{ name: 'Song' }] } }; }, readBands: async () => [subject], writeBands: async () => {}, readNews: async () => [], writeNews: async () => {} });
   assert.equal(trackCalls, 1);
 });
+test('40c Spotify identity resolution preserves unknown provider fields during the structured write', async () => {
+  const now = new Date().toISOString();
+  const subject = band({ musicbrainz: { status: 'manual_confirmed', mbid: 'm', metadata: { artistName: 'The Example', lastSuccessfulAt: now }, spotify: { status: 'needs_review', futureProviderField: { keep: true } } } });
+  let store = [structuredClone(subject)];
+  await processStructuredResearch({
+    bands: [subject], news: [], usage: usage(), enabled: true, now,
+    fetchReleaseGroups: async () => ({ kind: 'skipped' }),
+    resolveSpotify: async () => ({ kind: 'confirmed', identity: { id: 'spotify-new', status: 'confirmed', images: [] } }),
+    resolveTicketmaster: async () => ({}),
+    listSpotifyReleases: async () => ({ kind: 'skipped' }),
+    readBands: async () => structuredClone(store),
+    writeBands: async (_path, value) => { store = structuredClone(value); },
+    readNews: async () => [], writeNews: async () => {},
+  });
+  assert.deepEqual(store[0].musicbrainz.spotify.futureProviderField, { keep: true });
+  assert.equal(store[0].musicbrainz.spotify.id, 'spotify-new');
+});
 test('41 attraction ID is used for events', () => assert.equal(typeof ticketmaster.fetchUpcomingEvents, 'function'));
 test('42 missing attraction retains keyword fallback', () => assert.equal(ticketmaster.namesMatch('The Example', 'The Example', '', ''), true));
 test('43 category-not-due Tavily skipped', () => assert.equal(structured.tavilyEligibility({ structuredResearch: { routing: { lastTavilyStatusAt: new Date().toISOString() } } }, 'status'), null));

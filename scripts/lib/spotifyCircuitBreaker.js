@@ -236,6 +236,7 @@ function installSpotifyModuleCircuit(spotify) {
   const originalSearchTrackOutcome = spotify.searchTrackOutcome;
   const originalResolveSongLinks = spotify.resolveSongLinks;
   const originalResolveArtistIdentity = spotify.resolveArtistIdentity;
+  const originalGetArtistExact = spotify.getArtistExact;
   const originalListArtistReleases = spotify.listArtistReleases;
   const originalGetReleaseTracks = spotify.getReleaseTracks;
   const originalMatchPredictedSong = spotify.matchPredictedSong;
@@ -256,6 +257,13 @@ function installSpotifyModuleCircuit(spotify) {
     const callsBefore = spotifyCallsThisRun(args?.usage);
     const result = await originalResolveArtistIdentity(args);
     await reportModuleResult(args?.usage, result, ['confirmed', 'no_match', 'needs_review'], callsBefore);
+    return result;
+  };
+
+  spotify.getArtistExact = async function dab6GetArtistExact(artistId, usage, options) {
+    const callsBefore = spotifyCallsThisRun(usage);
+    const result = await originalGetArtistExact(artistId, usage, options);
+    await reportModuleResult(usage, result, ['ok'], callsBefore);
     return result;
   };
 
