@@ -7,33 +7,12 @@
   const feedback = root.LiveVaultInteractionFeedbackV129;
   if (!feedback) return;
 
+  const ACTIONABLE_SELECTOR = 'button, a, [role="button"], input[type="submit"], .clickable';
   let armedContext = null;
   const pendingContexts = new Set();
 
-  function decoratePastDivider() {
-    const screen = document.getElementById('screen-myconcerts');
-    if (!screen) return;
-    for (const label of screen.querySelectorAll('.section-label')) {
-      if (label.textContent?.trim().toLowerCase() !== 'past concerts') continue;
-      label.className = 'myconcerts-past-divider';
-      label.innerHTML = '<span>Past concerts</span>';
-    }
-  }
-
-  function wrapMyConcertsRender() {
-    if (typeof root.renderMyConcertsScreen !== 'function' || root.renderMyConcertsScreen.__stateFeedbackV129) return;
-    const original = root.renderMyConcertsScreen;
-    const wrapped = function renderMyConcertsScreenV129(...args) {
-      const result = original.apply(this, args);
-      decoratePastDivider();
-      return result;
-    };
-    Object.defineProperty(wrapped, '__stateFeedbackV129', { value: true });
-    root.renderMyConcertsScreen = wrapped;
-  }
-
   function userActionKey(target) {
-    const actionable = target?.closest?.('button, a, [role="button"], input[type="submit"]');
+    const actionable = target?.closest?.(ACTIONABLE_SELECTOR);
     if (!actionable || actionable.closest('#onboarding')) return null;
     const tab = actionable.closest('.tabitem')?.dataset?.tab;
     if (tab) return `tab:${tab}`;
@@ -116,7 +95,7 @@
     document.addEventListener('click', (event) => {
       const app = document.getElementById('app');
       if (!app || app.classList.contains('hidden')) return;
-      const actionable = event.target?.closest?.('button, a, [role="button"]');
+      const actionable = event.target?.closest?.(ACTIONABLE_SELECTOR);
       if (!actionable || actionable.disabled || actionable.getAttribute('aria-disabled') === 'true') return;
       const key = userActionKey(actionable);
       if (!key) return;
@@ -135,16 +114,13 @@
   }
 
   function install() {
-    wrapMyConcertsRender();
     installFetchTracking();
     installUserActionFeedback();
-    if (typeof root.renderMyConcertsScreen === 'function') decoratePastDivider();
   }
 
   root.addEventListener?.('load', install, { once: true });
 
   root.LiveVaultStateFeedbackIntegrationV129 = Object.freeze({
-    decoratePastDivider,
     userActionKey,
     install,
   });
