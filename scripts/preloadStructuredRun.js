@@ -12,6 +12,8 @@ const worker = require('./lib/workerClient');
 const { UsageTracker } = require('./lib/usageTracker');
 const { installMusicbrainzScheduledGate } = require('./lib/musicbrainzScheduledGate');
 const { installUsageTrackerSpotifyCircuit, installSpotifyModuleCircuit } = require('./lib/spotifyCircuitBreaker');
+const { installSpotifyNonPlaylistReuse } = require('./lib/nonPlaylistTrackLinks');
+const { installSpotifyDiagnosticsV135 } = require('./lib/spotifyDiagnosticsV135');
 
 config.STRUCTURED_RESEARCH.targetedTavilyRoutingEnabled = false;
 config.STRUCTURED_RESEARCH.structuredReleaseMonitoringEnabled = false;
@@ -19,3 +21,5 @@ config.STRUCTURED_RESEARCH.structuredReleaseMonitoringEnabled = false;
 installMusicbrainzScheduledGate({ musicbrainz, worker, config });
 installUsageTrackerSpotifyCircuit(UsageTracker);
 installSpotifyModuleCircuit(spotify);
+installSpotifyNonPlaylistReuse(spotify);
+installSpotifyDiagnosticsV135(spotify);
