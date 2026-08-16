@@ -232,6 +232,14 @@
       if (actionable === pointerContext.actionable) releaseContext(pointerContext);
     }, true);
 
+    document.addEventListener('pointerup', () => {
+      const context = pointerContext;
+      if (!context?.handle) return;
+      root.setTimeout(() => {
+        if (pointerContext === context && !context.clicked) releaseContext(context);
+      }, 0);
+    }, true);
+
     document.addEventListener('click', (event) => {
       const app = document.getElementById('app');
       if (!app || app.classList.contains('hidden')) return;
