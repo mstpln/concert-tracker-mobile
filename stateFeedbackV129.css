@@ -30,6 +30,34 @@
 #countdown-ring-outer { stroke: var(--countdown-yellow); }
 #countdown-ring-inner { stroke: var(--countdown-yellow-light); }
 
+/* NF1: keep the established avatar outline on the avatar container rather than
+   only on image children. This makes initials fallbacks and image-backed avatars
+   share the same outline without changing the avatar box or image crop. */
+.row-card-mc .row-avatar,
+.profile-avatar {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.row-card-mc .row-avatar img,
+.profile-avatar img {
+  border: 0;
+}
+
+/* NF1: match the listening summary row to the established preparation-row icon
+   rhythm and text start position. */
+.concert-listening-row {
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+}
+.concert-listening-row > svg {
+  width: 18px;
+  height: 18px;
+  justify-self: center;
+  align-self: center;
+}
+.concert-listening-row > span {
+  align-self: center;
+}
+
 /* Global user-action processing feedback. It occupies no layout height and
    appears only after the controller delay, so fast actions do not flicker. */
 .interaction-progress {
