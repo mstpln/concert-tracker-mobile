@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('v132 renders aligned two-line listening row and contained visible feedback', async ({ page }) => {
+test('v133 renders aligned two-line listening row and contained visible feedback', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -85,7 +85,7 @@ test('v132 renders aligned two-line listening row and contained visible feedback
   expect(pageErrors).toEqual([]);
 });
 
-test('v132 keeps fast local feedback visible without keeping the action blocked', async ({ page }) => {
+test('v133 fast local feedback stops after paint without keeping the action blocked', async ({ page }) => {
   await page.goto('/');
   const lifecycle = await page.evaluate(async () => {
     const button = document.createElement('button');
@@ -118,17 +118,34 @@ test('v132 keeps fast local feedback visible without keeping the action blocked'
     visibleImmediately: true,
     busyAfterSettlement: false,
     secondClickAccepted: true,
-    visibleAt160ms: true,
+    visibleAt160ms: false,
     visibleAfter340ms: false,
     busyAfter340ms: false,
   });
 });
 
-test('v132 keeps processing feedback active for perceptible local IndexedDB work and stops at completion', async ({ page }) => {
+test('v133 paints bottom navigation on pointerdown and restores a cancelled preview', async ({ page }) => {
+  await page.goto('/');
+  const tabs = page.locator('#tabbar .tabitem');
+  const initial = tabs.filter({ has: page.locator('.active') });
+  const target = tabs.nth(1);
+  const initialIndex = await tabs.evaluateAll((items) => items.findIndex((item) => item.classList.contains('active')));
+
+  await target.dispatchEvent('pointerdown', { button: 0, pointerType: 'touch' });
+  await expect(target).toHaveClass(/active/);
+  await expect(target).toHaveCSS('background-color', 'rgb(2, 77, 223)');
+  await expect(target).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await target.dispatchEvent('pointercancel', { button: 0, pointerType: 'touch' });
+  await expect(tabs.nth(initialIndex)).toHaveClass(/active/);
+  await expect(target).not.toHaveAttribute('aria-busy');
+  expect(await initial.count()).toBeGreaterThanOrEqual(0);
+});
+
+test('v133 keeps processing feedback active for perceptible local IndexedDB work and stops at completion', async ({ page }) => {
   await page.goto('/');
   const lifecycle = await page.evaluate(async () => {
     const db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open('qa-state-feedback-v132', 1);
+      const request = indexedDB.open('qa-state-feedback-v133', 1);
       request.onupgradeneeded = () => request.result.createObjectStore('items');
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
@@ -169,14 +186,14 @@ test('v132 keeps processing feedback active for perceptible local IndexedDB work
 
     button.remove();
     db.close();
-    indexedDB.deleteDatabase('qa-state-feedback-v132');
+    indexedDB.deleteDatabase('qa-state-feedback-v133');
     return { visibleImmediately, visibleDuring, busyDuring, visibleAfter, busyAfter };
   });
 
   expect(lifecycle).toEqual({ visibleImmediately: true, visibleDuring: true, busyDuring: true, visibleAfter: false, busyAfter: false });
 });
 
-test('v132 reduced motion keeps the processing segment static', async ({ page }) => {
+test('v133 reduced motion keeps the processing segment static', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   const style = await page.evaluate(() => {
