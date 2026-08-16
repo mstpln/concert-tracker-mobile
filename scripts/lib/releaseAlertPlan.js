@@ -1,7 +1,11 @@
 'use strict';
+const config = require('./config');
 const { STAGES, labels, lifecycleAlertId, eligibleStages } = require('./releaseLifecycle');
 function planLifecycleAlerts({ band, releases = [], alerts = [], today }) {
   const creates = [], enrich = [], lifecycleUpdates = [], skipped = [];
+  if (!config.STRUCTURED_RESEARCH.structuredReleaseMonitoringEnabled) {
+    return { alertsToCreate: creates, alertsToEnrich: enrich, lifecycleUpdates, skipped: releases.map((release) => ({ release, reason: 'release_monitoring_retired' })) };
+  }
   for (const release of releases) {
     if (!release.lifecycleEligible || release.historical || release.baselineIncomplete) { skipped.push({ release, reason: 'baseline' }); continue; }
     for (const stage of eligibleStages(release, today, release.lifecycle || {})) {
