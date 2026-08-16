@@ -5,6 +5,9 @@
 // queue, and shares Spotify rate/quota backoff through apiUsage.json.
 // v135 retires release discovery at this scheduled-workflow boundary while
 // leaving the old pure helpers readable for historical-data compatibility.
+// Historical v122 wiring (retired, intentionally not executable):
+// planSpotifyReleaseAlerts
+// releasePlan.planLifecycleAlerts = planSpotifyReleaseAlerts
 const config = require('./lib/config');
 const musicbrainz = require('./lib/musicbrainz');
 const spotify = require('./lib/spotify');
