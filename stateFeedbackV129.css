@@ -42,14 +42,15 @@
   border: 0;
 }
 
-/* v133: keep the compact headphones glyph, but compensate for its 15px width so
-   the copy starts on the same visual axis as the 13px Ticket/Playlist/Setlist
-   glyphs below. Remove the legacy inter-row margin inherited from v72 so the
-   listening row and first preparation row share the same 52px section rhythm. */
+/* v133: the 15px headphones glyph uses a 9px gap so its copy lands on the same
+   24px visual axis as the smaller preparation glyphs. An explicit border-box
+   height prevents inherited padding from making this section taller. */
 .concert-listening-row {
   display: flex;
   align-items: center;
   gap: 9px;
+  box-sizing: border-box;
+  height: 52px;
   min-height: 52px;
   padding: 9px 0;
   margin-top: 10px;
@@ -76,13 +77,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.concert-listening-row > span > small {
-  margin-top: 2px;
-}
+.concert-listening-row > span > small { margin-top: 2px; }
 
-/* v133: the selected bottom destination uses the same BANDMARKR blue as the top
-   banner, with white icon/text. Pointer feedback applies the class before the
-   destination render so this state can paint before expensive listening work. */
+/* v133: selected bottom destination = BANDMARKR banner blue + white content. */
 #tabbar .tabitem.active {
   background: #024ddf;
   color: #ffffff;
