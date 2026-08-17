@@ -28,6 +28,7 @@ async function renderQaFixtureAsShowDay(page, concertId) {
   await page.evaluate((targetId) => {
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    window.__LIVEVAULT_QA_NOW__ = `${today}T12:00:00`;
     for (const concert of concerts) {
       concert.attending = concert.id === targetId;
       if (concert.id === targetId) concert.date = today;
