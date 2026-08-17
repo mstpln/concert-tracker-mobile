@@ -25,7 +25,10 @@ test('v138 show-day card uses directions plus the compact Open tickets circle', 
   const card = page.locator('#countdown-card');
   await expect(card).toHaveAttribute('data-today', 'true');
   await expect(card.locator('.countdown-ticket-outline')).toBeVisible();
-  await expect(card.locator('.countdown-ticket-tear')).toBeVisible();
+  await expect(card.locator('.countdown-ticket-tear')).toHaveCount(1);
+  const tearStyle = await card.locator('.countdown-ticket-tear').evaluate((node) => ({ stroke: getComputedStyle(node).stroke, dash: getComputedStyle(node).strokeDasharray }));
+  expect(tearStyle.stroke).not.toBe('none');
+  expect(tearStyle.dash).not.toBe('none');
   await expect(card.getByRole('link', { name: 'Get directions' })).toBeVisible();
   const ticket = card.getByRole('link', { name: 'Open tickets' });
   await expect(ticket).toBeVisible();
