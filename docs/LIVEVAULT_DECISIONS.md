@@ -121,3 +121,11 @@ This continuity file was compacted on 2026-08-17. Earlier durable decisions rema
 **Reason:** The reviewed provider-cleanup scope requires fewer unnecessary Spotify calls without weakening identity, privacy or provider ownership. Ordinary scheduled automation cannot be given raw private listening access merely to improve reuse.
 
 **Consequence:** The shared link resolver is pure and fail-closed on conflicting evidence. Scheduled research may collect only evidence already visible in its allowed concert/band state; private listening evidence may be fed to the same resolver only by callers that already possess it. A single exact CAA release URL may satisfy a safe local album group and removes that group from unresolved Spotify artwork planning; conflicting CAA evidence remains ambiguous. CAA-derived presentation fields are local/provider-neutral and never become Spotify metadata. Trusted-local Spotify artwork operations retain aggregate diagnostics plus UsageTracker, circuit, lease, pacing, authorization and conditional-write controls.
+
+## 2026-08-17 — v139 Next Concert ticket geometry is fixed to the approved reference
+
+**Decision:** The Start-screen Next Concert card uses the approved 820x386 ticket silhouette with tear x=468, graphite contour and matching graphite dashed tear line, and inset frames 358x286 and 238x286. Normal countdown treatment is silver/graphite. On concert day, `Get directions` remains in the left information frame and the right stub becomes the yellow circular `Open tickets` control with a ticket icon and text.
+
+**Reason:** v138 approximated the aligned visual rather than reproducing the approved geometry precisely.
+
+**Consequence:** Future changes must preserve this geometry and the normal/show-day division unless a new visual decision is explicitly approved. Maps URL generation and OwnedTickets remain the behavior owners; this presentation layer must not fork those data paths.

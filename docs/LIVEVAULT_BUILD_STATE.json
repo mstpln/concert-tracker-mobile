@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v138",
-  "serviceWorkerCacheVersion": "v138",
+  "appVersion": "v139",
+  "serviceWorkerCacheVersion": "v139",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 22,
@@ -29,6 +29,7 @@
     "settingsV123.css",
     "stateFeedbackV129.css",
     "nextConcertV138.css",
+    "nextConcertV139.css",
     "icons/bandmarkr-wordmark.svg",
     "app.js",
     "nextConcertV138.js",
