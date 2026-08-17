@@ -1,0 +1,274 @@
+/* v138 — approved Next Concert ticket card presentation. */
+.countdown-v138-ticket {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38%;
+  min-height: 252px;
+  overflow: visible;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  isolation: isolate;
+  --countdown-v138-text: #f5f6f7;
+  --countdown-v138-muted: #8b9098;
+  --countdown-v138-outline: #34383f;
+}
+
+.countdown-v138-ticket .countdown-ticket-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.countdown-v138-ticket .countdown-ticket-contour {
+  fill: #111214;
+  stroke: var(--countdown-v138-outline);
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+}
+
+.countdown-v138-ticket .countdown-ticket-tear {
+  stroke: var(--countdown-v138-outline);
+  stroke-width: 1.7;
+  stroke-dasharray: 6 8;
+  stroke-linecap: round;
+}
+
+.countdown-v138-frame {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+.countdown-v138-main-frame {
+  padding: 34px 28px 32px 34px;
+}
+
+.countdown-v138-stub-frame {
+  display: grid;
+  place-items: center;
+  padding: 26px 24px 26px 30px;
+}
+
+.countdown-v138-label,
+.countdown-v138-band,
+.countdown-v138-venue,
+.countdown-v138-location-line,
+.countdown-v138-breakdown {
+  margin: 0;
+}
+
+.countdown-v138-label {
+  color: var(--countdown-v138-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.countdown-v138-band {
+  margin-top: 7px;
+  color: var(--countdown-v138-text);
+  font-size: clamp(23px, 6.2vw, 34px);
+  font-weight: 850;
+  line-height: 1.03;
+  letter-spacing: -.035em;
+  overflow-wrap: anywhere;
+}
+
+.countdown-v138-artist-rule {
+  display: block;
+  width: 28px;
+  height: 2px;
+  margin: 14px 0 15px;
+  border-radius: 2px;
+  background: #d6a72a;
+}
+
+.countdown-v138-venue {
+  color: var(--countdown-v138-text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.countdown-v138-location-line {
+  margin-top: 3px;
+  color: var(--countdown-v138-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.countdown-v138-countdown-group {
+  display: grid;
+  justify-items: center;
+  width: 100%;
+}
+
+.countdown-v138-ring {
+  width: min(132px, 100%);
+  height: auto;
+  overflow: visible;
+}
+
+.countdown-v138-ring .countdown-v138-outer-track,
+.countdown-v138-ring .countdown-v138-inner-track {
+  stroke: #25282e;
+}
+
+.countdown-v138-ring .countdown-v138-outer-progress {
+  stroke: #d6a72a;
+}
+
+.countdown-v138-ring .countdown-v138-inner-progress {
+  stroke: #1261ff;
+}
+
+.countdown-v138-ring-center {
+  fill: rgba(11, 12, 14, .98);
+}
+
+.countdown-v138-ring text {
+  fill: var(--countdown-v138-text);
+  font-size: 28px;
+  font-weight: 850;
+  letter-spacing: -.04em;
+}
+
+.countdown-v138-breakdown {
+  margin-top: 8px;
+  color: var(--countdown-v138-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.countdown-card-today .countdown-v138-main-frame {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.countdown-v138-venue-today {
+  margin-bottom: 17px;
+}
+
+.countdown-v138-directions,
+.countdown-v138-ticket-circle,
+.countdown-v138-ticket-choice {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.countdown-v138-directions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  margin-top: auto;
+  padding: 0 17px;
+  border: 1px solid #34383f;
+  border-radius: 999px;
+  color: var(--countdown-v138-text);
+  background: rgba(255, 255, 255, .025);
+  font-size: 12px;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.countdown-v138-directions svg {
+  width: 14px;
+  height: 14px;
+}
+
+.countdown-v138-ticket-actions {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+}
+
+.countdown-v138-ticket-circle {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 104px;
+  height: 104px;
+  padding: 8px;
+  border: 1px solid #34383f;
+  border-radius: 50%;
+  color: var(--countdown-v138-text);
+  background: rgba(255, 255, 255, .02);
+  font: inherit;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  list-style: none;
+}
+
+.countdown-v138-ticket-circle::-webkit-details-marker { display: none; }
+.countdown-v138-ticket-circle svg { width: 23px; height: 23px; }
+.countdown-v138-ticket-circle span { font-size: 11px; font-weight: 800; line-height: 1.05; }
+.countdown-v138-ticket-circle:focus-visible,
+.countdown-v138-directions:focus-visible,
+.countdown-v138-ticket-choice:focus-visible { outline: 2px solid #1261ff; outline-offset: 3px; }
+.countdown-v138-ticket-circle:disabled { opacity: .55; cursor: wait; }
+
+.countdown-v138-ticket-picker { position: relative; }
+.countdown-v138-ticket-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 5;
+  display: grid;
+  gap: 5px;
+  width: max-content;
+  min-width: 132px;
+  padding: 7px;
+  transform: translateX(-50%);
+  border: 1px solid #34383f;
+  border-radius: 12px;
+  background: #17191d;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .35);
+}
+
+.countdown-v138-ticket-choice {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--countdown-v138-text);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+.countdown-v138-ticket-choice:hover { background: rgba(255, 255, 255, .06); }
+.countdown-v138-ticket-choice svg { width: 14px; height: 14px; }
+.countdown-v138-ticket-error { grid-column: 1; max-width: 130px; margin: 8px 0 0; text-align: center; }
+.countdown-v138-ticket-none { width: 1px; height: 1px; }
+
+@media (max-width: 420px) {
+  .countdown-v138-ticket { grid-template-columns: minmax(0, 1fr) 39%; min-height: 238px; }
+  .countdown-v138-main-frame { padding: 30px 18px 28px 26px; }
+  .countdown-v138-stub-frame { padding: 24px 16px 24px 22px; }
+  .countdown-v138-band { font-size: clamp(22px, 6.6vw, 30px); }
+  .countdown-v138-ring { width: min(118px, 100%); }
+  .countdown-v138-ticket-circle { width: 94px; height: 94px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .countdown-v138-ticket * { scroll-behavior: auto !important; transition: none !important; }
+}
