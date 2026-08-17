@@ -20,6 +20,9 @@ const { installSpotifyDiagnosticsV135 } = require('./lib/spotifyDiagnosticsV135'
 
 config.STRUCTURED_RESEARCH.targetedTavilyRoutingEnabled = false;
 config.STRUCTURED_RESEARCH.structuredReleaseMonitoringEnabled = false;
+// Preserve the established DAB5 preload contract for historical helpers. This
+// refresh value is dormant because v135 disables scheduled release monitoring.
+config.STRUCTURED_RESEARCH.spotifyReleaseRefreshDays = 3;
 releaseAlertPlan.planLifecycleAlerts = () => ({ alertsToCreate: [], alertsToEnrich: [], lifecycleUpdates: [], skipped: [] });
 
 installMusicbrainzScheduledGate({ musicbrainz, worker, config });
