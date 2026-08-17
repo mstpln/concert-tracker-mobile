@@ -26,11 +26,13 @@ async function renderToday(page, ownedTickets) {
 async function renderQaFixtureAsShowDay(page, concertId) {
   await openStart(page);
   await page.evaluate((targetId) => {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const key = 'livevault-qa:data';
     const data = JSON.parse(localStorage.getItem(key));
     for (const concert of data.concerts || []) {
       concert.attending = concert.id === targetId;
-      if (concert.id === targetId) concert.date = '2027-07-16';
+      if (concert.id === targetId) concert.date = today;
     }
     localStorage.setItem(key, JSON.stringify(data));
   }, concertId);
