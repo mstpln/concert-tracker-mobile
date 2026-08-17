@@ -1,31 +1,32 @@
 'use strict';
 
-// Loaded with Node's -r flag before scripts/research.js. It keeps the
-// existing mature structured pipeline intact while disabling every Tavily
-// route for this more frequent run, narrowing release alerts to actual
-// Spotify catalogue releases, gating MusicBrainz to a small fair queue of
-// due work, and sharing Spotify rate/quota backoff through apiUsage.json.
+// Loaded with Node's -r flag before scripts/research.js. The frequent
+// structured run keeps Tavily disabled, gates MusicBrainz to the DAB5 fair
+// queue, and shares Spotify rate/quota backoff through apiUsage.json.
+// v135 retires release discovery at this scheduled-workflow boundary while
+// leaving the old pure helpers readable for historical-data compatibility.
+// Historical v122 release-planner wiring is retired and intentionally not
+// executable from the scheduled structured preload.
 const config = require('./lib/config');
-const releasePlan = require('./lib/releaseAlertPlan');
-const { planSpotifyReleaseAlerts } = require('./lib/spotifyReleaseAlertPlan');
 const musicbrainz = require('./lib/musicbrainz');
 const spotify = require('./lib/spotify');
 const worker = require('./lib/workerClient');
+const releaseAlertPlan = require('./lib/releaseAlertPlan');
 const { UsageTracker } = require('./lib/usageTracker');
 const { installMusicbrainzScheduledGate } = require('./lib/musicbrainzScheduledGate');
 const { installUsageTrackerSpotifyCircuit, installSpotifyModuleCircuit } = require('./lib/spotifyCircuitBreaker');
+const { installSpotifyNonPlaylistReuse } = require('./lib/nonPlaylistTrackLinks');
+const { installSpotifyDiagnosticsV135 } = require('./lib/spotifyDiagnosticsV135');
 
 config.STRUCTURED_RESEARCH.targetedTavilyRoutingEnabled = false;
-// Spotify remains the frequent catalogue source. MusicBrainz retains the
-// base configured refresh interval and is additionally bounded by DAB5's
-// demand/fair scheduler below.
+config.STRUCTURED_RESEARCH.structuredReleaseMonitoringEnabled = false;
+// Preserve the established DAB5 preload contract for historical helpers. This
+// refresh value is dormant because v135 disables scheduled release monitoring.
 config.STRUCTURED_RESEARCH.spotifyReleaseRefreshDays = 3;
+releaseAlertPlan.planLifecycleAlerts = () => ({ alertsToCreate: [], alertsToEnrich: [], lifecycleUpdates: [], skipped: [] });
 
 installMusicbrainzScheduledGate({ musicbrainz, worker, config });
 installUsageTrackerSpotifyCircuit(UsageTracker);
 installSpotifyModuleCircuit(spotify);
-
-// The research entry point is loaded after this preload, so its destructured
-// planner reference receives the Spotify-only lifecycle implementation while
-// the planner itself remains pure and independently testable.
-releasePlan.planLifecycleAlerts = planSpotifyReleaseAlerts;
+installSpotifyNonPlaylistReuse(spotify);
+installSpotifyDiagnosticsV135(spotify, UsageTracker);

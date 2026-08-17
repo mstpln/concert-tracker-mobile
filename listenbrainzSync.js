@@ -23,6 +23,39 @@
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(text) ? text : null;
   }
 
+  function safeHttpsUrl(value) {
+    if (typeof value !== 'string' || !value.trim()) return null;
+    try {
+      const url = new URL(value.trim());
+      return url.protocol === 'https:' ? url.toString() : null;
+    } catch (_) { return null; }
+  }
+
+  function resolvedUrlRelations(...values) {
+    const flattened = [];
+    for (const value of values) {
+      if (Array.isArray(value)) flattened.push(...value);
+      else if (value && typeof value === 'object') flattened.push(...Object.values(value).flat());
+      else if (value != null) flattened.push(value);
+    }
+    const urls = [];
+    for (const value of flattened) {
+      const candidate = typeof value === 'string'
+        ? value
+        : value?.url?.resource || value?.resource || value?.target || value?.url || null;
+      const safe = safeHttpsUrl(candidate);
+      if (safe && !urls.includes(safe)) urls.push(safe);
+      if (urls.length >= 32) break;
+    }
+    return urls;
+  }
+
+  function safeCaaId(value) {
+    if (value == null) return null;
+    const text = String(value).trim();
+    return /^[A-Za-z0-9_-]{1,128}$/.test(text) ? text : null;
+  }
+
   function stableHash(value) {
     let hash = 2166136261;
     const text = String(value || '');
@@ -68,10 +101,13 @@
     const listenedAt = new Date(Math.floor(listenedAtSeconds) * 1000).toISOString();
     const recordingMbid = safeUuid(info.recording_mbid || mapping.recording_mbid);
     const releaseMbid = safeUuid(info.release_mbid || mapping.release_mbid);
+    const releaseGroupMbid = safeUuid(info.release_group_mbid || mapping.release_group_mbid);
+    const caaReleaseMbid = safeUuid(info.caa_release_mbid || mapping.caa_release_mbid);
     const artistMbids = [...new Set([
       ...(Array.isArray(info.artist_mbids) ? info.artist_mbids : []),
       ...(Array.isArray(mapping.artist_mbids) ? mapping.artist_mbids : []),
     ].map(safeUuid).filter(Boolean))];
+    const urlRels = resolvedUrlRelations(info.url_rels, info.url_relations, mapping.url_rels, mapping.url_relations);
     const recordingMsid = safeUuid(listen?.recording_msid || info.recording_msid);
     const identity = recordingMsid || recordingMbid || stableHash(`${listenedAt}|${normalizeText(artist)}|${normalizeText(title)}|${normalizeText(metadata.release_name)}`);
 
@@ -86,7 +122,11 @@
       musicbrainzRecordingId: recordingMbid,
       musicbrainzArtistIds: artistMbids,
       musicbrainzReleaseId: releaseMbid,
+      musicbrainzReleaseGroupId: releaseGroupMbid,
       listenbrainzRecordingMsid: recordingMsid,
+      listenbrainzUrlRels: urlRels,
+      listenbrainzCaaId: safeCaaId(info.caa_id ?? mapping.caa_id),
+      listenbrainzCaaReleaseMbid: caaReleaseMbid,
       source: 'listenbrainz',
     };
   }
@@ -177,7 +217,6 @@
         seen.add(key);
         collected.push(event);
       }
-
       if (rawListens.length < PAGE_SIZE || !Number.isFinite(oldestSeconds) || oldestSeconds <= cutoffSeconds) break;
       cursor = { maxTs: Math.floor(oldestSeconds) - 1 };
       if (page === MAX_PAGES - 1) {

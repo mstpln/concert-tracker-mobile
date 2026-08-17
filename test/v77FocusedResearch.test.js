@@ -169,20 +169,21 @@ test('Spotify release planner reuses an existing release item instead of duplica
   assert.equal(plan.lifecycleUpdates[0].alertId, 'legacy-id');
 });
 
-test('structured preload wires the pure Spotify release planner before research loads', () => {
+test('v135 scheduled preload retires release alert generation while preserving historical helpers', () => {
   const preload = fs.readFileSync(path.join('scripts', 'preloadStructuredRun.js'), 'utf8');
-  assert.match(preload, /planSpotifyReleaseAlerts/);
-  assert.match(preload, /releasePlan\.planLifecycleAlerts = planSpotifyReleaseAlerts/);
+  assert.match(preload, /structuredReleaseMonitoringEnabled = false/);
+  assert.match(preload, /releaseAlertPlan\.planLifecycleAlerts = \(\) => \(\{ alertsToCreate: \[\], alertsToEnrich: \[\], lifecycleUpdates: \[\], skipped: \[\] \}\)/);
+  assert.doesNotMatch(preload, /planSpotifyReleaseAlerts/);
 });
 
-test('v122 release labels load after app.js and distinguish album and single availability', () => {
+test('v135 shell retires release labels and loads the cleanup owner', () => {
   const html = fs.readFileSync('index.html', 'utf8');
-  const labels = fs.readFileSync('releaseAlertsV122.js', 'utf8');
-  assert.ok(html.indexOf('<script src="releaseAlertsV122.js"></script>') > html.indexOf('<script src="app.js"></script>'));
-  assert.match(labels, /spotify_album_release/);
-  assert.match(labels, /NEW ALBUM/);
-  assert.match(labels, /spotify_single_release/);
-  assert.match(labels, /NEW SINGLE/);
+  const cleanup = fs.readFileSync('providerReleaseCleanupV135.js', 'utf8');
+  assert.doesNotMatch(html, /releaseAlertsV122\.js/);
+  assert.match(html, /providerReleaseCleanupV135\.js/);
+  assert.match(cleanup, /\['listening', 'Listening'\]/);
+  assert.match(cleanup, /\['data', 'Data'\]/);
+  assert.doesNotMatch(cleanup, /\['news', 'Releases'\]/);
 });
 
 test('focused workflows separate structured providers from Tavily web research and are scheduled', () => {
@@ -227,10 +228,10 @@ test('Ticketmaster pacing gate enforces the stricter published two-per-second gu
   assert.equal(usage.state.ticketmaster.callsToday, 2);
 });
 
-test('visible alert labels are Concerts and Releases everywhere', () => {
-  const source = fs.readFileSync('v72FinalAdjustments.js', 'utf8');
-  assert.match(source, />Concerts<\/button>/);
-  assert.match(source, />Releases<\/button>/);
-  assert.match(source, /\['news', 'Releases'\]/);
-  assert.doesNotMatch(source, />News<\/button>/);
+test('v135 visible alert ownership is concert-only while profile keeps Listening and Data', () => {
+  const cleanup = fs.readFileSync('providerReleaseCleanupV135.js', 'utf8');
+  assert.match(cleanup, /\['listening', 'Listening'\]/);
+  assert.match(cleanup, /\['data', 'Data'\]/);
+  assert.doesNotMatch(cleanup, /\['news', 'Releases'\]/);
+  assert.match(cleanup, /No new concerts found in the last 90 days/);
 });

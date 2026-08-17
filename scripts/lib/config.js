@@ -150,6 +150,9 @@ module.exports = {
   STRUCTURED_RESEARCH: {
     enabled: true,
     providerIdentityResolutionEnabled: true,
+    // v135 retires album/EP/single release discovery at the scheduled
+    // structured-run boundary. Keep the base helper configuration intact;
+    // scripts/preloadStructuredRun.js applies the explicit scheduled override.
     structuredReleaseMonitoringEnabled: true,
     targetedTavilyRoutingEnabled: true,
     groqFallbackEnabled: true,

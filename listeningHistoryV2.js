@@ -10,8 +10,8 @@
   const META_STORE = 'meta';
   const META_KEY = 'spotify-import';
   const OPTIONAL_ID_KEYS = [
-    'musicbrainzRecordingId', 'musicbrainzArtistIds', 'musicbrainzReleaseId',
-    'listenbrainzRecordingMsid',
+    'musicbrainzRecordingId', 'musicbrainzArtistIds', 'musicbrainzReleaseId', 'musicbrainzReleaseGroupId',
+    'listenbrainzRecordingMsid', 'listenbrainzUrlRels', 'listenbrainzCaaId', 'listenbrainzCaaReleaseMbid',
   ];
 
   function normalizeText(value) {
@@ -21,6 +21,14 @@
   function safeUuid(value) {
     const text = String(value || '').trim().toLowerCase();
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(text) ? text : null;
+  }
+
+  function safeHttpsUrl(value) {
+    if (typeof value !== 'string' || !value.trim()) return null;
+    try {
+      const url = new URL(value.trim());
+      return url.protocol === 'https:' ? url.toString() : null;
+    } catch (_) { return null; }
   }
 
   function sanitizeEvent(raw) {
@@ -49,7 +57,11 @@
     };
     event.musicbrainzRecordingId = safeUuid(raw.musicbrainzRecordingId);
     event.musicbrainzReleaseId = safeUuid(raw.musicbrainzReleaseId);
+    event.musicbrainzReleaseGroupId = safeUuid(raw.musicbrainzReleaseGroupId);
     event.listenbrainzRecordingMsid = safeUuid(raw.listenbrainzRecordingMsid);
+    event.listenbrainzCaaReleaseMbid = safeUuid(raw.listenbrainzCaaReleaseMbid);
+    event.listenbrainzCaaId = raw.listenbrainzCaaId == null ? null : (/^[A-Za-z0-9_-]{1,128}$/.test(String(raw.listenbrainzCaaId).trim()) ? String(raw.listenbrainzCaaId).trim() : null);
+    event.listenbrainzUrlRels = [...new Set((Array.isArray(raw.listenbrainzUrlRels) ? raw.listenbrainzUrlRels : []).map(safeHttpsUrl).filter(Boolean))].slice(0, 32);
     event.musicbrainzArtistIds = [...new Set((Array.isArray(raw.musicbrainzArtistIds) ? raw.musicbrainzArtistIds : []).map(safeUuid).filter(Boolean))];
     return event;
   }
