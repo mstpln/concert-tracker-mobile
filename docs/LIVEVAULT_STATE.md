@@ -26,4 +26,4 @@ For the active v138 branch, `APP_VERSION` and `CACHE_NAME_LITERAL` are synchroni
 
 Existing UsageTracker caps/pacing, Spotify circuit, cross-scheduler lease, optimistic concurrency, reviewed provider-decision preservation, immutable listening source observations and credential boundaries remain authoritative. Automated browser QA uses only synthetic fixtures and the QA fake backend.
 
-No production provider call, production workflow, production R2 read/write or deployment has been performed for v138. The branch is unreleased and must complete unit/safety plus desktop/mobile synthetic browser validation and review before it can be considered merge-ready. Merge still requires explicit user authorization.
+No production provider call, production workflow, production R2 read/write or deployment has been performed for v138. The implementation has completed its correction/review cycle; merge readiness requires the exact PR head to remain green for unit/safety plus desktop/mobile synthetic browser QA. Merge still requires explicit user authorization.
