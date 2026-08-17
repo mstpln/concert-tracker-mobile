@@ -40,6 +40,11 @@
     root.listeningEvents = next;
   }
 
+  function providerNeutralArtwork(event) {
+    const url = safeString(event?.albumArtworkUrl);
+    return event?.albumArtworkSource === 'cover-art-archive-exact-release' && /^https:\/\/coverartarchive\.org\//i.test(url) ? url : null;
+  }
+
   function uniqueBandNameMap(bandList = currentBands()) {
     const owners = new Map();
     for (const band of bandList || []) {
@@ -86,9 +91,11 @@
       const trackId = safeString(event?.spotifyTrackId);
       const key = groupKey(event, bandMap, bandIds);
       if (!key || !validSpotifyId(trackId)) continue;
-      const group = groups.get(key) || { key, trackIds: new Set(), events: [], albumIds: new Set(), artworkRecords: [] };
+      const group = groups.get(key) || { key, trackIds: new Set(), events: [], albumIds: new Set(), artworkRecords: [], providerNeutralArtworkUrls: new Set() };
       group.trackIds.add(trackId);
       group.events.push(event);
+      const neutralArtwork = providerNeutralArtwork(event);
+      if (neutralArtwork) group.providerNeutralArtworkUrls.add(neutralArtwork);
       const keys = trackGroupKeys.get(trackId) || new Set();
       keys.add(key);
       trackGroupKeys.set(trackId, keys);
@@ -101,8 +108,10 @@
     return [...groups.values()].map((group) => {
       const trackIds = [...group.trackIds].sort();
       const crossGroupTrack = trackIds.some((trackId) => (trackGroupKeys.get(trackId)?.size || 0) > 1);
-      const ambiguous = crossGroupTrack || group.albumIds.size > 1;
+      const conflictingProviderNeutralArtwork = group.providerNeutralArtworkUrls.size > 1;
+      const ambiguous = crossGroupTrack || group.albumIds.size > 1 || conflictingProviderNeutralArtwork;
       const albumId = !ambiguous && group.albumIds.size === 1 ? [...group.albumIds][0] : null;
+      const providerNeutralArtworkUrl = !ambiguous && group.providerNeutralArtworkUrls.size === 1 ? [...group.providerNeutralArtworkUrls][0] : null;
       return {
         ...group,
         trackIds,
@@ -111,8 +120,11 @@
           ? 'spotify_track_crosses_album_groups'
           : group.albumIds.size > 1
             ? 'conflicting_known_spotify_album_ids'
-            : null,
+            : conflictingProviderNeutralArtwork
+              ? 'conflicting_provider_neutral_artwork'
+              : null,
         albumId,
+        providerNeutralArtworkUrl,
         artworkRecord: albumId
           ? group.artworkRecords.find((record) => safeString(record.spotifyAlbumId) === albumId) || null
           : null,
@@ -122,7 +134,7 @@
 
   function albumOrientedUnresolvedTrackIds(document, events = currentEvents()) {
     return buildGroups(document, events)
-      .filter((group) => !group.ambiguous && !group.artworkRecord)
+      .filter((group) => !group.ambiguous && !group.providerNeutralArtworkUrl && !group.artworkRecord)
       .map((group) => {
         if (group.albumId) {
           const withKnownAlbum = group.trackIds.find((trackId) => safeString(document?.records?.[trackId]?.spotifyAlbumId) === group.albumId);
@@ -137,10 +149,13 @@
   function applyAlbumReuse(document, events = currentEvents()) {
     const records = document?.records || {};
     const groups = buildGroups(document, events);
-    const reusable = new Map(groups
-      .filter((group) => !group.ambiguous && group.albumId && group.artworkRecord)
+    const reusableNeutral = new Map(groups
+      .filter((group) => !group.ambiguous && group.providerNeutralArtworkUrl)
+      .map((group) => [group.key, group.providerNeutralArtworkUrl]));
+    const reusableSpotify = new Map(groups
+      .filter((group) => !group.ambiguous && !group.providerNeutralArtworkUrl && group.albumId && group.artworkRecord)
       .map((group) => [group.key, group]));
-    if (!reusable.size) return 0;
+    if (!reusableNeutral.size && !reusableSpotify.size) return 0;
 
     const bandList = currentBands();
     const bandMap = uniqueBandNameMap(bandList);
@@ -148,12 +163,26 @@
     let applied = 0;
     const next = currentEvents().map((event) => {
       const key = groupKey(event, bandMap, bandIds);
-      const group = reusable.get(key);
-      if (!group) return event;
+      if (!key) return event;
       const own = records[safeString(event?.spotifyTrackId)] || null;
+      if (safeString(own?.artworkUrl)) return event;
+
+      const neutralArtworkUrl = reusableNeutral.get(key);
+      if (neutralArtworkUrl) {
+        applied += 1;
+        if (providerNeutralArtwork(event) === neutralArtworkUrl) return event;
+        return {
+          ...event,
+          albumArtworkUrl: neutralArtworkUrl,
+          artworkPath: neutralArtworkUrl,
+          albumArtworkSource: 'cover-art-archive-exact-release',
+        };
+      }
+
+      const group = reusableSpotify.get(key);
+      if (!group) return event;
       const album = group.artworkRecord;
       applied += 1;
-      if (safeString(own?.artworkUrl)) return event;
       return {
         ...event,
         albumArtworkUrl: album.artworkUrl,
@@ -218,6 +247,7 @@
     bandNames,
     currentBands,
     currentEvents,
+    providerNeutralArtwork,
     uniqueBandNameMap,
     knownBandIds,
     localBandId,
