@@ -83,7 +83,75 @@ function createResolver(initialEvidence = []) {
   return { add, resolve, size: () => links.size, hasConflict: (query) => conflicts.has(identityKey(query)) };
 }
 
-const PATCH = Symbol.for('bandmarkr.v135.nonPlaylistTrackLinkReuse');
+function trustedSpotifyArtistId(band) {
+  const record = band?.musicbrainz?.spotify;
+  return ['confirmed', 'manual_confirmed'].includes(record?.status) && SPOTIFY_TRACK_ID.test(String(record?.id || '')) ? record.id : null;
+}
+
+function songEvidence(song, artist = {}) {
+  if (!song || typeof song !== 'object' || Array.isArray(song)) return null;
+  const recordingTitle = song.recordingTitle || song.name || song.title;
+  if (!normalize(recordingTitle)) return null;
+  return {
+    bandId: artist.bandId || song.bandId || song.localBandId || null,
+    spotifyArtistId: artist.spotifyArtistId || song.spotifyArtistId || null,
+    artistName: artist.artistName || song.artistCreditName || song.bandName || null,
+    recordingTitle,
+    spotifyTrackId: song.spotifyTrackId || null,
+    spotifyUrl: song.spotifyUrl || song.spotifyTrackUrl || null,
+    listenbrainzUrlRels: song.listenbrainzUrlRels || song.listenbrainzUrlRelations || null,
+    musicbrainzUrlRels: song.musicbrainzUrlRels || song.musicbrainzUrlRelations || null,
+  };
+}
+
+// Build the shared evidence that the scheduled research job can safely see
+// without widening its credential role to private listening archives. Existing
+// historical links and predicted-setlist exact matches can therefore satisfy a
+// later historical display-link request for the same stable band/title without
+// another Spotify search. Playlist matching itself is never patched here.
+function collectConcertEvidence(concerts = [], bands = []) {
+  const bandsById = new Map((bands || []).map((band) => [band?.id, band]));
+  const evidence = [];
+  for (const concert of concerts || []) {
+    const band = bandsById.get(concert?.bandId);
+    const artist = {
+      bandId: concert?.bandId || null,
+      spotifyArtistId: trustedSpotifyArtistId(band),
+      artistName: band?.name || concert?.bandName || null,
+    };
+    for (const song of concert?.setlist?.songs || []) {
+      const row = songEvidence(song, artist);
+      if (row && evidenceSpotifyUrl(row)) evidence.push(row);
+    }
+    for (const song of concert?.predictedSetlist?.songs || []) {
+      const row = songEvidence(song, artist);
+      if (row && evidenceSpotifyUrl(row)) evidence.push(row);
+    }
+  }
+  return evidence;
+}
+
+// Private/local callers that already possess source listens may reuse the same
+// resolver without publishing those listens to scheduled automation. This is
+// deliberately pure: it only converts already-held evidence into candidate
+// rows and performs no provider or storage access.
+function collectListeningEvidence(events = [], { bands = [] } = {}) {
+  const bandsById = new Map((bands || []).map((band) => [band?.id, band]));
+  const evidence = [];
+  for (const event of events || []) {
+    const bandId = event?.localBandId || event?.bandId || null;
+    const band = bandsById.get(bandId);
+    const row = songEvidence(event, {
+      bandId,
+      spotifyArtistId: trustedSpotifyArtistId(band),
+      artistName: band?.name || event?.artistCreditName || null,
+    });
+    if (row && evidenceSpotifyUrl(row)) evidence.push(row);
+  }
+  return evidence;
+}
+
+const PATCH = Symbol.for('bandmarkr.v136.nonPlaylistTrackLinkReuse');
 function installSpotifyNonPlaylistReuse(spotify) {
   if (!spotify || typeof spotify.resolveSongLinks !== 'function' || typeof spotify.searchTrackOutcome !== 'function') throw new Error('Non-playlist reuse requires Spotify song-link helpers.');
   if (spotify[PATCH]) return false;
@@ -93,6 +161,7 @@ function installSpotifyNonPlaylistReuse(spotify) {
 
   spotify.resolveSongLinks = async function reusedResolveSongLinks(songs, bandName, usage, options = {}) {
     const artist = { bandId: options.bandId || null, spotifyArtistId: options.spotifyArtistId || null, artistName: bandName };
+    for (const evidence of Array.isArray(options.evidence) ? options.evidence : []) resolver.add(evidence);
     for (const song of songs || []) resolver.add({ ...song, ...artist, recordingTitle: song?.recordingTitle || song?.name });
     const providerSearch = typeof options.search === 'function' ? options.search : spotify.searchTrackOutcome;
     const search = async (title, currentBandName, currentUsage, searchOptions = {}) => {
@@ -108,4 +177,17 @@ function installSpotifyNonPlaylistReuse(spotify) {
   return true;
 }
 
-module.exports = { normalize, spotifyTrackIdFromUrl, spotifyUrl, uniqueSpotifyRelation, evidenceSpotifyUrl, identityKey, createResolver, installSpotifyNonPlaylistReuse };
+module.exports = {
+  normalize,
+  spotifyTrackIdFromUrl,
+  spotifyUrl,
+  uniqueSpotifyRelation,
+  evidenceSpotifyUrl,
+  identityKey,
+  createResolver,
+  trustedSpotifyArtistId,
+  songEvidence,
+  collectConcertEvidence,
+  collectListeningEvidence,
+  installSpotifyNonPlaylistReuse,
+};
