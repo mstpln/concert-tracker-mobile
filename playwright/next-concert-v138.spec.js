@@ -6,8 +6,22 @@ async function openStart(page) {
   await expect(page.locator('#screen-myconcerts')).toBeVisible();
 }
 
+function localDateString(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 test('v138 show-day card uses directions plus the compact Open tickets circle', async ({ page }) => {
   await openStart(page);
+  const today = localDateString(new Date());
+  await page.evaluate((date) => {
+    const concert = {
+      id: 'qa-v138-show-day', bandId: 'qa-artist-one', bandName: 'QA Artist One', date, time: '20:00',
+      venue: 'Example Arena', address: '1 Fictional Avenue', city: 'Sample City', country: 'Exampleland',
+      latitude: 55.5, longitude: 13.1, attending: true,
+      ownedTickets: [{ id: 'qa-v138-url-ticket', type: 'url', url: 'https://qa.invalid/tickets/v138-show-day', addedAt: '2027-01-01T00:00:00.000Z' }],
+    };
+    document.querySelector('#screen-myconcerts').innerHTML = window.countdownCardHtml(concert);
+  }, today);
   const card = page.locator('#countdown-card');
   await expect(card).toHaveAttribute('data-today', 'true');
   await expect(card.locator('.countdown-ticket-outline')).toBeVisible();
@@ -23,11 +37,16 @@ test('v138 show-day card uses directions plus the compact Open tickets circle', 
 
 test('v138 normal countdown card keeps live countdown ids and matching graphite perforation', async ({ page }) => {
   await openStart(page);
-  await page.evaluate(() => {
-    const fixtures = window.LiveVaultQaFixtures.createLiveVaultQaFixtures();
-    const concert = fixtures.concerts.find((item) => item.id === 'qa-one-pdf');
+  const future = new Date();
+  future.setDate(future.getDate() + 30);
+  const futureDate = localDateString(future);
+  await page.evaluate((date) => {
+    const concert = {
+      id: 'qa-v138-future', bandId: 'qa-artist-two', bandName: 'QA Artist Two', date, time: '19:00',
+      venue: 'Test Hall', address: '2 Synthetic Street', city: 'Sample City', country: 'Exampleland', attending: true,
+    };
     document.querySelector('#screen-myconcerts').innerHTML = window.countdownCardHtml(concert);
-  });
+  }, futureDate);
   const card = page.locator('#countdown-card');
   await expect(card).toHaveAttribute('data-today', 'false');
   await expect(card.locator('#countdown-ring-day')).toBeVisible();
