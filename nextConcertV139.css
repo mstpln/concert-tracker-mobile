@@ -21,6 +21,12 @@
 .countdown-v139-cut { stroke:#17181a; }
 .countdown-v139-track { stroke:#343537; }
 .countdown-v139-progress { stroke:#d8d9dc; }
+/* app.css owns legacy #countdown-ring-inner/#countdown-ring-outer colors with ID
+   specificity. v139 deliberately reuses those IDs so the existing live tick
+   updater continues to work; scope the approved silver treatment here so the
+   legacy yellow/blue ring colors cannot leak into this card. */
+.countdown-v139-ticket #countdown-ring-inner { stroke:#d8d9dc; }
+.countdown-v139-ticket #countdown-ring-outer { stroke:transparent; }
 .countdown-v139-hidden-live-ring { stroke:transparent!important; }
 .countdown-v139-center { fill:#17181a; }
 .countdown-v139-ticket #countdown-ring-day { fill:#f5f6f7; font-family:inherit; font-size:32px; font-weight:750; }
