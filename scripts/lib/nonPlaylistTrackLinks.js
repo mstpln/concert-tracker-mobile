@@ -139,25 +139,15 @@ function uniqueBandNameCounts(bands = []) {
 function appendSafeEvidence(evidence, row, band, nameCounts) {
   if (!row || !evidenceSpotifyUrl(row)) return;
   evidence.push(row);
-
-  // Some established historical callers identify a song by artist name rather
-  // than stable band id. Expose a name-keyed alias only when that normalized
-  // name belongs to exactly one BANDMARKR band. Conflicting links for that
-  // alias are still rejected by createResolver, so this never guesses across
-  // duplicate artist names.
   const normalizedName = normalize(band?.name || row.artistName);
   if (normalizedName && nameCounts.get(normalizedName) === 1) {
     evidence.push({ ...row, bandId: null, spotifyArtistId: null, artistName: band?.name || row.artistName });
   }
 }
 
-// Build evidence the scheduled research job is already allowed to see. Exact
-// setlist/prediction links can satisfy later non-playlist display-link work
-// without another Spotify search. Raw private listening history is not read.
-function collectConcertEvidence(concerts = [], bands = []) {
+function collectConcertRows(concerts = [], bands = []) {
   const bandsById = new Map((bands || []).map((band) => [band?.id, band]));
-  const nameCounts = uniqueBandNameCounts(bands);
-  const evidence = [];
+  const rows = [];
   for (const concert of concerts || []) {
     const band = bandsById.get(concert?.bandId);
     const artist = {
@@ -165,8 +155,35 @@ function collectConcertEvidence(concerts = [], bands = []) {
       spotifyArtistId: trustedSpotifyArtistId(band),
       artistName: band?.name || concert?.bandName || null,
     };
-    for (const song of concert?.setlist?.songs || []) appendSafeEvidence(evidence, songEvidence(song, artist), band, nameCounts);
-    for (const song of concert?.predictedSetlist?.songs || []) appendSafeEvidence(evidence, songEvidence(song, artist), band, nameCounts);
+    for (const song of concert?.setlist?.songs || []) {
+      const row = songEvidence(song, artist);
+      if (row) rows.push({ row, band });
+    }
+    for (const song of concert?.predictedSetlist?.songs || []) {
+      const row = songEvidence(song, artist);
+      if (row) rows.push({ row, band });
+    }
+  }
+  return rows;
+}
+
+// Trusted recording identity is useful even when no Spotify URL is known yet.
+// Keep these rows separate from URL evidence so an exact recording MBID can be
+// consulted before broader title search without weakening link ambiguity rules.
+function collectConcertIdentityEvidence(concerts = [], bands = []) {
+  return collectConcertRows(concerts, bands)
+    .map(({ row }) => row)
+    .filter((row) => row.musicbrainzRecordingId);
+}
+
+// Build evidence the scheduled research job is already allowed to see. Exact
+// setlist/prediction links can satisfy later non-playlist display-link work
+// without another Spotify search. Raw private listening history is not read.
+function collectConcertEvidence(concerts = [], bands = []) {
+  const nameCounts = uniqueBandNameCounts(bands);
+  const evidence = [];
+  for (const { row, band } of collectConcertRows(concerts, bands)) {
+    appendSafeEvidence(evidence, row, band, nameCounts);
   }
   return evidence;
 }
@@ -240,8 +257,6 @@ function installSpotifyNonPlaylistReuse(spotify) {
           sharedResolver.add({ ...query, spotifyUrl: neutral.url });
           return { ...neutral, reused: true };
         }
-        // A transient/cap failure in the earlier provider-neutral route must
-        // not be widened into a Spotify guess during the same item.
         if (neutral?.kind === 'error' || neutral?.kind === 'skipped') return neutral;
       }
 
@@ -266,6 +281,7 @@ module.exports = {
   trustedSpotifyArtistId,
   songEvidence,
   uniqueBandNameCounts,
+  collectConcertIdentityEvidence,
   collectConcertEvidence,
   collectListeningEvidence,
   seedEvidence,
