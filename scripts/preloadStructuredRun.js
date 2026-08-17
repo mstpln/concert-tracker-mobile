@@ -28,12 +28,13 @@ releaseAlertPlan.planLifecycleAlerts = () => ({ alertsToCreate: [], alertsToEnri
 const originalReadJson = worker.readJson;
 let safeBands = null;
 let safeConcerts = null;
-let safeConcertEvidence = [];
+let safeConcertIdentityEvidence = [];
 
 function refreshSafeConcertEvidence() {
   if (!safeBands || !safeConcerts) return;
-  safeConcertEvidence = nonPlaylist.collectConcertEvidence(safeConcerts, safeBands);
-  nonPlaylist.seedEvidence(safeConcertEvidence);
+  const linkEvidence = nonPlaylist.collectConcertEvidence(safeConcerts, safeBands);
+  safeConcertIdentityEvidence = nonPlaylist.collectConcertIdentityEvidence(safeConcerts, safeBands);
+  nonPlaylist.seedEvidence(linkEvidence);
 }
 
 worker.readJson = async function v137ReadJsonWithTrustedTrackEvidence(path, fallback) {
@@ -48,7 +49,7 @@ function uniqueRecordingMbid(artistName, recordingTitle) {
   const artist = nonPlaylist.normalize(artistName);
   const title = nonPlaylist.normalize(recordingTitle);
   if (!artist || !title) return null;
-  const ids = [...new Set(safeConcertEvidence
+  const ids = [...new Set(safeConcertIdentityEvidence
     .filter((row) => nonPlaylist.normalize(row?.artistName) === artist && nonPlaylist.normalize(row?.recordingTitle) === title)
     .map((row) => row?.musicbrainzRecordingId)
     .filter(Boolean))];
