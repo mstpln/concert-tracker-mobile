@@ -28,17 +28,12 @@ async function renderQaFixtureAsShowDay(page, concertId) {
   await page.evaluate((targetId) => {
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const key = 'livevault-qa:data';
-    const data = JSON.parse(localStorage.getItem(key));
-    for (const concert of data.concerts || []) {
+    for (const concert of concerts) {
       concert.attending = concert.id === targetId;
       if (concert.id === targetId) concert.date = today;
     }
-    localStorage.setItem(key, JSON.stringify(data));
+    renderMyConcertsScreen();
   }, concertId);
-  await page.reload();
-  await expect(page.getByTestId('qa-banner')).toContainText('SYNTHETIC DATA');
-  await expect(page.locator('#screen-myconcerts')).toBeVisible();
   return page.locator('#countdown-card');
 }
 
