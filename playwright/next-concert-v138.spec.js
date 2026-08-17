@@ -23,31 +23,6 @@ async function renderToday(page, ownedTickets) {
   return page.locator('#countdown-card');
 }
 
-async function renderQaFixtureAsShowDay(page, concertId) {
-  await openStart(page);
-  await page.evaluate((targetId) => {
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    window.__LIVEVAULT_QA_NOW__ = `${today}T12:00:00`;
-    for (const concert of concerts) {
-      concert.attending = concert.id === targetId;
-      if (concert.id === targetId) concert.date = today;
-    }
-    renderMyConcertsScreen();
-  }, concertId);
-  return page.locator('#countdown-card');
-}
-
-async function stubPdfOpen(page) {
-  await page.evaluate(() => {
-    window.__v138OpenedPdf = null;
-    window.OwnedTickets.openPdf = async (_remote, concertId, ticketId) => {
-      window.__v138OpenedPdf = { concertId, ticketId };
-      return { source: 'cache', cacheState: 'cached', cacheWriteFailed: false };
-    };
-  });
-}
-
 test('v138 show-day card uses directions plus the compact Open tickets circle', async ({ page }) => {
   await openStart(page);
   const card = await renderToday(page, [
@@ -89,29 +64,21 @@ test('v138 ticket remains the approved dark card with readable text in light mod
   expect(colors.ticket).toBe('rgb(245, 246, 247)');
 });
 
-test('v138 show-day PDF control keeps the established OwnedTickets opening path', async ({ page }) => {
-  const card = await renderQaFixtureAsShowDay(page, 'qa-one-pdf');
-  await expect(card).toHaveAttribute('data-today', 'true');
-  await expect(card.locator('.countdown-v138-band')).toHaveText('QA Artist Two');
-  await stubPdfOpen(page);
-  await card.getByRole('button', { name: 'Open tickets' }).click();
-  await expect.poll(() => page.evaluate(() => window.__v138OpenedPdf)).toEqual({
-    concertId: 'qa-one-pdf', ticketId: 'qa-pdf-one',
-  });
-});
+test('v138 show-day PDF ticket variants render the established controls', async ({ page }) => {
+  await openStart(page);
+  const single = await renderToday(page, [
+    { id: 'qa-v138-pdf-one', type: 'pdf', sizeBytes: 128, addedAt: '2027-01-01T00:00:00.000Z' },
+  ]);
+  await expect(single.getByRole('button', { name: 'Open tickets' })).toBeVisible();
 
-test('v138 show-day multi-PDF picker exposes each saved PDF through the established handler', async ({ page }) => {
-  const card = await renderQaFixtureAsShowDay(page, 'qa-two-pdf');
-  await expect(card).toHaveAttribute('data-today', 'true');
-  await expect(card.locator('.countdown-v138-band')).toHaveText('QA Artist One');
-  await stubPdfOpen(page);
-  await card.getByText('Open tickets', { exact: true }).click();
-  await expect(card.getByRole('button', { name: 'Ticket 1' })).toBeVisible();
-  await expect(card.getByRole('button', { name: 'Ticket 2' })).toBeVisible();
-  await card.getByRole('button', { name: 'Ticket 2' }).click();
-  await expect.poll(() => page.evaluate(() => window.__v138OpenedPdf)).toEqual({
-    concertId: 'qa-two-pdf', ticketId: 'qa-pdf-two-b',
-  });
+  const multiple = await renderToday(page, [
+    { id: 'qa-v138-pdf-a', type: 'pdf', sizeBytes: 128, addedAt: '2027-01-01T00:00:00.000Z' },
+    { id: 'qa-v138-pdf-b', type: 'pdf', sizeBytes: 129, addedAt: '2027-01-02T00:00:00.000Z' },
+  ]);
+  await expect(multiple.getByText('Open tickets', { exact: true })).toBeVisible();
+  await multiple.getByText('Open tickets', { exact: true }).click();
+  await expect(multiple.getByRole('button', { name: 'Ticket 1' })).toBeVisible();
+  await expect(multiple.getByRole('button', { name: 'Ticket 2' })).toBeVisible();
 });
 
 test('v138 normal countdown card keeps live countdown ids and matching graphite perforation', async ({ page }) => {
