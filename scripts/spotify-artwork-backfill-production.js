@@ -6,6 +6,7 @@ const runner = require('./spotify-artwork-backfill');
 const source = require('./spotify-artwork-backfill-source');
 const { UsageTracker } = require('./lib/usageTracker');
 const spotifyCircuit = require('./lib/spotifyCircuitBreaker');
+const spotifyDiagnostics = require('./lib/spotifyDiagnosticsV135');
 const schedulerLease = require('./lib/schedulerLease');
 
 const PRODUCTION_EXECUTION_CONFIRMATION = 'I_AUTHORIZE_PRIVATE_LISTENING_READS_LIVE_SPOTIFY_CALLS_AND_PROVIDER_USAGE_WRITES';
@@ -57,7 +58,9 @@ async function persistCircuitSignal(usage, signal) {
   return spotifyCircuit.applyAndPersistSpotifyCircuitSignal(usage, signal);
 }
 
-async function trackedSpotifyCall(usage, operation, { allowSuccess = true } = {}) {
+async function trackedSpotifyCall(usage, operation, { allowSuccess = true, lane = 'album_artwork', endpoint = 'track_exact' } = {}) {
+  const before = spotifyDiagnostics.calls(usage);
+  const beforeCircuit = spotifyDiagnostics.circuitSnapshot(usage);
   const circuitReason = typeof usage?.spotifyCircuitBlockReason === 'function'
     ? usage.spotifyCircuitBlockReason()
     : spotifyCircuit.spotifyCircuitBlockReason(usage?.state?.spotify);
@@ -84,6 +87,7 @@ async function trackedSpotifyCall(usage, operation, { allowSuccess = true } = {}
     const result = await operation();
     const signal = spotifyCircuit.spotifyCircuitSignalFromResult(result, { successKinds: ['ok', 'not_found'], allowSuccess });
     await persistCircuitSignal(usage, signal);
+    spotifyDiagnostics.recordOperation(usage, { lane, endpoint, before, beforeCircuit, result });
     return result;
   } catch (error) {
     const signal = spotifyCircuit.spotifyCircuitSignalFromError(error);
@@ -93,9 +97,11 @@ async function trackedSpotifyCall(usage, operation, { allowSuccess = true } = {}
         const wrapped = new Error(`Spotify request stopped and its circuit state could not be persisted: ${saveError.message}`);
         wrapped.code = 'SPOTIFY_CIRCUIT_SAVE_FAILED';
         wrapped.cause = error;
+        spotifyDiagnostics.recordOperation(usage, { lane, endpoint, before, beforeCircuit, result: { kind: 'error', status: error?.status, retryAfter: error?.retryAfter, error: error?.code || 'request_failed' } });
         throw wrapped;
       }
     }
+    spotifyDiagnostics.recordOperation(usage, { lane, endpoint, before, beforeCircuit, result: { kind: 'error', status: error?.status, retryAfter: error?.retryAfter, error: error?.code || 'request_failed' } });
     throw error;
   }
 }
@@ -137,6 +143,7 @@ async function runProductionCli({
 
   return withLeaseImpl({ owner: 'spotify-artwork-maintenance' }, async () => {
     const usage = await usageFactory();
+    spotifyDiagnostics.resetDiagnostics(usage);
     let summary = null;
     let runError = null;
     try {
@@ -163,8 +170,8 @@ async function runProductionCli({
         saveCheckpoint: (checkpoint) => runner.writeCheckpoint(checkpointPath, checkpoint),
         // OAuth token success is not proof that Spotify Web API quota recovered, so it
         // may arm a failure circuit but must not close an expired Web API circuit.
-        getToken: () => trackedSpotifyCall(usage, () => runner.getSpotifyToken({ clientId, clientSecret, fetchImpl }), { allowSuccess: false }),
-        fetchTrack: ({ id, token, market }) => trackedSpotifyCall(usage, () => runner.fetchSpotifyTrack({ id, token, market, fetchImpl })),
+        getToken: () => trackedSpotifyCall(usage, () => runner.getSpotifyToken({ clientId, clientSecret, fetchImpl }), { allowSuccess: false, lane: 'album_artwork', endpoint: 'token' }),
+        fetchTrack: ({ id, token, market }) => trackedSpotifyCall(usage, () => runner.fetchSpotifyTrack({ id, token, market, fetchImpl }), { lane: 'album_artwork', endpoint: 'track_exact' }),
       });
       return summary;
     } catch (error) {

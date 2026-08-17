@@ -31,6 +31,16 @@
     } catch (_) { return null; }
   }
 
+  function exactArtworkReleaseMbid(event) {
+    const ids = [...new Set([event?.musicbrainzReleaseId, event?.listenbrainzCaaReleaseMbid].map(safeUuid).filter(Boolean))];
+    return ids.length === 1 ? ids[0] : null;
+  }
+
+  function providerNeutralArtworkUrl(event) {
+    const releaseMbid = exactArtworkReleaseMbid(event);
+    return releaseMbid ? `https://coverartarchive.org/release/${releaseMbid}/front-500` : null;
+  }
+
   function sanitizeEvent(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const source = raw.source === 'listenbrainz' ? 'listenbrainz' : 'spotify_import';
@@ -63,6 +73,15 @@
     event.listenbrainzCaaId = raw.listenbrainzCaaId == null ? null : (/^[A-Za-z0-9_-]{1,128}$/.test(String(raw.listenbrainzCaaId).trim()) ? String(raw.listenbrainzCaaId).trim() : null);
     event.listenbrainzUrlRels = [...new Set((Array.isArray(raw.listenbrainzUrlRels) ? raw.listenbrainzUrlRels : []).map(safeHttpsUrl).filter(Boolean))].slice(0, 32);
     event.musicbrainzArtistIds = [...new Set((Array.isArray(raw.musicbrainzArtistIds) ? raw.musicbrainzArtistIds : []).map(safeUuid).filter(Boolean))];
+    const artworkUrl = providerNeutralArtworkUrl(event);
+    if (artworkUrl) {
+      // Derived local presentation evidence only. The immutable provider
+      // observation remains unchanged in R2, and CAA data never enters the
+      // Spotify-owned metadata document.
+      event.albumArtworkUrl = artworkUrl;
+      event.artworkPath = artworkUrl;
+      event.albumArtworkSource = 'cover-art-archive-exact-release';
+    }
     return event;
   }
 
@@ -164,7 +183,7 @@
     return true;
   }
 
-  return { OPTIONAL_ID_KEYS, sanitizeEvent, fingerprint, replaceEvents, mergeEvents, install };
+  return { OPTIONAL_ID_KEYS, sanitizeEvent, fingerprint, exactArtworkReleaseMbid, providerNeutralArtworkUrl, replaceEvents, mergeEvents, install };
 });
 
 if (typeof window !== 'undefined') window.LiveVaultListeningHistoryV2.install();
