@@ -10,18 +10,6 @@ function localDateString(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-async function pinBrowserNow(page, iso) {
-  await page.addInitScript(({ fixedIso }) => {
-    const RealDate = Date;
-    const fixedMs = new RealDate(fixedIso).getTime();
-    class FixedDate extends RealDate {
-      constructor(...args) { super(...(args.length ? args : [fixedMs])); }
-      static now() { return fixedMs; }
-    }
-    window.Date = FixedDate;
-  }, { fixedIso: iso });
-}
-
 async function renderToday(page, ownedTickets) {
   const today = localDateString(new Date());
   await page.evaluate(({ date, tickets }) => {
@@ -32,6 +20,23 @@ async function renderToday(page, ownedTickets) {
     };
     document.querySelector('#screen-myconcerts').innerHTML = window.countdownCardHtml(concert);
   }, { date: today, tickets: ownedTickets });
+  return page.locator('#countdown-card');
+}
+
+async function renderQaFixtureAsShowDay(page, concertId) {
+  await openStart(page);
+  await page.evaluate((targetId) => {
+    const key = 'livevault-qa:data';
+    const data = JSON.parse(localStorage.getItem(key));
+    for (const concert of data.concerts || []) {
+      concert.attending = concert.id === targetId;
+      if (concert.id === targetId) concert.date = '2027-07-16';
+    }
+    localStorage.setItem(key, JSON.stringify(data));
+  }, concertId);
+  await page.reload();
+  await expect(page.getByTestId('qa-banner')).toContainText('SYNTHETIC DATA');
+  await expect(page.locator('#screen-myconcerts')).toBeVisible();
   return page.locator('#countdown-card');
 }
 
@@ -87,9 +92,7 @@ test('v138 ticket remains the approved dark card with readable text in light mod
 });
 
 test('v138 show-day PDF control keeps the established OwnedTickets opening path', async ({ page }) => {
-  await pinBrowserNow(page, '2027-07-18T12:00:00.000Z');
-  await openStart(page);
-  const card = page.locator('#countdown-card');
+  const card = await renderQaFixtureAsShowDay(page, 'qa-one-pdf');
   await expect(card).toHaveAttribute('data-today', 'true');
   await expect(card.locator('.countdown-v138-band')).toHaveText('QA Artist Two');
   await stubPdfOpen(page);
@@ -100,9 +103,7 @@ test('v138 show-day PDF control keeps the established OwnedTickets opening path'
 });
 
 test('v138 show-day multi-PDF picker exposes each saved PDF through the established handler', async ({ page }) => {
-  await pinBrowserNow(page, '2027-07-20T12:00:00.000Z');
-  await openStart(page);
-  const card = page.locator('#countdown-card');
+  const card = await renderQaFixtureAsShowDay(page, 'qa-two-pdf');
   await expect(card).toHaveAttribute('data-today', 'true');
   await expect(card.locator('.countdown-v138-band')).toHaveText('QA Artist One');
   await stubPdfOpen(page);
