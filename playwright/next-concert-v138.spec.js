@@ -10,19 +10,24 @@ function localDateString(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-test('v138 show-day card uses directions plus the compact Open tickets circle', async ({ page }) => {
-  await openStart(page);
+async function renderToday(page, ownedTickets) {
   const today = localDateString(new Date());
-  await page.evaluate((date) => {
+  await page.evaluate(({ date, tickets }) => {
     const concert = {
       id: 'qa-v138-show-day', bandId: 'qa-artist-one', bandName: 'QA Artist One', date, time: '20:00',
       venue: 'Example Arena', address: '1 Fictional Avenue', city: 'Sample City', country: 'Exampleland',
-      latitude: 55.5, longitude: 13.1, attending: true,
-      ownedTickets: [{ id: 'qa-v138-url-ticket', type: 'url', url: 'https://qa.invalid/tickets/v138-show-day', addedAt: '2027-01-01T00:00:00.000Z' }],
+      latitude: 55.5, longitude: 13.1, attending: true, ownedTickets: tickets,
     };
     document.querySelector('#screen-myconcerts').innerHTML = window.countdownCardHtml(concert);
-  }, today);
-  const card = page.locator('#countdown-card');
+  }, { date: today, tickets: ownedTickets });
+  return page.locator('#countdown-card');
+}
+
+test('v138 show-day card uses directions plus the compact Open tickets circle', async ({ page }) => {
+  await openStart(page);
+  const card = await renderToday(page, [
+    { id: 'qa-v138-url-ticket', type: 'url', url: 'https://qa.invalid/tickets/v138-show-day', addedAt: '2027-01-01T00:00:00.000Z' },
+  ]);
   await expect(card).toHaveAttribute('data-today', 'true');
   await expect(card.locator('.countdown-ticket-outline')).toBeVisible();
   await expect(card.locator('.countdown-ticket-tear')).toHaveCount(1);
@@ -36,6 +41,67 @@ test('v138 show-day card uses directions plus the compact Open tickets circle', 
   await expect(card).not.toContainText('🎟');
   await expect(card.locator('.countdown-v138-location-line')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test('v138 ticket remains the approved dark card with readable text in light mode', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await openStart(page);
+  const card = await renderToday(page, [
+    { id: 'qa-v138-url-ticket-light', type: 'url', url: 'https://qa.invalid/tickets/v138-light', addedAt: '2027-01-01T00:00:00.000Z' },
+  ]);
+  const colors = await card.evaluate((node) => {
+    const contour = node.querySelector('.countdown-ticket-contour');
+    const artist = node.querySelector('.countdown-v138-band');
+    const ticket = node.querySelector('.countdown-v138-ticket-circle');
+    return {
+      fill: getComputedStyle(contour).fill,
+      artist: getComputedStyle(artist).color,
+      ticket: getComputedStyle(ticket).color,
+    };
+  });
+  expect(colors.fill).toBe('rgb(17, 18, 20)');
+  expect(colors.artist).toBe('rgb(245, 246, 247)');
+  expect(colors.ticket).toBe('rgb(245, 246, 247)');
+});
+
+test('v138 show-day PDF control keeps the established OwnedTickets opening path', async ({ page }) => {
+  await openStart(page);
+  const card = await renderToday(page, [
+    { id: 'qa-v138-pdf-one', type: 'pdf', sizeBytes: 128, addedAt: '2027-01-01T00:00:00.000Z' },
+  ]);
+  await page.evaluate(() => {
+    window.__v138OpenedPdf = null;
+    window.OwnedTickets.openPdf = async (_remote, concertId, ticketId) => {
+      window.__v138OpenedPdf = { concertId, ticketId };
+      return { source: 'cache' };
+    };
+  });
+  await card.getByRole('button', { name: 'Open tickets' }).click();
+  await expect.poll(() => page.evaluate(() => window.__v138OpenedPdf)).toEqual({
+    concertId: 'qa-v138-show-day', ticketId: 'qa-v138-pdf-one',
+  });
+});
+
+test('v138 show-day multi-PDF picker exposes each saved PDF through the established handler', async ({ page }) => {
+  await openStart(page);
+  const card = await renderToday(page, [
+    { id: 'qa-v138-pdf-a', type: 'pdf', sizeBytes: 128, addedAt: '2027-01-01T00:00:00.000Z' },
+    { id: 'qa-v138-pdf-b', type: 'pdf', sizeBytes: 129, addedAt: '2027-01-02T00:00:00.000Z' },
+  ]);
+  await page.evaluate(() => {
+    window.__v138OpenedPdf = null;
+    window.OwnedTickets.openPdf = async (_remote, concertId, ticketId) => {
+      window.__v138OpenedPdf = { concertId, ticketId };
+      return { source: 'cache' };
+    };
+  });
+  await card.getByText('Open tickets', { exact: true }).click();
+  await expect(card.getByRole('button', { name: 'Ticket 1' })).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Ticket 2' })).toBeVisible();
+  await card.getByRole('button', { name: 'Ticket 2' }).click();
+  await expect.poll(() => page.evaluate(() => window.__v138OpenedPdf)).toEqual({
+    concertId: 'qa-v138-show-day', ticketId: 'qa-v138-pdf-b',
+  });
 });
 
 test('v138 normal countdown card keeps live countdown ids and matching graphite perforation', async ({ page }) => {
