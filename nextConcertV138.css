@@ -10,6 +10,9 @@
   background: transparent !important;
   box-shadow: none !important;
   isolation: isolate;
+  --countdown-v138-text: #f5f6f7;
+  --countdown-v138-muted: #8b9098;
+  --countdown-v138-outline: #34383f;
 }
 
 .countdown-v138-ticket .countdown-ticket-outline {
@@ -23,14 +26,14 @@
 }
 
 .countdown-v138-ticket .countdown-ticket-contour {
-  fill: rgba(255, 255, 255, .018);
-  stroke: var(--countdown-v138-outline, #34383f);
+  fill: #111214;
+  stroke: var(--countdown-v138-outline);
   stroke-width: 1.7;
   stroke-linejoin: round;
 }
 
 .countdown-v138-ticket .countdown-ticket-tear {
-  stroke: var(--countdown-v138-outline, #34383f);
+  stroke: var(--countdown-v138-outline);
   stroke-width: 1.7;
   stroke-dasharray: 6 8;
   stroke-linecap: round;
@@ -61,7 +64,7 @@
 }
 
 .countdown-v138-label {
-  color: var(--text-muted, #8b9098);
+  color: var(--countdown-v138-muted);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: .12em;
@@ -70,7 +73,7 @@
 
 .countdown-v138-band {
   margin-top: 7px;
-  color: var(--text, #f5f6f7);
+  color: var(--countdown-v138-text);
   font-size: clamp(23px, 6.2vw, 34px);
   font-weight: 850;
   line-height: 1.03;
@@ -88,7 +91,7 @@
 }
 
 .countdown-v138-venue {
-  color: var(--text, #f5f6f7);
+  color: var(--countdown-v138-text);
   font-size: 14px;
   font-weight: 700;
   line-height: 1.3;
@@ -96,7 +99,7 @@
 
 .countdown-v138-location-line {
   margin-top: 3px;
-  color: var(--text-muted, #8b9098);
+  color: var(--countdown-v138-muted);
   font-size: 12px;
   line-height: 1.35;
 }
@@ -131,7 +134,7 @@
 }
 
 .countdown-v138-ring text {
-  fill: var(--text, #f5f6f7);
+  fill: var(--countdown-v138-text);
   font-size: 28px;
   font-weight: 850;
   letter-spacing: -.04em;
@@ -139,7 +142,7 @@
 
 .countdown-v138-breakdown {
   margin-top: 8px;
-  color: var(--text-muted, #8b9098);
+  color: var(--countdown-v138-muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -171,7 +174,7 @@
   padding: 0 17px;
   border: 1px solid #34383f;
   border-radius: 999px;
-  color: var(--text, #f5f6f7);
+  color: var(--countdown-v138-text);
   background: rgba(255, 255, 255, .025);
   font-size: 12px;
   font-weight: 750;
@@ -201,7 +204,7 @@
   padding: 8px;
   border: 1px solid #34383f;
   border-radius: 50%;
-  color: var(--text, #f5f6f7);
+  color: var(--countdown-v138-text);
   background: rgba(255, 255, 255, .02);
   font: inherit;
   text-align: center;
@@ -244,7 +247,7 @@
   padding: 0 10px;
   border: 0;
   border-radius: 8px;
-  color: var(--text, #f5f6f7);
+  color: var(--countdown-v138-text);
   background: transparent;
   font: inherit;
   font-size: 11px;
