@@ -6,6 +6,7 @@ const links = require('../scripts/lib/nonPlaylistTrackLinks');
 const artwork = require('../scripts/lib/providerNeutralArtworkV136');
 const diagnostics = require('../scripts/lib/spotifyDiagnosticsV135');
 const history = require('../listeningHistoryV2');
+const albumArtwork = require('../spotifyListeningAlbumArtworkV113');
 
 test('v136 reuses existing concert and prediction track evidence without provider I/O', () => {
   const bands = [{ id: 'band-a', name: 'Example Artist', musicbrainz: { spotify: { status: 'confirmed', id: 'artist123' } } }];
@@ -49,6 +50,20 @@ test('v136 listening working copy uses exact CAA evidence without claiming Spoti
   assert.equal(event.albumArtworkUrl, `https://coverartarchive.org/release/${releaseMbid}/front-500`);
   assert.equal(event.albumArtworkSource, 'cover-art-archive-exact-release');
   assert.equal(event.spotifyAlbumArtworkSource, undefined);
+});
+
+test('v136 album artwork resolver does not spend Spotify work when exact CAA artwork already exists', () => {
+  const releaseMbid = '12345678-1234-4123-8123-123456789abc';
+  const event = history.sanitizeEvent({
+    stableListenId: 'listen-2', listenedAt: '2026-08-17T00:00:01Z', listenedDurationMs: 180000,
+    artistCreditName: 'Example Artist', recordingTitle: 'Song', releaseTitle: 'Album', spotifyTrackId: 'track123',
+    musicbrainzReleaseId: releaseMbid, source: 'spotify_import',
+  });
+  global.bands = [{ id: 'band-a', name: 'Example Artist' }];
+  global.listeningEvents = [{ ...event, localBandId: 'band-a' }];
+  assert.deepEqual(albumArtwork.albumOrientedUnresolvedTrackIds({ records: {} }, global.listeningEvents), []);
+  delete global.bands;
+  delete global.listeningEvents;
 });
 
 test('v136 trusted-local diagnostics attribute exact artwork calls to album artwork', () => {
