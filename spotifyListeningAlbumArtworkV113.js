@@ -164,13 +164,11 @@
     const next = currentEvents().map((event) => {
       const key = groupKey(event, bandMap, bandIds);
       if (!key) return event;
-      const own = records[safeString(event?.spotifyTrackId)] || null;
-      if (safeString(own?.artworkUrl)) return event;
 
       const neutralArtworkUrl = reusableNeutral.get(key);
       if (neutralArtworkUrl) {
-        applied += 1;
         if (providerNeutralArtwork(event) === neutralArtworkUrl) return event;
+        applied += 1;
         return {
           ...event,
           albumArtworkUrl: neutralArtworkUrl,
@@ -182,6 +180,8 @@
       const group = reusableSpotify.get(key);
       if (!group) return event;
       const album = group.artworkRecord;
+      const own = records[safeString(event?.spotifyTrackId)] || null;
+      if (safeString(own?.artworkUrl) === safeString(album?.artworkUrl) && safeString(event?.albumArtworkUrl) === safeString(album?.artworkUrl)) return event;
       applied += 1;
       return {
         ...event,
