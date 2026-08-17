@@ -28,16 +28,33 @@ releaseAlertPlan.planLifecycleAlerts = () => ({ alertsToCreate: [], alertsToEnri
 const originalReadJson = worker.readJson;
 let safeBands = null;
 let safeConcerts = null;
+let safeConcertIdentityEvidence = [];
+
+function refreshSafeConcertEvidence() {
+  if (!safeBands || !safeConcerts) return;
+  const linkEvidence = nonPlaylist.collectConcertEvidence(safeConcerts, safeBands);
+  safeConcertIdentityEvidence = nonPlaylist.collectConcertIdentityEvidence(safeConcerts, safeBands);
+  nonPlaylist.seedEvidence(linkEvidence);
+}
 
 worker.readJson = async function v137ReadJsonWithTrustedTrackEvidence(path, fallback) {
   const value = await originalReadJson(path, fallback);
   if (path === 'bands.json' && Array.isArray(value)) safeBands = value;
   if (path === 'concerts.json' && Array.isArray(value)) safeConcerts = value;
-  if (safeBands && safeConcerts) {
-    nonPlaylist.seedEvidence(nonPlaylist.collectConcertEvidence(safeConcerts, safeBands));
-  }
+  refreshSafeConcertEvidence();
   return value;
 };
+
+function uniqueRecordingMbid(artistName, recordingTitle) {
+  const artist = nonPlaylist.normalize(artistName);
+  const title = nonPlaylist.normalize(recordingTitle);
+  if (!artist || !title) return null;
+  const ids = [...new Set(safeConcertIdentityEvidence
+    .filter((row) => nonPlaylist.normalize(row?.artistName) === artist && nonPlaylist.normalize(row?.recordingTitle) === title)
+    .map((row) => row?.musicbrainzRecordingId)
+    .filter(Boolean))];
+  return ids.length === 1 ? ids[0] : null;
+}
 
 nonPlaylist.setProviderNeutralLookup(async ({ artistName, recordingTitle, usage }) => {
   if (!safeBands) return { kind: 'no_match' };
@@ -51,6 +68,7 @@ nonPlaylist.setProviderNeutralLookup(async ({ artistName, recordingTitle, usage 
   return mbTrackLinks.resolveTrackUrl({
     artistMbid: matches[0].musicbrainz.mbid,
     recordingTitle,
+    recordingMbid: uniqueRecordingMbid(artistName, recordingTitle),
     usage,
   });
 });

@@ -6,6 +6,7 @@
 // installed provider-neutral lookup may run before the final Spotify fallback.
 // Playlist preparation remains a separate contract and is not changed here.
 const SPOTIFY_TRACK_ID = /^[A-Za-z0-9]{1,64}$/;
+const MUSICBRAINZ_MBID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PATCH = Symbol.for('bandmarkr.v136.nonPlaylistTrackLinkReuse');
 
 function normalize(value) {
@@ -151,13 +152,9 @@ function appendSafeEvidence(evidence, row, band, nameCounts) {
   }
 }
 
-// Build evidence the scheduled research job is already allowed to see. Exact
-// setlist/prediction links can satisfy later non-playlist display-link work
-// without another Spotify search. Raw private listening history is not read.
-function collectConcertEvidence(concerts = [], bands = []) {
+function collectConcertRows(concerts = [], bands = []) {
   const bandsById = new Map((bands || []).map((band) => [band?.id, band]));
-  const nameCounts = uniqueBandNameCounts(bands);
-  const evidence = [];
+  const rows = [];
   for (const concert of concerts || []) {
     const band = bandsById.get(concert?.bandId);
     const artist = {
@@ -165,8 +162,35 @@ function collectConcertEvidence(concerts = [], bands = []) {
       spotifyArtistId: trustedSpotifyArtistId(band),
       artistName: band?.name || concert?.bandName || null,
     };
-    for (const song of concert?.setlist?.songs || []) appendSafeEvidence(evidence, songEvidence(song, artist), band, nameCounts);
-    for (const song of concert?.predictedSetlist?.songs || []) appendSafeEvidence(evidence, songEvidence(song, artist), band, nameCounts);
+    for (const song of concert?.setlist?.songs || []) {
+      const row = songEvidence(song, artist);
+      if (row) rows.push({ row, band });
+    }
+    for (const song of concert?.predictedSetlist?.songs || []) {
+      const row = songEvidence(song, artist);
+      if (row) rows.push({ row, band });
+    }
+  }
+  return rows;
+}
+
+// Trusted recording identity is useful even when no Spotify URL is known yet.
+// Only syntactically valid MusicBrainz recording MBIDs enter this exact lookup
+// lane; malformed historical values fall through to the broader safe route.
+function collectConcertIdentityEvidence(concerts = [], bands = []) {
+  return collectConcertRows(concerts, bands)
+    .map(({ row }) => row)
+    .filter((row) => MUSICBRAINZ_MBID.test(String(row.musicbrainzRecordingId || '').trim()));
+}
+
+// Build evidence the scheduled research job is already allowed to see. Exact
+// setlist/prediction links can satisfy later non-playlist display-link work
+// without another Spotify search. Raw private listening history is not read.
+function collectConcertEvidence(concerts = [], bands = []) {
+  const nameCounts = uniqueBandNameCounts(bands);
+  const evidence = [];
+  for (const { row, band } of collectConcertRows(concerts, bands)) {
+    appendSafeEvidence(evidence, row, band, nameCounts);
   }
   return evidence;
 }
@@ -266,6 +290,7 @@ module.exports = {
   trustedSpotifyArtistId,
   songEvidence,
   uniqueBandNameCounts,
+  collectConcertIdentityEvidence,
   collectConcertEvidence,
   collectListeningEvidence,
   seedEvidence,
