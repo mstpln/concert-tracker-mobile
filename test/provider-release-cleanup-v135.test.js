@@ -11,7 +11,7 @@ const diagnostics = require('../scripts/lib/spotifyDiagnosticsV135');
 
 test('v135 retires structured release monitoring and lifecycle alerts at the scheduled workflow boundary', () => {
   // Historical/direct helpers keep their base configuration; the scheduled
-  // preload owns the v135 retirement boundary so unrelated callers are not
+  // preload owns the retirement boundary so unrelated callers are not
   // silently changed by importing config alone.
   assert.equal(config.STRUCTURED_RESEARCH.structuredReleaseMonitoringEnabled, true);
   const preload = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'preloadStructuredRun.js'), 'utf8');
@@ -77,6 +77,7 @@ test('Spotify diagnostics remain aggregate and sanitized', () => {
   assert.equal(value.callsByLane.historical_non_playlist, 2);
   assert.equal(value.callsByEndpoint.token, 1);
   assert.equal(value.callsByEndpoint.track_search, 1);
+  assert.equal(value.outcomes.attempted, 1);
   assert.equal(value.outcomes.successful, 1);
   const serialized = JSON.stringify(value);
   assert.doesNotMatch(serialized, /private-id|open\.spotify\.com/);
@@ -89,7 +90,7 @@ test('Spotify diagnostics reset at each scheduled UsageTracker load', async () =
       diagnostics: {
         callsByLane: { historical_non_playlist: 8 },
         callsByEndpoint: { token: 1, track_search: 7 },
-        outcomes: { successful: 7 },
+        outcomes: { attempted: 8, successful: 7 },
         circuitEvents: [{ lane: 'historical_non_playlist' }],
         circuitStart: { status: 'closed', reason: null },
         circuitFinish: { status: 'open', reason: 'old_run' },
@@ -103,7 +104,7 @@ test('Spotify diagnostics reset at each scheduled UsageTracker load', async () =
   const first = await FakeUsageTracker.load();
   assert.deepEqual(first.state.spotify.diagnostics.callsByEndpoint, {});
   assert.deepEqual(first.state.spotify.diagnostics.callsByLane, {});
-  assert.deepEqual(first.state.spotify.diagnostics.outcomes, {});
+  assert.deepEqual(first.state.spotify.diagnostics.outcomes, { attempted: 0 });
   assert.deepEqual(first.state.spotify.diagnostics.circuitEvents, []);
   assert.deepEqual(first.state.spotify.diagnostics.circuitStart, null);
 
@@ -111,10 +112,11 @@ test('Spotify diagnostics reset at each scheduled UsageTracker load', async () =
   diagnostics.recordOperation(first, { lane: 'historical_non_playlist', endpoint: 'track_search', before: 0, result: { kind: 'ok' } });
   assert.equal(first.state.spotify.diagnostics.callsByEndpoint.token, 1);
   assert.equal(first.state.spotify.diagnostics.callsByEndpoint.track_search, 1);
+  assert.equal(first.state.spotify.diagnostics.outcomes.attempted, 1);
 
   persisted.spotify.callsThisRun = 0;
   const second = await FakeUsageTracker.load();
   assert.deepEqual(second.state.spotify.diagnostics.callsByEndpoint, {});
   assert.deepEqual(second.state.spotify.diagnostics.callsByLane, {});
-  assert.deepEqual(second.state.spotify.diagnostics.outcomes, {});
+  assert.deepEqual(second.state.spotify.diagnostics.outcomes, { attempted: 0 });
 });

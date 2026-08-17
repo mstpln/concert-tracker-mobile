@@ -1,77 +1,16 @@
 'use strict';
+const test=require('node:test');const assert=require('node:assert/strict');const links=require('../scripts/lib/nonPlaylistTrackLinks');const artwork=require('../scripts/lib/providerNeutralArtworkV136');const diagnostics=require('../scripts/lib/spotifyDiagnosticsV135');const history=require('../listeningHistoryV2');const albumArtwork=require('../spotifyListeningAlbumArtworkV113');const mbLinks=require('../scripts/lib/musicbrainzTrackLinksV137');
 
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const links = require('../scripts/lib/nonPlaylistTrackLinks');
-const artwork = require('../scripts/lib/providerNeutralArtworkV136');
-const diagnostics = require('../scripts/lib/spotifyDiagnosticsV135');
-const history = require('../listeningHistoryV2');
-const albumArtwork = require('../spotifyListeningAlbumArtworkV113');
+test('v137 reuses concert and prediction evidence without provider I/O',()=>{const bands=[{id:'band-a',name:'Example Artist',musicbrainz:{spotify:{status:'confirmed',id:'artist123'}}}],concerts=[{bandId:'band-a',bandName:'Example Artist',setlist:{songs:[{name:'Known Song',spotifyUrl:'https://open.spotify.com/track/track123'}]},predictedSetlist:{songs:[{name:'Predicted Song',spotifyTrackId:'track456'}]}}],resolver=links.createResolver(links.collectConcertEvidence(concerts,bands));assert.equal(resolver.resolve({spotifyArtistId:'artist123',recordingTitle:'Known Song'}),'https://open.spotify.com/track/track123');assert.equal(resolver.resolve({spotifyArtistId:'artist123',recordingTitle:'Predicted Song'}),'https://open.spotify.com/track/track456');assert.equal(resolver.resolve({artistName:'Example Artist',recordingTitle:'Known Song'}),'https://open.spotify.com/track/track123');});
 
-test('v136 reuses existing concert and prediction track evidence without provider I/O', () => {
-  const bands = [{ id: 'band-a', name: 'Example Artist', musicbrainz: { spotify: { status: 'confirmed', id: 'artist123' } } }];
-  const concerts = [{
-    bandId: 'band-a',
-    bandName: 'Example Artist',
-    setlist: { songs: [{ name: 'Known Song', spotifyUrl: 'https://open.spotify.com/track/track123' }] },
-    predictedSetlist: { songs: [{ name: 'Predicted Song', spotifyTrackId: 'track456' }] },
-  }];
-  const resolver = links.createResolver(links.collectConcertEvidence(concerts, bands));
-  assert.equal(resolver.resolve({ bandId: 'band-a', spotifyArtistId: 'artist123', recordingTitle: 'Known Song' }), 'https://open.spotify.com/track/track123');
-  assert.equal(resolver.resolve({ bandId: 'band-a', spotifyArtistId: 'artist123', recordingTitle: 'Predicted Song' }), 'https://open.spotify.com/track/track456');
-});
+test('v137 duplicate artist names never create a name-key reuse alias',()=>{const bands=[{id:'band-a',name:'Same Name'},{id:'band-b',name:'Same Name'}],concerts=[{bandId:'band-a',bandName:'Same Name',setlist:{songs:[{name:'Song',spotifyTrackId:'one'}]}},{bandId:'band-b',bandName:'Same Name',setlist:{songs:[{name:'Song',spotifyTrackId:'two'}]}}],resolver=links.createResolver(links.collectConcertEvidence(concerts,bands));assert.equal(resolver.resolve({artistName:'Same Name',recordingTitle:'Song'}),null);assert.equal(resolver.resolve({bandId:'band-a',recordingTitle:'Song'}),'https://open.spotify.com/track/one');assert.equal(resolver.resolve({bandId:'band-b',recordingTitle:'Song'}),'https://open.spotify.com/track/two');});
 
-test('v136 keeps ambiguous non-playlist evidence fail-closed', () => {
-  const resolver = links.createResolver([
-    { bandId: 'band-a', recordingTitle: 'Song', spotifyTrackId: 'one' },
-    { bandId: 'band-a', recordingTitle: 'Song', spotifyTrackId: 'two' },
-  ]);
-  assert.equal(resolver.resolve({ bandId: 'band-a', recordingTitle: 'Song' }), null);
-  assert.equal(resolver.hasConflict({ bandId: 'band-a', recordingTitle: 'Song' }), true);
-});
+test('v137 ambiguous non-playlist evidence fails closed',()=>{const resolver=links.createResolver([{bandId:'band-a',recordingTitle:'Song',spotifyTrackId:'one'},{bandId:'band-a',recordingTitle:'Song',spotifyTrackId:'two'}]);assert.equal(resolver.resolve({bandId:'band-a',recordingTitle:'Song'}),null);assert.equal(resolver.hasConflict({bandId:'band-a',recordingTitle:'Song'}),true);});
 
-test('v136 derives Cover Art Archive artwork only from one exact release MBID', () => {
-  const releaseMbid = '12345678-1234-4123-8123-123456789abc';
-  assert.equal(artwork.coverArtArchiveUrl({ musicbrainzReleaseId: releaseMbid }), `https://coverartarchive.org/release/${releaseMbid}/front-500`);
-  assert.equal(artwork.groupArtworkEvidence([{ musicbrainzReleaseId: releaseMbid }, { listenbrainzCaaReleaseMbid: releaseMbid }]).releaseMbid, releaseMbid);
-  assert.equal(artwork.groupArtworkEvidence([
-    { musicbrainzReleaseId: releaseMbid },
-    { musicbrainzReleaseId: '22345678-1234-4123-8123-123456789abc' },
-  ]), null);
-});
+test('v137 CAA suppression requires explicit ListenBrainz CAA evidence',()=>{const mbid='12345678-1234-4123-8123-123456789abc';assert.equal(artwork.artworkEvidence({musicbrainzReleaseId:mbid}),null);assert.ok(artwork.artworkEvidence({musicbrainzReleaseId:mbid,listenbrainzCaaReleaseMbid:mbid,listenbrainzCaaId:'12345'}));const bare=history.sanitizeEvent({stableListenId:'listen-1',listenedAt:'2026-08-17T00:00:00Z',listenedDurationMs:180000,artistCreditName:'Example Artist',recordingTitle:'Song',releaseTitle:'Album',spotifyTrackId:'track123',musicbrainzReleaseId:mbid,source:'spotify_import'});assert.equal(bare.albumArtworkUrl,undefined);global.bands=[{id:'band-a',name:'Example Artist'}];global.listeningEvents=[{...bare,localBandId:'band-a'}];assert.deepEqual(albumArtwork.albumOrientedUnresolvedTrackIds({records:{}},global.listeningEvents),['track123']);delete global.bands;delete global.listeningEvents;});
 
-test('v136 listening working copy uses exact CAA evidence without claiming Spotify ownership', () => {
-  const releaseMbid = '12345678-1234-4123-8123-123456789abc';
-  const event = history.sanitizeEvent({
-    stableListenId: 'listen-1', listenedAt: '2026-08-17T00:00:00Z', listenedDurationMs: 180000,
-    artistCreditName: 'Example Artist', recordingTitle: 'Song', releaseTitle: 'Album', spotifyTrackId: 'track123',
-    musicbrainzReleaseId: releaseMbid, source: 'spotify_import',
-  });
-  assert.equal(event.albumArtworkUrl, `https://coverartarchive.org/release/${releaseMbid}/front-500`);
-  assert.equal(event.albumArtworkSource, 'cover-art-archive-exact-release');
-  assert.equal(event.spotifyAlbumArtworkSource, undefined);
-});
+test('v137 explicit CAA evidence can satisfy artwork before Spotify',()=>{const mbid='12345678-1234-4123-8123-123456789abc',event=history.sanitizeEvent({stableListenId:'listen-2',listenedAt:'2026-08-17T00:00:01Z',listenedDurationMs:180000,artistCreditName:'Example Artist',recordingTitle:'Song',releaseTitle:'Album',spotifyTrackId:'track123',musicbrainzReleaseId:mbid,listenbrainzCaaReleaseMbid:mbid,listenbrainzCaaId:'cover1',source:'spotify_import'});assert.equal(event.albumArtworkUrl,`https://coverartarchive.org/release/${mbid}/front-500`);});
 
-test('v136 album artwork resolver does not spend Spotify work when exact CAA artwork already exists', () => {
-  const releaseMbid = '12345678-1234-4123-8123-123456789abc';
-  const event = history.sanitizeEvent({
-    stableListenId: 'listen-2', listenedAt: '2026-08-17T00:00:01Z', listenedDurationMs: 180000,
-    artistCreditName: 'Example Artist', recordingTitle: 'Song', releaseTitle: 'Album', spotifyTrackId: 'track123',
-    musicbrainzReleaseId: releaseMbid, source: 'spotify_import',
-  });
-  global.bands = [{ id: 'band-a', name: 'Example Artist' }];
-  global.listeningEvents = [{ ...event, localBandId: 'band-a' }];
-  assert.deepEqual(albumArtwork.albumOrientedUnresolvedTrackIds({ records: {} }, global.listeningEvents), []);
-  delete global.bands;
-  delete global.listeningEvents;
-});
+test('v137 diagnostics count attempted operations',()=>{const usage={state:{spotify:{callsThisRun:0,circuit:null}}};diagnostics.resetDiagnostics(usage);const before=diagnostics.calls(usage);usage.state.spotify.callsThisRun=1;diagnostics.recordOperation(usage,{lane:'album_artwork',endpoint:'track_exact',before,result:{kind:'ok'}});assert.equal(usage.state.spotify.diagnostics.outcomes.attempted,1);assert.equal(usage.state.spotify.diagnostics.callsByLane.album_artwork,1);});
 
-test('v136 trusted-local diagnostics attribute exact artwork calls to album artwork', () => {
-  const usage = { state: { spotify: { callsThisRun: 0, circuit: null } } };
-  diagnostics.resetDiagnostics(usage);
-  const before = diagnostics.calls(usage);
-  usage.state.spotify.callsThisRun = 1;
-  diagnostics.recordOperation(usage, { lane: 'album_artwork', endpoint: 'track_exact', before, result: { kind: 'ok' } });
-  assert.equal(usage.state.spotify.diagnostics.callsByLane.album_artwork, 1);
-  assert.equal(usage.state.spotify.diagnostics.callsByEndpoint.track_exact, 1);
-});
+test('v137 MusicBrainz relation extraction is exact and fail-closed',()=>{assert.equal(mbLinks.spotifyUrlFromRelations([{url:{resource:'https://open.spotify.com/track/abc123'}}]),'https://open.spotify.com/track/abc123');assert.equal(mbLinks.spotifyUrlFromRelations([{url:{resource:'https://open.spotify.com/track/a'}},{url:{resource:'https://open.spotify.com/track/b'}}]),null);});

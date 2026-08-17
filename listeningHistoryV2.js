@@ -38,7 +38,11 @@
 
   function providerNeutralArtworkUrl(event) {
     const releaseMbid = exactArtworkReleaseMbid(event);
-    return releaseMbid ? `https://coverartarchive.org/release/${releaseMbid}/front-500` : null;
+    const caaReleaseMbid = safeUuid(event?.listenbrainzCaaReleaseMbid);
+    const caaId = event?.listenbrainzCaaId == null ? null : String(event.listenbrainzCaaId).trim();
+    return releaseMbid && caaReleaseMbid === releaseMbid && caaId
+      ? `https://coverartarchive.org/release/${releaseMbid}/front-500`
+      : null;
   }
 
   function sanitizeEvent(raw) {

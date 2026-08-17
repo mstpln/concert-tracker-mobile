@@ -4,7 +4,13 @@
   function renderConcertAlertsOnly() {
     const container = typeof el === 'function' ? el('screen-news') : root.document?.getElementById('screen-news');
     if (!container || typeof getAlertItems !== 'function' || typeof alertRowHtml !== 'function') return;
-    const alerts = getAlertItems();
+    // getAlertItems intentionally remains backward-compatible with historical
+    // release-shaped news data. The retired release-discovery surface must
+    // never render those records, so filter them at this dedicated UI boundary.
+    const alerts = getAlertItems().filter((item) => {
+      if (item?.isReleaseAlert) return false;
+      return !(typeof isReleaseAlert === 'function' && isReleaseAlert(item));
+    });
     container.innerHTML = alerts.length
       ? alerts.map(alertRowHtml).join('')
       : '<p class="screen-empty">No new concerts found in the last 90 days.</p>';
