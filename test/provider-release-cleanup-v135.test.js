@@ -10,7 +10,10 @@ const { createResolver, evidenceSpotifyUrl } = require('../scripts/lib/nonPlayli
 const diagnostics = require('../scripts/lib/spotifyDiagnosticsV135');
 
 test('v135 retires structured release monitoring and lifecycle alerts at the scheduled workflow boundary', () => {
-  assert.equal(config.STRUCTURED_RESEARCH.structuredReleaseMonitoringEnabled, false);
+  // Historical/direct helpers keep their base configuration; the scheduled
+  // preload owns the v135 retirement boundary so unrelated callers are not
+  // silently changed by importing config alone.
+  assert.equal(config.STRUCTURED_RESEARCH.structuredReleaseMonitoringEnabled, true);
   const preload = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'preloadStructuredRun.js'), 'utf8');
   assert.match(preload, /structuredReleaseMonitoringEnabled = false/);
   assert.match(preload, /releaseAlertPlan\.planLifecycleAlerts = \(\) => \(\{ alertsToCreate: \[\], alertsToEnrich: \[\], lifecycleUpdates: \[\], skipped: \[\] \}\)/);
