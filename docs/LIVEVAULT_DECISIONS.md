@@ -44,11 +44,43 @@ This continuity file was compacted on 2026-08-17. Earlier durable decisions rema
 
 ## 2026-08-03 — Private R2 is the durable listening-history source of truth
 
-**Decision:** Raw listening history stays private in R2; browser/trusted-local flows may derive presentation state without moving raw archives into ordinary automation.
+**Decision:** Complete sanitized listening history is private R2 data with IndexedDB as the device working copy. Source observations remain immutable.
 
-**Reason:** Listening history is private user data.
+**Reason:** Listening history needs durable recovery without entering GitHub, public QA or provider bulk requests.
 
-**Consequence:** Preserve immutable source observations and provider ownership boundaries.
+**Consequence:** Derived identity/artwork layers remain separate from source observations; failures never invalidate a listen or alter statistics.
+
+## 2026-08-03 — Listening artwork metadata remains separate from source events
+
+**Decision:** Provider-specific artwork metadata is stored in its provider-owned derived layer; source listens are not rewritten as provider metadata.
+
+**Reason:** Repeated listens should not duplicate mutable provider metadata, and provider ownership must remain explicit.
+
+**Consequence:** Spotify metadata stays Spotify-owned. Provider-neutral evidence such as MusicBrainz/ListenBrainz/Cover Art Archive must not be written into the Spotify metadata document.
+
+## 2026-08-10 — Historical listening identity is catalogue-first and provider-neutral
+
+**Decision:** Reuse existing recording/provider identity and deterministic local catalogue evidence before widening to provider calls. Spotify is presentation/metadata only, not the core historical recording-identity provider.
+
+**Reason:** Reuse reduces provider dependence while preserving durable review/retry/error/no-match ownership.
+
+**Consequence:** Ambiguous or held identity state remains unresolved/reviewed rather than guessed. Provider calls occur only after local reusable evidence is exhausted under the applicable safety gates.
+
+## 2026-08-12 — Listening artwork is album-oriented and cumulative
+
+**Decision:** Safe album groups are conservative local-band/release groups. Existing reusable artwork is excluded before provider work; unresolved work is bounded and prioritizes recent/important listening. Spotify uses exact trusted track seeds, not title search.
+
+**Reason:** Artwork should improve incrementally without turning into an unbounded private-history provider backfill.
+
+**Consequence:** Missing release titles, ambiguous ownership, cross-group track conflicts and conflicting album identity fail closed. Source observations remain immutable.
+
+## 2026-08-13 — Node Spotify safety uses one persisted circuit and one cross-scheduler lease
+
+**Decision:** Scheduled Node research and trusted-local Spotify maintenance share the persisted Spotify circuit and persisted scheduler lease. UsageTracker caps/pacing remain authoritative.
+
+**Reason:** Independent processes must not race provider quota/circuit state.
+
+**Consequence:** Active/malformed safety state fails closed; changed safety state is persisted; provider work never bypasses UsageTracker, pacing, lease or circuit gates.
 
 ## 2026-08-13 — Scheduled listening artwork remains trusted-local
 
@@ -84,11 +116,11 @@ This continuity file was compacted on 2026-08-17. Earlier durable decisions rema
 
 ## 2026-08-17 — v136 reuses provider-neutral evidence before Spotify-specific work
 
-**Decision:** Non-playlist track links and listening artwork must consume safe reusable evidence before making new Spotify calls. Exact stored Spotify track IDs/URLs and exact ListenBrainz/MusicBrainz Spotify URL relations are reusable for non-playlist display/setlist links. Exact MusicBrainz release identity may provide Cover Art Archive artwork before Spotify album-artwork enrichment. Playlist matching remains a separate contract.
+**Decision:** Non-playlist track links and listening artwork must consume safe reusable evidence before making new Spotify calls. Exact stored Spotify track IDs/URLs and exact ListenBrainz/MusicBrainz Spotify URL relations are reusable for non-playlist display/setlist links. Exact MusicBrainz release identity, including exact ListenBrainz CAA release identity, may provide Cover Art Archive artwork before Spotify album-artwork enrichment. Playlist matching remains a separate contract and is not changed by this reuse layer.
 
-**Reason:** Provider cleanup requires fewer unnecessary Spotify calls without weakening identity, privacy or provider ownership.
+**Reason:** The reviewed provider-cleanup scope requires fewer unnecessary Spotify calls without weakening identity, privacy or provider ownership. Ordinary scheduled automation cannot be given raw private listening access merely to improve reuse.
 
-**Consequence:** Shared resolution remains pure and fail-closed; ordinary scheduled automation does not gain raw private listening access.
+**Consequence:** The shared link resolver is pure and fail-closed on conflicting evidence. Scheduled research may collect only evidence already visible in its allowed concert/band state; private listening evidence may be fed to the same resolver only by callers that already possess it. A single exact CAA release URL may satisfy a safe local album group and removes that group from unresolved Spotify artwork planning; conflicting CAA evidence remains ambiguous. CAA-derived presentation fields are local/provider-neutral and never become Spotify metadata. Trusted-local Spotify artwork operations retain aggregate diagnostics plus UsageTracker, circuit, lease, pacing, authorization and conditional-write controls.
 
 ## 2026-08-17 — v139 Next Concert ticket geometry is fixed to the approved reference
 

@@ -1,7 +1,7 @@
 'use strict';
 
-// v139 correction: reproduce the approved 820x386 ticket geometry while
-// preserving the existing countdown tick, Maps URL and OwnedTickets handlers.
+// v139 correction: reproduce the approved ticket geometry while preserving
+// the existing countdown tick, Maps URL and OwnedTickets behavior paths.
 (function (global) {
   const RING_CIRC = 333.009;
 
@@ -50,7 +50,9 @@
 
   function singleTicketControl(concert, ticket) {
     const inner = `${ticketSymbolSvg()}<span>Open tickets</span>`;
-    if (ticket.type === 'url') return `<a class="countdown-v139-open-ticket" href="${escapeAttr(ticket.url)}" target="_blank" rel="noopener" aria-label="Open tickets">${inner}</a>`;
+    if (ticket.type === 'url') {
+      return `<a class="countdown-v139-open-ticket" href="${escapeAttr(ticket.url)}" target="_blank" rel="noopener" aria-label="Open tickets">${inner}</a>`;
+    }
     return `<div class="countdown-ticket-actions countdown-v139-ticket-actions"><button type="button" class="countdown-v139-open-ticket countdown-pdf-open-btn" data-concert-id="${escapeAttr(concert.id)}" data-ticket-id="${escapeAttr(ticket.id)}" aria-label="Open tickets">${inner}</button><p class="countdown-ticket-error" aria-live="polite" hidden></p></div>`;
   }
 
@@ -74,7 +76,10 @@
     const location = locationLines(concert);
     const city = String(concert.city || '').trim();
     const venueLine = [venue, city].filter(Boolean).join(', ');
-    return `<div class="countdown-v139-info"><p class="countdown-v139-label">${today ? 'Show today' : 'Next up'}</p><p class="countdown-v139-band">${escapeHtml(concert.bandName)}</p><span class="countdown-v139-artist-line" aria-hidden="true"></span>${today ? `<p class="countdown-v139-show-venue">${escapeHtml(venueLine)}</p>${directionsHtml(concert)}` : `<p class="countdown-v139-venue">${escapeHtml(venue)}</p>${location.map((line) => `<p class="countdown-v139-address">${escapeHtml(line)}</p>`).join('')}</div>`}`;
+    const lowerContent = today
+      ? `<p class="countdown-v139-show-venue">${escapeHtml(venueLine)}</p>${directionsHtml(concert)}`
+      : `<p class="countdown-v139-venue">${escapeHtml(venue)}</p>${location.map((line) => `<p class="countdown-v139-address">${escapeHtml(line)}</p>`).join('')}`;
+    return `<div class="countdown-v139-info"><p class="countdown-v139-label">${today ? 'Show today' : 'Next up'}</p><p class="countdown-v139-band">${escapeHtml(concert.bandName)}</p><span class="countdown-v139-artist-line" aria-hidden="true"></span>${lowerContent}</div>`;
   }
 
   function normalStubHtml(parts) {
