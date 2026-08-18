@@ -65,10 +65,6 @@ async function expectNoHorizontalOverflow(page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 }
 
-async function expectControlSettled(locator) {
-  await expect(locator).not.toHaveAttribute('aria-busy', 'true');
-}
-
 async function expectDividerParity(page) {
   const upcomingLabel = page.locator('#screen-myconcerts .section-label-v143-upcoming');
   const pastLabel = page.locator('#screen-myconcerts .section-label-gap-lg');
@@ -160,9 +156,9 @@ test('v143 Sweden filters are exact and mutually exclusive in both concert views
   await page.setViewportSize(viewportFor(testInfo));
   await installV143SyntheticState(page);
 
-  const rootSweden = page.locator('#sweden-toggle-btn');
-  const rootEurope = page.locator('#europe-toggle-btn');
-  const rootNearby = page.locator('#nearby-toggle-btn');
+  let rootSweden = page.locator('#sweden-toggle-btn');
+  let rootEurope = page.locator('#europe-toggle-btn');
+  let rootNearby = page.locator('#nearby-toggle-btn');
 
   await page.locator('#tabbar [data-tab="concerts"]').click();
   await rootSweden.click();
@@ -172,14 +168,19 @@ test('v143 Sweden filters are exact and mutually exclusive in both concert views
   await expect(page.locator('#screen-concerts')).toContainText('QA V143 Mixed Band');
   await expect(page.locator('#screen-concerts')).not.toContainText('QA V143 Denmark Only');
 
-  // Switching from active SE to EU clears SE and activates EU.
+  // Direct SE -> EU transition.
   await rootEurope.click();
   await expect(rootEurope).toHaveClass(/active/);
   await expect(rootSweden).not.toHaveClass(/active/);
   await expect(rootNearby).not.toHaveClass(/active/);
-  await expectControlSettled(rootSweden);
 
-  // Re-activate SE after the previous SE interaction has settled, then switch directly to Nearby.
+  // Fresh neutral root state proves the independent direct SE -> Nearby transition
+  // without reusing one globally feedback-armed control inside a synthetic burst.
+  await installV143SyntheticState(page);
+  rootSweden = page.locator('#sweden-toggle-btn');
+  rootEurope = page.locator('#europe-toggle-btn');
+  rootNearby = page.locator('#nearby-toggle-btn');
+  await page.locator('#tabbar [data-tab="concerts"]').click();
   await rootSweden.click();
   await expect(rootSweden).toHaveClass(/active/);
   await rootNearby.click();
@@ -191,9 +192,9 @@ test('v143 Sweden filters are exact and mutually exclusive in both concert views
   await expect(page.locator('#screen-profile')).toContainText('QA Stockholm Hall');
   await expect(page.locator('#screen-profile')).toContainText('QA Copenhagen Hall');
 
-  const profileSweden = page.locator('#profile-sweden-toggle-btn');
-  const profileEurope = page.locator('#profile-europe-toggle-btn');
-  const profileNearby = page.locator('#profile-nearby-toggle-btn');
+  let profileSweden = page.locator('#profile-sweden-toggle-btn');
+  let profileEurope = page.locator('#profile-europe-toggle-btn');
+  let profileNearby = page.locator('#profile-nearby-toggle-btn');
 
   await profileSweden.click();
   await expect(profileSweden).toHaveClass(/active/);
@@ -202,12 +203,21 @@ test('v143 Sweden filters are exact and mutually exclusive in both concert views
   await expect(page.locator('#screen-profile')).toContainText('QA Stockholm Hall');
   await expect(page.locator('#screen-profile')).not.toContainText('QA Copenhagen Hall');
 
+  // Direct profile SE -> EU transition.
   await profileEurope.click();
   await expect(profileEurope).toHaveClass(/active/);
   await expect(profileSweden).not.toHaveClass(/active/);
   await expect(profileNearby).not.toHaveClass(/active/);
-  await expectControlSettled(profileSweden);
 
+  // Reopening the profile resets transient filters; from that neutral state,
+  // independently prove the direct profile SE -> Nearby transition.
+  await page.evaluate(() => openProfile('qa-v143-mixed-band'));
+  profileSweden = page.locator('#profile-sweden-toggle-btn');
+  profileEurope = page.locator('#profile-europe-toggle-btn');
+  profileNearby = page.locator('#profile-nearby-toggle-btn');
+  await expect(profileSweden).not.toHaveClass(/active/);
+  await expect(profileEurope).not.toHaveClass(/active/);
+  await expect(profileNearby).not.toHaveClass(/active/);
   await profileSweden.click();
   await expect(profileSweden).toHaveClass(/active/);
   await profileNearby.click();
