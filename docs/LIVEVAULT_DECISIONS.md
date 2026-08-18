@@ -145,3 +145,11 @@ This continuity file was compacted on 2026-08-17. Earlier durable decisions rema
 **Reason:** Ticketmaster's event adapter intentionally emits an honest `Unknown venue` sentinel when a venue object has no name. The exact-provider-event upgrade path previously treated every non-empty string as meaningful, so a temporary provider omission could destroy better canonical data recovered earlier by GAU4 or entered by the user.
 
 **Consequence:** Venue application is field-aware at the Ticketmaster merge boundary and is re-evaluated against the latest reread record before persistence. Other valid Ticketmaster-owned fields may still refresh when a venue downgrade is rejected. GAU4's trusted unknown-to-known recovery, stable IDs, user-owned fields and unknown future fields remain preserved.
+
+## 2026-08-18 — v143 Sweden filter is an exact, view-only geographic peer
+
+**Decision:** ConcertDates and Band Detail → Concerts expose geographic controls in the order Nearby → `SE` → EU. `SE` means concerts whose canonical `country` is exactly `Sweden` after trim/case normalization. Nearby, SE and EU are mutually exclusive. The root ConcertDates SE choice persists alongside the existing root geographic settings; the Band Detail SE choice is transient and resets when a band page is opened, matching the existing profile-filter lifecycle.
+
+**Reason:** The user wants a country-wide Sweden view that is distinct from the existing southern-Sweden/Denmark Nearby rule and the broader Europe view, without changing canonical concert data or research ownership.
+
+**Consequence:** SE filtering never infers country from venue, city, address, coordinates or distance and never writes `concerts.json`. ConcertDates continues to apply geographic filtering to its existing representative upcoming concert per band, and Band Detail continues to filter that band's existing upcoming set. Adding SE must not alter provider behavior, scheduling, stored schema, stable IDs or user-owned fields.

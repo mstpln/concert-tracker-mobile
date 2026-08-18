@@ -1,0 +1,48 @@
+/* v143: align the requested UI details without changing unrelated layouts. */
+
+/* My Concerts: Upcoming uses the exact same centered divider treatment as Past. */
+#screen-myconcerts .section-label-v143-upcoming {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+#screen-myconcerts .section-label-v143-upcoming::before,
+#screen-myconcerts .section-label-v143-upcoming::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-strong);
+  opacity: .72;
+}
+
+/* Stats: match the established ConcertDates segmented-control height. */
+.stats-subtab-btn {
+  min-height: 0;
+}
+
+/* Main ConcertDates geographic filter: same box/type treatment as EU. */
+#sweden-toggle-btn {
+  width: auto;
+  min-width: 34px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+#app-header .icon-btn.active#sweden-toggle-btn { border-color: var(--accent); }
+
+/* Band Detail geographic filter: exact peer of the existing EU control. */
+#profile-sweden-toggle-btn {
+  width: auto;
+  min-width: 34px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  border: 1px solid var(--border-strong);
+}
+.section-label-filters .icon-btn.active#profile-sweden-toggle-btn { border-color: var(--accent); }
