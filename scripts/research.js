@@ -343,7 +343,11 @@ const TICKETMASTER_CONCERT_FIELD_ALLOWLIST = [
   'ticketRetailerVerified', 'sourceProvider', 'providerEventId', 'providerAttractionId', 'artistMatchMethod',
 ];
 const GENERIC_VENUE_WORDS = new Set(['arena', 'hall', 'club', 'stadium', 'festival', 'venue', 'theatre', 'theater', 'centre', 'center', 'music', 'live']);
-const UNKNOWN_VENUE_NAMES = new Set(['unknown venue', 'unknown', 'venue unknown', 'tba', 'tbd']);
+const UNKNOWN_VENUE_NAMES = new Set([
+  'unknown venue', 'unknown', 'venue unknown',
+  'tba', 'tbd', 'venue tba', 'venue tbd',
+  'to be announced', 'to be determined',
+]);
 
 function normalizeConcertLocation(value) {
   return String(value || '').normalize('NFKD').replace(/\p{M}/gu, '').toLocaleLowerCase()
@@ -447,10 +451,16 @@ function meaningfulTicketmasterValue(value) {
   return true;
 }
 
-function ticketmasterConcertPatch(candidate) {
+function ticketmasterConcertPatch(candidate, existing = null) {
   const patch = {};
   for (const field of TICKETMASTER_CONCERT_FIELD_ALLOWLIST) {
-    if (meaningfulTicketmasterValue(candidate?.[field])) patch[field] = candidate[field];
+    const value = candidate?.[field];
+    if (!meaningfulTicketmasterValue(value)) continue;
+    // Provider data may improve or legitimately change a real venue for the
+    // same proven event, but a transient placeholder must never destroy a
+    // better venue already stored on the canonical concert record.
+    if (field === 'venue' && existing && !isUnknownVenueName(existing.venue) && isUnknownVenueName(value)) continue;
+    patch[field] = value;
   }
   patch.sourceProvider = 'ticketmaster';
   patch.ticketRetailerVerified = true;
@@ -462,7 +472,7 @@ function upgradeExistingConcertWithTicketmaster(existing, candidate) {
     if (!trustedVenueRecoveryMatch(existing, candidate)) return existing;
     return { ...existing, venue: candidate.venue };
   }
-  return { ...existing, ...ticketmasterConcertPatch(candidate) };
+  return { ...existing, ...ticketmasterConcertPatch(candidate, existing) };
 }
 
 function exactConcertDuplicate(records, candidate) {
