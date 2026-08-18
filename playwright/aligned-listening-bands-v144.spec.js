@@ -47,7 +47,10 @@ test('v144 aligns genre drill-down, My Bands return position, and status icons',
   await expect(page.locator('#screen-mybands')).toBeVisible();
 
   // App back arrow restores the same My Bands viewport instead of restarting
-  // at the top of the shared #content scroller.
+  // at the top of the shared #content scroller. Use a deliberately short
+  // viewport here so the compact synthetic fixture list has a scrollable
+  // range on both desktop and mobile CI runners.
+  await page.setViewportSize({ width: desktop ? 480 : 375, height: 420 });
   const returnTarget = page.locator('#screen-mybands .row-card[data-band-id="qa-artist-seven"]');
   await returnTarget.scrollIntoViewIfNeeded();
   const beforeArrowBack = await page.evaluate(() => {
