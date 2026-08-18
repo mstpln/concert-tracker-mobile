@@ -89,13 +89,19 @@ el('app-header')?.addEventListener('click', (event) => {
   void chrome.storage.local.set({ swedenOnly: false });
 }, true);
 
-v143SwedenStateReady.then(() => {
-  if (swedenOnly) {
-    nearbyOnly = false;
-    europeOnly = false;
-  }
-  v143SyncMainGeoFilterState();
-  if (swedenOnly && currentTab === 'concerts' && currentScreen === 'main') renderConcertsScreen();
+// app.js registers init before this file is loaded. Running this listener
+// after that init listener means the legacy EU/Nearby settings have already
+// been restored before we enforce the third mutually-exclusive state.
+document.addEventListener('DOMContentLoaded', () => {
+  void v143SwedenStateReady.then(async () => {
+    if (swedenOnly) {
+      nearbyOnly = false;
+      europeOnly = false;
+      await chrome.storage.local.set({ swedenOnly: true, nearbyOnly: false, europeOnly: false });
+    }
+    v143SyncMainGeoFilterState();
+    if (swedenOnly && currentTab === 'concerts' && currentScreen === 'main') renderConcertsScreen();
+  });
 });
 
 const v143BaseRenderConcertsScreen = renderConcertsScreen;
