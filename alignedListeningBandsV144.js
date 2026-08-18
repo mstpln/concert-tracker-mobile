@@ -132,6 +132,10 @@
   }
 
   function decorateGenreDetail(doc = root.document) {
+    // v72 finishes part of its bootstrap asynchronously and can replace this
+    // aggregate after v144's initial install. Reassert v144 ownership at the
+    // actual detail-render boundary rather than depending on script timing.
+    installGenreCalculation();
     const statsApi = getStatsApi();
     if (!doc || !statsApi) return false;
     const selected = doc.querySelector('#screen-stats [data-v81-genre-year].selected');
@@ -368,6 +372,7 @@
         installMyBandsBoundary();
         installGenreDetailObserver();
       }, 0);
+      root.addEventListener?.('load', () => installGenreCalculation(), { once: true });
     }
     return true;
   }
