@@ -6,11 +6,13 @@ async function installV143SyntheticState(page) {
     const data = JSON.parse(localStorage.getItem('livevault-qa:data') || '{}');
     const bandId = 'qa-v143-mixed-band';
     const denmarkOnlyBandId = 'qa-v143-denmark-only';
+    const representativeBandId = 'qa-v143-representative-band';
 
     data.bands = [
-      ...(data.bands || []).filter((band) => ![bandId, denmarkOnlyBandId].includes(band.id)),
+      ...(data.bands || []).filter((band) => ![bandId, denmarkOnlyBandId, representativeBandId].includes(band.id)),
       { id: bandId, name: 'QA V143 Mixed Band', genre: 'Rock' },
       { id: denmarkOnlyBandId, name: 'QA V143 Denmark Only', genre: 'Rock' },
+      { id: representativeBandId, name: 'QA V143 Representative Band', genre: 'Rock' },
     ];
 
     data.concerts = [
@@ -60,6 +62,36 @@ async function installV143SyntheticState(page) {
         providerEventId: 'qa-v143-event-denmark-only',
         foundAt: '2027-07-10T12:00:00.000Z',
       },
+      {
+        id: 'qa-v143-representative-denmark-show',
+        bandId: representativeBandId,
+        bandName: 'QA V143 Representative Band',
+        date: '2027-08-20',
+        time: '19:00',
+        venue: 'QA Odense Hall',
+        city: 'Odense',
+        country: 'Denmark',
+        distanceKm: 180,
+        ticketUrl: 'https://qa.invalid/v143/representative-denmark',
+        sourceProvider: 'ticketmaster',
+        providerEventId: 'qa-v143-event-representative-denmark',
+        foundAt: '2027-07-10T12:00:00.000Z',
+      },
+      {
+        id: 'qa-v143-representative-sweden-show',
+        bandId: representativeBandId,
+        bandName: 'QA V143 Representative Band',
+        date: '2027-09-05',
+        time: '19:00',
+        venue: 'QA Gothenburg Hall',
+        city: 'Gothenburg',
+        country: 'Sweden',
+        distanceKm: 280,
+        ticketUrl: 'https://qa.invalid/v143/representative-sweden',
+        sourceProvider: 'ticketmaster',
+        providerEventId: 'qa-v143-event-representative-sweden',
+        foundAt: '2027-07-10T12:00:00.000Z',
+      },
     ];
 
     localStorage.setItem('livevault-qa:data', JSON.stringify(data));
@@ -68,18 +100,17 @@ async function installV143SyntheticState(page) {
   await page.reload();
 }
 
+function viewportFor(testInfo) {
+  return testInfo.project.name === 'mobile-chromium'
+    ? { width: 375, height: 820 }
+    : { width: 480, height: 900 };
+}
+
 async function expectNoHorizontalOverflow(page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 }
 
-test('v143 aligns separators, header naming, stats tabs, and Sweden filters', async ({ page }, testInfo) => {
-  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-  await page.setViewportSize(testInfo.project.name === 'mobile-chromium'
-    ? { width: 375, height: 820 }
-    : { width: 480, height: 900 });
-  await installV143SyntheticState(page);
-
-  // My Concerts: Upcoming gets the same centered line treatment as Past.
+async function expectDividerParity(page) {
   const upcomingLabel = page.locator('#screen-myconcerts .section-label-v143-upcoming');
   const pastLabel = page.locator('#screen-myconcerts .section-label-gap-lg');
   await expect(upcomingLabel).toHaveText(/Upcoming concerts/i);
@@ -99,16 +130,9 @@ test('v143 aligns separators, header naming, stats tabs, and Sweden filters', as
     return { upcoming: read(upcoming), past: read(past) };
   });
   expect(dividerStyles.upcoming).toEqual(dividerStyles.past);
-  await expectNoHorizontalOverflow(page);
+}
 
-  // Alerts: the root header follows the CONCERTDATES two-tone naming pattern.
-  await page.locator('#tabbar [data-tab="news"]').click();
-  await expect(page.locator('#header-title')).toHaveText('CONCERTALERTS');
-  await expect(page.locator('#header-title .brand-blue')).toHaveText('CONCERT');
-  await expectNoHorizontalOverflow(page);
-
-  // ConcertDates: SE sits exactly between Nearby and EU and matches EU sizing.
-  await page.locator('#tabbar [data-tab="concerts"]').click();
+async function expectMainFilterGeometry(page) {
   const order = await page.locator('#app-header > button').evaluateAll((buttons) =>
     buttons.filter((button) => !button.classList.contains('hidden')).map((button) => button.id));
   const nearbyIndex = order.indexOf('nearby-toggle-btn');
@@ -125,26 +149,9 @@ test('v143 aligns separators, header naming, stats tabs, and Sweden filters', as
   });
   expect(Math.abs(mainSizes.se.width - mainSizes.eu.width)).toBeLessThanOrEqual(0.5);
   expect(Math.abs(mainSizes.se.height - mainSizes.eu.height)).toBeLessThanOrEqual(0.5);
+}
 
-  const concertDatesTabsHeight = await page.locator('#screen-concerts .news-subtab-switch').evaluate((node) => node.getBoundingClientRect().height);
-
-  await page.locator('#sweden-toggle-btn').click();
-  await expect(page.locator('#sweden-toggle-btn')).toHaveClass(/active/);
-  await expect(page.locator('#europe-toggle-btn')).not.toHaveClass(/active/);
-  await expect(page.locator('#nearby-toggle-btn')).not.toHaveClass(/active/);
-  await expect(page.locator('#screen-concerts')).toContainText('QA V143 Mixed Band');
-  await expect(page.locator('#screen-concerts')).not.toContainText('QA V143 Denmark Only');
-  await expectNoHorizontalOverflow(page);
-
-  // Stats: segmented control uses the current ConcertDates control height.
-  await page.locator('#tabbar [data-tab="stats"]').click();
-  const statsTabsHeight = await page.locator('#screen-stats .stats-subtabs').evaluate((node) => node.getBoundingClientRect().height);
-  expect(Math.abs(statsTabsHeight - concertDatesTabsHeight)).toBeLessThanOrEqual(1);
-  await expectNoHorizontalOverflow(page);
-
-  // Band Detail: transient SE filter is inserted between Nearby and EU,
-  // matches EU sizing, and keeps only Sweden dates for that band.
-  await page.evaluate(() => openProfile('qa-v143-mixed-band'));
+async function expectProfileFilterGeometry(page) {
   const profileOrder = await page.locator('#screen-profile .section-label-filters > button').evaluateAll((buttons) => buttons.map((button) => button.id));
   expect(profileOrder).toEqual(['profile-nearby-toggle-btn', 'profile-sweden-toggle-btn', 'profile-europe-toggle-btn']);
 
@@ -155,6 +162,68 @@ test('v143 aligns separators, header naming, stats tabs, and Sweden filters', as
   });
   expect(Math.abs(profileSizes.se.width - profileSizes.eu.width)).toBeLessThanOrEqual(0.5);
   expect(Math.abs(profileSizes.se.height - profileSizes.eu.height)).toBeLessThanOrEqual(0.5);
+}
+
+for (const colorScheme of ['dark', 'light']) {
+  test(`v143 aligns the approved visible UI in ${colorScheme} mode`, async ({ page }, testInfo) => {
+    await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
+    await page.setViewportSize(viewportFor(testInfo));
+    await installV143SyntheticState(page);
+
+    await expectDividerParity(page);
+    await expectNoHorizontalOverflow(page);
+
+    await page.locator('#tabbar [data-tab="news"]').click();
+    await expect(page.locator('#header-title')).toHaveText('CONCERTALERTS');
+    await expect(page.locator('#header-title .brand-blue')).toHaveText('CONCERT');
+    await expectNoHorizontalOverflow(page);
+
+    await page.locator('#tabbar [data-tab="concerts"]').click();
+    await expectMainFilterGeometry(page);
+    const concertDatesTabsHeight = await page.locator('#screen-concerts .news-subtab-switch').evaluate((node) => node.getBoundingClientRect().height);
+    await expectNoHorizontalOverflow(page);
+
+    await page.locator('#tabbar [data-tab="stats"]').click();
+    const statsTabsHeight = await page.locator('#screen-stats .stats-subtabs').evaluate((node) => node.getBoundingClientRect().height);
+    expect(Math.abs(statsTabsHeight - concertDatesTabsHeight)).toBeLessThanOrEqual(1);
+    await expectNoHorizontalOverflow(page);
+
+    await page.evaluate(() => openProfile('qa-v143-mixed-band'));
+    await expectProfileFilterGeometry(page);
+    await expectNoHorizontalOverflow(page);
+
+    await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-v143-aligned-ui-${colorScheme}.png`), fullPage: true });
+  });
+}
+
+test('v143 Sweden filters are exact and mutually exclusive in both concert views', async ({ page }, testInfo) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.setViewportSize(viewportFor(testInfo));
+  await installV143SyntheticState(page);
+
+  await page.locator('#tabbar [data-tab="concerts"]').click();
+  await page.locator('#sweden-toggle-btn').click();
+  await expect(page.locator('#sweden-toggle-btn')).toHaveClass(/active/);
+  await expect(page.locator('#europe-toggle-btn')).not.toHaveClass(/active/);
+  await expect(page.locator('#nearby-toggle-btn')).not.toHaveClass(/active/);
+  await expect(page.locator('#screen-concerts')).toContainText('QA V143 Mixed Band');
+  await expect(page.locator('#screen-concerts')).not.toContainText('QA V143 Denmark Only');
+
+  // Switching from active SE to EU clears SE and activates EU.
+  await page.locator('#europe-toggle-btn').click();
+  await expect(page.locator('#europe-toggle-btn')).toHaveClass(/active/);
+  await expect(page.locator('#sweden-toggle-btn')).not.toHaveClass(/active/);
+  await expect(page.locator('#nearby-toggle-btn')).not.toHaveClass(/active/);
+
+  // Re-activate SE, then switch directly to Nearby and verify the same rule.
+  await page.locator('#sweden-toggle-btn').click();
+  await expect(page.locator('#sweden-toggle-btn')).toHaveClass(/active/);
+  await page.locator('#nearby-toggle-btn').click();
+  await expect(page.locator('#nearby-toggle-btn')).toHaveClass(/active/);
+  await expect(page.locator('#sweden-toggle-btn')).not.toHaveClass(/active/);
+  await expect(page.locator('#europe-toggle-btn')).not.toHaveClass(/active/);
+
+  await page.evaluate(() => openProfile('qa-v143-mixed-band'));
   await expect(page.locator('#screen-profile')).toContainText('QA Stockholm Hall');
   await expect(page.locator('#screen-profile')).toContainText('QA Copenhagen Hall');
 
@@ -164,16 +233,59 @@ test('v143 aligns separators, header naming, stats tabs, and Sweden filters', as
   await expect(page.locator('#profile-nearby-toggle-btn')).not.toHaveClass(/active/);
   await expect(page.locator('#screen-profile')).toContainText('QA Stockholm Hall');
   await expect(page.locator('#screen-profile')).not.toContainText('QA Copenhagen Hall');
-  await expectNoHorizontalOverflow(page);
 
-  await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-v143-aligned-ui.png`), fullPage: true });
+  await page.locator('#profile-europe-toggle-btn').click();
+  await expect(page.locator('#profile-europe-toggle-btn')).toHaveClass(/active/);
+  await expect(page.locator('#profile-sweden-toggle-btn')).not.toHaveClass(/active/);
+  await expect(page.locator('#profile-nearby-toggle-btn')).not.toHaveClass(/active/);
+
+  await page.locator('#profile-sweden-toggle-btn').click();
+  await expect(page.locator('#profile-sweden-toggle-btn')).toHaveClass(/active/);
+  await page.locator('#profile-nearby-toggle-btn').click();
+  await expect(page.locator('#profile-nearby-toggle-btn')).toHaveClass(/active/);
+  await expect(page.locator('#profile-sweden-toggle-btn')).not.toHaveClass(/active/);
+  await expect(page.locator('#profile-europe-toggle-btn')).not.toHaveClass(/active/);
+  await expectNoHorizontalOverflow(page);
+});
+
+test('v143 root Sweden filtering preserves representative-show semantics', async ({ page }, testInfo) => {
+  await page.setViewportSize(viewportFor(testInfo));
+  await installV143SyntheticState(page);
+
+  await page.locator('#tabbar [data-tab="concerts"]').click();
+  await expect(page.locator('#screen-concerts')).toContainText('QA V143 Representative Band');
+  await expect(page.locator('#screen-concerts')).toContainText('QA Odense Hall');
+  await expect(page.locator('#screen-concerts')).not.toContainText('QA Gothenburg Hall');
+
+  await page.locator('#sweden-toggle-btn').click();
+  await expect(page.locator('#screen-concerts')).not.toContainText('QA V143 Representative Band');
+  await expect(page.locator('#screen-concerts')).not.toContainText('QA Gothenburg Hall');
+});
+
+test('v143 Band Detail Sweden filter resets when a band page is opened', async ({ page }, testInfo) => {
+  await page.setViewportSize(viewportFor(testInfo));
+  await installV143SyntheticState(page);
+
+  await page.evaluate(() => openProfile('qa-v143-mixed-band'));
+  await page.locator('#profile-sweden-toggle-btn').click();
+  await expect(page.locator('#profile-sweden-toggle-btn')).toHaveClass(/active/);
+  await expect(page.locator('#screen-profile')).not.toContainText('QA Copenhagen Hall');
+
+  await page.evaluate(() => openProfile('qa-v143-denmark-only'));
+  await expect(page.locator('#profile-sweden-toggle-btn')).not.toHaveClass(/active/);
+  await expect(page.locator('#profile-europe-toggle-btn')).not.toHaveClass(/active/);
+  await expect(page.locator('#profile-nearby-toggle-btn')).not.toHaveClass(/active/);
+  await expect(page.locator('#screen-profile')).toContainText('QA Aarhus Hall');
+
+  await page.evaluate(() => openProfile('qa-v143-mixed-band'));
+  await expect(page.locator('#profile-sweden-toggle-btn')).not.toHaveClass(/active/);
+  await expect(page.locator('#screen-profile')).toContainText('QA Stockholm Hall');
+  await expect(page.locator('#screen-profile')).toContainText('QA Copenhagen Hall');
 });
 
 test('v143 resolves a persisted Sweden filter as the only active root geographic filter', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-  await page.setViewportSize(testInfo.project.name === 'mobile-chromium'
-    ? { width: 375, height: 820 }
-    : { width: 480, height: 900 });
+  await page.setViewportSize(viewportFor(testInfo));
   await installV143SyntheticState(page);
 
   await page.evaluate(async () => {
@@ -192,9 +304,7 @@ test('v143 resolves a persisted Sweden filter as the only active root geographic
 });
 
 test('v143 keeps the root Sweden filter off the connection-error header', async ({ page }, testInfo) => {
-  await page.setViewportSize(testInfo.project.name === 'mobile-chromium'
-    ? { width: 375, height: 820 }
-    : { width: 480, height: 900 });
+  await page.setViewportSize(viewportFor(testInfo));
   await installV143SyntheticState(page);
 
   await page.locator('#tabbar [data-tab="concerts"]').click();
