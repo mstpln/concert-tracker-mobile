@@ -4,9 +4,9 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The merged baseline is v139 at merge commit `18b346a8f1d0cff2e2d5eea0f202a7f05782e99f`. PR #147 is merged and contains the approved v139 Next Concert ticket correction.
+The merged baseline is v140 at merge commit `88a0bb96c6e7717b295fe7d2b925d4251b8f05b6`. PR #148 is merged and contains the approved taller black/white Next Concert ticket with the silver normal-day countdown and neon show-day ticket action.
 
-An unreleased v140 visual correction build is active on `feature/next-concert-ticket-v140`. It changes only the Start-screen Next Concert presentation while preserving the established countdown tick, Maps URL construction and OwnedTickets behavior paths. Normal days use the approved 820x463 true-black ticket geometry with a thin white outer contour, thicker white inner frames, white tear line at x=468, visually uppercase artist name, compact silver countdown, deterministic concert date and a dynamic user-owned `ticketQuantity` display with grey separator rules. Concert day keeps the same tall geometry, retains `Show today` and `Get directions` on the left, removes the countdown/date/quantity block, and uses the approved neon-light-blue `#5ED8FF` circular Open tickets action on the right.
+An unreleased v141 visual refinement build is active on `fix/next-concert-mobile-spacing-v141`. It changes only the Start-screen Next Concert typography and spacing. The 820x463 ticket geometry, black/white contour treatment, countdown behavior, Maps URL construction and OwnedTickets behavior remain unchanged. The left inner panel uses smaller fixed mobile-first typography and tighter padding so artist, venue and address text fit cleanly. On normal days, the ticket-quantity text and concert-date text now share the exact same vertical coordinate and line-height. The two grey quantity separators remain identical 1px strokes and use equal compact spacing around the quantity label. At <=390px the left typography steps down again to preserve fit without changing the ticket geometry.
 
 ## Provider and release cleanup finalization
 
@@ -20,10 +20,10 @@ Listening artwork does not treat a bare MusicBrainz release MBID as proof that C
 
 Spotify diagnostics include an explicit aggregate `attempted` outcome counter in addition to lane, endpoint, successful/no-match/skipped/provider-error and circuit information. No IDs, queries, URLs, tokens or payloads are recorded.
 
-For the active v140 branch, `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v140. The deterministic build state, service-worker shell and synthetic QA packaging include the v140 Next Concert JS/CSS while retaining the existing v138/v139 compatibility assets.
+For the active v141 branch, `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v141. The deterministic build state and synthetic QA packaging continue to use the existing v140 Next Concert JS/CSS shell assets; no new runtime asset or data shape is introduced.
 
 ## Safety and release boundary
 
 Existing UsageTracker caps/pacing, Spotify circuit, cross-scheduler lease, optimistic concurrency, reviewed provider-decision preservation, immutable listening source observations and credential boundaries remain authoritative. Automated browser QA uses only synthetic fixtures and the QA fake backend.
 
-No production provider call, production workflow, production R2 read/write or deployment has been performed for v140. The correction/review cycle remains active until the exact PR head is green for unit/safety plus desktop/mobile synthetic Chromium QA and has received final code-path review. Merge still requires explicit user authorization.
+No production provider call, production workflow, production R2 read/write or deployment has been performed for v141. The build remains unreleased until the exact PR head is green for unit/safety plus desktop/mobile synthetic Chromium QA and receives final review. Merge still requires explicit user authorization.
