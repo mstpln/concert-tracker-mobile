@@ -105,10 +105,12 @@
     return `<div class="countdown-v140-ticket-count" aria-label="${escapeAttr(label.toLocaleLowerCase())}"><span class="countdown-v140-ticket-count-line" aria-hidden="true"></span><strong>${label}</strong><span class="countdown-v140-ticket-count-line" aria-hidden="true"></span></div>`;
   }
 
-  function normalStubHtml(parts) {
+  function normalStubHtml(parts, concert) {
     const { days, hours, minutes, seconds, innerPct } = parts;
     const offset = RING_CIRC * (1 - innerPct);
-    return `<div class="countdown-v139-stub-content"><svg class="countdown-v139-countdown" viewBox="0 0 142 142" aria-label="${days} days until concert"><circle class="countdown-v139-silver" cx="71" cy="71" r="64" fill="none" stroke-width="16"></circle><circle class="countdown-v139-cut" cx="71" cy="71" r="57" fill="none" stroke-width="8"></circle><circle class="countdown-v139-track" cx="71" cy="71" r="53" fill="none" stroke-width="14"></circle><circle id="countdown-ring-outer" class="countdown-v139-hidden-live-ring" data-circ="${RING_CIRC}" cx="71" cy="71" r="53" fill="none" stroke-width="14" transform="rotate(-90 71 71)" stroke-dasharray="${RING_CIRC}" stroke-dashoffset="${offset}"></circle><circle id="countdown-ring-inner" class="countdown-v139-progress" data-circ="${RING_CIRC}" cx="71" cy="71" r="53" fill="none" stroke-width="14" transform="rotate(-90 71 71)" stroke-linecap="butt" stroke-dasharray="${RING_CIRC}" stroke-dashoffset="${offset}"></circle><circle class="countdown-v139-center" cx="71" cy="71" r="37"></circle><text id="countdown-ring-day" x="71" y="81" text-anchor="middle">${days}</text></svg><p class="countdown-breakdown countdown-v139-time"><span id="countdown-d">${days}</span>d <span id="countdown-h">${String(hours).padStart(2, '0')}</span>h <span id="countdown-m">${String(minutes).padStart(2, '0')}</span>m <span id="countdown-s">${String(seconds).padStart(2, '0')}</span>s</p></div>`;
+    const dateLabel = formattedConcertDate(concert.date);
+    const dateSpacer = dateLabel ? `<p class="countdown-v140-date-spacer" aria-hidden="true">${dateLabel}</p>` : '';
+    return `<div class="countdown-v139-stub-content"><svg class="countdown-v139-countdown" viewBox="0 0 142 142" aria-label="${days} days until concert"><circle class="countdown-v139-silver" cx="71" cy="71" r="64" fill="none" stroke-width="16"></circle><circle class="countdown-v139-cut" cx="71" cy="71" r="57" fill="none" stroke-width="8"></circle><circle class="countdown-v139-track" cx="71" cy="71" r="53" fill="none" stroke-width="14"></circle><circle id="countdown-ring-outer" class="countdown-v139-hidden-live-ring" data-circ="${RING_CIRC}" cx="71" cy="71" r="53" fill="none" stroke-width="14" transform="rotate(-90 71 71)" stroke-dasharray="${RING_CIRC}" stroke-dashoffset="${offset}"></circle><circle id="countdown-ring-inner" class="countdown-v139-progress" data-circ="${RING_CIRC}" cx="71" cy="71" r="53" fill="none" stroke-width="14" transform="rotate(-90 71 71)" stroke-linecap="butt" stroke-dasharray="${RING_CIRC}" stroke-dashoffset="${offset}"></circle><circle class="countdown-v139-center" cx="71" cy="71" r="37"></circle><text id="countdown-ring-day" x="71" y="81" text-anchor="middle">${days}</text></svg><p class="countdown-breakdown countdown-v139-time"><span id="countdown-d">${days}</span>d <span id="countdown-h">${String(hours).padStart(2, '0')}</span>h <span id="countdown-m">${String(minutes).padStart(2, '0')}</span>m <span id="countdown-s">${String(seconds).padStart(2, '0')}</span>s</p>${dateSpacer}</div>`;
   }
 
   function concertDateHtml(concert, today) {
@@ -124,7 +126,7 @@
     const now = typeof dlCurrentDate === 'function' ? dlCurrentDate() : new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const today = nextConcert.date === todayStr;
-    const stub = today ? showDayStubHtml(nextConcert) : normalStubHtml(dlCountdownParts(new Date(targetIso)));
+    const stub = today ? showDayStubHtml(nextConcert) : normalStubHtml(dlCountdownParts(new Date(targetIso)), nextConcert);
     return `<div class="countdown-card countdown-v139-ticket countdown-v140-ticket${today ? ' countdown-card-today' : ''}" id="countdown-card" data-target="${escapeAttr(targetIso)}" data-today="${today ? 'true' : 'false'}">${ticketGeometrySvg()}${infoHtml(nextConcert, today)}${ticketQuantityHtml(nextConcert, today)}${concertDateHtml(nextConcert, today)}<div class="countdown-v139-stub">${stub}</div></div>`;
   }
 
