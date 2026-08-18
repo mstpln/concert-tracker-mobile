@@ -18,79 +18,34 @@ async function installV143SyntheticState(page) {
     data.concerts = [
       ...(data.concerts || []).filter((concert) => !String(concert.id || '').startsWith('qa-v143-')),
       {
-        id: 'qa-v143-sweden-show',
-        bandId,
-        bandName: 'QA V143 Mixed Band',
-        date: '2027-09-01',
-        time: '19:30',
-        venue: 'QA Stockholm Hall',
-        city: 'Stockholm',
-        country: 'Sweden',
-        distanceKm: 500,
-        ticketUrl: 'https://qa.invalid/v143/sweden',
-        sourceProvider: 'ticketmaster',
-        providerEventId: 'qa-v143-event-sweden',
-        foundAt: '2027-07-10T12:00:00.000Z',
+        id: 'qa-v143-sweden-show', bandId, bandName: 'QA V143 Mixed Band', date: '2027-09-01', time: '19:30',
+        venue: 'QA Stockholm Hall', city: 'Stockholm', country: 'Sweden', distanceKm: 500,
+        ticketUrl: 'https://qa.invalid/v143/sweden', sourceProvider: 'ticketmaster',
+        providerEventId: 'qa-v143-event-sweden', foundAt: '2027-07-10T12:00:00.000Z',
       },
       {
-        id: 'qa-v143-denmark-show',
-        bandId,
-        bandName: 'QA V143 Mixed Band',
-        date: '2027-09-02',
-        time: '20:00',
-        venue: 'QA Copenhagen Hall',
-        city: 'Copenhagen',
-        country: 'Denmark',
-        distanceKm: 60,
-        ticketUrl: 'https://qa.invalid/v143/denmark',
-        sourceProvider: 'ticketmaster',
-        providerEventId: 'qa-v143-event-denmark',
-        foundAt: '2027-07-10T12:00:00.000Z',
+        id: 'qa-v143-denmark-show', bandId, bandName: 'QA V143 Mixed Band', date: '2027-09-02', time: '20:00',
+        venue: 'QA Copenhagen Hall', city: 'Copenhagen', country: 'Denmark', distanceKm: 60,
+        ticketUrl: 'https://qa.invalid/v143/denmark', sourceProvider: 'ticketmaster',
+        providerEventId: 'qa-v143-event-denmark', foundAt: '2027-07-10T12:00:00.000Z',
       },
       {
-        id: 'qa-v143-denmark-only-show',
-        bandId: denmarkOnlyBandId,
-        bandName: 'QA V143 Denmark Only',
-        date: '2027-09-03',
-        time: '20:30',
-        venue: 'QA Aarhus Hall',
-        city: 'Aarhus',
-        country: 'Denmark',
-        distanceKm: 220,
-        ticketUrl: 'https://qa.invalid/v143/denmark-only',
-        sourceProvider: 'ticketmaster',
-        providerEventId: 'qa-v143-event-denmark-only',
-        foundAt: '2027-07-10T12:00:00.000Z',
+        id: 'qa-v143-denmark-only-show', bandId: denmarkOnlyBandId, bandName: 'QA V143 Denmark Only',
+        date: '2027-09-03', time: '20:30', venue: 'QA Aarhus Hall', city: 'Aarhus', country: 'Denmark', distanceKm: 220,
+        ticketUrl: 'https://qa.invalid/v143/denmark-only', sourceProvider: 'ticketmaster',
+        providerEventId: 'qa-v143-event-denmark-only', foundAt: '2027-07-10T12:00:00.000Z',
       },
       {
-        id: 'qa-v143-representative-denmark-show',
-        bandId: representativeBandId,
-        bandName: 'QA V143 Representative Band',
-        date: '2027-08-20',
-        time: '19:00',
-        venue: 'QA Odense Hall',
-        city: 'Odense',
-        country: 'Denmark',
-        distanceKm: 180,
-        ticketUrl: 'https://qa.invalid/v143/representative-denmark',
-        sourceProvider: 'ticketmaster',
-        providerEventId: 'qa-v143-event-representative-denmark',
-        foundAt: '2027-07-10T12:00:00.000Z',
+        id: 'qa-v143-representative-denmark-show', bandId: representativeBandId, bandName: 'QA V143 Representative Band',
+        date: '2027-08-20', time: '19:00', venue: 'QA Odense Hall', city: 'Odense', country: 'Denmark', distanceKm: 180,
+        ticketUrl: 'https://qa.invalid/v143/representative-denmark', sourceProvider: 'ticketmaster',
+        providerEventId: 'qa-v143-event-representative-denmark', foundAt: '2027-07-10T12:00:00.000Z',
       },
       {
-        id: 'qa-v143-representative-sweden-show',
-        bandId: representativeBandId,
-        bandName: 'QA V143 Representative Band',
-        date: '2027-09-05',
-        time: '19:00',
-        venue: 'QA Gothenburg Hall',
-        city: 'Gothenburg',
-        country: 'Sweden',
-        distanceKm: 280,
-        ticketUrl: 'https://qa.invalid/v143/representative-sweden',
-        sourceProvider: 'ticketmaster',
-        providerEventId: 'qa-v143-event-representative-sweden',
-        foundAt: '2027-07-10T12:00:00.000Z',
+        id: 'qa-v143-representative-sweden-show', bandId: representativeBandId, bandName: 'QA V143 Representative Band',
+        date: '2027-09-05', time: '19:00', venue: 'QA Gothenburg Hall', city: 'Gothenburg', country: 'Sweden', distanceKm: 280,
+        ticketUrl: 'https://qa.invalid/v143/representative-sweden', sourceProvider: 'ticketmaster',
+        providerEventId: 'qa-v143-event-representative-sweden', foundAt: '2027-07-10T12:00:00.000Z',
       },
     ];
 
@@ -108,6 +63,10 @@ function viewportFor(testInfo) {
 
 async function expectNoHorizontalOverflow(page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+}
+
+async function expectControlSettled(locator) {
+  await expect(locator).not.toHaveAttribute('aria-busy', 'true');
 }
 
 async function expectDividerParity(page) {
@@ -201,50 +160,60 @@ test('v143 Sweden filters are exact and mutually exclusive in both concert views
   await page.setViewportSize(viewportFor(testInfo));
   await installV143SyntheticState(page);
 
+  const rootSweden = page.locator('#sweden-toggle-btn');
+  const rootEurope = page.locator('#europe-toggle-btn');
+  const rootNearby = page.locator('#nearby-toggle-btn');
+
   await page.locator('#tabbar [data-tab="concerts"]').click();
-  await page.locator('#sweden-toggle-btn').click();
-  await expect(page.locator('#sweden-toggle-btn')).toHaveClass(/active/);
-  await expect(page.locator('#europe-toggle-btn')).not.toHaveClass(/active/);
-  await expect(page.locator('#nearby-toggle-btn')).not.toHaveClass(/active/);
+  await rootSweden.click();
+  await expect(rootSweden).toHaveClass(/active/);
+  await expect(rootEurope).not.toHaveClass(/active/);
+  await expect(rootNearby).not.toHaveClass(/active/);
   await expect(page.locator('#screen-concerts')).toContainText('QA V143 Mixed Band');
   await expect(page.locator('#screen-concerts')).not.toContainText('QA V143 Denmark Only');
 
   // Switching from active SE to EU clears SE and activates EU.
-  await page.locator('#europe-toggle-btn').click();
-  await expect(page.locator('#europe-toggle-btn')).toHaveClass(/active/);
-  await expect(page.locator('#sweden-toggle-btn')).not.toHaveClass(/active/);
-  await expect(page.locator('#nearby-toggle-btn')).not.toHaveClass(/active/);
+  await rootEurope.click();
+  await expect(rootEurope).toHaveClass(/active/);
+  await expect(rootSweden).not.toHaveClass(/active/);
+  await expect(rootNearby).not.toHaveClass(/active/);
+  await expectControlSettled(rootSweden);
 
-  // Re-activate SE, then switch directly to Nearby and verify the same rule.
-  await page.locator('#sweden-toggle-btn').click();
-  await expect(page.locator('#sweden-toggle-btn')).toHaveClass(/active/);
-  await page.locator('#nearby-toggle-btn').click();
-  await expect(page.locator('#nearby-toggle-btn')).toHaveClass(/active/);
-  await expect(page.locator('#sweden-toggle-btn')).not.toHaveClass(/active/);
-  await expect(page.locator('#europe-toggle-btn')).not.toHaveClass(/active/);
+  // Re-activate SE after the previous SE interaction has settled, then switch directly to Nearby.
+  await rootSweden.click();
+  await expect(rootSweden).toHaveClass(/active/);
+  await rootNearby.click();
+  await expect(rootNearby).toHaveClass(/active/);
+  await expect(rootSweden).not.toHaveClass(/active/);
+  await expect(rootEurope).not.toHaveClass(/active/);
 
   await page.evaluate(() => openProfile('qa-v143-mixed-band'));
   await expect(page.locator('#screen-profile')).toContainText('QA Stockholm Hall');
   await expect(page.locator('#screen-profile')).toContainText('QA Copenhagen Hall');
 
-  await page.locator('#profile-sweden-toggle-btn').click();
-  await expect(page.locator('#profile-sweden-toggle-btn')).toHaveClass(/active/);
-  await expect(page.locator('#profile-europe-toggle-btn')).not.toHaveClass(/active/);
-  await expect(page.locator('#profile-nearby-toggle-btn')).not.toHaveClass(/active/);
+  const profileSweden = page.locator('#profile-sweden-toggle-btn');
+  const profileEurope = page.locator('#profile-europe-toggle-btn');
+  const profileNearby = page.locator('#profile-nearby-toggle-btn');
+
+  await profileSweden.click();
+  await expect(profileSweden).toHaveClass(/active/);
+  await expect(profileEurope).not.toHaveClass(/active/);
+  await expect(profileNearby).not.toHaveClass(/active/);
   await expect(page.locator('#screen-profile')).toContainText('QA Stockholm Hall');
   await expect(page.locator('#screen-profile')).not.toContainText('QA Copenhagen Hall');
 
-  await page.locator('#profile-europe-toggle-btn').click();
-  await expect(page.locator('#profile-europe-toggle-btn')).toHaveClass(/active/);
-  await expect(page.locator('#profile-sweden-toggle-btn')).not.toHaveClass(/active/);
-  await expect(page.locator('#profile-nearby-toggle-btn')).not.toHaveClass(/active/);
+  await profileEurope.click();
+  await expect(profileEurope).toHaveClass(/active/);
+  await expect(profileSweden).not.toHaveClass(/active/);
+  await expect(profileNearby).not.toHaveClass(/active/);
+  await expectControlSettled(profileSweden);
 
-  await page.locator('#profile-sweden-toggle-btn').click();
-  await expect(page.locator('#profile-sweden-toggle-btn')).toHaveClass(/active/);
-  await page.locator('#profile-nearby-toggle-btn').click();
-  await expect(page.locator('#profile-nearby-toggle-btn')).toHaveClass(/active/);
-  await expect(page.locator('#profile-sweden-toggle-btn')).not.toHaveClass(/active/);
-  await expect(page.locator('#profile-europe-toggle-btn')).not.toHaveClass(/active/);
+  await profileSweden.click();
+  await expect(profileSweden).toHaveClass(/active/);
+  await profileNearby.click();
+  await expect(profileNearby).toHaveClass(/active/);
+  await expect(profileSweden).not.toHaveClass(/active/);
+  await expect(profileEurope).not.toHaveClass(/active/);
   await expectNoHorizontalOverflow(page);
 });
 
