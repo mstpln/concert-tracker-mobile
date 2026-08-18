@@ -140,7 +140,7 @@ This continuity file was compacted on 2026-08-17. Earlier durable decisions rema
 
 ## 2026-08-18 — Ticketmaster venue quality is monotonic across placeholder refreshes
 
-**Decision:** A Ticketmaster refresh for the same canonical concert may improve an unknown venue or replace one genuine named venue with another genuine named venue, but a provider placeholder (`Unknown venue`, `Unknown`, `Venue unknown`, `TBA`, `TBD`, `Venue TBA`, `Venue TBD`, `To be announced`, or `To be determined`) may never overwrite a genuine venue already stored on that concert.
+**Decision:** A Ticketmaster refresh for the same canonical concert may improve an unknown venue or replace one genuine named venue with another genuine venue, but a provider placeholder (`Unknown venue`, `Unknown`, `Venue unknown`, `TBA`, `TBD`, `Venue TBA`, `Venue TBD`, `To be announced`, or `To be determined`) may never overwrite a genuine venue already stored on that concert.
 
 **Reason:** Ticketmaster's event adapter intentionally emits an honest `Unknown venue` sentinel when a venue object has no name. The exact-provider-event upgrade path previously treated every non-empty string as meaningful, so a temporary provider omission could destroy better canonical data recovered earlier by GAU4 or entered by the user.
 
@@ -153,3 +153,11 @@ This continuity file was compacted on 2026-08-17. Earlier durable decisions rema
 **Reason:** The user wants a country-wide Sweden view that is distinct from the existing southern-Sweden/Denmark Nearby rule and the broader Europe view, without changing canonical concert data or research ownership.
 
 **Consequence:** SE filtering never infers country from venue, city, address, coordinates or distance and never writes `concerts.json`. ConcertDates continues to apply geographic filtering to its existing representative upcoming concert per band, and Band Detail continues to filter that band's existing upcoming set. Adding SE must not alter provider behavior, scheduling, stored schema, stable IDs or user-owned fields.
+
+## 2026-08-18 — v144 genre drill-down and My Bands status/navigation are presentation-only contracts
+
+**Decision:** The selected-year Listening by Genre detail uses the same stored BANDMARKR band-genre attribution as its stacked bar. Each genre row reports absolute listening time and listen count plus separate selected-year percentages for time and listens; the Total row remains absolute totals only. My Bands shows only exceptional status indicators — filled heart for `favorite`, crossed-out bell for `muted` — in a small trailing status area immediately before the chevron, using the same glyphs and muted color treatment as Band Detail. Opening a band from My Bands and returning through either the app Back arrow or browser/system history restores the list viewport and existing filter state.
+
+**Reason:** The prior selected-year detail could disagree with the visible stacked bar, and My Bands lost browsing context when returning from a profile. The approved status treatment should communicate favorite/alerts-off state without adding card clutter or extra actions.
+
+**Consequence:** Source-event genre metadata does not override stored band genre ownership for this chart; time percentage and listen percentage have distinct denominators. My Bands does not show empty-heart or active-bell indicators, and status icons are informational rather than buttons. Scroll restoration is transient browser UI state only and never writes band/concert/listening data. These changes do not alter stable IDs, provider state, listening source observations, stored schema or production data.
