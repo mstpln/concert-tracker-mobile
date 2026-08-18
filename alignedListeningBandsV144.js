@@ -164,6 +164,11 @@
     return true;
   }
 
+  function scheduleGenreDetailDecoration() {
+    const raf = root.requestAnimationFrame || ((callback) => root.setTimeout(callback, 0));
+    raf(() => decorateGenreDetail());
+  }
+
   function statusKinds(band) {
     const kinds = [];
     if (band?.favorite === true) kinds.push('favorite');
@@ -302,6 +307,10 @@
     if (navigationListenersInstalled || !root.document) return false;
     navigationListenersInstalled = true;
     root.document.addEventListener('click', (event) => captureMyBandsPosition(event), true);
+    root.document.addEventListener('click', (event) => {
+      const yearButton = event.target?.closest?.('#screen-stats [data-v81-genre-year]');
+      if (yearButton) scheduleGenreDetailDecoration();
+    });
     root.addEventListener?.('popstate', (event) => {
       if (event.state?.screen === 'main' && event.state?.tab === 'mybands' && myBandsReturnSnapshot) {
         scheduleMyBandsRestore();
