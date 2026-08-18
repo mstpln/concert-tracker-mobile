@@ -41,6 +41,25 @@ async function v143ToggleSwedenOnly() {
 // Alerts uses the same two-tone naming convention as ConcertDates.
 TAB_BRAND_HTML.news = '<span class="brand-blue">CONCERT</span>ALERTS';
 
+// My Concerts keeps its existing renderer; add only a styling hook to the
+// existing Upcoming label so it can mirror the established Past divider.
+function v143AlignMyConcertsSeparator() {
+  const labels = el('screen-myconcerts')?.querySelectorAll(':scope > .section-label');
+  for (const label of labels || []) {
+    if (label.textContent.trim().toLowerCase() === 'upcoming concerts') {
+      label.classList.add('section-label-v143-upcoming');
+      break;
+    }
+  }
+}
+
+const v143BaseRenderMyConcertsScreen = renderMyConcertsScreen;
+renderMyConcertsScreen = function v143RenderMyConcertsScreen(...args) {
+  const result = v143BaseRenderMyConcertsScreen.apply(this, args);
+  v143AlignMyConcertsSeparator();
+  return result;
+};
+
 // The header button exists in the static shell, so it can be wired before
 // DOMContentLoaded. Existing EU/Nearby handlers remain the owners of those
 // filters; capture-phase handling only clears the third mutually-exclusive
