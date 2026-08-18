@@ -19,6 +19,8 @@ function v143SyncMainGeoFilterState() {
   const europe = el('europe-toggle-btn');
   if (!nearby || !sweden || !europe) return;
 
+  const showSweden = currentTab === 'concerts' && currentScreen === 'main' && concertsSubTab === 'concerts';
+  sweden.classList.toggle('hidden', !showSweden);
   nearby.classList.toggle('active', nearbyOnly);
   sweden.classList.toggle('active', swedenOnly);
   europe.classList.toggle('active', europeOnly);
@@ -40,6 +42,14 @@ async function v143ToggleSwedenOnly() {
 
 // Alerts uses the same two-tone naming convention as ConcertDates.
 TAB_BRAND_HTML.news = '<span class="brand-blue">CONCERT</span>ALERTS';
+
+// Keep the third root-header filter aligned with the existing screen chrome.
+const v143BaseSetHeaderChrome = setHeaderChrome;
+setHeaderChrome = function v143SetHeaderChrome(...args) {
+  const result = v143BaseSetHeaderChrome.apply(this, args);
+  v143SyncMainGeoFilterState();
+  return result;
+};
 
 // My Concerts keeps its existing renderer; add only a styling hook to the
 // existing Upcoming label so it can mirror the established Past divider.
