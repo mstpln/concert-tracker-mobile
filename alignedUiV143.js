@@ -2,12 +2,25 @@
 
 // v143 aligned UI refinements. The Sweden filters are presentation-only
 // views over the existing concert data; they never mutate concerts.json.
-let swedenOnly = false;
+function v143ReadPersistedSwedenOnly() {
+  try {
+    return JSON.parse(localStorage.getItem('concertTrackerSettings') || '{}').swedenOnly === true;
+  } catch {
+    return false;
+  }
+}
+
+let swedenOnly = v143ReadPersistedSwedenOnly();
 let profileSwedenOnly = false;
 
-const v143SwedenStateReady = chrome.storage.local.get({ swedenOnly: false }).then((state) => {
-  swedenOnly = !!state.swedenOnly;
-});
+// This script is parsed after app.js but before DOMContentLoaded. Resolve the
+// third root geographic choice now so app.js restores Nearby/EU from the
+// already-exclusive persisted state instead of racing an asynchronous read.
+if (swedenOnly) {
+  nearbyOnly = false;
+  europeOnly = false;
+  void chrome.storage.local.set({ swedenOnly: true, nearbyOnly: false, europeOnly: false });
+}
 
 function v143IsSwedenCountry(country) {
   return String(country || '').trim().toLowerCase() === 'sweden';
@@ -89,19 +102,9 @@ el('app-header')?.addEventListener('click', (event) => {
   void chrome.storage.local.set({ swedenOnly: false });
 }, true);
 
-// app.js registers init before this file is loaded. Running this listener
-// after that init listener means the legacy EU/Nearby settings have already
-// been restored before we enforce the third mutually-exclusive state.
 document.addEventListener('DOMContentLoaded', () => {
-  void v143SwedenStateReady.then(async () => {
-    if (swedenOnly) {
-      nearbyOnly = false;
-      europeOnly = false;
-      await chrome.storage.local.set({ swedenOnly: true, nearbyOnly: false, europeOnly: false });
-    }
-    v143SyncMainGeoFilterState();
-    if (swedenOnly && currentTab === 'concerts' && currentScreen === 'main') renderConcertsScreen();
-  });
+  v143SyncMainGeoFilterState();
+  if (swedenOnly && currentTab === 'concerts' && currentScreen === 'main') renderConcertsScreen();
 });
 
 const v143BaseRenderConcertsScreen = renderConcertsScreen;
