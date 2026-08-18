@@ -1,0 +1,48 @@
+/* v144: My Bands status indicators reuse the exact profile heart/bell glyphs
+   and the same muted single-color treatment. They are informational only;
+   the row remains the sole navigation target. */
+.mybands-status-row .row-title-group {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mybands-row-trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+  margin-left: 4px;
+}
+.mybands-status-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+.mybands-status-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 14px;
+}
+.mybands-status-icon svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+/* Selected-year genre detail keeps the existing compact card presentation.
+   Percentage-enriched values may wrap naturally on narrow phones rather than
+   forcing the card wider than the viewport. */
+.genre-year-detail .v144-genre-value {
+  max-width: 74%;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 390px) {
+  .mybands-row-trailing { gap: 7px; }
+  .mybands-status-icons { gap: 5px; }
+  .genre-year-detail .v144-genre-value { max-width: 72%; }
+}
