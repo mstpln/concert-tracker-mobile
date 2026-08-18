@@ -79,6 +79,57 @@ test('v140 normal card uses approved tall black and white ticket geometry', asyn
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
 });
 
+test('v141 mobile typography fits and quantity/date share the exact row', async ({page}) => {
+  await openStart(page);
+  const future=await appDate(page,30);
+  for (const width of [432,375,480]) {
+    await page.setViewportSize({width,height:900});
+    const card=await render(page,future,{
+      bandName:'LE SSERAFIM',ticketQuantity:4,venue:'Unknown venue',
+      address:'Hannemanns Alle 18-20',postalCode:'2300',city:'Copenhagen',country:'Denmark',
+    });
+    const metrics=await card.evaluate(node=>{
+      const count=node.querySelector('.countdown-v140-ticket-count');
+      const text=count.querySelector('strong');
+      const lines=count.querySelectorAll('.countdown-v140-ticket-count-line');
+      const date=node.querySelector('.countdown-v140-date');
+      const info=node.querySelector('.countdown-v139-info');
+      const artist=node.querySelector('.countdown-v139-band');
+      const venue=node.querySelector('.countdown-v139-venue');
+      const address=node.querySelector('.countdown-v139-address');
+      const textRect=text.getBoundingClientRect();
+      const dateRect=date.getBoundingClientRect();
+      const topRect=lines[0].getBoundingClientRect();
+      const bottomRect=lines[1].getBoundingClientRect();
+      return {
+        textTop:textRect.top,dateTop:dateRect.top,
+        topThickness:topRect.height,bottomThickness:bottomRect.height,
+        topGap:textRect.top-topRect.bottom,bottomGap:bottomRect.top-textRect.bottom,
+        infoFits:info.scrollWidth<=info.clientWidth+1,
+        artistSize:getComputedStyle(artist).fontSize,
+        venueSize:getComputedStyle(venue).fontSize,
+        addressSize:getComputedStyle(address).fontSize,
+      };
+    });
+    expect(Math.abs(metrics.textTop-metrics.dateTop)).toBeLessThanOrEqual(0.1);
+    expect(Math.abs(metrics.topThickness-metrics.bottomThickness)).toBeLessThanOrEqual(0.01);
+    expect(metrics.topThickness).toBeCloseTo(1,1);
+    expect(Math.abs(metrics.topGap-metrics.bottomGap)).toBeLessThanOrEqual(0.1);
+    expect(metrics.topGap).toBeGreaterThanOrEqual(3.5);
+    expect(metrics.topGap).toBeLessThanOrEqual(4.5);
+    expect(metrics.infoFits).toBe(true);
+    if (width === 432 || width === 480) {
+      expect(metrics.artistSize).toBe('18px');
+      expect(metrics.venueSize).toBe('13px');
+      expect(metrics.addressSize).toBe('10.5px');
+    } else {
+      expect(metrics.artistSize).toBe('16px');
+      expect(metrics.venueSize).toBe('12px');
+      expect(metrics.addressSize).toBe('9.5px');
+    }
+  }
+});
+
 test('v140 quantity uses ticketQuantity with singular, plural and missing behavior', async ({page}) => {
   await openStart(page);
   const future=await appDate(page,30);
