@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 
 async function installV143SyntheticState(page) {
   await page.goto('/');
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const data = JSON.parse(localStorage.getItem('livevault-qa:data') || '{}');
     const bandId = 'qa-v143-mixed-band';
     const denmarkOnlyBandId = 'qa-v143-denmark-only';
@@ -63,9 +63,7 @@ async function installV143SyntheticState(page) {
     ];
 
     localStorage.setItem('livevault-qa:data', JSON.stringify(data));
-    const settings = JSON.parse(localStorage.getItem('concertTrackerSettings') || '{}');
-    Object.assign(settings, { europeOnly: false, nearbyOnly: false, swedenOnly: false });
-    localStorage.setItem('concertTrackerSettings', JSON.stringify(settings));
+    await chrome.storage.local.set({ europeOnly: false, nearbyOnly: false, swedenOnly: false });
   });
   await page.reload();
 }
@@ -178,10 +176,8 @@ test('v143 resolves a persisted Sweden filter as the only active root geographic
     : { width: 480, height: 900 });
   await installV143SyntheticState(page);
 
-  await page.evaluate(() => {
-    const settings = JSON.parse(localStorage.getItem('concertTrackerSettings') || '{}');
-    Object.assign(settings, { swedenOnly: true, europeOnly: true, nearbyOnly: true });
-    localStorage.setItem('concertTrackerSettings', JSON.stringify(settings));
+  await page.evaluate(async () => {
+    await chrome.storage.local.set({ swedenOnly: true, europeOnly: true, nearbyOnly: true });
   });
   await page.reload();
   await page.locator('#tabbar [data-tab="concerts"]').click();
@@ -189,7 +185,7 @@ test('v143 resolves a persisted Sweden filter as the only active root geographic
   await expect(page.locator('#sweden-toggle-btn')).toHaveClass(/active/);
   await expect(page.locator('#europe-toggle-btn')).not.toHaveClass(/active/);
   await expect(page.locator('#nearby-toggle-btn')).not.toHaveClass(/active/);
-  const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('concertTrackerSettings') || '{}'));
+  const persisted = await page.evaluate(async () => chrome.storage.local.get(['swedenOnly', 'europeOnly', 'nearbyOnly']));
   expect(persisted.swedenOnly).toBe(true);
   expect(persisted.europeOnly).toBe(false);
   expect(persisted.nearbyOnly).toBe(false);
