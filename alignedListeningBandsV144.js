@@ -20,6 +20,11 @@
     return root.listeningEvents || [];
   }
 
+  function getStatsApi() {
+    try { if (typeof ListeningStats !== 'undefined') return ListeningStats; } catch (_) {}
+    return root.ListeningStats || null;
+  }
+
   function storedGenres(band) {
     if (Array.isArray(band?.genres)) return band.genres.filter(Boolean);
     if (Array.isArray(band?.genre)) return band.genre.filter(Boolean);
@@ -126,7 +131,7 @@
   }
 
   function decorateGenreDetail(doc = root.document) {
-    const statsApi = root.ListeningStats;
+    const statsApi = getStatsApi();
     if (!doc || !statsApi) return false;
     const selected = doc.querySelector('#screen-stats [data-v81-genre-year].selected');
     const detail = doc.querySelector('#screen-stats .genre-year-detail');
@@ -262,7 +267,7 @@
   }
 
   function installGenreCalculation() {
-    const statsApi = root.ListeningStats;
+    const statsApi = getStatsApi();
     if (!statsApi) return false;
     if (statsApi.genreDistributionByYear?.__liveVaultV144) return true;
     function genreDistributionByYearV144(listens) {
