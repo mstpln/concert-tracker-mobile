@@ -39,6 +39,7 @@ test('v144 aligns genre drill-down, My Bands return position, and status icons',
   expect(await favoriteRow.locator('.mybands-row-trailing').evaluate((trailing) => [...trailing.children].map((node) => node.className))).toEqual(['mybands-status-icons', 'row-chevron']);
 
   const listFavoriteColor = await favoriteRow.locator('.mybands-status-icons').evaluate((node) => getComputedStyle(node).color);
+  await page.screenshot({ path: testInfo.outputPath('v144-mybands-status-dark.png') });
   await favoriteRow.click();
   const profileFavorite = page.locator('#screen-profile .profile-favorite-btn');
   await expect(profileFavorite).toBeVisible();
@@ -161,6 +162,8 @@ test('v144 aligns genre drill-down, My Bands return position, and status icons',
   expect(consistency.nonZeroNamedGroups).toBeGreaterThan(0);
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await detail.scrollIntoViewIfNeeded();
+  await detail.screenshot({ path: testInfo.outputPath('v144-genre-detail-dark.png') });
   await page.screenshot({ path: testInfo.outputPath('v144-aligned-listening-bands-dark.png'), fullPage: true });
   expect(browserErrors).toEqual([]);
 });
@@ -186,6 +189,7 @@ test('v144 visible additions remain contained in light mode', async ({ page }, t
     probe.remove();
     return getComputedStyle(node).color === expected;
   })).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('v144-mybands-status-light.png') });
 
   await page.locator('[data-tab="stats"]').click();
   await page.evaluate(() => {
@@ -207,6 +211,8 @@ test('v144 visible additions remain contained in light mode', async ({ page }, t
   await expect(detail.locator('div')).toHaveCount(6);
   expect(await detail.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await detail.scrollIntoViewIfNeeded();
+  await detail.screenshot({ path: testInfo.outputPath('v144-genre-detail-light.png') });
 
   await page.screenshot({ path: testInfo.outputPath('v144-aligned-listening-bands-light.png'), fullPage: true });
   expect(browserErrors).toEqual([]);
