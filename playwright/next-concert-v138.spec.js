@@ -79,6 +79,134 @@ test('v140 normal card uses approved tall black and white ticket geometry', asyn
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
 });
 
+test('v141 mobile typography fits, preserves countdown footprint, and aligns quantity/date', async ({page}, testInfo) => {
+  await openStart(page);
+  const future=await appDate(page,30);
+  for (const width of [432,375,480]) {
+    await page.setViewportSize({width,height:900});
+    const card=await render(page,future,{
+      bandName:'LE SSERAFIM',ticketQuantity:4,venue:'Unknown venue',
+      address:'Hannemanns Alle 18-20',postalCode:'2300',city:'Copenhagen',country:'Denmark',
+    });
+    const metrics=await card.evaluate(node=>{
+      const count=node.querySelector('.countdown-v140-ticket-count');
+      const text=count.querySelector('strong');
+      const lines=count.querySelectorAll('.countdown-v140-ticket-count-line');
+      const date=node.querySelector('.countdown-v140-date');
+      const spacer=node.querySelector('.countdown-v140-date-spacer');
+      const stubContent=node.querySelector('.countdown-v139-stub-content');
+      const ring=node.querySelector('.countdown-v139-countdown');
+      const time=node.querySelector('.countdown-v139-time');
+      const info=node.querySelector('.countdown-v139-info');
+      const artist=node.querySelector('.countdown-v139-band');
+      const venue=node.querySelector('.countdown-v139-venue');
+      const address=node.querySelector('.countdown-v139-address');
+      const textRect=text.getBoundingClientRect();
+      const dateRect=date.getBoundingClientRect();
+      const topRect=lines[0].getBoundingClientRect();
+      const bottomRect=lines[1].getBoundingClientRect();
+      const stubRect=stubContent.getBoundingClientRect();
+      const ringRect=ring.getBoundingClientRect();
+      const timeRect=time.getBoundingClientRect();
+      const spacerStyle=getComputedStyle(spacer);
+      return {
+        textTop:textRect.top,dateTop:dateRect.top,
+        topThickness:topRect.height,bottomThickness:bottomRect.height,
+        topGap:textRect.top-topRect.bottom,bottomGap:bottomRect.top-textRect.bottom,
+        infoFits:info.scrollWidth<=info.clientWidth+1,
+        artistSize:getComputedStyle(artist).fontSize,
+        artistWeight:getComputedStyle(artist).fontWeight,
+        venueSize:getComputedStyle(venue).fontSize,
+        venueWeight:getComputedStyle(venue).fontWeight,
+        addressSize:getComputedStyle(address).fontSize,
+        spacerVisibility:spacerStyle.visibility,
+        spacerMarginTop:spacerStyle.marginTop,
+        spacerText:spacer.textContent,
+        stubChildren:Array.from(stubContent.children).map(child=>child.className.baseVal||child.className),
+        ringTopWithinStub:ringRect.top-stubRect.top,
+        timeTopWithinStub:timeRect.top-stubRect.top,
+      };
+    });
+    expect(Math.abs(metrics.textTop-metrics.dateTop)).toBeLessThanOrEqual(0.1);
+    expect(Math.abs(metrics.topThickness-metrics.bottomThickness)).toBeLessThanOrEqual(0.01);
+    expect(metrics.topThickness).toBeCloseTo(1,1);
+    expect(Math.abs(metrics.topGap-metrics.bottomGap)).toBeLessThanOrEqual(0.1);
+    expect(metrics.topGap).toBeGreaterThanOrEqual(3.5);
+    expect(metrics.topGap).toBeLessThanOrEqual(4.5);
+    expect(metrics.infoFits).toBe(true);
+    expect(metrics.spacerVisibility).toBe('hidden');
+    expect(metrics.spacerText).toBe(displayDate(future));
+    expect(metrics.stubChildren).toEqual([
+      'countdown-v139-countdown',
+      'countdown-breakdown countdown-v139-time',
+      'countdown-v140-date-spacer',
+    ]);
+    expect(metrics.ringTopWithinStub).toBeGreaterThan(0);
+    expect(metrics.timeTopWithinStub).toBeGreaterThan(metrics.ringTopWithinStub);
+    if (width === 432 || width === 480) {
+      expect(metrics.artistSize).toBe('18px');
+      expect(metrics.artistWeight).toBe('780');
+      expect(metrics.venueSize).toBe('13px');
+      expect(metrics.venueWeight).toBe('680');
+      expect(metrics.addressSize).toBe('10.5px');
+      expect(metrics.spacerMarginTop).toBe('9px');
+    } else {
+      expect(metrics.artistSize).toBe('16px');
+      expect(metrics.artistWeight).toBe('780');
+      expect(metrics.venueSize).toBe('12px');
+      expect(metrics.venueWeight).toBe('680');
+      expect(metrics.addressSize).toBe('9.5px');
+      expect(metrics.spacerMarginTop).toBe('7px');
+    }
+    if (width === 432 || width === 375) {
+      await card.screenshot({path:testInfo.outputPath(`v141-next-concert-${width}px.png`)});
+    }
+  }
+});
+
+test('v141 keeps the approved v140 concert-day typography and spacing', async ({page}, testInfo) => {
+  await openStart(page);
+  const today=await appDate(page,0);
+  for (const width of [432,375]) {
+    await page.setViewportSize({width,height:900});
+    const card=await render(page,today,{
+      bandName:'LE SSERAFIM',venue:'Royal Arena',city:'Copenhagen',ticketQuantity:4,
+      ownedTickets:[{id:'qa-ticket',type:'url',url:'https://qa.invalid/ticket',addedAt:'2026-01-01T00:00:00.000Z'}],
+    });
+    const styles=await card.evaluate(node=>{
+      const info=getComputedStyle(node.querySelector('.countdown-v139-info'));
+      const band=getComputedStyle(node.querySelector('.countdown-v139-band'));
+      const showVenue=getComputedStyle(node.querySelector('.countdown-v139-show-venue'));
+      const directions=getComputedStyle(node.querySelector('.countdown-v139-directions'));
+      return {
+        paddingTop:info.paddingTop,paddingRight:info.paddingRight,paddingBottom:info.paddingBottom,paddingLeft:info.paddingLeft,
+        bandMarginTop:band.marginTop,bandWeight:band.fontWeight,
+        showVenueMarginTop:showVenue.marginTop,directionsMarginTop:directions.marginTop,
+      };
+    });
+    if (width === 432) {
+      expect(styles.paddingTop).toBe('25px');
+      expect(styles.paddingRight).toBe('27px');
+      expect(styles.paddingBottom).toBe('25px');
+      expect(styles.paddingLeft).toBe('27px');
+      expect(styles.bandMarginTop).toBe('15px');
+      expect(styles.showVenueMarginTop).toBe('24px');
+      expect(styles.directionsMarginTop).toBe('18px');
+    } else {
+      expect(styles.paddingTop).toBe('18px');
+      expect(styles.paddingRight).toBe('16px');
+      expect(styles.paddingBottom).toBe('18px');
+      expect(styles.paddingLeft).toBe('16px');
+      expect(styles.bandMarginTop).toBe('10px');
+      expect(styles.showVenueMarginTop).toBe('15px');
+      expect(styles.directionsMarginTop).toBe('12px');
+    }
+    expect(styles.bandWeight).toBe('760');
+    await expect(card.locator('.countdown-v140-date-spacer')).toHaveCount(0);
+    await card.screenshot({path:testInfo.outputPath(`v141-show-day-${width}px.png`)});
+  }
+});
+
 test('v140 quantity uses ticketQuantity with singular, plural and missing behavior', async ({page}) => {
   await openStart(page);
   const future=await appDate(page,30);

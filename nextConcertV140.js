@@ -24,10 +24,19 @@
     const country = String(concert.country || '').trim();
     const lines = [];
     if (address) lines.push(address);
-    const cityLine = [postal, city].filter(Boolean).join(' ').trim();
+
     const addressLower = address.toLocaleLowerCase();
-    if (cityLine && (!city || !addressLower.includes(city.toLocaleLowerCase())) && !addressLower.includes(cityLine.toLocaleLowerCase())) lines.push(cityLine);
-    if (country && !addressLower.includes(country.toLocaleLowerCase()) && !cityLine.toLocaleLowerCase().includes(country.toLocaleLowerCase())) lines.push(country);
+    const cityLine = [postal, city].filter(Boolean).join(' ').trim();
+    const cityLower = city.toLocaleLowerCase();
+    const cityLineLower = cityLine.toLocaleLowerCase();
+    let locality = '';
+    if (cityLine && (!city || !addressLower.includes(cityLower)) && !addressLower.includes(cityLineLower)) locality = cityLine;
+
+    const countryLower = country.toLocaleLowerCase();
+    if (country && !addressLower.includes(countryLower) && !locality.toLocaleLowerCase().includes(countryLower)) {
+      locality = [locality, country].filter(Boolean).join(', ');
+    }
+    if (locality) lines.push(locality);
     return lines;
   }
 
@@ -109,7 +118,14 @@
     const { days, hours, minutes, seconds, innerPct } = parts;
     const offset = RING_CIRC * (1 - innerPct);
     const dateLabel = formattedConcertDate(concert.date);
-    return `<div class="countdown-v139-stub-content"><svg class="countdown-v139-countdown" viewBox="0 0 142 142" aria-label="${days} days until concert"><circle class="countdown-v139-silver" cx="71" cy="71" r="64" fill="none" stroke-width="16"></circle><circle class="countdown-v139-cut" cx="71" cy="71" r="57" fill="none" stroke-width="8"></circle><circle class="countdown-v139-track" cx="71" cy="71" r="53" fill="none" stroke-width="14"></circle><circle id="countdown-ring-outer" class="countdown-v139-hidden-live-ring" data-circ="${RING_CIRC}" cx="71" cy="71" r="53" fill="none" stroke-width="14" transform="rotate(-90 71 71)" stroke-dasharray="${RING_CIRC}" stroke-dashoffset="${offset}"></circle><circle id="countdown-ring-inner" class="countdown-v139-progress" data-circ="${RING_CIRC}" cx="71" cy="71" r="53" fill="none" stroke-width="14" transform="rotate(-90 71 71)" stroke-linecap="butt" stroke-dasharray="${RING_CIRC}" stroke-dashoffset="${offset}"></circle><circle class="countdown-v139-center" cx="71" cy="71" r="37"></circle><text id="countdown-ring-day" x="71" y="81" text-anchor="middle">${days}</text></svg><p class="countdown-breakdown countdown-v139-time"><span id="countdown-d">${days}</span>d <span id="countdown-h">${String(hours).padStart(2, '0')}</span>h <span id="countdown-m">${String(minutes).padStart(2, '0')}</span>m <span id="countdown-s">${String(seconds).padStart(2, '0')}</span>s</p>${dateLabel ? `<p class="countdown-v140-date">${dateLabel}</p>` : ''}</div>`;
+    const dateSpacer = dateLabel ? `<p class="countdown-v140-date-spacer" aria-hidden="true">${dateLabel}</p>` : '';
+    return `<div class="countdown-v139-stub-content"><svg class="countdown-v139-countdown" viewBox="0 0 142 142" aria-label="${days} days until concert"><circle class="countdown-v139-silver" cx="71" cy="71" r="64" fill="none" stroke-width="16"></circle><circle class="countdown-v139-cut" cx="71" cy="71" r="57" fill="none" stroke-width="8"></circle><circle class="countdown-v139-track" cx="71" cy="71" r="53" fill="none" stroke-width="14"></circle><circle id="countdown-ring-outer" class="countdown-v139-hidden-live-ring" data-circ="${RING_CIRC}" cx="71" cy="71" r="53" fill="none" stroke-width="14" transform="rotate(-90 71 71)" stroke-dasharray="${RING_CIRC}" stroke-dashoffset="${offset}"></circle><circle id="countdown-ring-inner" class="countdown-v139-progress" data-circ="${RING_CIRC}" cx="71" cy="71" r="53" fill="none" stroke-width="14" transform="rotate(-90 71 71)" stroke-linecap="butt" stroke-dasharray="${RING_CIRC}" stroke-dashoffset="${offset}"></circle><circle class="countdown-v139-center" cx="71" cy="71" r="37"></circle><text id="countdown-ring-day" x="71" y="81" text-anchor="middle">${days}</text></svg><p class="countdown-breakdown countdown-v139-time"><span id="countdown-d">${days}</span>d <span id="countdown-h">${String(hours).padStart(2, '0')}</span>h <span id="countdown-m">${String(minutes).padStart(2, '0')}</span>m <span id="countdown-s">${String(seconds).padStart(2, '0')}</span>s</p>${dateSpacer}</div>`;
+  }
+
+  function concertDateHtml(concert, today) {
+    if (today) return '';
+    const dateLabel = formattedConcertDate(concert.date);
+    return dateLabel ? `<p class="countdown-v140-date">${dateLabel}</p>` : '';
   }
 
   function countdownCardV140(nextConcert) {
@@ -120,7 +136,7 @@
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const today = nextConcert.date === todayStr;
     const stub = today ? showDayStubHtml(nextConcert) : normalStubHtml(dlCountdownParts(new Date(targetIso)), nextConcert);
-    return `<div class="countdown-card countdown-v139-ticket countdown-v140-ticket${today ? ' countdown-card-today' : ''}" id="countdown-card" data-target="${escapeAttr(targetIso)}" data-today="${today ? 'true' : 'false'}">${ticketGeometrySvg()}${infoHtml(nextConcert, today)}${ticketQuantityHtml(nextConcert, today)}<div class="countdown-v139-stub">${stub}</div></div>`;
+    return `<div class="countdown-card countdown-v139-ticket countdown-v140-ticket${today ? ' countdown-card-today' : ''}" id="countdown-card" data-target="${escapeAttr(targetIso)}" data-today="${today ? 'true' : 'false'}">${ticketGeometrySvg()}${infoHtml(nextConcert, today)}${ticketQuantityHtml(nextConcert, today)}${concertDateHtml(nextConcert, today)}<div class="countdown-v139-stub">${stub}</div></div>`;
   }
 
   global.countdownCardHtml = countdownCardV140;
