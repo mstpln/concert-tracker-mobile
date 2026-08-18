@@ -131,6 +131,7 @@ test('v144 aligns genre drill-down, My Bands return position, and status icons',
   await expect(detail).toBeVisible();
   await expect(detail).toHaveAttribute('data-v144-genre-detail', 'true');
   await expect(detail.locator('div')).toHaveCount(6);
+  expect(await page.evaluate(() => ListeningStats.genreDistributionByYear.__liveVaultV144 === true)).toBe(true);
 
   const expectedRock = await page.evaluate((year) => {
     const item = ListeningStats.genreDistributionByYear(listeningEvents).find((candidate) => candidate.year === year);
@@ -140,7 +141,7 @@ test('v144 aligns genre drill-down, My Bands return position, and status icons',
     const listenPct = Math.round(item.listenPercentages.Rock || 0);
     return `${duration} (${timePct} %) · ${listens.toLocaleString()} listen${listens === 1 ? '' : 's'} (${listenPct} %)`;
   }, selectedYear);
-  const rockRow = detail.locator('div').filter({ has: detail.locator('b', { hasText: /^Rock$/ }) });
+  const rockRow = detail.locator('div').filter({ hasText: /^Rock/ });
   await expect(rockRow.locator('span')).toHaveText(expectedRock);
   await expect(detail.locator('div').first().locator('span')).not.toContainText('%');
 
