@@ -181,12 +181,16 @@ async function fetchUpcomingEvents(band, usage) {
     const country = venue.country?.name || '';
     const addressLine = venue.address?.line1 || '';
     const venueAddress = [addressLine, city, country].filter(Boolean).join(', ') || null;
+    // Provider payloads are untrusted. Only a real non-empty string may
+    // become canonical venue evidence; malformed/blank names use the same
+    // honest sentinel that the merge layer already treats as a downgrade.
+    const venueName = typeof venue.name === 'string' && venue.name.trim() ? venue.name.trim() : 'Unknown venue';
 
     results.push({
       id: `${band.id}-${localDate}-${slugify(city)}`,
       bandId: band.id,
       bandName: band.name,
-      venue: venue.name || 'Unknown venue',
+      venue: venueName,
       city,
       country,
       date: localDate,
