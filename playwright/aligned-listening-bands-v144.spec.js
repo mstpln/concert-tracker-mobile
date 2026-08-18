@@ -90,6 +90,16 @@ test('v144 aligns genre drill-down, My Bands return position, and status icons',
   });
   expect(Math.abs(afterHistoryBack.offset - beforeArrowBack.offset)).toBeLessThanOrEqual(2);
 
+  // The return snapshot is one-shot. After the profile return is consumed,
+  // later history navigation back to My Bands must not jump to that old band.
+  await page.evaluate(() => { document.querySelector('#content').scrollTop = 0; });
+  await page.locator('[data-tab="stats"]').click();
+  await expect(page.locator('#screen-stats')).toBeVisible();
+  await page.goBack();
+  await expect(page.locator('#screen-mybands')).toBeVisible();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  expect(await page.evaluate(() => document.querySelector('#content').scrollTop)).toBe(0);
+
   // Favorite can change on the profile while the v126 My Bands DOM cache is
   // otherwise reusable; the v144 decorator must still refresh the list icon.
   const ordinaryFavoriteRow = page.locator('#screen-mybands .row-card[data-band-id="qa-artist-two"]');
@@ -151,5 +161,52 @@ test('v144 aligns genre drill-down, My Bands return position, and status icons',
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('v144-aligned-listening-bands-dark.png'), fullPage: true });
+  expect(browserErrors).toEqual([]);
+});
+
+test('v144 visible additions remain contained in light mode', async ({ page }, testInfo) => {
+  const browserErrors = [];
+  page.on('pageerror', (error) => browserErrors.push(error.message));
+  const desktop = testInfo.project.name === 'desktop-chromium';
+  await page.setViewportSize(desktop ? { width: 480, height: 900 } : { width: 375, height: 820 });
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('/');
+
+  await page.locator('[data-tab="mybands"]').click();
+  const favoriteStatus = page.locator('#screen-mybands .row-card[data-band-id="qa-artist-one"] .mybands-status-icons');
+  const mutedStatus = page.locator('#screen-mybands .row-card[data-band-id="qa-artist-three"] .mybands-status-icons');
+  await expect(favoriteStatus.locator('[data-status="favorite"]')).toBeVisible();
+  await expect(mutedStatus.locator('[data-status="muted"]')).toBeVisible();
+  expect(await favoriteStatus.evaluate((node) => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--text-secondary)';
+    document.body.appendChild(probe);
+    const expected = getComputedStyle(probe).color;
+    probe.remove();
+    return getComputedStyle(node).color === expected;
+  })).toBe(true);
+
+  await page.locator('[data-tab="stats"]').click();
+  await page.evaluate(() => {
+    const assignments = {
+      'qa-artist-one': 'alternative rock',
+      'qa-artist-two': 'pop',
+      'qa-artist-three': 'hip-hop',
+      'qa-artist-four': 'electronic',
+      'qa-artist-five': 'ambient',
+      'qa-artist-six': 'rock',
+      'qa-artist-seven': 'pop',
+    };
+    bands.forEach((band) => { if (assignments[band.id]) band.genre = assignments[band.id]; });
+    renderStatsScreen();
+  });
+  await page.locator('[data-v81-genre-year]').last().click();
+  const detail = page.locator('.genre-year-detail');
+  await expect(detail).toHaveAttribute('data-v144-genre-detail', 'true');
+  await expect(detail.locator('div')).toHaveCount(6);
+  expect(await detail.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+  await page.screenshot({ path: testInfo.outputPath('v144-aligned-listening-bands-light.png'), fullPage: true });
   expect(browserErrors).toEqual([]);
 });

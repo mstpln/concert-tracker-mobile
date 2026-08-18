@@ -8,6 +8,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   const FALLBACK_GROUPS = ['Rock', 'Pop', 'Hip-hop/R&B', 'Electronic', 'Other'];
   let navigationListenersInstalled = false;
+  let genreDetailObserverInstalled = false;
   let myBandsReturnSnapshot = null;
 
   function getBands() {
@@ -136,6 +137,7 @@
     const selected = doc.querySelector('#screen-stats [data-v81-genre-year].selected');
     const detail = doc.querySelector('#screen-stats .genre-year-detail');
     if (!selected || !detail) return false;
+    if (detail.dataset.v144GenreDetail === 'true') return true;
     const selectedYear = Number(selected.dataset.v81GenreYear);
     const item = buildGenreDistributionByYear(getListeningEvents(), getBands(), statsApi)
       .find((candidate) => candidate.year === selectedYear);
@@ -172,6 +174,20 @@
   function scheduleGenreDetailDecoration() {
     const raf = root.requestAnimationFrame || ((callback) => root.setTimeout(callback, 0));
     raf(() => decorateGenreDetail());
+  }
+
+  function installGenreDetailObserver() {
+    if (genreDetailObserverInstalled || !root.document || typeof root.MutationObserver !== 'function') return false;
+    const screen = root.document.querySelector('#screen-stats');
+    if (!screen) return false;
+    genreDetailObserverInstalled = true;
+    const observer = new root.MutationObserver(() => {
+      const detail = screen.querySelector('.genre-year-detail');
+      if (!detail || detail.dataset.v144GenreDetail === 'true') return;
+      decorateGenreDetail(root.document);
+    });
+    observer.observe(screen, { childList: true, subtree: true });
+    return true;
   }
 
   function statusKinds(band) {
@@ -258,6 +274,7 @@
       const contentRect = content.getBoundingClientRect();
       content.scrollTop += (rowRect.top - contentRect.top) - snapshot.rowOffset;
     }
+    myBandsReturnSnapshot = null;
     return true;
   }
 
@@ -319,6 +336,8 @@
     root.addEventListener?.('popstate', (event) => {
       if (event.state?.screen === 'main' && event.state?.tab === 'mybands' && myBandsReturnSnapshot) {
         scheduleMyBandsRestore();
+      } else if (myBandsReturnSnapshot) {
+        myBandsReturnSnapshot = null;
       }
     });
     return true;
@@ -329,6 +348,7 @@
     installStatsBoundary();
     installMyBandsBoundary();
     installNavigationListeners();
+    installGenreDetailObserver();
     decorateMyBands();
     decorateGenreDetail();
 
@@ -338,6 +358,7 @@
         installGenreCalculation();
         installStatsBoundary();
         installMyBandsBoundary();
+        installGenreDetailObserver();
         decorateMyBands();
         decorateGenreDetail();
       });
@@ -345,6 +366,7 @@
         installGenreCalculation();
         installStatsBoundary();
         installMyBandsBoundary();
+        installGenreDetailObserver();
       }, 0);
     }
     return true;
