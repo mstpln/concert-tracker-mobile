@@ -4,9 +4,11 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The merged baseline is v141 at merge commit `b775131547068486e901550dea4c2a0b58ac7cd1`. PR #149 is merged and contains the approved v141 Next Concert mobile spacing refinement: normal-day left typography is compacted, the ticket-quantity row is aligned exactly with the concert date, full location text stays clear of the quantity separators, and the v140 countdown/concert-day layout is preserved.
+The merged baseline is v142 at merge commit `a23e82af288d623bcbdc278348f5726b564c4551`. PR #150 is merged and contains the Ticketmaster venue-quality protection: exact-event refreshes may improve an unknown venue or replace one genuine venue with another genuine venue, but placeholder, blank, or malformed provider venue names cannot downgrade a real canonical venue. The existing GAU4 trusted unknown-to-known recovery remains intact.
 
-An unreleased v142 provider-safety correction is active on `fix/ticketmaster-venue-downgrade-v142`. Ticketmaster exact-event refreshes may still improve an unknown venue or replace one genuine venue with another genuine venue, but placeholder values such as `Unknown venue`, `TBA`, `TBD`, `Venue TBA`, `Venue TBD`, `To be announced`, and `To be determined` may not overwrite a real venue already stored on the canonical concert. The protection is applied again against the latest reread concert before persistence, while other valid Ticketmaster-owned refresh fields continue to update normally. Existing GAU4 trusted unknown-to-known venue recovery remains unchanged.
+An unreleased v143 UI-alignment build is active on `feature/aligned-ui-filters-v143`. It contains the user-approved combined visual/filter scope only: My Concerts `UPCOMING CONCERTS` uses the same centered two-line separator treatment as `PAST CONCERTS`; the Alerts root header is `CONCERTALERTS` with `CONCERT` in the established blue brand treatment; the Stats Listening/Concerts segmented control uses the current ConcertDates segmented-control height; and an `SE` Sweden-only geographic filter is added between Nearby and EU on ConcertDates and Band Detail → Concerts. The three geographic choices are mutually exclusive. The root ConcertDates choice persists with the existing root filter settings, while the Band Detail choice is transient and resets when a band page is opened.
+
+The v143 Sweden filter is view-only. It matches the concert country exactly and case-insensitively to `Sweden`; it does not infer Sweden from city, venue, distance, or address, and it never changes `concerts.json` or any stored concert fields. Existing ConcertDates representative-show semantics and existing Nearby/EU rendering behavior remain authoritative.
 
 ## Provider and release cleanup finalization
 
@@ -20,10 +22,10 @@ Listening artwork does not treat a bare MusicBrainz release MBID as proof that C
 
 Spotify diagnostics include an explicit aggregate `attempted` outcome counter in addition to lane, endpoint, successful/no-match/skipped/provider-error and circuit information. No IDs, queries, URLs, tokens or payloads are recorded.
 
-For the active v142 branch, `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v142. No new runtime shell asset, production data file, secret, provider capability or stored-data schema is introduced.
+For the active v143 branch, `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v143. The new `alignedUiV143.css` and `alignedUiV143.js` assets are part of the app shell and deterministic build state. No new runtime dependency, production data file, secret, provider capability, workflow schedule, or stored-data schema is introduced.
 
 ## Safety and release boundary
 
 Existing UsageTracker caps/pacing, Spotify circuit, cross-scheduler lease, optimistic concurrency, reviewed provider-decision preservation, immutable listening source observations and credential boundaries remain authoritative. Automated browser QA uses only synthetic fixtures and the QA fake backend.
 
-No production provider call, production workflow, production R2 read/write or deployment has been performed for v142. The LE SSERAFIM production record has not been modified by this build; correcting that record remains a separately authorized production-data action after the prevention fix is merged. Merge still requires explicit user authorization.
+No production provider call, production workflow, production R2 read/write, production-data migration, deployment, or production smoke run has been performed for v143. Merge still requires explicit user authorization.
