@@ -190,3 +190,16 @@ test('v143 resolves a persisted Sweden filter as the only active root geographic
   expect(persisted.europeOnly).toBe(false);
   expect(persisted.nearbyOnly).toBe(false);
 });
+
+test('v143 keeps the root Sweden filter off the connection-error header', async ({ page }, testInfo) => {
+  await page.setViewportSize(testInfo.project.name === 'mobile-chromium'
+    ? { width: 375, height: 820 }
+    : { width: 480, height: 900 });
+  await installV143SyntheticState(page);
+
+  await page.locator('#tabbar [data-tab="concerts"]').click();
+  await expect(page.locator('#sweden-toggle-btn')).toBeVisible();
+  await page.evaluate(() => showConnectionError());
+  await expect(page.locator('#screen-connection-error')).toBeVisible();
+  await expect(page.locator('#sweden-toggle-btn')).toBeHidden();
+});
