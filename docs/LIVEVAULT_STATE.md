@@ -4,9 +4,9 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The merged baseline is v140 at merge commit `88a0bb96c6e7717b295fe7d2b925d4251b8f05b6`. PR #148 is merged and contains the approved taller black/white Next Concert ticket with the silver normal-day countdown and neon show-day ticket action.
+The merged baseline is v141 at merge commit `b775131547068486e901550dea4c2a0b58ac7cd1`. PR #149 is merged and contains the approved v141 Next Concert mobile spacing refinement: normal-day left typography is compacted, the ticket-quantity row is aligned exactly with the concert date, full location text stays clear of the quantity separators, and the v140 countdown/concert-day layout is preserved.
 
-An unreleased v141 visual refinement build is active on `fix/next-concert-mobile-spacing-v141`. It changes only the Start-screen Next Concert normal-day typography and spacing. The 820x463 ticket geometry, black/white contour treatment, countdown behavior, Maps URL construction and OwnedTickets behavior remain unchanged. The normal-day left inner panel uses smaller fixed mobile-first typography and tighter padding so artist, venue and address text fit cleanly. Address and locality remain separate display lines, while postal/city and country are compacted onto one locality line when they are not already present in the address; this keeps the complete location clear of the ticket-quantity lane. The ticket-quantity text and concert-date text share the exact same vertical coordinate and line-height; the two grey quantity separators remain identical 1px strokes with equal compact spacing around the quantity label. The visible date is independently positioned while a hidden layout spacer preserves the original v140 countdown ring/time footprint in the right stub. At <=390px the normal-day left typography steps down again to preserve fit. Concert-day typography, spacing, directions and ticket-action layout remain the approved v140 presentation.
+An unreleased v142 provider-safety correction is active on `fix/ticketmaster-venue-downgrade-v142`. Ticketmaster exact-event refreshes may still improve an unknown venue or replace one genuine venue with another genuine venue, but placeholder values such as `Unknown venue`, `TBA`, `TBD`, `Venue TBA`, `Venue TBD`, `To be announced`, and `To be determined` may not overwrite a real venue already stored on the canonical concert. The protection is applied again against the latest reread concert before persistence, while other valid Ticketmaster-owned refresh fields continue to update normally. Existing GAU4 trusted unknown-to-known venue recovery remains unchanged.
 
 ## Provider and release cleanup finalization
 
@@ -20,10 +20,10 @@ Listening artwork does not treat a bare MusicBrainz release MBID as proof that C
 
 Spotify diagnostics include an explicit aggregate `attempted` outcome counter in addition to lane, endpoint, successful/no-match/skipped/provider-error and circuit information. No IDs, queries, URLs, tokens or payloads are recorded.
 
-For the active v141 branch, `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v141. The deterministic build state and synthetic QA packaging continue to use the existing v140 Next Concert JS/CSS shell assets; no new runtime asset or data shape is introduced.
+For the active v142 branch, `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v142. No new runtime shell asset, production data file, secret, provider capability or stored-data schema is introduced.
 
 ## Safety and release boundary
 
 Existing UsageTracker caps/pacing, Spotify circuit, cross-scheduler lease, optimistic concurrency, reviewed provider-decision preservation, immutable listening source observations and credential boundaries remain authoritative. Automated browser QA uses only synthetic fixtures and the QA fake backend.
 
-No production provider call, production workflow, production R2 read/write or deployment has been performed for v141. The build remains unreleased until the exact PR head is green for unit/safety plus desktop/mobile synthetic Chromium QA and receives final review. Merge still requires explicit user authorization.
+No production provider call, production workflow, production R2 read/write or deployment has been performed for v142. The LE SSERAFIM production record has not been modified by this build; correcting that record remains a separately authorized production-data action after the prevention fix is merged. Merge still requires explicit user authorization.
