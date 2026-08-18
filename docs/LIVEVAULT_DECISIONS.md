@@ -128,4 +128,12 @@ This continuity file was compacted on 2026-08-17. Earlier durable decisions rema
 
 **Reason:** v138 approximated the aligned visual rather than reproducing the approved geometry precisely.
 
-**Consequence:** Future changes must preserve this geometry and the normal/show-day division unless a new visual decision is explicitly approved. Maps URL generation and OwnedTickets remain the behavior owners; this presentation layer must not fork those data paths.
+**Consequence:** This visual decision is superseded by the explicitly approved v140 ticket geometry/color decision below. Maps URL generation and OwnedTickets remain the behavior owners.
+
+## 2026-08-18 — v140 Next Concert ticket adopts the taller black/white stub and neon show-day ticket action
+
+**Decision:** The Start-screen Next Concert card uses an 820x463 true-black ticket silhouette with shallow center notches, repeated fixed-size side perforations, tear x=468, a thin white outer contour, thicker white inner frames, visually all-caps artist name, compact silver countdown, normal-day concert date and dynamic user-owned `ticketQuantity` display. On concert day, the same tall geometry is retained; `Get directions` remains on the left and `Open tickets` remains on the right using `#5ED8FF` with dark text/icon.
+
+**Reason:** The approved v140 correction replaces the shorter graphite/yellow v139 presentation while preserving established functional ownership.
+
+**Consequence:** Normal-day ticket quantity reads only the canonical user-owned `concert.ticketQuantity` and is omitted for missing/non-positive values; it is not derived from owned ticket artifacts. Concert-day Maps URL generation and OwnedTickets PDF/URL/multiple-ticket behavior remain the authoritative paths and must not be forked by the presentation layer.
