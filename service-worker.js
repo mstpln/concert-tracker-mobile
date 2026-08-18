@@ -93,6 +93,7 @@ const SHELL_FILES = [
   './nextConcertV139.css',
   './nextConcertV140.css',
   './alignedUiV143.css',
+  './geoFilterPreloadV143.js',
   './app.js',
   './alignedUiV143.js',
   './nextConcertV138.js',
