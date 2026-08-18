@@ -4,13 +4,21 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The merged baseline is **v143** at merge commit `a94005016751f2d35796792488012180d4002f1f`. PR #151 is merged. The v143 UI-alignment scope is now part of `main`: My Concerts `UPCOMING CONCERTS` uses the same centered two-line separator treatment as `PAST CONCERTS`; the Alerts root header is `CONCERTALERTS` with `CONCERT` in the established blue brand treatment; the Stats Listening/Concerts segmented control uses the current ConcertDates segmented-control height; and an `SE` Sweden-only geographic filter sits between Nearby and EU on ConcertDates and Band Detail → Concerts.
+The prior merged baseline is **v143** at merge commit `a94005016751f2d35796792488012180d4002f1f` (PR #151). The current branch prepares **v144** as a focused Listening/My Bands correction build without changing stored-data schema, provider ownership, workflows or production data.
+
+v144 makes the selected-year `LISTENING BY GENRE (ALL TIME)` drill-down use the same stored BANDMARKR band-genre attribution as the stacked bars. Each named genre row now reports both listening time and listen count plus separate shares of the selected year's time and listens, while the Total row remains the absolute year total. Untracked listening records remain excluded from this tracked-band genre view and source-event genre metadata cannot override the stored band genre used by this chart.
+
+v144 also preserves the My Bands list viewport when a band is opened from that list and the user returns through either the in-app Back arrow or browser/system history navigation. The shared My Bands filter state remains authoritative and the restoration anchors to the opened band when it is still present, falling back to the prior scroll position when filtering/state changes remove it.
+
+My Bands rows now expose status-only indicators immediately before the existing chevron: the existing 14px filled `heartFill` glyph appears only for favorites, and the existing 14px `bellOff` glyph appears only when alerts are muted. Both use the same `var(--text-secondary)` treatment as the corresponding Band Detail controls. Empty-heart and active-bell states are intentionally not shown, and the indicators do not become independent buttons.
+
+`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v144. `alignedListeningBandsV144.css` and `alignedListeningBandsV144.js` are part of the app shell and deterministic synthetic QA build. No new runtime dependency, production data file, secret, provider capability, workflow schedule or stored-data schema is introduced by v144.
+
+The v143 UI-alignment scope remains intact: My Concerts `UPCOMING CONCERTS` uses the same centered two-line separator treatment as `PAST CONCERTS`; the Alerts root header is `CONCERTALERTS` with `CONCERT` in the established blue brand treatment; the Stats Listening/Concerts segmented control uses the current ConcertDates segmented-control height; and an `SE` Sweden-only geographic filter sits between Nearby and EU on ConcertDates and Band Detail → Concerts.
 
 Nearby, SE and EU are mutually exclusive. The root ConcertDates SE choice persists with the existing root geographic settings, while the Band Detail SE choice is transient and resets when a band page is opened. The Sweden filter is view-only and matches canonical `country` exactly and case-insensitively to `Sweden`; it does not infer Sweden from city, venue, distance or address and never writes `concerts.json` or other stored concert fields. Existing ConcertDates representative-show semantics remain authoritative.
 
-The v142 Ticketmaster venue-quality protection remains in force under v143: exact-event refreshes may improve an unknown venue or replace one genuine venue with another genuine venue, but placeholder, blank or malformed provider venue names cannot downgrade a real canonical venue. The existing GAU4 trusted unknown-to-known recovery remains intact.
-
-`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v143. `alignedUiV143.css`, `alignedUiV143.js` and `geoFilterPreloadV143.js` are part of the app shell and deterministic build state. No new runtime dependency, production data file, secret, provider capability, workflow schedule or stored-data schema was introduced by v143.
+The v142 Ticketmaster venue-quality protection remains in force: exact-event refreshes may improve an unknown venue or replace one genuine venue with another genuine venue, but placeholder, blank or malformed provider venue names cannot downgrade a real canonical venue. The existing GAU4 trusted unknown-to-known recovery remains intact.
 
 ## Backlog hygiene after v143
 
@@ -24,6 +32,8 @@ The historical GitHub backlog has been reconciled against merged `main` so compl
 - PR #92 is superseded by the subsequently merged listening-maintenance contracts/foundation and the later Data Automation stack.
 - PR #41 is an obsolete pre-current-architecture review-only bulk artist-enrichment proposal and is superseded by the later identity/enrichment/maintenance flows.
 - PR #134 remains intentionally open as production-inert NB2 band-profile backfill tooling. It is not treated as merged/current application behavior and should be refreshed against current `main` before any future use.
+- Cloudflare Worker CORS-origin hardening remains deferred backlog work. Bearer/role authentication remains the security boundary; any future CORS tightening must preserve authorized no-Origin/server tooling and treat Worker deployment as a separate production action.
+- Versioned CSS/JS patch-layer consolidation remains deferred maintenance debt. It should be behavior-preserving, isolated from feature work, and piloted on a small visual area such as the Next Concert v138-v140 cluster rather than Listening/Stats.
 
 ## Provider and release cleanup finalization
 
@@ -41,4 +51,4 @@ Spotify diagnostics include an explicit aggregate `attempted` outcome counter in
 
 Existing UsageTracker caps/pacing, Spotify circuit, cross-scheduler lease, optimistic concurrency, reviewed provider-decision preservation, immutable listening source observations and credential boundaries remain authoritative. Automated browser QA uses only synthetic fixtures and the QA fake backend.
 
-The v143 merge did not authorize or perform a production provider call, production research/data-maintenance workflow, production R2 write, production-data migration or production smoke run. Future production/provider operations remain separately authorized.
+The v144 branch does not authorize or perform a production provider call, production research/data-maintenance workflow, production R2 write, production-data migration, Worker deployment or production smoke run. Future production/provider operations remain separately authorized.
