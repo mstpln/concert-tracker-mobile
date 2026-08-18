@@ -24,10 +24,19 @@
     const country = String(concert.country || '').trim();
     const lines = [];
     if (address) lines.push(address);
-    const cityLine = [postal, city].filter(Boolean).join(' ').trim();
+
     const addressLower = address.toLocaleLowerCase();
-    if (cityLine && (!city || !addressLower.includes(city.toLocaleLowerCase())) && !addressLower.includes(cityLine.toLocaleLowerCase())) lines.push(cityLine);
-    if (country && !addressLower.includes(country.toLocaleLowerCase()) && !cityLine.toLocaleLowerCase().includes(country.toLocaleLowerCase())) lines.push(country);
+    const cityLine = [postal, city].filter(Boolean).join(' ').trim();
+    const cityLower = city.toLocaleLowerCase();
+    const cityLineLower = cityLine.toLocaleLowerCase();
+    let locality = '';
+    if (cityLine && (!city || !addressLower.includes(cityLower)) && !addressLower.includes(cityLineLower)) locality = cityLine;
+
+    const countryLower = country.toLocaleLowerCase();
+    if (country && !addressLower.includes(countryLower) && !locality.toLocaleLowerCase().includes(countryLower)) {
+      locality = [locality, country].filter(Boolean).join(', ');
+    }
+    if (locality) lines.push(locality);
     return lines;
   }
 
