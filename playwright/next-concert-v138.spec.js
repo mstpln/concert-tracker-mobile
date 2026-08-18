@@ -41,8 +41,16 @@ test('v140 normal card uses approved tall black and white ticket geometry', asyn
   await expect(card.locator('.countdown-ticket-tear')).toHaveAttribute('y2','435');
   const frames=card.locator('.countdown-ticket-inner-frame');
   await expect(frames).toHaveCount(2);
+  await expect(frames.nth(0)).toHaveAttribute('x','56');
+  await expect(frames.nth(0)).toHaveAttribute('y','50');
+  await expect(frames.nth(0)).toHaveAttribute('width','358');
   await expect(frames.nth(0)).toHaveAttribute('height','363');
+  await expect(frames.nth(0)).toHaveAttribute('rx','17');
+  await expect(frames.nth(1)).toHaveAttribute('x','525');
+  await expect(frames.nth(1)).toHaveAttribute('y','50');
+  await expect(frames.nth(1)).toHaveAttribute('width','238');
   await expect(frames.nth(1)).toHaveAttribute('height','363');
+  await expect(frames.nth(1)).toHaveAttribute('rx','17');
   const styles=await card.evaluate(node=>({
     fill:getComputedStyle(node.querySelector('.countdown-ticket-contour')).fill,
     contour:getComputedStyle(node.querySelector('.countdown-ticket-contour')).stroke,
@@ -84,6 +92,30 @@ test('v140 quantity uses ticketQuantity with singular, plural and missing behavi
   await expect(card.locator('.countdown-v140-ticket-count')).toHaveCount(0);
   card=await render(page,future,{ticketQuantity:null});
   await expect(card.locator('.countdown-v140-ticket-count')).toHaveCount(0);
+  card=await render(page,future,{ticketQuantity:-2});
+  await expect(card.locator('.countdown-v140-ticket-count')).toHaveCount(0);
+  card=await render(page,future,{ticketQuantity:'not-a-number'});
+  await expect(card.locator('.countdown-v140-ticket-count')).toHaveCount(0);
+});
+
+test('v140 silver countdown remains live-updating through the established IDs', async ({page}) => {
+  await openStart(page);
+  const future=await appDate(page,30);
+  const card=await render(page,future,{ticketQuantity:2});
+  const beforeSeconds=await card.locator('#countdown-s').textContent();
+  const beforeOffset=await card.locator('#countdown-ring-inner').getAttribute('stroke-dashoffset');
+  const after=await page.evaluate(() => {
+    const current=dlCurrentDate();
+    window.__LIVEVAULT_QA_NOW__=new Date(current.getTime()+1000).toISOString();
+    tickCountdownCard();
+    return {
+      seconds:document.querySelector('#countdown-s').textContent,
+      offset:document.querySelector('#countdown-ring-inner').getAttribute('stroke-dashoffset'),
+    };
+  });
+  expect(after.seconds).not.toBe(beforeSeconds);
+  expect(after.offset).not.toBe(beforeOffset);
+  await expect(card.locator('.countdown-v139-progress')).toHaveCSS('stroke','rgb(243, 243, 245)');
 });
 
 test('v140 show day keeps directions and OwnedTickets neon ticket action', async ({page}) => {
@@ -104,6 +136,18 @@ test('v140 show day keeps directions and OwnedTickets neon ticket action', async
   await expect(card.locator('.countdown-v140-date')).toHaveCount(0);
   await expect(card.locator('#countdown-ring-day')).toHaveCount(0);
   await expect(card.locator('#countdown-d')).toHaveCount(0);
+});
+
+test('v140 single PDF ticket preserves the existing delegated hook', async ({page}) => {
+  await openStart(page);
+  const today=await appDate(page,0);
+  const card=await render(page,today,{ownedTickets:[
+    {id:'pdf-only',type:'pdf',sizeBytes:128,addedAt:'2026-01-01T00:00:00.000Z'},
+  ]});
+  const ticket=card.getByRole('button',{name:'Open tickets'});
+  await expect(ticket).toHaveClass(/countdown-pdf-open-btn/);
+  await expect(ticket).toHaveAttribute('data-concert-id','qa-v140');
+  await expect(ticket).toHaveAttribute('data-ticket-id','pdf-only');
 });
 
 test('v140 PDF ticket controls preserve OwnedTickets delegated hooks', async ({page}) => {
