@@ -20,7 +20,8 @@ function v143SyncMainGeoFilterState() {
   const europe = el('europe-toggle-btn');
   if (!nearby || !sweden || !europe) return;
 
-  const showSweden = currentTab === 'concerts' && currentScreen === 'main' && concertsSubTab === 'concerts';
+  const tabbarVisible = !el('tabbar')?.classList.contains('hidden');
+  const showSweden = tabbarVisible && currentTab === 'concerts' && currentScreen === 'main' && concertsSubTab === 'concerts';
   sweden.classList.toggle('hidden', !showSweden);
   nearby.classList.toggle('active', nearbyOnly);
   sweden.classList.toggle('active', swedenOnly);
