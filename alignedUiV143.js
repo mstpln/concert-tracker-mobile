@@ -38,8 +38,11 @@ async function v143ToggleSwedenOnly() {
     europeOnly = false;
   }
   v143SyncMainGeoFilterState();
-  await chrome.storage.local.set({ swedenOnly, nearbyOnly, europeOnly });
+  // Render the local view before persisting the preference. This gives the
+  // established interaction-feedback observer an immediate content mutation
+  // to settle against, while chrome.storage.local remains the durable owner.
   if (currentTab === 'concerts' && currentScreen === 'main') renderConcertsScreen();
+  await chrome.storage.local.set({ swedenOnly, nearbyOnly, europeOnly });
 }
 
 // Alerts uses the same two-tone naming convention as ConcertDates.
