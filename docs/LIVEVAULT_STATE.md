@@ -4,9 +4,9 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The merged baseline is v138 at merge commit `21ded491848d15e46a64255334aee39ddbdb7a80`. PR #146 is merged and contains the first Next Concert ticket presentation.
+The merged baseline is v139 at merge commit `18b346a8f1d0cff2e2d5eea0f202a7f05782e99f`. PR #147 is merged and contains the approved v139 Next Concert ticket correction.
 
-An unreleased v139 correction build is active on `fix/next-concert-ticket-v139`. It rebuilds only the Start-screen Next Concert presentation from the approved 820x386 ticket geometry: the outer graphite contour and dashed tear line share the same graphite, the tear is fixed at x=468, and the two inset frames are 358x286 and 238x286. The normal state uses a silver/graphite countdown in the right stub. On concert day the countdown is replaced by the approved yellow circular `Open tickets` control while `Get directions` remains on the left. Existing Maps URL construction and OwnedTickets PDF opening remain authoritative behavior paths.
+An unreleased v140 visual correction build is active on `feature/next-concert-ticket-v140`. It changes only the Start-screen Next Concert presentation while preserving the established countdown tick, Maps URL construction and OwnedTickets behavior paths. Normal days use the approved 820x463 true-black ticket geometry with a thin white outer contour, thicker white inner frames, white tear line at x=468, visually uppercase artist name, compact silver countdown, deterministic concert date and a dynamic user-owned `ticketQuantity` display with grey separator rules. Concert day keeps the same tall geometry, retains `Show today` and `Get directions` on the left, removes the countdown/date/quantity block, and uses the approved neon-light-blue `#5ED8FF` circular Open tickets action on the right.
 
 ## Provider and release cleanup finalization
 
@@ -20,10 +20,10 @@ Listening artwork does not treat a bare MusicBrainz release MBID as proof that C
 
 Spotify diagnostics include an explicit aggregate `attempted` outcome counter in addition to lane, endpoint, successful/no-match/skipped/provider-error and circuit information. No IDs, queries, URLs, tokens or payloads are recorded.
 
-For the active v139 branch, `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v139. The deterministic build state and service-worker shell include the v139 Next Concert stylesheet while retaining the existing v138 compatibility assets.
+For the active v140 branch, `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at v140. The deterministic build state, service-worker shell and synthetic QA packaging include the v140 Next Concert JS/CSS while retaining the existing v138/v139 compatibility assets.
 
 ## Safety and release boundary
 
 Existing UsageTracker caps/pacing, Spotify circuit, cross-scheduler lease, optimistic concurrency, reviewed provider-decision preservation, immutable listening source observations and credential boundaries remain authoritative. Automated browser QA uses only synthetic fixtures and the QA fake backend.
 
-No production provider call, production workflow, production R2 read/write or deployment has been performed for v139. The correction/review cycle is still active; merge readiness requires the exact PR head to be green for unit/safety plus desktop/mobile synthetic browser QA. Merge still requires explicit user authorization.
+No production provider call, production workflow, production R2 read/write or deployment has been performed for v140. The correction/review cycle remains active until the exact PR head is green for unit/safety plus desktop/mobile synthetic Chromium QA and has received final code-path review. Merge still requires explicit user authorization.
