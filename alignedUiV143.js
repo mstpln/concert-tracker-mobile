@@ -2,25 +2,13 @@
 
 // v143 aligned UI refinements. The Sweden filters are presentation-only
 // views over the existing concert data; they never mutate concerts.json.
-function v143ReadPersistedSwedenOnly() {
-  try {
-    return JSON.parse(localStorage.getItem('concertTrackerSettings') || '{}').swedenOnly === true;
-  } catch {
-    return false;
-  }
-}
-
-let swedenOnly = v143ReadPersistedSwedenOnly();
+let swedenOnly = false;
 let profileSwedenOnly = false;
 
-// This script is parsed after app.js but before DOMContentLoaded. Resolve the
-// third root geographic choice now so app.js restores Nearby/EU from the
-// already-exclusive persisted state instead of racing an asynchronous read.
-if (swedenOnly) {
-  nearbyOnly = false;
-  europeOnly = false;
-  void chrome.storage.local.set({ swedenOnly: true, nearbyOnly: false, europeOnly: false });
-}
+const v143GeoStateReady = Promise.resolve(window.LiveVaultV143GeoStateReady).then((state) => {
+  swedenOnly = state?.swedenOnly === true;
+  return state;
+});
 
 function v143IsSwedenCountry(country) {
   return String(country || '').trim().toLowerCase() === 'sweden';
@@ -103,8 +91,10 @@ el('app-header')?.addEventListener('click', (event) => {
 }, true);
 
 document.addEventListener('DOMContentLoaded', () => {
-  v143SyncMainGeoFilterState();
-  if (swedenOnly && currentTab === 'concerts' && currentScreen === 'main') renderConcertsScreen();
+  void v143GeoStateReady.then(() => {
+    v143SyncMainGeoFilterState();
+    if (swedenOnly && currentTab === 'concerts' && currentScreen === 'main') renderConcertsScreen();
+  });
 });
 
 const v143BaseRenderConcertsScreen = renderConcertsScreen;
