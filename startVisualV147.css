@@ -1,0 +1,67 @@
+/* v147 focused Start-page corrections on top of merged v146.
+   Runtime behavior, ticket ownership and concert-day presentation are unchanged. */
+
+/* Normal-day calendar: overlap the antialiased inner edge of the established
+   v140 right frame by one SVG unit. The frame is a centered 3-unit stroke, so
+   this covers the hairline seam that remained when the surface stopped at the
+   mathematical inside edge while leaving the outer two stroke units visible.
+   The radius is expressed as percentages of this proportional box so it scales
+   with the 820x463 ticket instead of being fixed to one viewport size. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub {
+  left: 64.0854%;
+  top: 10.9071%;
+  width: 28.9024%;
+  height: 78.1857%;
+  border-radius: 6.962% / 4.558%;
+  box-shadow: none;
+}
+
+/* DATE is the emphasized header label. The actual formatted concert date
+   keeps its established v146 weight. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-label {
+  font-weight: 900;
+}
+
+/* Rebalance the black countdown body. The day value remains in the inherited
+   app/system font family and stays horizontally centered. Move the primary
+   day group upward while keeping the compatibility SVG footprint just inside
+   the content box, then place the detailed timer on the same visual row as
+   the ticket quantity at left. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-countdown {
+  left: 0;
+  top: 1%;
+  width: 100%;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-stub-content::after {
+  left: 0;
+  top: 59%;
+  width: 100%;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-time {
+  left: 0;
+  top: 75%;
+  width: 100%;
+}
+
+/* v140 already has the correct equal four-pixel spacing around the ticket
+   quantity text. Restore those original real line nodes and disable v146's
+   pseudo-line approximation. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count-line {
+  opacity: 1;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count::before,
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count::after {
+  content: none;
+  display: none;
+}
+
+/* Concert Stats: match the single 1px outline thickness used by Listening
+   cards. The historical inset shadow plus the blue border made this edge read
+   twice as heavy. */
+.stats-teaser-card {
+  box-shadow: none;
+  border-width: 1px;
+}
+.stats-teaser-card .stats-teaser-footer {
+  font-weight: 400;
+}

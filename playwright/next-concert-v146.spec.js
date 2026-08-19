@@ -94,7 +94,7 @@ test('v146 normal day uses calendar countdown, grey contour and softened side pe
   await card.screenshot({ path: testInfo.outputPath('v146-next-concert-375px.png') });
 });
 
-test('v146 calendar uses the approved single-frame geometry at 375 and 480', async ({ page }) => {
+test('v146 calendar remains single-frame and contained after later visual refinements', async ({ page }) => {
   await openStart(page);
   const future = await appDate(page, 30);
   for (const width of [375, 480]) {
@@ -114,16 +114,23 @@ test('v146 calendar uses the approved single-frame geometry at 375 and 480', asy
         overflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
       };
     });
-    expect(metrics.left).toBeCloseTo(0.6442, 3);
-    expect(metrics.top).toBeCloseTo(0.1172, 3);
-    expect(metrics.width).toBeCloseTo(0.2812, 3);
-    expect(metrics.height).toBeCloseTo(0.764, 3);
+    // v147 intentionally refines the exact inset; this historical test keeps
+    // guarding the v146 single-frame/contained contract. Current geometry is
+    // locked precisely by start-visual-v147.spec.js.
+    expect(metrics.left).toBeGreaterThan(0.63);
+    expect(metrics.left).toBeLessThan(0.66);
+    expect(metrics.top).toBeGreaterThan(0.10);
+    expect(metrics.top).toBeLessThan(0.13);
+    expect(metrics.width).toBeGreaterThan(0.27);
+    expect(metrics.width).toBeLessThan(0.30);
+    expect(metrics.height).toBeGreaterThan(0.74);
+    expect(metrics.height).toBeLessThan(0.80);
     expect(metrics.boxShadow).toBe('none');
     expect(metrics.overflow).toBe(true);
   }
 });
 
-test('v146 quantity rules use the approved optical spacing without moving the legacy geometry', async ({ page }) => {
+test('v146 quantity DOM remains compatible after later spacing refinements', async ({ page }) => {
   await openStart(page);
   const future = await appDate(page, 30);
   for (const width of [375, 480]) {
@@ -131,16 +138,16 @@ test('v146 quantity rules use the approved optical spacing without moving the le
     const card = await render(page, future);
     const metrics = await card.locator('.countdown-v140-ticket-count').evaluate((node) => ({
       originalOpacity: Array.from(node.querySelectorAll('.countdown-v140-ticket-count-line')).map((line) => getComputedStyle(line).opacity),
-      top: getComputedStyle(node, '::before').top,
-      bottom: getComputedStyle(node, '::after').top,
-      topColor: getComputedStyle(node, '::before').backgroundColor,
-      bottomColor: getComputedStyle(node, '::after').backgroundColor,
+      lineCount: node.querySelectorAll('.countdown-v140-ticket-count-line').length,
+      beforeContent: getComputedStyle(node, '::before').content,
+      afterContent: getComputedStyle(node, '::after').content,
     }));
-    expect(metrics.originalOpacity).toEqual(['0', '0']);
-    expect(metrics.top).toBe('-5px');
-    expect(metrics.bottom).toBe(width <= 390 ? '12px' : '13px');
-    expect(metrics.topColor).toBe('rgb(119, 120, 125)');
-    expect(metrics.bottomColor).toBe('rgb(119, 120, 125)');
+    // v147 restores the original v140 line nodes to get equal visible gaps;
+    // the exact pixel spacing is locked by start-visual-v147.spec.js.
+    expect(metrics.lineCount).toBe(2);
+    expect(metrics.originalOpacity).toEqual(['1', '1']);
+    expect(metrics.beforeContent).toBe('none');
+    expect(metrics.afterContent).toBe('none');
   }
 });
 
