@@ -23,11 +23,12 @@
 
 /* Rebalance the black countdown body. The day value remains in the inherited
    app/system font family and stays horizontally centered. Move the primary
-   day group upward so it is vertically balanced in the black body, then place
-   the detailed timer on the same visual row as the ticket quantity at left. */
+   day group upward while keeping the compatibility SVG footprint just inside
+   the content box, then place the detailed timer on the same visual row as
+   the ticket quantity at left. */
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-countdown {
   left: 0;
-  top: -2%;
+  top: 1%;
   width: 100%;
 }
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-stub-content::after {
