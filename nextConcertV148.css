@@ -40,8 +40,9 @@
 }
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count strong {
   position: relative;
-  display: inline-block;
-  width: auto;
+  display: block;
+  width: max-content;
+  margin: 0 auto;
   padding: 0 12px;
   color: #c9c9ce;
   text-align: center;
