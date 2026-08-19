@@ -10,15 +10,15 @@ async function applyAutomationFixture(page) {
   await page.evaluate(() => {
     const activity = (status, workCount, changeCount, extra = {}) => ({
       status,
-      startedAt:'2027-07-16T01:00:00.000Z',
-      finishedAt:'2027-07-16T01:15:00.000Z',
+      startedAt:'2026-08-19T01:00:00.000Z',
+      finishedAt:'2026-08-19T01:15:00.000Z',
       result:{ workCount, changeCount },
       ...extra,
     });
     apiUsage = {
       automationRuns:{
         structuredResearch:{
-          startedAt:'2027-07-16T01:00:00.000Z', finishedAt:'2027-07-16T01:15:00.000Z', status:'ok',
+          startedAt:'2026-08-19T01:00:00.000Z', finishedAt:'2026-08-19T01:15:00.000Z', status:'ok',
           activities:{
             concerts:activity('ok',370,31),
             artistArtwork:activity('ok',10,3),
@@ -26,7 +26,7 @@ async function applyAutomationFixture(page) {
           },
         },
         focusedTavilyConcert:{
-          startedAt:'2027-07-15T02:00:00.000Z', finishedAt:'2027-07-15T02:10:00.000Z', status:'attention',
+          startedAt:'2026-08-15T02:00:00.000Z', finishedAt:'2026-08-15T02:10:00.000Z', status:'attention',
           activities:{
             webConcertSearch:activity('attention',8,1,{
               failureCode:'provider_unavailable',
@@ -35,13 +35,13 @@ async function applyAutomationFixture(page) {
           },
         },
         providerIdentity:{
-          startedAt:'2027-07-15T10:00:00.000Z', finishedAt:'2027-07-15T10:10:00.000Z', status:'ok',
+          startedAt:'2026-08-18T10:00:00.000Z', finishedAt:'2026-08-18T10:10:00.000Z', status:'ok',
           activities:{ artistInformation:activity('ok',12,2) },
         },
       },
     };
     window.LiveVaultListenBrainz = { connection:() => ({
-      lastSyncAt:'2027-07-16T06:00:00.000Z',
+      lastSyncAt:'2026-08-19T06:00:00.000Z',
       lastSyncResult:{ processed:24, added:24, skipped:0 },
     }) };
     window.BandmarkrSettingsAutomationReportingV145.applyCurrent();
