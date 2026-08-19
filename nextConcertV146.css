@@ -10,20 +10,20 @@
 }
 
 /* Keep the established v140 right frame as the single visible white border.
-   The calendar surface sits slightly inside that frame, matching the approved
-   reference without introducing a second inset stroke. */
+   The calendar surface uses the exact approved inset geometry and introduces
+   no second border of its own. */
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub {
-  left: 64.95%;
-  top: 12.25%;
-  width: 27.2%;
-  height: 75.25%;
+  left: 64.42%;
+  top: 11.72%;
+  width: 28.12%;
+  height: 76.4%;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
   place-items: initial;
   overflow: hidden;
-  border-radius: 11px;
+  border-radius: 12px;
   background: #000000;
   font-family: inherit;
 }
