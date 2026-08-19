@@ -107,16 +107,16 @@
     ].filter((date)=>date>now).sort((a,b)=>a-b)[0]?.toISOString() || null;
   }
 
-  function reportResult(report, workOne, workMany, changeOne, changeMany) {
+  function reportResult(report, workOne, workMany, workAction, changeOne, changeMany, changeAction) {
     const work = report?.result?.workCount;
     const changed = report?.result?.changeCount;
     if (!finite(work) || !finite(changed)) return null;
-    return `${plural(work,workOne,workMany)} · ${plural(changed,changeOne,changeMany)}`;
+    return `${plural(work,workOne,workMany)} ${workAction} · ${plural(changed,changeOne,changeMany)} ${changeAction}`;
   }
 
-  function legacyPair(run, workKey, workOne, workMany, changeKey, changeOne, changeMany) {
+  function legacyPair(run, workKey, workOne, workMany, workAction, changeKey, changeOne, changeMany, changeAction) {
     if (!run || !finite(run[workKey]) || !finite(run[changeKey])) return null;
-    return `${plural(run[workKey],workOne,workMany)} · ${plural(run[changeKey],changeOne,changeMany)}`;
+    return `${plural(run[workKey],workOne,workMany)} ${workAction} · ${plural(run[changeKey],changeOne,changeMany)} ${changeAction}`;
   }
 
   function legacySetlistState(run) {
@@ -156,11 +156,11 @@
     return [
       {
         name:'Concerts', ...concertsState, last:concertsActivity?.finishedAt || structured?.finishedAt, next:nextMwfUtc(now),
-        result:reportResult(concertsActivity,'artist','artists','concert','concerts') || legacyPair(legacyStructured,'bandsProcessed','artist','artists','concertsAdded','concert','concerts') || 'No recent result reported.',
+        result:reportResult(concertsActivity,'artist','artists','checked','concert','concerts','added') || legacyPair(legacyStructured,'bandsProcessed','artist','artists','checked','concertsAdded','concert','concerts','added') || 'No recent result reported.',
       },
       {
         name:'Web concert search', ...focusedState, last:focusedActivity?.finishedAt || focused?.finishedAt, next:nextFocusedWebUtc(now),
-        result:reportResult(focusedActivity,'artist','artists','concert','concerts') || legacyPair(legacyFocused,'bandsAttempted','artist','artists','concertsAdded','concert','concerts') || 'No recent result reported.',
+        result:reportResult(focusedActivity,'artist','artists','checked','concert','concerts','added') || legacyPair(legacyFocused,'bandsAttempted','artist','artists','checked','concertsAdded','concert','concerts','added') || 'No recent result reported.',
       },
       {
         name:'Listening history',
@@ -173,15 +173,15 @@
       },
       {
         name:'Artist information', ...artistState, last:artistActivity?.finishedAt || providerIdentity?.finishedAt, next:null,
-        result:reportResult(artistActivity,'artist','artists','artist','artists') || legacyPair(usage.lastProviderIdentityRun,'bandsConsidered','artist','artists','updates','artist','artists') || 'No recent result reported.',
+        result:reportResult(artistActivity,'artist','artists','checked','artist','artists','updated') || legacyPair(usage.lastProviderIdentityRun,'bandsConsidered','artist','artists','checked','updates','artist','artists','updated') || 'No recent result reported.',
       },
       {
         name:'Artist artwork', ...artworkState, last:artworkActivity?.finishedAt || (legacyStructured && finite(legacyStructured.artistImagesUpdated) ? legacyStructured.finishedAt : null), next:nextMwfUtc(now),
-        result:reportResult(artworkActivity,'artist','artists','image','images') || 'No recent result reported.',
+        result:reportResult(artworkActivity,'artist','artists','checked','image','images','added') || 'No recent result reported.',
       },
       {
         name:'Setlists', ...setlistState, last:setlistsActivity?.finishedAt || structured?.finishedAt, next:nextMwfUtc(now),
-        result:reportResult(setlistsActivity,'show','shows','setlist','setlists') || legacyPair(legacyStructured,'setlistChecksAttempted','show','shows','setlistsAdded','setlist','setlists') || 'No recent result reported.',
+        result:reportResult(setlistsActivity,'show','shows','checked','setlist','setlists','added') || legacyPair(legacyStructured,'setlistChecksAttempted','show','shows','checked','setlistsAdded','setlist','setlists','added') || 'No recent result reported.',
       },
     ];
   }
