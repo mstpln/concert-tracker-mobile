@@ -44,11 +44,11 @@ test('v146 normal day uses calendar countdown, grey contour and softened side pe
   const contourStyles = await overlay.evaluate((node) => ({
     fill: getComputedStyle(node).fill,
     stroke: getComputedStyle(node).stroke,
-    strokeWidth: getComputedStyle(node).strokeWidth,
   }));
   expect(contourStyles.fill).toBe('rgb(0, 0, 0)');
   expect(contourStyles.stroke).toBe('rgb(181, 183, 188)');
-  expect(contourStyles.strokeWidth).toBe('1.5px');
+  // Later presentation layers may refine the contour weight; v146 owns the
+  // softer grey contour/color and path. Current weight is locked by v148 QA.
   await expect(card.locator('.countdown-ticket-tear')).toHaveCSS('stroke', 'rgb(255, 255, 255)');
   await expect(card.locator('.countdown-ticket-inner-frame').first()).toHaveCSS('stroke', 'rgb(255, 255, 255)');
 
@@ -116,7 +116,7 @@ test('v146 calendar remains single-frame and contained after later visual refine
     });
     // v147 intentionally refines the exact inset; this historical test keeps
     // guarding the v146 single-frame/contained contract. Current geometry is
-    // locked precisely by start-visual-v147.spec.js.
+    // locked precisely by start-visual-v147.spec.js and v148 no-drift QA.
     expect(metrics.left).toBeGreaterThan(0.63);
     expect(metrics.left).toBeLessThan(0.66);
     expect(metrics.top).toBeGreaterThan(0.10);
@@ -130,22 +130,22 @@ test('v146 calendar remains single-frame and contained after later visual refine
   }
 });
 
-test('v146 quantity DOM remains compatible after later spacing refinements', async ({ page }) => {
+test('v146 quantity DOM remains compatible after later presentation refinements', async ({ page }) => {
   await openStart(page);
   const future = await appDate(page, 30);
   for (const width of [375, 480]) {
     await page.setViewportSize({ width, height: 900 });
     const card = await render(page, future);
     const metrics = await card.locator('.countdown-v140-ticket-count').evaluate((node) => ({
-      originalOpacity: Array.from(node.querySelectorAll('.countdown-v140-ticket-count-line')).map((line) => getComputedStyle(line).opacity),
       lineCount: node.querySelectorAll('.countdown-v140-ticket-count-line').length,
+      text: node.querySelector('strong')?.textContent,
       beforeContent: getComputedStyle(node, '::before').content,
       afterContent: getComputedStyle(node, '::after').content,
     }));
-    // v147 restores the original v140 line nodes to get equal visible gaps;
-    // the exact pixel spacing is locked by start-visual-v147.spec.js.
+    // v148 changes current visibility to the approved pill while preserving the
+    // v140/v146 quantity DOM/data contract.
     expect(metrics.lineCount).toBe(2);
-    expect(metrics.originalOpacity).toEqual(['1', '1']);
+    expect(metrics.text).toBe('4 TICKETS');
     expect(metrics.beforeContent).toBe('none');
     expect(metrics.afterContent).toBe('none');
   }
