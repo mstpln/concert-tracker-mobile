@@ -1,0 +1,70 @@
+/* v148 approved normal-day Next Concert polish. Loaded after v147.
+   Keep the v147 calendar surface geometry and internal countdown spacing exactly
+   unchanged; this layer only changes the explicitly approved visual details. */
+
+/* Slightly thinner normal-day outer ticket contour. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-ticket-contour {
+  stroke-width: 1.1;
+}
+
+/* The original right SVG frame can read thinner where the calendar surface
+   visually overlaps its inner antialiased edge. Mask only that base frame and
+   redraw the exact same x/y/width/height/rx with the same non-scaling 3px
+   stroke contract used by the left inner frame. No calendar geometry changes. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v148-right-frame-base {
+  opacity: 0;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v148-right-frame-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v148-right-frame {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 3;
+}
+
+/* Replace the two quantity rules with the approved grey outlined pill. The
+   canonical ticketQuantity text remains centered in the established left lane. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count {
+  left: 6.83%;
+  top: 73.9%;
+  width: 43.66%;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c9c9ce;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count-line {
+  display: none;
+  opacity: 0;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: 24px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1.25px solid #c9c9ce;
+  border-radius: 999px;
+  color: #c9c9ce;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: .065em;
+  box-sizing: border-box;
+}
+
+/* Detailed live countdown is regular weight only. Positioning and spacing stay
+   owned by v147 and are intentionally not restated here. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-time {
+  font-weight: 400;
+}
