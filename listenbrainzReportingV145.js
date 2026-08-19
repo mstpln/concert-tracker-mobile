@@ -25,11 +25,12 @@
     } catch (_) { return null; }
   }
 
-  function persistSyncResult(result, storage = root.localStorage) {
+  function persistSyncResult(result, storage = root.localStorage, preserved = null) {
     const summary = normalizeSyncResult(result);
     const current = storedSettings(storage);
+    const prior = preserved && typeof preserved === 'object' && !Array.isArray(preserved) ? preserved : null;
     if (!summary || !current || !storage?.setItem) return summary;
-    storage.setItem(api.SETTINGS_KEY, JSON.stringify({ ...current, lastSyncResult: summary }));
+    storage.setItem(api.SETTINGS_KEY, JSON.stringify({ ...(prior || {}), ...current, lastSyncResult: summary }));
     return summary;
   }
 
@@ -51,8 +52,9 @@
   };
 
   api.syncNow = async (...args) => {
+    const before = storedSettings(root.localStorage);
     const result = await originalSyncNow(...args);
-    persistSyncResult(result);
+    persistSyncResult(result, root.localStorage, before);
     return result;
   };
 
