@@ -29,38 +29,36 @@
   stroke-width: 3;
 }
 
-/* Replace the two quantity rules with the approved grey outlined pill. The
-   canonical ticketQuantity text remains centered in the established left lane. */
+/* Replace the visible quantity rules with the approved muted-grey pill without
+   moving the established v140/v147 quantity text row. Keeping that row intact
+   preserves locality spacing and the historical quantity/date footprint. */
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count {
-  left: 6.83%;
-  top: 73.9%;
-  width: 43.66%;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   color: #c9c9ce;
 }
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count-line {
-  display: none;
   opacity: 0;
 }
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count strong {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+  display: inline-block;
   width: auto;
-  height: 24px;
-  margin: 0;
   padding: 0 12px;
+  color: #c9c9ce;
+  text-align: center;
+  box-sizing: content-box;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count strong::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 24px;
   border: 1.25px solid #c9c9ce;
   border-radius: 999px;
-  color: #c9c9ce;
-  font-size: 11px;
-  font-weight: 750;
-  line-height: 1;
-  letter-spacing: .065em;
+  transform: translateY(-50%);
   box-sizing: border-box;
+  pointer-events: none;
 }
 
 /* Detailed live countdown is regular weight only. Positioning and spacing stay
