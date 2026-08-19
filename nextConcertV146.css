@@ -9,19 +9,22 @@
   stroke-width: 1.5;
 }
 
-/* The established right frame keeps its exact v140 geometry. The calendar
-   fills it edge-to-edge; the inset stroke restores the approved white frame
-   without the black gap produced by an inset overlay. */
+/* Keep the established v140 right frame as the single visible white border.
+   The calendar surface sits slightly inside that frame, matching the approved
+   reference without introducing a second inset stroke. */
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub {
+  left: 64.95%;
+  top: 12.25%;
+  width: 27.2%;
+  height: 75.25%;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
   place-items: initial;
   overflow: hidden;
-  border-radius: clamp(7px, 1.85vw, 9px);
+  border-radius: 11px;
   background: #000000;
-  box-shadow: inset 0 0 0 1.5px #ffffff;
   font-family: inherit;
 }
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-head {
