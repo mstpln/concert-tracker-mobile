@@ -1,17 +1,18 @@
 /* v147 focused Start-page corrections on top of merged v146.
    Runtime behavior, ticket ownership and concert-day presentation are unchanged. */
 
-/* Normal-day calendar: occupy the exact inside edge of the established v140
-   right inner frame. The SVG frame is a 3-unit centered stroke, so its usable
-   interior begins 1.5 units inside x=525/y=50 and ends 1.5 units before the
-   opposite edges. This removes the visible v146 void without adding a second
-   border or covering the existing frame. */
+/* Normal-day calendar: overlap the antialiased inner edge of the established
+   v140 right frame by one SVG unit. The frame is a centered 3-unit stroke, so
+   this covers the hairline seam that remained when the surface stopped at the
+   mathematical inside edge while leaving the outer two stroke units visible.
+   The radius is expressed as percentages of this proportional box so it scales
+   with the 820x463 ticket instead of being fixed to one viewport size. */
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub {
-  left: 64.21%;
-  top: 11.12%;
-  width: 28.66%;
-  height: 77.75%;
-  border-radius: 6.5px;
+  left: 64.0854%;
+  top: 10.9071%;
+  width: 28.9024%;
+  height: 78.1857%;
+  border-radius: 6.962% / 4.558%;
   box-shadow: none;
 }
 
