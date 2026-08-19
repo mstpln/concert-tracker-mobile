@@ -38,9 +38,10 @@ async function renderNextConcert(page, date) {
   return page.locator('#countdown-card');
 }
 
-test('v147 calendar meets the existing frame and keeps the countdown centered', async ({ page }) => {
+test('v147 calendar underlaps the existing frame and keeps the countdown centered', async ({ page }, testInfo) => {
   await openStart(page);
   const future = await appDate(page, 65);
+  const radii = [];
 
   for (const width of [375, 480]) {
     await page.setViewportSize({ width, height: 900 });
@@ -57,6 +58,7 @@ test('v147 calendar meets the existing frame and keeps the countdown centered', 
       const dateStyle = getComputedStyle(stub.querySelector('.countdown-v146-calendar-date'));
       const dayStyle = getComputedStyle(stub.querySelector('#countdown-ring-day'));
       const cardStyle = getComputedStyle(node);
+      const stubStyle = getComputedStyle(stub);
       return {
         left: (stubRect.left - cardRect.left) / cardRect.width,
         top: (stubRect.top - cardRect.top) / cardRect.height,
@@ -73,14 +75,17 @@ test('v147 calendar meets the existing frame and keeps the countdown centered', 
         dateWeight: dateStyle.fontWeight,
         dayFont: dayStyle.fontFamily,
         cardFont: cardStyle.fontFamily,
-        boxShadow: getComputedStyle(stub).boxShadow,
+        boxShadow: stubStyle.boxShadow,
+        radiusX: parseFloat(stubStyle.borderTopLeftRadius.split(' ')[0]),
       };
     });
 
-    expect(metrics.left).toBeCloseTo(0.6421, 3);
-    expect(metrics.top).toBeCloseTo(0.1112, 3);
-    expect(metrics.width).toBeCloseTo(0.2866, 3);
-    expect(metrics.height).toBeCloseTo(0.7775, 3);
+    // One SVG unit of underlap beneath the 3-unit frame stroke prevents its
+    // antialiased inner edge from exposing a dark seam around the white head.
+    expect(metrics.left).toBeCloseTo(0.640854, 4);
+    expect(metrics.top).toBeCloseTo(0.109071, 4);
+    expect(metrics.width).toBeCloseTo(0.289024, 4);
+    expect(metrics.height).toBeCloseTo(0.781857, 4);
     expect(metrics.headTopGap).toBeLessThanOrEqual(0.1);
     expect(metrics.headLeftGap).toBeLessThanOrEqual(0.1);
     expect(metrics.headRightGap).toBeLessThanOrEqual(0.1);
@@ -90,7 +95,13 @@ test('v147 calendar meets the existing frame and keeps the countdown centered', 
     expect(metrics.dateWeight).toBe('790');
     expect(metrics.dayFont).toBe(metrics.cardFont);
     expect(metrics.boxShadow).toBe('none');
+    radii.push(metrics.radiusX);
+    await card.screenshot({ path: testInfo.outputPath(`v147-next-concert-${width}px.png`) });
   }
+
+  // Radius must scale with the ticket instead of staying fixed at one CSS px
+  // value. The wider rendering therefore has a proportionally larger radius.
+  expect(radii[1]).toBeGreaterThan(radii[0] * 1.2);
 });
 
 test('v147 restores equal visible spacing around the ticket quantity', async ({ page }) => {
