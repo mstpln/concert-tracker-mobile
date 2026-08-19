@@ -15,7 +15,7 @@ async function applyAutomationFixture(page) {
       result:{ workCount, changeCount },
       ...extra,
     });
-    const usage = {
+    apiUsage = {
       automationRuns:{
         structuredResearch:{
           startedAt:'2027-07-16T01:00:00.000Z', finishedAt:'2027-07-16T01:15:00.000Z', status:'ok',
@@ -40,13 +40,11 @@ async function applyAutomationFixture(page) {
         },
       },
     };
-    const listenBrainz = { connection:() => ({
+    window.LiveVaultListenBrainz = { connection:() => ({
       lastSyncAt:'2027-07-16T06:00:00.000Z',
       lastSyncResult:{ processed:24, added:24, skipped:0 },
     }) };
-    window.BandmarkrSettingsAutomationReportingV145.applyActivityRows(
-      document.getElementById('screen-settings'), usage, new Date('2027-07-16T12:00:00.000Z'), listenBrainz
-    );
+    window.BandmarkrSettingsAutomationReportingV145.applyCurrent();
   });
 }
 
@@ -87,16 +85,16 @@ test('v145 Album artwork coverage reads separate synthetic Spotify metadata afte
   await expect(screen.getByText('Album artwork', { exact:true })).toBeVisible();
 
   await page.evaluate(() => {
-    const bands = [{ id:'qa-a', name:'QA A' }, { id:'qa-b', name:'QA B' }];
-    const sourceEvents = [
+    bands = [{ id:'qa-a', name:'QA A' }, { id:'qa-b', name:'QA B' }];
+    listeningEvents = [
       { stableListenId:'qa-1', localBandId:'qa-a', releaseTitle:'Shared Synthetic Album', recordingTitle:'One', spotifyTrackId:'qa-track-1' },
       { stableListenId:'qa-2', localBandId:'qa-a', releaseTitle:'Shared Synthetic Album', recordingTitle:'Two', spotifyTrackId:'qa-track-2' },
       { stableListenId:'qa-3', localBandId:'qa-b', releaseTitle:'Shared Synthetic Album', recordingTitle:'Three', spotifyTrackId:'qa-track-3' },
     ];
-    const metadata = { recordForTrack(id) { return id === 'qa-track-1' ? { artworkUrl:'https://example.invalid/synthetic-art.jpg' } : null; } };
-    window.BandmarkrSettingsAutomationReportingV145.applyAlbumCoverage(
-      document.getElementById('screen-settings'), bands, sourceEvents, metadata
-    );
+    window.SpotifyListeningMetadataV99.recordForTrack = (id) => id === 'qa-track-1'
+      ? { artworkUrl:'https://example.invalid/synthetic-art.jpg' }
+      : null;
+    window.BandmarkrSettingsAutomationReportingV145.applyCurrent();
   });
 
   const album = screen.locator('[data-v123-metric="Album artwork"]');
@@ -110,14 +108,13 @@ test('v145 long safe failure reason wraps without changing the existing Settings
   await page.setViewportSize({ width:360, height:900 });
   await openSettings(page);
   await page.evaluate(() => {
-    const usage = { automationRuns:{ structuredResearch:{ status:'ok', activities:{
+    apiUsage = { automationRuns:{ structuredResearch:{ status:'ok', activities:{
       concerts:{ status:'ok', result:{ workCount:1, changeCount:0 } },
       artistArtwork:{ status:'attention', result:{ workCount:10, changeCount:0 }, failureCode:'update_failed', failureReason:'Artist artwork update could not be completed safely because the provider response could not be used.' },
       setlists:{ status:'ok', result:{ workCount:4, changeCount:0 } },
     } } } };
-    window.BandmarkrSettingsAutomationReportingV145.applyActivityRows(
-      document.getElementById('screen-settings'), usage, new Date('2027-07-16T12:00:00.000Z'), { connection:()=>null }
-    );
+    window.LiveVaultListenBrainz = { connection:()=>null };
+    window.BandmarkrSettingsAutomationReportingV145.applyCurrent();
   });
   const update = page.locator('#screen-settings .settings-v123-section').filter({ hasText:'UPDATE ACTIVITY' });
   await expect(update.locator('.settings-v123-problem')).toHaveCount(1);
