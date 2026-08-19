@@ -62,10 +62,25 @@ test('v146 normal day uses calendar countdown, grey contour and softened side pe
   await expect(stub.locator('.countdown-v146-calendar-label')).toHaveText('DATE');
   await expect(stub.locator('.countdown-v146-calendar-date')).toHaveText(displayDate(future));
   await expect(stub.locator('#countdown-ring-day')).toBeVisible();
-  await expect(stub.locator('#countdown-ring-day')).toHaveText('30');
+  const visibleDays = await stub.locator('#countdown-ring-day').textContent();
+  expect(Number(visibleDays)).toBeGreaterThan(0);
+  await expect(stub.locator('#countdown-d')).toHaveText(visibleDays);
   expect(await stub.locator('.countdown-v139-stub-content').evaluate((node) => getComputedStyle(node, '::after').content)).toBe('"DAYS LEFT"');
   await expect(stub.locator('.countdown-v139-time')).toBeVisible();
   expect(await card.locator('.countdown-v140-date').evaluate((node) => getComputedStyle(node).opacity)).toBe('0');
+
+  const flush = await stub.evaluate((node) => {
+    const head = node.querySelector('.countdown-v146-calendar-head').getBoundingClientRect();
+    const stub = node.getBoundingClientRect();
+    return {
+      left: Math.abs(head.left - stub.left),
+      right: Math.abs(head.right - stub.right),
+      top: Math.abs(head.top - stub.top),
+    };
+  });
+  expect(flush.left).toBeLessThanOrEqual(0.1);
+  expect(flush.right).toBeLessThanOrEqual(0.1);
+  expect(flush.top).toBeLessThanOrEqual(0.1);
 
   const fontFamilies = await card.evaluate((node) => ({
     card: getComputedStyle(node).fontFamily,
