@@ -94,6 +94,35 @@ test('v146 normal day uses calendar countdown, grey contour and softened side pe
   await card.screenshot({ path: testInfo.outputPath('v146-next-concert-375px.png') });
 });
 
+test('v146 calendar uses the approved single-frame geometry at 375 and 480', async ({ page }) => {
+  await openStart(page);
+  const future = await appDate(page, 30);
+  for (const width of [375, 480]) {
+    await page.setViewportSize({ width, height: 900 });
+    const card = await render(page, future);
+    const metrics = await card.evaluate((node) => {
+      const cardRect = node.getBoundingClientRect();
+      const stub = node.querySelector('.countdown-v146-calendar-stub');
+      const stubRect = stub.getBoundingClientRect();
+      const style = getComputedStyle(stub);
+      return {
+        left: (stubRect.left - cardRect.left) / cardRect.width,
+        top: (stubRect.top - cardRect.top) / cardRect.height,
+        width: stubRect.width / cardRect.width,
+        height: stubRect.height / cardRect.height,
+        boxShadow: style.boxShadow,
+        overflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      };
+    });
+    expect(metrics.left).toBeCloseTo(0.6442, 3);
+    expect(metrics.top).toBeCloseTo(0.1172, 3);
+    expect(metrics.width).toBeCloseTo(0.2812, 3);
+    expect(metrics.height).toBeCloseTo(0.764, 3);
+    expect(metrics.boxShadow).toBe('none');
+    expect(metrics.overflow).toBe(true);
+  }
+});
+
 test('v146 quantity rules use the approved optical spacing without moving the legacy geometry', async ({ page }) => {
   await openStart(page);
   const future = await appDate(page, 30);
