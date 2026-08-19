@@ -30,7 +30,7 @@ for (const file of shell) fs.copyFileSync(path.join(root, file), path.join(out, 
 for (const file of fs.readdirSync(path.join(root, 'icons'))) fs.copyFileSync(path.join(root, 'icons', file), path.join(out, 'icons', file));
 for (const file of fs.readdirSync(path.join(root, 'assets', 'listening'))) fs.copyFileSync(path.join(root, 'assets', 'listening', file), path.join(out, 'assets', 'listening', file));
 for (const file of ['qa/qa-bootstrap.js', 'qa/qa.css', 'qa/fixtures/qa-fixtures.js', 'qa/qa-v77-fixtures.js']) {
-  fs.copyFileSync(path.join(root, file), path.join(out, path.basename(file));
+  fs.copyFileSync(path.join(root, file), path.join(out, path.basename(file)));
 }
 
 let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
