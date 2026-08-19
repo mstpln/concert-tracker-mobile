@@ -42,6 +42,9 @@ test('Spotify metadata load hook routes restore through the public API so Settin
 });
 
 test('Spotify metadata startup paths do not bypass a wrapped public restore method', () => {
-  assert.doesNotMatch(source, /(?:await\s+)?restore\(\)\.catch\(\(\)\s*=>\s*\{\}\)/);
+  const privateRestoreCalls = source.split('\n').filter((line) =>
+    /^\s*(?:await\s+)?restore\(\)\.catch\(\(\)\s*=>\s*\{\}\);?\s*$/.test(line)
+  );
+  assert.deepEqual(privateRestoreCalls, []);
   assert.match(source, /root\.SpotifyListeningMetadataV99\.restore\(\)\.catch\(\(\)\s*=>\s*\{\}\)/);
 });
