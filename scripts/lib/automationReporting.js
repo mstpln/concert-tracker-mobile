@@ -101,12 +101,17 @@ function mergeActivity(previous = {}, patch = {}) {
   const nextStatus = patch.status ? normalizeStatus(patch.status) : priorStatus;
   const status = priorStatus === 'error' || nextStatus === 'error' ? 'error'
     : priorStatus === 'attention' || nextStatus === 'attention' ? 'attention' : 'ok';
-  return normalizeActivityReport({
+  const normalized = normalizeActivityReport({
     ...previous,
     ...patch,
     status,
     result: { ...(previous.result || {}), ...(patch.result || {}) },
   });
+  const problem = patch.problem ?? previous.problem;
+  const provider = patch.provider ?? previous.provider;
+  if (problem) normalized.problem = problem;
+  if (provider) normalized.provider = provider;
+  return normalized;
 }
 
 function storeAutomationRun(state, key, run) {
