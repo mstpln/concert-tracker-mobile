@@ -37,7 +37,8 @@ test('Spotify metadata load hook routes restore through the public API so Settin
   const result = await context.loadDataAndShowApp('synthetic');
   assert.equal(loadCalls, 1);
   assert.equal(restoreCalls, 1);
-  assert.deepEqual(result.args, ['synthetic']);
+  assert.equal(result.args.length, 1);
+  assert.equal(result.args[0], 'synthetic');
 });
 
 test('Spotify metadata startup paths do not bypass a wrapped public restore method', () => {
