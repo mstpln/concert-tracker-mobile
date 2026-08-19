@@ -222,7 +222,8 @@
     if (detail && detail.textContent !== coverage.detail) detail.textContent = coverage.detail;
     if (value) {
       value.className = `settings-v123-metric-value is-${level}`;
-      value.innerHTML = `<i></i>${coverage.percent}%`;
+      const markup = `<i></i>${coverage.percent}%`;
+      if (value.innerHTML !== markup) value.innerHTML = markup;
     }
     if (progress) {
       progress.setAttribute('aria-label', `Album artwork ${coverage.percent}%`);
