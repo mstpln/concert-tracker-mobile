@@ -1,0 +1,146 @@
+/* v146 approved normal-day Next Concert refinement. Loaded after v140.
+   Concert-day directions / OwnedTickets presentation remains untouched. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-ticket-contour {
+  opacity: 0;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-ticket-contour {
+  fill: #000000;
+  stroke: #b5b7bc;
+  stroke-width: 1.5;
+}
+
+/* Keep the established v140 right frame as the single visible white border.
+   The calendar surface uses the exact approved inset geometry and introduces
+   no second border of its own. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub {
+  left: 64.42%;
+  top: 11.72%;
+  width: 28.12%;
+  height: 76.4%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  place-items: initial;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #000000;
+  font-family: inherit;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-head {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 30.3%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 2px 4px;
+  background: #ffffff;
+  color: #000000;
+  text-align: center;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-label {
+  font-size: clamp(7.4px, 2vw, 9.5px);
+  font-weight: 850;
+  line-height: 1;
+  letter-spacing: .18em;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-date {
+  font-size: clamp(9.1px, 2.4vw, 11.5px);
+  font-weight: 790;
+  line-height: 1;
+  letter-spacing: .025em;
+  white-space: nowrap;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-stub-content {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  display: block;
+  overflow: hidden;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-countdown {
+  position: absolute;
+  left: 0;
+  top: 8%;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-countdown circle {
+  display: none;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub #countdown-ring-day {
+  fill: #ffffff;
+  font-family: inherit;
+  font-size: 58px;
+  font-weight: 850;
+  letter-spacing: -.04em;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-stub-content::after {
+  content: 'DAYS LEFT';
+  position: absolute;
+  left: 0;
+  top: 67%;
+  width: 100%;
+  color: #ffffff;
+  font-size: clamp(8px, 2.2vw, 10.5px);
+  font-weight: 790;
+  line-height: 1;
+  letter-spacing: .12em;
+  text-align: center;
+  white-space: nowrap;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-time {
+  position: absolute;
+  left: 0;
+  top: 81%;
+  width: 100%;
+  margin: 0;
+  color: #c9c9ce;
+  font-size: clamp(8.7px, 2.35vw, 11.3px);
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v140-date-spacer {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+/* Keep the old date node at its established geometry for compatibility with
+   the v141 row contract, but remove it visually now that the date lives in
+   the calendar header. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-date {
+  opacity: 0;
+}
+
+/* Preserve the original line nodes/geometry for compatibility, but render
+   the approved optically-balanced rules with pseudo-elements. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count-line {
+  opacity: 0;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count::before,
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 68px;
+  height: 1px;
+  background: #77787d;
+  transform: translateX(-50%);
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count::before { top: -5px; }
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count::after { top: 13px; }
+
+@media (max-width: 390px) {
+  .countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count::after { top: 12px; }
+}
