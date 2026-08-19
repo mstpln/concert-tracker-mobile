@@ -51,6 +51,7 @@ test('v148 changes only the approved normal-day ticket details and preserves v14
       const stubRect = stub.getBoundingClientRect();
       const countdown = stub.querySelector('.countdown-v139-countdown');
       const daysLeft = stub.querySelector('.countdown-v139-stub-content');
+      const contentRect = daysLeft.getBoundingClientRect();
       const timer = stub.querySelector('.countdown-v139-time');
       const count = node.querySelector('.countdown-v140-ticket-count');
       const countText = count.querySelector('strong');
@@ -68,9 +69,9 @@ test('v148 changes only the approved normal-day ticket details and preserves v14
         stubTop: (stubRect.top - cardRect.top) / cardRect.height,
         stubWidth: stubRect.width / cardRect.width,
         stubHeight: stubRect.height / cardRect.height,
-        countdownTop: getComputedStyle(countdown).top,
-        daysLeftAfterTop: getComputedStyle(daysLeft, '::after').top,
-        timerTop: timerStyle.top,
+        countdownTopRatio: parseFloat(getComputedStyle(countdown).top) / contentRect.height,
+        daysLeftAfterTopRatio: parseFloat(getComputedStyle(daysLeft, '::after').top) / contentRect.height,
+        timerTopRatio: parseFloat(timerStyle.top) / contentRect.height,
         timerWeight: timerStyle.fontWeight,
         stubRadius: stubStyle.borderTopLeftRadius,
         countColor: countStyle.color,
@@ -94,9 +95,11 @@ test('v148 changes only the approved normal-day ticket details and preserves v14
     expect(metrics.stubTop).toBeCloseTo(0.109071, 3);
     expect(metrics.stubWidth).toBeCloseTo(0.289024, 3);
     expect(metrics.stubHeight).toBeCloseTo(0.781857, 3);
-    expect(metrics.countdownTop).toBe('1%');
-    expect(metrics.daysLeftAfterTop).toBe('59%');
-    expect(metrics.timerTop).toBe('75%');
+    // Chromium resolves percentage offsets to pixels in CSSOM, so compare the
+    // rendered offsets normalized to the unchanged calendar-content height.
+    expect(metrics.countdownTopRatio).toBeCloseTo(0.01, 2);
+    expect(metrics.daysLeftAfterTopRatio).toBeCloseTo(0.59, 2);
+    expect(metrics.timerTopRatio).toBeCloseTo(0.75, 2);
     expect(metrics.stubRadius).toContain('6.962%');
 
     expect(metrics.timerWeight).toBe('400');
