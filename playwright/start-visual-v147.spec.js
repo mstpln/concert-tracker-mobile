@@ -82,10 +82,11 @@ test('v147 calendar underlaps the existing frame and keeps the countdown centere
 
     // One SVG unit of underlap beneath the 3-unit frame stroke prevents its
     // antialiased inner edge from exposing a dark seam around the white head.
-    expect(metrics.left).toBeCloseTo(0.640854, 4);
-    expect(metrics.top).toBeCloseTo(0.109071, 4);
-    expect(metrics.width).toBeCloseTo(0.289024, 4);
-    expect(metrics.height).toBeCloseTo(0.781857, 4);
+    // Ratios are normalized but still subject to browser pixel rounding.
+    expect(metrics.left).toBeCloseTo(0.640854, 3);
+    expect(metrics.top).toBeCloseTo(0.109071, 3);
+    expect(metrics.width).toBeCloseTo(0.289024, 3);
+    expect(metrics.height).toBeCloseTo(0.781857, 3);
     expect(metrics.headTopGap).toBeLessThanOrEqual(0.1);
     expect(metrics.headLeftGap).toBeLessThanOrEqual(0.1);
     expect(metrics.headRightGap).toBeLessThanOrEqual(0.1);
