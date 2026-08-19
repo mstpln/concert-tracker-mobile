@@ -115,6 +115,7 @@ function mergeActivity(previous = {}, patch = {}) {
 }
 
 function storeAutomationRun(state, key, run) {
+  if (!state || typeof state !== 'object') return;
   const prior = state.automationRuns && typeof state.automationRuns === 'object' ? state.automationRuns : {};
   state.automationRuns = { ...prior, [key]: run };
 }
@@ -122,20 +123,21 @@ function storeAutomationRun(state, key, run) {
 function installUsageReporting(usage) {
   if (!usage || usage[REPORTING_MARK]) return usage;
   const scratch = {};
-  const originalFinishRun = usage.finishRun.bind(usage);
-  const originalFinishProviderIdentityRun = usage.finishProviderIdentityRun?.bind(usage);
+  const originalFinishRun = typeof usage.finishRun === 'function' ? usage.finishRun.bind(usage) : null;
+  const originalFinishProviderIdentityRun = typeof usage.finishProviderIdentityRun === 'function' ? usage.finishProviderIdentityRun.bind(usage) : null;
 
   Object.defineProperty(usage, REPORTING_MARK, { value: { scratch }, enumerable: false });
 
-  usage.finishRun = (summary = {}) => {
+  if (originalFinishRun) usage.finishRun = (summary = {}) => {
     originalFinishRun(summary);
-    const last = usage.state.lastRun;
-    const startedAt = last?.startedAt || usage._startedAt || null;
-    const finishedAt = last?.finishedAt || null;
-    const parentStatus = normalizeStatus(last?.status, last?.error ? 'error' : 'ok');
-    const parentProblem = parentStatus === 'error' && last?.error ? last.error : null;
+    const last = usage.state?.lastRun;
+    if (!last) return;
+    const startedAt = last.startedAt || usage._startedAt || null;
+    const finishedAt = last.finishedAt || null;
+    const parentStatus = normalizeStatus(last.status, last.error ? 'error' : 'ok');
+    const parentProblem = parentStatus === 'error' && last.error ? last.error : null;
 
-    if (last?.mode === 'tavily-concert-only') {
+    if (last.mode === 'tavily-concert-only') {
       const lane = scratch.webConcertSearch || {};
       const report = activityReport({
         status: lane.status || parentStatus,
@@ -163,8 +165,8 @@ function installUsageReporting(usage) {
         status: concertLane.status || parentStatus,
         startedAt,
         finishedAt,
-        workCount: concertLane.result?.workCount ?? last?.bandsProcessed,
-        changeCount: concertLane.result?.changeCount ?? last?.concertsAdded,
+        workCount: concertLane.result?.workCount ?? last.bandsProcessed,
+        changeCount: concertLane.result?.changeCount ?? last.concertsAdded,
         problem: concertLane.problem || parentProblem,
         provider: concertLane.provider || 'Concert research',
       }),
@@ -173,7 +175,7 @@ function installUsageReporting(usage) {
         startedAt,
         finishedAt,
         workCount: artworkLane.result?.workCount,
-        changeCount: artworkLane.result?.changeCount ?? last?.artistImagesUpdated,
+        changeCount: artworkLane.result?.changeCount ?? last.artistImagesUpdated,
         problem: artworkLane.problem || (parentStatus === 'error' ? parentProblem : null),
         provider: artworkLane.provider || 'Artist artwork',
       }),
@@ -181,8 +183,8 @@ function installUsageReporting(usage) {
         status: setlistLane.status || (parentStatus === 'error' ? 'error' : 'ok'),
         startedAt,
         finishedAt,
-        workCount: setlistLane.result?.workCount ?? last?.setlistChecksAttempted,
-        changeCount: setlistLane.result?.changeCount ?? last?.setlistsAdded,
+        workCount: setlistLane.result?.workCount ?? last.setlistChecksAttempted,
+        changeCount: setlistLane.result?.changeCount ?? last.setlistsAdded,
         problem: setlistLane.problem || (parentStatus === 'error' ? parentProblem : null),
         provider: setlistLane.provider || 'setlist.fm',
       }),
@@ -193,21 +195,22 @@ function installUsageReporting(usage) {
   if (originalFinishProviderIdentityRun) {
     usage.finishProviderIdentityRun = (summary = {}) => {
       originalFinishProviderIdentityRun(summary);
-      const last = usage.state.lastProviderIdentityRun;
-      const parentStatus = normalizeStatus(last?.status, last?.error ? 'error' : 'ok');
+      const last = usage.state?.lastProviderIdentityRun;
+      if (!last) return;
+      const parentStatus = normalizeStatus(last.status, last.error ? 'error' : 'ok');
       const lane = scratch.artistInformation || {};
       const report = activityReport({
         status: lane.status || parentStatus,
-        startedAt: last?.startedAt,
-        finishedAt: last?.finishedAt,
-        workCount: lane.result?.workCount ?? last?.bandsConsidered,
-        changeCount: lane.result?.changeCount ?? last?.updates,
-        problem: lane.problem || (parentStatus === 'error' ? last?.error : null),
+        startedAt: last.startedAt,
+        finishedAt: last.finishedAt,
+        workCount: lane.result?.workCount ?? last.bandsConsidered,
+        changeCount: lane.result?.changeCount ?? last.updates,
+        problem: lane.problem || (parentStatus === 'error' ? last.error : null),
         provider: lane.provider || 'Artist information',
       });
       storeAutomationRun(usage.state, 'providerIdentity', {
-        startedAt: last?.startedAt,
-        finishedAt: last?.finishedAt,
+        startedAt: last.startedAt,
+        finishedAt: last.finishedAt,
         status: parentStatus,
         activities: { artistInformation: report },
       });
