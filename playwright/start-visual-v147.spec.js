@@ -104,35 +104,29 @@ test('v147 calendar underlaps the existing frame and keeps the countdown centere
   }
 });
 
-test('v147 restores equal visible spacing around the ticket quantity', async ({ page }) => {
+test('v147 retains the canonical ticket quantity DOM contract after later presentation refinements', async ({ page }) => {
   await openStart(page);
   const future = await appDate(page, 65);
 
   for (const width of [375, 480]) {
     await page.setViewportSize({ width, height: 900 });
     const card = await renderNextConcert(page, future);
-    const gaps = await card.locator('.countdown-v140-ticket-count').evaluate((node) => {
-      const lines = node.querySelectorAll('.countdown-v140-ticket-count-line');
-      const text = node.querySelector('strong').getBoundingClientRect();
-      const upper = lines[0].getBoundingClientRect();
-      const lower = lines[1].getBoundingClientRect();
-      return {
-        upperOpacity: getComputedStyle(lines[0]).opacity,
-        lowerOpacity: getComputedStyle(lines[1]).opacity,
-        above: text.top - upper.bottom,
-        below: lower.top - text.bottom,
-        beforeContent: getComputedStyle(node, '::before').content,
-        afterContent: getComputedStyle(node, '::after').content,
-      };
-    });
+    const contract = await card.locator('.countdown-v140-ticket-count').evaluate((node) => ({
+      lineCount: node.querySelectorAll('.countdown-v140-ticket-count-line').length,
+      text: node.querySelector('strong')?.textContent,
+      ariaLabel: node.getAttribute('aria-label'),
+      beforeContent: getComputedStyle(node, '::before').content,
+      afterContent: getComputedStyle(node, '::after').content,
+    }));
 
-    expect(gaps.upperOpacity).toBe('1');
-    expect(gaps.lowerOpacity).toBe('1');
-    expect(gaps.above).toBeCloseTo(4, 1);
-    expect(gaps.below).toBeCloseTo(4, 1);
-    expect(Math.abs(gaps.above - gaps.below)).toBeLessThanOrEqual(0.25);
-    expect(gaps.beforeContent).toBe('none');
-    expect(gaps.afterContent).toBe('none');
+    // v148 intentionally changes the visible quantity presentation. This
+    // historical test keeps the v140/v147 DOM/data compatibility contract;
+    // current pill/line visibility is locked by next-concert-v148.spec.js.
+    expect(contract.lineCount).toBe(2);
+    expect(contract.text).toBe('4 TICKETS');
+    expect(contract.ariaLabel).toBe('4 tickets');
+    expect(contract.beforeContent).toBe('none');
+    expect(contract.afterContent).toBe('none');
   }
 });
 
