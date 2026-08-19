@@ -20,7 +20,7 @@ async function render(page, date) {
   return page.locator('#countdown-card');
 }
 
-test('v141 keeps full locality clear of the ticket quantity separators', async ({ page }) => {
+test('v141 keeps full locality clear of the current ticket quantity presentation', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('qa-banner')).toContainText('SYNTHETIC DATA');
   const future = await appDate(page, 30);
@@ -33,11 +33,13 @@ test('v141 keeps full locality clear of the ticket quantity separators', async (
     await expect(addresses.nth(1)).toHaveText('2300 Copenhagen, Denmark');
     const spacing = await card.evaluate((node) => {
       const location = Array.from(node.querySelectorAll('.countdown-v139-address'));
-      const topRule = node.querySelector('.countdown-v140-ticket-count-line:first-child');
+      const quantity = node.querySelector('.countdown-v140-ticket-count strong');
       const lastRect = location.at(-1).getBoundingClientRect();
-      const ruleRect = topRule.getBoundingClientRect();
-      return { gap: ruleRect.top - lastRect.bottom };
+      const quantityRect = quantity.getBoundingClientRect();
+      return { gap: quantityRect.top - lastRect.bottom };
     });
+    // v148 replaces the historical separator rules with the approved pill;
+    // locality must remain clear of whichever quantity presentation is current.
     expect(spacing.gap).toBeGreaterThanOrEqual(6);
   }
 });
