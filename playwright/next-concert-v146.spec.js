@@ -54,8 +54,9 @@ test('v146 normal day uses calendar countdown, grey contour and softened side pe
 
   const path = await overlay.getAttribute('d');
   expect(path).toContain('M11 1 L441 1 C442 11 452 18 468 18 C484 18 494 11 495 1');
-  expect(path).toContain('Q809 17 805 17 C795 17 795 35 805 35 Q809 35 809 39');
+  expect(path).toContain('Q809 17 805 17 C797 17 797 35 805 35 Q809 35 809 39');
   expect(path).toContain('L495 462 C494 452 484 445 468 445 C452 445 442 452 441 462');
+  expect(path).toContain('Q11 35 15 35 C23 35 23 17 15 17 Q11 17 11 13');
 
   const stub = card.locator('.countdown-v146-calendar-stub');
   await expect(stub).toBeVisible();
