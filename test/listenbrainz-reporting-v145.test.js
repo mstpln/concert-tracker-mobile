@@ -31,7 +31,11 @@ test('ListenBrainz reporting stores only minimal aggregate sync counts in the br
       const parsed = JSON.parse(store.getItem(this.SETTINGS_KEY));
       return { token:parsed.token, userName:parsed.userName, lastSyncAt:parsed.lastSyncAt };
     },
-    async syncNow() { return { added:2, skipped:3, eventCount:500 }; },
+    async syncNow() {
+      const parsed = JSON.parse(storage.getItem(this.SETTINGS_KEY));
+      storage.setItem(this.SETTINGS_KEY, JSON.stringify({ token:parsed.token, userName:parsed.userName, lastSyncAt:'2026-08-19T07:00:00.000Z' }));
+      return { added:2, skipped:3, eventCount:500 };
+    },
     async autoSyncIfDue() { return true; },
     observeForegroundSync() { return true; },
   };
@@ -46,6 +50,7 @@ test('ListenBrainz reporting stores only minimal aggregate sync counts in the br
     const persisted = JSON.parse(storage.getItem(fake.SETTINGS_KEY));
     assert.deepEqual(persisted.lastSyncResult, { processed:5, added:2, skipped:3 });
     assert.deepEqual(persisted.futureField, { keep:true });
+    assert.equal(persisted.lastSyncAt, '2026-08-19T07:00:00.000Z');
     assert.equal('eventCount' in persisted.lastSyncResult, false);
     assert.equal('listens' in persisted.lastSyncResult, false);
     assert.equal('events' in persisted.lastSyncResult, false);
