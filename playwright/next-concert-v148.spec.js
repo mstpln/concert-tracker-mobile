@@ -62,6 +62,7 @@ test('v148 changes only the approved normal-day ticket details and preserves v14
       const stubStyle = getComputedStyle(stub);
       const timerStyle = getComputedStyle(timer);
       const countStyle = getComputedStyle(countText);
+      const pillStyle = getComputedStyle(countText, '::before');
       return {
         stubLeft: (stubRect.left - cardRect.left) / cardRect.width,
         stubTop: (stubRect.top - cardRect.top) / cardRect.height,
@@ -73,11 +74,12 @@ test('v148 changes only the approved normal-day ticket details and preserves v14
         timerWeight: timerStyle.fontWeight,
         stubRadius: stubStyle.borderTopLeftRadius,
         countColor: countStyle.color,
-        countBorderColor: countStyle.borderTopColor,
-        countBorderRadius: countStyle.borderTopLeftRadius,
+        pillBorderColor: pillStyle.borderTopColor,
+        pillBorderRadius: pillStyle.borderTopLeftRadius,
+        pillHeight: pillStyle.height,
         countCenterX: count.getBoundingClientRect().left + count.getBoundingClientRect().width / 2,
         leftLaneCenterX: cardRect.left + cardRect.width * (0.0683 + 0.4366 / 2),
-        lineDisplays: [...lines].map((line) => getComputedStyle(line).display),
+        lineOpacity: [...lines].map((line) => getComputedStyle(line).opacity),
         leftStroke: getComputedStyle(leftFrame).strokeWidth,
         rightBaseOpacity: getComputedStyle(rightBase).opacity,
         rightStroke: getComputedStyle(rightOverlay).strokeWidth,
@@ -99,10 +101,11 @@ test('v148 changes only the approved normal-day ticket details and preserves v14
 
     expect(metrics.timerWeight).toBe('400');
     expect(metrics.countColor).toBe('rgb(201, 201, 206)');
-    expect(metrics.countBorderColor).toBe('rgb(201, 201, 206)');
-    expect(parseFloat(metrics.countBorderRadius)).toBeGreaterThan(10);
+    expect(metrics.pillBorderColor).toBe('rgb(201, 201, 206)');
+    expect(parseFloat(metrics.pillBorderRadius)).toBeGreaterThan(10);
+    expect(metrics.pillHeight).toBe('24px');
     expect(Math.abs(metrics.countCenterX - metrics.leftLaneCenterX)).toBeLessThanOrEqual(1);
-    expect(metrics.lineDisplays).toEqual(['none', 'none']);
+    expect(metrics.lineOpacity).toEqual(['0', '0']);
 
     expect(metrics.leftStroke).toBe('3px');
     expect(metrics.rightBaseOpacity).toBe('0');
