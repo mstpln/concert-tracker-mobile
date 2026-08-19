@@ -86,7 +86,7 @@ test('all six Update activity rows use truthful standardized aggregate results i
     'Listening history':'24 listens processed · 24 listens added',
     'Artist information':'12 artists checked · 2 artists updated',
     'Artist artwork':'10 artists checked · 3 images added',
-    Setlists:'4 shows checked · 0 setlists updated',
+    Setlists:'4 shows checked · 0 setlists added',
   });
   assert.equal(rows.find((row) => row.name === 'Artist artwork').label, 'Healthy');
   assert.ok(rows.find((row) => row.name === 'Artist artwork').next);
@@ -107,7 +107,7 @@ test('result wording pluralizes singular counts correctly', () => {
   assert.equal(rows['Listening history'], '1 listen processed · 1 listen added');
   assert.equal(rows['Artist information'], '1 artist checked · 1 artist updated');
   assert.equal(rows['Artist artwork'], '1 artist checked · 1 image added');
-  assert.equal(rows.Setlists, '1 show checked · 1 setlist updated');
+  assert.equal(rows.Setlists, '1 show checked · 1 setlist added');
 });
 
 test('missing legacy metrics stay missing instead of becoming false zeroes', () => {
@@ -125,7 +125,7 @@ test('legacy aggregate pairs remain readable while zero additions are preserved'
   const rows = Object.fromEntries(settings.updateActivityRows(usage, new Date('2026-08-19T08:00:00.000Z'), { connection:()=>null }).map((row)=>[row.name,row.result]));
   assert.equal(rows.Concerts, '9 artists checked · 0 concerts added');
   assert.equal(rows['Artist information'], '7 artists checked · 0 artists updated');
-  assert.equal(rows.Setlists, '4 shows checked · 0 setlists updated');
+  assert.equal(rows.Setlists, '4 shows checked · 0 setlists added');
 });
 
 test('lane-specific failure reason does not poison unrelated healthy rows', () => {
