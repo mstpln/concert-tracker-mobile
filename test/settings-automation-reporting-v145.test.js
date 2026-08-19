@@ -128,6 +128,45 @@ test('legacy aggregate pairs remain readable while zero additions are preserved'
   assert.equal(rows.Setlists, '4 shows checked · 0 setlists added');
 });
 
+test('newer legacy runs never borrow older standardized lane counts or timestamps', () => {
+  const usage = {
+    automationRuns: {
+      structuredResearch: {
+        status:'ok', finishedAt:'2026-08-19T01:00:00.000Z',
+        activities:{ concerts:activity('ok',99,88), artistArtwork:activity('ok',77,66), setlists:activity('ok',55,44) },
+      },
+      providerIdentity: {
+        status:'ok', finishedAt:'2026-08-19T01:00:00.000Z',
+        activities:{ artistInformation:activity('ok',33,22) },
+      },
+    },
+    lastRun:{ status:'ok', finishedAt:'2026-08-19T03:00:00.000Z', bandsProcessed:9, concertsAdded:2, setlistChecksAttempted:4, setlistsAdded:1, artistImagesUpdated:3 },
+    lastProviderIdentityRun:{ status:'ok', finishedAt:'2026-08-19T04:00:00.000Z', bandsConsidered:6, updates:2 },
+  };
+  const rows = settings.updateActivityRows(usage, new Date('2026-08-19T08:00:00.000Z'), { connection:()=>null });
+  const byName = Object.fromEntries(rows.map((row)=>[row.name,row]));
+  assert.equal(byName.Concerts.result, '9 artists checked · 2 concerts added');
+  assert.equal(byName.Concerts.last, '2026-08-19T03:00:00.000Z');
+  assert.equal(byName.Setlists.result, '4 shows checked · 1 setlist added');
+  assert.equal(byName.Setlists.last, '2026-08-19T03:00:00.000Z');
+  assert.equal(byName['Artist information'].result, '6 artists checked · 2 artists updated');
+  assert.equal(byName['Artist information'].last, '2026-08-19T04:00:00.000Z');
+  assert.equal(byName['Artist artwork'].result, 'No recent result reported.');
+  assert.equal(byName['Artist artwork'].last, '2026-08-19T03:00:00.000Z');
+});
+
+test('newer focused legacy run stays paired with its own counters', () => {
+  const usage = {
+    automationRuns:{
+      focusedTavilyConcert:{ status:'ok', finishedAt:'2026-08-19T01:00:00.000Z', activities:{ webConcertSearch:activity('ok',99,88) } },
+    },
+    lastRun:{ mode:'tavily-concert-only', status:'ok', finishedAt:'2026-08-19T03:00:00.000Z', bandsAttempted:5, concertsAdded:1 },
+  };
+  const row = settings.updateActivityRows(usage, new Date('2026-08-19T08:00:00.000Z'), { connection:()=>null }).find((item)=>item.name === 'Web concert search');
+  assert.equal(row.result, '5 artists checked · 1 concert added');
+  assert.equal(row.last, '2026-08-19T03:00:00.000Z');
+});
+
 test('lane-specific failure reason does not poison unrelated healthy rows', () => {
   const usage = {
     automationRuns:{
