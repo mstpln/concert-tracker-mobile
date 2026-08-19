@@ -185,3 +185,11 @@ This continuity file was compacted on 2026-08-17. Earlier durable decisions rema
 **Reason:** The merged v146 rendering exposed a visible top gap, low/uneven countdown placement, unequal ticket-rule spacing, and a heavier Concert Stats border/CTA than the corresponding listening treatment.
 
 **Consequence:** v147 is presentation-only. It does not alter countdown timing/IDs, ticketQuantity ownership, concert-day Maps/OwnedTickets behavior, stats values/navigation, stored data, providers, backend, quotas, credentials or production workflows. Future visual changes must preserve the single-frame calendar fit and the Start-card border/weight consistency unless explicitly redesigned.
+
+## 2026-08-19 — v148 freezes v147 countdown spacing while refining ticket chrome
+
+**Decision:** On normal days, v148 preserves the merged v147 calendar surface geometry and all internal right-stub spacing exactly. The white date header, formatted date, large live day value, `DAYS LEFT`, and detailed timer positions must not move. Only the approved chrome changes apply: the detailed timer becomes regular weight; canonical `ticketQuantity` is centered in the existing left quantity lane inside a muted-grey rounded outline pill with the former separator rules hidden; the normal-day outer grey ticket contour becomes slightly thinner; and the right inner frame is visually redrawn with the same exact 3px non-scaling SVG stroke contract and geometry as the existing left frame so both inner outlines read at the same thickness.
+
+**Reason:** The approved v147 content spacing was already correct, while the ticket quantity treatment, outer contour weight, timer weight and perceived left/right inner-frame weight needed refinement. Mockup iterations also demonstrated that changing right-stub padding to compensate for the frame would introduce unwanted layout drift.
+
+**Consequence:** v148 must not alter the v147 right-stub `left/top/width/height`, countdown-group positions, date/header spacing, countdown IDs/ticker behavior, left information layout, ticketQuantity ownership or concert-day Maps/OwnedTickets path. The frame correction is presentation-only and must not resize the calendar surface. Stored data, providers, backend, quotas, credentials, production workflows and unrelated UI remain unchanged.
