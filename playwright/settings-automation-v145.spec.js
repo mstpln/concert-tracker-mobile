@@ -67,7 +67,7 @@ for (const colorScheme of ['dark','light']) {
     await expect(update).toContainText('24 listens processed · 24 listens added');
     await expect(update).toContainText('12 artists checked · 2 artists updated');
     await expect(update).toContainText('10 artists checked · 3 images added');
-    await expect(update).toContainText('4 shows checked · 0 setlists updated');
+    await expect(update).toContainText('4 shows checked · 0 setlists added');
     await expect(update).not.toContainText('Artwork scheduler state is not reported to this device.');
     await expect(update).not.toContainText('Not reported');
 
