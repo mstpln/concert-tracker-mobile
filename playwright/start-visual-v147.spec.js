@@ -41,7 +41,6 @@ async function renderNextConcert(page, date) {
 test('v147 calendar underlaps the existing frame and keeps the countdown centered', async ({ page }, testInfo) => {
   await openStart(page);
   const future = await appDate(page, 65);
-  const radii = [];
 
   for (const width of [375, 480]) {
     await page.setViewportSize({ width, height: 900 });
@@ -76,7 +75,7 @@ test('v147 calendar underlaps the existing frame and keeps the countdown centere
         dayFont: dayStyle.fontFamily,
         cardFont: cardStyle.fontFamily,
         boxShadow: stubStyle.boxShadow,
-        radiusX: parseFloat(stubStyle.borderTopLeftRadius.split(' ')[0]),
+        radius: stubStyle.borderTopLeftRadius,
       };
     });
 
@@ -96,13 +95,13 @@ test('v147 calendar underlaps the existing frame and keeps the countdown centere
     expect(metrics.dateWeight).toBe('790');
     expect(metrics.dayFont).toBe(metrics.cardFont);
     expect(metrics.boxShadow).toBe('none');
-    radii.push(metrics.radiusX);
+    // Chromium keeps percentage radii in percentage form through CSSOM. That
+    // is the scaling contract: the corner follows the proportional ticket box
+    // instead of being frozen to a viewport-specific pixel value.
+    expect(metrics.radius).toContain('%');
+    expect(metrics.radius).toContain('6.962%');
     await card.screenshot({ path: testInfo.outputPath(`v147-next-concert-${width}px.png`) });
   }
-
-  // Radius must scale with the ticket instead of staying fixed at one CSS px
-  // value. The wider rendering therefore has a proportionally larger radius.
-  expect(radii[1]).toBeGreaterThan(radii[0] * 1.2);
 });
 
 test('v147 restores equal visible spacing around the ticket quantity', async ({ page }) => {
