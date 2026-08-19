@@ -2,6 +2,7 @@
 
 const worker = require('./lib/workerClient');
 const { UsageTracker } = require('./lib/usageTracker');
+const reporting = require('./lib/automationReporting');
 const policy = require('./lib/tavilyConcertPolicy');
 const geocode = require('./lib/geocode');
 const { slugify, todayIso } = require('./lib/util');
@@ -46,6 +47,7 @@ async function main() {
     worker.readJson('concerts.json', []),
     UsageTracker.load(),
   ]);
+  reporting.installUsageReporting(usage);
   sharedUsage = usage;
   geocode.seedFromConcerts(storedConcerts);
   const due = policy.dueBands(bands, storedConcerts, Date.now());
@@ -71,6 +73,7 @@ async function main() {
       });
     } catch (error) {
       usage.note(`Focused Tavily concert search failed for "${band.name}": ${error.message}`);
+      reporting.recordProblem(usage, 'webConcertSearch', error, 'Web concert search', 'attention');
     }
 
     const upcomingCandidates = candidates
@@ -113,6 +116,7 @@ async function main() {
     await worker.writeJson('bands.json', applyRoutingUpdates(latestBands, routingUpdates));
   }
 
+  reporting.recordActivity(usage, 'webConcertSearch', { result: { workCount: attempted, changeCount: additions.length } });
   usage.finishRun({
     mode: 'tavily-concert-only',
     bandsDue: due.length,
@@ -130,6 +134,7 @@ if (require.main === module) main().catch(async (error) => {
   console.error('Focused Tavily concert run failed:', error.message);
   try {
     const usage = sharedUsage || await UsageTracker.load();
+    reporting.installUsageReporting(usage);
     usage.finishRun({ mode: 'tavily-concert-only', status: 'error', error: error.message });
     await usage.save();
   } catch (saveError) {

@@ -3,6 +3,7 @@
 const providerState = require('../../providerIdentityState');
 const activity = require('../../listeningBandActivity');
 const config = require('./config');
+const reporting = require('./automationReporting');
 
 const PER_RUN_CAP = 10;
 const MAX_AGGREGATE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -165,8 +166,11 @@ async function runArtistImageMaintenance({
   plan, plannedBands, bands = plannedBands, usage, now = new Date(), spotify, worker,
   resolveIdentity = spotify.resolveArtistIdentity, getArtist = spotify.getArtistExact, log = console.log,
 } = {}) {
+  reporting.installUsageReporting(usage);
   const selectedItems = selectedPlanItems(plan);
-  if (!plan?.enabled || !selectedItems.length) return { enabled: Boolean(plan?.enabled), planned: selectedItems.length, updated: 0, imagesUpdated: 0, calls: 0, reason: plan?.reason || null };
+  let checked = 0;
+  reporting.recordActivity(usage, 'artistArtwork', { status: 'ok', result: { workCount: 0 } });
+  if (!plan?.enabled || !selectedItems.length) return { enabled: Boolean(plan?.enabled), planned: selectedItems.length, checked, updated: 0, imagesUpdated: 0, calls: 0, reason: plan?.reason || null };
   const bandById = new Map((bands || []).map((band) => [band.id, band]));
   const spotifyOwners = new Map();
   for (const band of bands || []) {
@@ -180,6 +184,8 @@ async function runArtistImageMaintenance({
   for (const item of selectedItems) {
     const band = bandById.get(item.bandId);
     if (!band || hasUsableArtistImage(band)) continue;
+    checked += 1;
+    reporting.recordActivity(usage, 'artistArtwork', { result: { workCount: checked } });
     const callsBeforeItem = Number(usage?.state?.spotify?.callsThisRun || 0);
     let identity = providerState.artistEnrichment.trustedSpotifyIdentity(band);
     let resolvedHere = false;
@@ -190,12 +196,15 @@ async function runArtistImageMaintenance({
       if (!identity) {
         if (resolved?.identity) updates.push({ bandId: band.id, expectedSpotifyId: null, identity: resolved.identity });
         calls += Math.max(0, Number(usage?.state?.spotify?.callsThisRun || 0) - callsBeforeItem);
+        if (resolved?.status === 429 || ['quota_exceeded', 'skipped'].includes(resolved?.kind)) reporting.recordProblem(usage, 'artistArtwork', resolved, 'Spotify', 'attention');
+        else if (resolved?.kind === 'error' || ['error', 'unavailable', 'needs_review'].includes(resolved?.identity?.status)) reporting.recordProblem(usage, 'artistArtwork', resolved?.identity || resolved, 'Spotify', resolved?.identity?.status === 'needs_review' ? 'attention' : 'error');
         if (resolved?.status === 429 || ['quota_exceeded', 'skipped'].includes(resolved?.kind)) break;
         continue;
       }
       const owners = spotifyOwners.get(identity.id);
       if (owners?.size && !owners.has(band.id)) {
         updates.push({ bandId: band.id, expectedSpotifyId: null, identity: duplicateConflictIdentity(band.musicbrainz?.spotify, identity, now) });
+        reporting.recordProblem(usage, 'artistArtwork', { error: 'duplicate_spotify_identity' }, 'Spotify', 'attention');
         calls += Math.max(0, Number(usage?.state?.spotify?.callsThisRun || 0) - callsBeforeItem);
         continue;
       }
@@ -203,6 +212,7 @@ async function runArtistImageMaintenance({
       spotifyOwners.get(identity.id).add(band.id);
       updates.push({ bandId: band.id, expectedSpotifyId: null, identity });
     } else if ((spotifyOwners.get(identity.id)?.size || 0) > 1) {
+      reporting.recordProblem(usage, 'artistArtwork', { error: 'duplicate_spotify_identity' }, 'Spotify', 'attention');
       calls += Math.max(0, Number(usage?.state?.spotify?.callsThisRun || 0) - callsBeforeItem);
       continue;
     }
@@ -217,9 +227,11 @@ async function runArtistImageMaintenance({
     const patch = { bandId: band.id, expectedSpotifyId: resolvedHere ? null : identity.id, identity: current?.identity || null, maintenance };
     if (images !== null) patch.images = images;
     if (current) Object.assign(current, patch); else updates.push(patch);
+    if (result.kind !== 'ok') reporting.recordProblem(usage, 'artistArtwork', result, 'Spotify', result.kind === 'skipped' || result.kind === 'quota_exceeded' || result.status === 429 ? 'attention' : 'error');
+    else if (images === null) reporting.recordProblem(usage, 'artistArtwork', { error: 'invalid_images' }, 'Spotify', 'error');
     if (['quota_exceeded'].includes(result.kind) || result.status === 429 || result.kind === 'skipped') break;
   }
-  if (!updates.length) return { enabled: true, planned: selectedItems.length, updated: 0, imagesUpdated: 0, calls };
+  if (!updates.length) return { enabled: true, planned: selectedItems.length, checked, updated: 0, imagesUpdated: 0, calls };
   const latest = await worker.readJson('bands.json', []);
   const merged = mergeMaintenanceUpdates(latest, plannedBands, updates);
   const updated = merged.reduce((count, band, index) => count + Number(JSON.stringify(band) !== JSON.stringify(latest[index])), 0);
@@ -228,8 +240,8 @@ async function runArtistImageMaintenance({
       && Boolean(providerState.artistEnrichment.trustedSpotifyArtworkUrl(band)),
   ), 0);
   if (updated) await worker.writeJsonStrict('bands.json', merged);
-  log(`Artist image maintenance: ${selectedItems.length}/${plan.eligible} planned, ${updated} band record(s) updated, ${imagesUpdated} image(s) added, ${calls} Spotify call(s).`);
-  return { enabled: true, planned: selectedItems.length, updated, imagesUpdated, calls };
+  log(`Artist image maintenance: ${checked}/${plan.eligible} checked, ${updated} band record(s) updated, ${imagesUpdated} image(s) added, ${calls} Spotify call(s).`);
+  return { enabled: true, planned: selectedItems.length, checked, updated, imagesUpdated, calls };
 }
 
 module.exports = {

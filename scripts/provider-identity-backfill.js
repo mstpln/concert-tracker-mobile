@@ -6,6 +6,7 @@
 // enough for the existing conservative provider resolvers.
 const worker = require('./lib/workerClient');
 const { UsageTracker } = require('./lib/usageTracker');
+const reporting = require('./lib/automationReporting');
 const ticketmaster = require('./lib/ticketmaster');
 const spotify = require('./lib/spotify');
 const identities = require('../providerIdentityState');
@@ -79,6 +80,7 @@ async function runProviderIdentityBackfill({
   };
   try {
     usage = await loadUsage();
+    reporting.installUsageReporting(usage);
     const bands = await readBands('bands.json', []);
     const updates = [];
     for (const band of bands) {

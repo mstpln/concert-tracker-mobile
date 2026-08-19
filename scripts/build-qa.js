@@ -8,12 +8,12 @@ const out = path.join(root, 'dist');
 const sourceId = process.env.QA_BUILD_ID || process.env.GITHUB_SHA || process.env.CF_PAGES_COMMIT_SHA || 'local-qa';
 const id = String(sourceId).replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 80) || 'local-qa';
 const shell = [
-  'app.css', 'v72Corrections.css', 'listeningV81.css', 'concertCardsV86.css', 'bandmarkrV87.css', 'listeningReviewRollout.css', 'toplistV96.css', 'trustedListeningV99.css', 'gau2SettingsV118.css', 'settingsV123.css', 'stateFeedbackV129.css', 'nextConcertV138.css', 'nextConcertV139.css', 'nextConcertV140.css', 'alignedUiV143.css', 'alignedListeningBandsV144.css', 'geoFilterPreloadV143.js', 'app.js', 'alignedUiV143.js', 'nextConcertV138.js', 'nextConcertV140.js', 'interactionFeedbackV129.js', 'stateFeedbackIntegrationV129.js', 'providerReleaseCleanupV135.js', 'gau2SettingsV118.js', 'settingsV123.js', 'listeningReviewRollout.js', 'listeningReviewReconcile.js', 'listeningCanonicalActivation.js', 'listeningPreparationRecovery.js', 'listeningPreparationV121.js', 'gau5PreparationIntegrationV121.js', 'listeningSpotifyIdentityReview.js', 'listeningSpotifyIdentityReviewUi.js', 'listeningIdentityPacingV105.js', 'listeningIdentityCompletionV104.js', 'listeningIdentityRecordingV106.js', 'listeningIdentityGroupingV104.js', 'devicePrivacy.js',
+  'app.css', 'v72Corrections.css', 'listeningV81.css', 'concertCardsV86.css', 'bandmarkrV87.css', 'listeningReviewRollout.css', 'toplistV96.css', 'trustedListeningV99.css', 'gau2SettingsV118.css', 'settingsV123.css', 'stateFeedbackV129.css', 'nextConcertV138.css', 'nextConcertV139.css', 'nextConcertV140.css', 'alignedUiV143.css', 'alignedListeningBandsV144.css', 'geoFilterPreloadV143.js', 'app.js', 'alignedUiV143.js', 'nextConcertV138.js', 'nextConcertV140.js', 'interactionFeedbackV129.js', 'stateFeedbackIntegrationV129.js', 'providerReleaseCleanupV135.js', 'gau2SettingsV118.js', 'settingsV123.js', 'settingsAutomationReportingV145.js', 'listeningReviewRollout.js', 'listeningReviewReconcile.js', 'listeningCanonicalActivation.js', 'listeningPreparationRecovery.js', 'listeningPreparationV121.js', 'gau5PreparationIntegrationV121.js', 'listeningSpotifyIdentityReview.js', 'listeningSpotifyIdentityReviewUi.js', 'listeningIdentityPacingV105.js', 'listeningIdentityCompletionV104.js', 'listeningIdentityRecordingV106.js', 'listeningIdentityGroupingV104.js', 'devicePrivacy.js',
   'browserFetchPolicy.js', 'v72Corrections.js', 'v72FinalAdjustments.js',
   'securityHardening.js', 'listeningInsightsV81.js', 'listeningV81BootFix.js', 'listeningV81ReviewFix.js', 'listeningV82Corrections.js', 'listeningV82GenreFix.js', 'listeningV82FailSafe.js', 'listeningV83ChartFix.js', 'listeningV83WindowFix.js', 'listeningV84ChartRenderFix.js', 'listeningV85RankingAndStatsUnits.js', 'toplistStatsV96.js', 'toplistV96.js', 'spotifyListeningMetadataV99.js', 'spotifyListeningAlbumArtworkV113.js', 'spotifyListeningMetadataV101.js', 'trustedListeningV99.js', 'uiPerformanceV126.js', 'uiPerformanceV127.js', 'alignedListeningBandsV144.js', 'dataLib.js', 'listeningStats.js', 'listeningStatsV81.js',
   'listeningFixtures.js', 'listeningFixturesV99.js', 'listeningIdentityContracts.js', 'listeningDerivedStorage.js', 'listeningDerivedMigration.js',
   'listeningBandActivity.js', 'spotifyHistoryImport.js', 'listeningVaultBridge.js', 'listeningVault.js', 'listeningHistoryV2.js',
-  'listeningIncrementalVault.js', 'listenbrainzSync.js', 'spotifyHistoryBootstrap.js', 'icons.js',
+  'listeningIncrementalVault.js', 'listenbrainzSync.js', 'listenbrainzReportingV145.js', 'spotifyHistoryBootstrap.js', 'icons.js',
   'conflictMerge.js', 'remoteStore.js', 'ownedTickets.js', 'musicbrainzState.js',
   'providerIdentityState.js', 'weather.js', 'spotifyUser.js', 'spotifyUserV100.js', 'version.js',
   'manifest.json',
@@ -47,6 +47,7 @@ html = html
   .replace('<script src="listeningHistoryV2.js"></script>', '')
   .replace('<script src="listeningIncrementalVault.js"></script>', '')
   .replace('<script src="listenbrainzSync.js"></script>', '')
+  .replace('<script src="listenbrainzReportingV145.js"></script>', '')
   .replace('<script src="spotifyHistoryBootstrap.js"></script>', '');
 fs.writeFileSync(path.join(out, 'index.html'), html);
 fs.writeFileSync(path.join(out, 'qa-build-config.js'), `window.__LIVEVAULT_QA_BUILD_ID__ = ${JSON.stringify(id)};\n`);

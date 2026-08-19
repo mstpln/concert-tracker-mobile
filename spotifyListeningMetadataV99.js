@@ -321,7 +321,7 @@
     const previous = loadDataAndShowApp;
     const wrapped = async function loadDataAndShowAppWithSpotifyMetadata(...args) {
       const result = await previous.apply(this, args);
-      await restore().catch(() => {});
+      await root.SpotifyListeningMetadataV99.restore().catch(() => {});
       return result;
     };
     wrapped.__liveVaultSpotifyMetadataV99 = true;
@@ -330,7 +330,7 @@
 
   function install() {
     installLoadHook();
-    restore().catch(() => {});
+    root.SpotifyListeningMetadataV99.restore().catch(() => {});
     injectSettingsUi();
   }
 

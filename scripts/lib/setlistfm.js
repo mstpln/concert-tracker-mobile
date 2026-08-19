@@ -12,6 +12,7 @@
 
 const config = require('./config');
 const { usefulEarlierSetlists } = require('./setlistInsights');
+const reporting = require('./automationReporting');
 
 const TRUSTED_NO_MATCH_REASONS = new Set(['empty_results', 'empty_setlist']);
 
@@ -19,6 +20,11 @@ function apiKey() {
   const k = process.env[config.SETLISTFM.apiKeyEnv];
   if (!k) throw new Error(`Missing required environment variable: ${config.SETLISTFM.apiKeyEnv}`);
   return k;
+}
+
+function reportShowProblem(usage, outcome, status = 'error') {
+  reporting.recordProblem(usage, 'setlists', outcome, 'setlist.fm', status);
+  return outcome;
 }
 
 // setlist.fm's search API wants dd-MM-yyyy, not this app's own YYYY-MM-DD.
@@ -162,7 +168,7 @@ async function findHistoricalSetlistsForArtist(artistMbid, usage, { beforeDate, 
 async function findSetlistOutcomeForShow(concert, usage, { artistMbid = null, fetchImpl = fetch, requireReturnedDate = true } = {}) {
   if (!usage.canCallSetlistfm()) {
     usage.note(`setlist.fm per-run/daily cap reached — skipping "${concert.bandName}" (${concert.date})`);
-    return { kind: 'skipped', reason: 'usage_cap' };
+    return reportShowProblem(usage, { kind: 'skipped', reason: 'usage_cap' }, 'attention');
   }
   await usage.recordSetlistfmCall();
 
@@ -179,14 +185,14 @@ async function findSetlistOutcomeForShow(concert, usage, { artistMbid = null, fe
     });
   } catch (e) {
     usage.note(`setlist.fm request failed for "${concert.bandName}" (${concert.date}): ${e.message}`);
-    return { kind: 'error', error: e.message || 'network_error' };
+    return reportShowProblem(usage, { kind: 'error', error: e.message || 'network_error' });
   }
   // setlist.fm does not document this search-path 404 as a definitive
   // no-setlist signal, so treat it like every other HTTP failure and retry
   // on a later scheduled run rather than advancing the 30-day marker.
   if (!res.ok) {
     usage.note(`setlist.fm returned ${res.status} for "${concert.bandName}" (${concert.date})`);
-    return { kind: 'error', status: res.status };
+    return reportShowProblem(usage, { kind: 'error', status: res.status }, res.status === 429 ? 'attention' : 'error');
   }
 
   let data;
@@ -194,15 +200,15 @@ async function findSetlistOutcomeForShow(concert, usage, { artistMbid = null, fe
     data = await res.json();
   } catch (e) {
     usage.note(`setlist.fm returned unparseable JSON for "${concert.bandName}" (${concert.date}): ${e.message}`);
-    return { kind: 'error', error: 'invalid_json' };
+    return reportShowProblem(usage, { kind: 'error', error: 'invalid_json' });
   }
-  if (!Array.isArray(data?.setlist)) return { kind: 'error', error: 'invalid_response' };
+  if (!Array.isArray(data?.setlist)) return reportShowProblem(usage, { kind: 'error', error: 'invalid_response' });
   const candidates = data.setlist;
   if (candidates.length === 0) return { kind: 'no_match', reason: 'empty_results' };
 
   const matching = candidates.filter((candidate) => candidateMatchesShow(candidate, concert, artistMbid, { requireReturnedDate }));
-  if (matching.length === 0) return { kind: 'error', error: 'show_identity_conflict' };
-  if (matching.length > 1) return { kind: 'error', error: 'ambiguous_show_match' };
+  if (matching.length === 0) return reportShowProblem(usage, { kind: 'error', error: 'show_identity_conflict' });
+  if (matching.length > 1) return reportShowProblem(usage, { kind: 'error', error: 'ambiguous_show_match' });
   const normalized = normalizeSetlist(matching[0]);
   return normalized.songs.length > 0
     ? { kind: 'found', setlist: normalized }
