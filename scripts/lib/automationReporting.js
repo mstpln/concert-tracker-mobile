@@ -2,6 +2,7 @@
 
 const MAX_REASON_LENGTH = 140;
 const SAFE_STATUSES = new Set(['ok', 'error', 'attention']);
+const REPORTING_MARK = Symbol.for('bandmarkr.automationReporting.v145');
 
 function nonNegativeInteger(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -74,9 +75,7 @@ function normalizeActivityReport(report = {}) {
   if (workCount !== null) result.workCount = workCount;
   if (changeCount !== null) result.changeCount = changeCount;
 
-  const normalized = {
-    status: normalizeStatus(report.status, report.failureReason || report.failureCode ? 'error' : 'ok'),
-  };
+  const normalized = { status: normalizeStatus(report.status, report.failureReason || report.failureCode ? 'error' : 'ok') };
   if (report.startedAt) normalized.startedAt = String(report.startedAt);
   if (report.finishedAt) normalized.finishedAt = String(report.finishedAt);
   if (Object.keys(result).length) normalized.result = result;
@@ -97,6 +96,133 @@ function activityReport({ status = 'ok', startedAt = null, finishedAt = null, wo
   });
 }
 
+function mergeActivity(previous = {}, patch = {}) {
+  const priorStatus = normalizeStatus(previous.status);
+  const nextStatus = patch.status ? normalizeStatus(patch.status) : priorStatus;
+  const status = priorStatus === 'error' || nextStatus === 'error' ? 'error'
+    : priorStatus === 'attention' || nextStatus === 'attention' ? 'attention' : 'ok';
+  return normalizeActivityReport({
+    ...previous,
+    ...patch,
+    status,
+    result: { ...(previous.result || {}), ...(patch.result || {}) },
+  });
+}
+
+function storeAutomationRun(state, key, run) {
+  const prior = state.automationRuns && typeof state.automationRuns === 'object' ? state.automationRuns : {};
+  state.automationRuns = { ...prior, [key]: run };
+}
+
+function installUsageReporting(usage) {
+  if (!usage || usage[REPORTING_MARK]) return usage;
+  const scratch = {};
+  const originalFinishRun = usage.finishRun.bind(usage);
+  const originalFinishProviderIdentityRun = usage.finishProviderIdentityRun?.bind(usage);
+
+  Object.defineProperty(usage, REPORTING_MARK, { value: { scratch }, enumerable: false });
+
+  usage.finishRun = (summary = {}) => {
+    originalFinishRun(summary);
+    const last = usage.state.lastRun;
+    const startedAt = last?.startedAt || usage._startedAt || null;
+    const finishedAt = last?.finishedAt || null;
+    const parentStatus = normalizeStatus(last?.status, last?.error ? 'error' : 'ok');
+    const parentProblem = parentStatus === 'error' && last?.error ? last.error : null;
+
+    if (last?.mode === 'tavily-concert-only') {
+      const lane = scratch.webConcertSearch || {};
+      const report = activityReport({
+        status: lane.status || parentStatus,
+        startedAt,
+        finishedAt,
+        workCount: lane.result?.workCount ?? last.bandsAttempted,
+        changeCount: lane.result?.changeCount ?? last.concertsAdded,
+        problem: lane.problem || parentProblem,
+        provider: lane.provider || 'Web concert search',
+      });
+      storeAutomationRun(usage.state, 'focusedTavilyConcert', {
+        startedAt,
+        finishedAt,
+        status: parentStatus,
+        activities: { webConcertSearch: report },
+      });
+      return;
+    }
+
+    const concertLane = scratch.concerts || {};
+    const artworkLane = scratch.artistArtwork || {};
+    const setlistLane = scratch.setlists || {};
+    const activities = {
+      concerts: activityReport({
+        status: concertLane.status || parentStatus,
+        startedAt,
+        finishedAt,
+        workCount: concertLane.result?.workCount ?? last?.bandsProcessed,
+        changeCount: concertLane.result?.changeCount ?? last?.concertsAdded,
+        problem: concertLane.problem || parentProblem,
+        provider: concertLane.provider || 'Concert research',
+      }),
+      artistArtwork: activityReport({
+        status: artworkLane.status || (parentStatus === 'error' ? 'error' : 'ok'),
+        startedAt,
+        finishedAt,
+        workCount: artworkLane.result?.workCount,
+        changeCount: artworkLane.result?.changeCount ?? last?.artistImagesUpdated,
+        problem: artworkLane.problem || (parentStatus === 'error' ? parentProblem : null),
+        provider: artworkLane.provider || 'Artist artwork',
+      }),
+      setlists: activityReport({
+        status: setlistLane.status || (parentStatus === 'error' ? 'error' : 'ok'),
+        startedAt,
+        finishedAt,
+        workCount: setlistLane.result?.workCount ?? last?.setlistChecksAttempted,
+        changeCount: setlistLane.result?.changeCount ?? last?.setlistsAdded,
+        problem: setlistLane.problem || (parentStatus === 'error' ? parentProblem : null),
+        provider: setlistLane.provider || 'setlist.fm',
+      }),
+    };
+    storeAutomationRun(usage.state, 'structuredResearch', { startedAt, finishedAt, status: parentStatus, activities });
+  };
+
+  if (originalFinishProviderIdentityRun) {
+    usage.finishProviderIdentityRun = (summary = {}) => {
+      originalFinishProviderIdentityRun(summary);
+      const last = usage.state.lastProviderIdentityRun;
+      const parentStatus = normalizeStatus(last?.status, last?.error ? 'error' : 'ok');
+      const lane = scratch.artistInformation || {};
+      const report = activityReport({
+        status: lane.status || parentStatus,
+        startedAt: last?.startedAt,
+        finishedAt: last?.finishedAt,
+        workCount: lane.result?.workCount ?? last?.bandsConsidered,
+        changeCount: lane.result?.changeCount ?? last?.updates,
+        problem: lane.problem || (parentStatus === 'error' ? last?.error : null),
+        provider: lane.provider || 'Artist information',
+      });
+      storeAutomationRun(usage.state, 'providerIdentity', {
+        startedAt: last?.startedAt,
+        finishedAt: last?.finishedAt,
+        status: parentStatus,
+        activities: { artistInformation: report },
+      });
+    };
+  }
+  return usage;
+}
+
+function recordActivity(usage, key, patch = {}) {
+  installUsageReporting(usage);
+  const state = usage?.[REPORTING_MARK]?.scratch;
+  if (!state || !key) return;
+  state[key] = mergeActivity(state[key], patch);
+}
+
+function recordProblem(usage, key, input, provider = 'Provider', status = 'error') {
+  const failure = safeFailureSummary(input, provider);
+  recordActivity(usage, key, { status, problem: input, provider, ...failure });
+}
+
 module.exports = {
   MAX_REASON_LENGTH,
   nonNegativeInteger,
@@ -104,4 +230,7 @@ module.exports = {
   safeFailureSummary,
   normalizeActivityReport,
   activityReport,
+  installUsageReporting,
+  recordActivity,
+  recordProblem,
 };
