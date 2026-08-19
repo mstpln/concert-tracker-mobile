@@ -23,12 +23,16 @@
     let path = 'M11 1 L441 1 C442 11 452 18 468 18 C484 18 494 11 495 1 L809 1';
     for (const top of PERFORATION_TOPS) {
       const bottom = top + 18;
-      path += ` L809 ${top - 4} Q809 ${top} 805 ${top} C795 ${top} 795 ${bottom} 805 ${bottom} Q809 ${bottom} 809 ${bottom + 4}`;
+      // Keep the original v140 maximum depth at x=797; only soften the
+      // vertical-edge transition into and out of the existing perforation.
+      path += ` L809 ${top - 4} Q809 ${top} 805 ${top} C797 ${top} 797 ${bottom} 805 ${bottom} Q809 ${bottom} 809 ${bottom + 4}`;
     }
     path += ' L809 462 L495 462 C494 452 484 445 468 445 C452 445 442 452 441 462 L11 462';
     for (const top of [...PERFORATION_TOPS].reverse()) {
       const bottom = top + 18;
-      path += ` L11 ${bottom + 4} Q11 ${bottom} 15 ${bottom} C25 ${bottom} 25 ${top} 15 ${top} Q11 ${top} 11 ${top - 4}`;
+      // Mirror the same treatment while keeping the original v140 maximum
+      // depth at x=23 on the left edge.
+      path += ` L11 ${bottom + 4} Q11 ${bottom} 15 ${bottom} C23 ${bottom} 23 ${top} 15 ${top} Q11 ${top} 11 ${top - 4}`;
     }
     return `${path} L11 1 Z`;
   }
