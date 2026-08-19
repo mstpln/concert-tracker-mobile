@@ -1,0 +1,59 @@
+/* v147 focused Start-screen visual corrections on top of merged v146.
+   No concert-day, data, provider, navigation or unrelated layout behavior changes. */
+
+/* Normal-day calendar surface: keep the approved horizontal inset, but let
+   the white DATE header meet the existing right inner-frame top edge instead
+   of leaving the visible v146 gap. Keep the previous bottom edge unchanged. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub {
+  top: 10.80%;
+  height: 77.32%;
+}
+
+/* DATE is the emphasized label. The actual formatted concert date retains
+   its existing v146 treatment. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-label {
+  font-weight: 900;
+}
+
+/* Rebalance the black countdown body. The large day value, DAYS LEFT and
+   detailed timer remain horizontally centered. Vertically, the primary day
+   group moves upward into the body center while the detailed timer aligns
+   with the ticket-quantity row on the left. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-countdown {
+  left: 0;
+  top: -8%;
+  width: 100%;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-stub-content::after {
+  left: 0;
+  top: 57%;
+  width: 100%;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-time {
+  left: 0;
+  top: 77%;
+  width: 100%;
+}
+
+/* The existing text box is 12px high above 390px and 11px at <=390px.
+   Place each 1px rule exactly four CSS pixels from that box on both sides. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count::before {
+  top: -5px;
+}
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count::after {
+  top: 16px;
+}
+@media (max-width: 390px) {
+  .countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count::after {
+    top: 15px;
+  }
+}
+
+/* Concert Stats should use the same single 1px blue outline treatment as the
+   Start listening card. The legacy inset shadow made this card read thicker. */
+.stats-teaser-card {
+  box-shadow: none;
+}
+.stats-teaser-card .stats-teaser-footer {
+  font-weight: 400;
+}
