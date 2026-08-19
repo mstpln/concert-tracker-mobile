@@ -129,25 +129,39 @@
   function updateActivityRows(usage = {}, now = new Date(), listenBrainz = root.LiveVaultListenBrainz) {
     const legacyStructured = usage.lastRun?.mode === 'tavily-concert-only' ? null : usage.lastRun;
     const legacyFocused = usage.lastRun?.mode === 'tavily-concert-only' ? usage.lastRun : null;
-    const structured = latestRun(usage.automationRuns?.structuredResearch, legacyStructured);
-    const focused = latestRun(usage.automationRuns?.focusedTavilyConcert, legacyFocused);
-    const providerIdentity = latestRun(usage.automationRuns?.providerIdentity, usage.lastProviderIdentityRun, usage.lastMusicbrainzRun);
-    const structuredActivities = usage.automationRuns?.structuredResearch?.activities || {};
-    const focusedActivity = usage.automationRuns?.focusedTavilyConcert?.activities?.webConcertSearch || null;
-    const artistActivity = usage.automationRuns?.providerIdentity?.activities?.artistInformation || null;
+    const standardizedStructured = usage.automationRuns?.structuredResearch || null;
+    const standardizedFocused = usage.automationRuns?.focusedTavilyConcert || null;
+    const standardizedIdentity = usage.automationRuns?.providerIdentity || null;
+    const structured = latestRun(standardizedStructured, legacyStructured);
+    const focused = latestRun(standardizedFocused, legacyFocused);
+    const providerIdentity = latestRun(standardizedIdentity, usage.lastProviderIdentityRun, usage.lastMusicbrainzRun);
+    const selectedLegacyStructured = structured && structured !== standardizedStructured ? structured : null;
+    const selectedLegacyFocused = focused && focused !== standardizedFocused ? focused : null;
+    const selectedLegacyIdentity = providerIdentity && providerIdentity !== standardizedIdentity ? providerIdentity : null;
+    const structuredActivities = structured === standardizedStructured ? standardizedStructured?.activities || {} : {};
+    const focusedActivity = focused === standardizedFocused ? standardizedFocused?.activities?.webConcertSearch || null : null;
+    const artistActivity = providerIdentity === standardizedIdentity ? standardizedIdentity?.activities?.artistInformation || null : null;
     const concertsActivity = structuredActivities.concerts || null;
     const artworkActivity = structuredActivities.artistArtwork || null;
     const setlistsActivity = structuredActivities.setlists || null;
     const lb = listenBrainz?.connection?.() || null;
 
-    const concertsState = statusFromRun(concertsActivity || structured, 'Concert research');
-    const focusedState = statusFromRun(focusedActivity || focused, 'Web concert search');
-    const artistState = statusFromRun(artistActivity || providerIdentity, 'Artist information');
+    const concertsState = concertsActivity
+      ? statusFromRun(concertsActivity, 'Concert research')
+      : (selectedLegacyStructured ? statusFromRun(selectedLegacyStructured, 'Concert research') : { label:'Not reported', key:'neutral', problem:'' });
+    const focusedState = focusedActivity
+      ? statusFromRun(focusedActivity, 'Web concert search')
+      : (selectedLegacyFocused ? statusFromRun(selectedLegacyFocused, 'Web concert search') : { label:'Not reported', key:'neutral', problem:'' });
+    const artistState = artistActivity
+      ? statusFromRun(artistActivity, 'Artist information')
+      : (selectedLegacyIdentity ? statusFromRun(selectedLegacyIdentity, 'Artist information') : { label:'Not reported', key:'neutral', problem:'' });
     const artworkState = artworkActivity
       ? statusFromRun(artworkActivity, 'Artist artwork')
-      : (legacyStructured && finite(legacyStructured.artistImagesUpdated) ? statusFromRun(legacyStructured, 'Artist artwork') : { label:'Not reported', key:'neutral', problem:'' });
-    const legacySetlist = legacySetlistState(legacyStructured);
-    const setlistState = setlistsActivity ? statusFromRun(setlistsActivity, 'setlist.fm') : (legacySetlist || statusFromRun(structured, 'setlist.fm'));
+      : (selectedLegacyStructured && finite(selectedLegacyStructured.artistImagesUpdated) ? statusFromRun(selectedLegacyStructured, 'Artist artwork') : { label:'Not reported', key:'neutral', problem:'' });
+    const legacySetlist = legacySetlistState(selectedLegacyStructured);
+    const setlistState = setlistsActivity
+      ? statusFromRun(setlistsActivity, 'setlist.fm')
+      : (selectedLegacyStructured ? (legacySetlist || statusFromRun(selectedLegacyStructured, 'setlist.fm')) : { label:'Not reported', key:'neutral', problem:'' });
 
     const listeningResult = lb?.lastSyncResult && finite(lb.lastSyncResult.processed) && finite(lb.lastSyncResult.added)
       ? `${plural(lb.lastSyncResult.processed,'listen','listens')} processed · ${plural(lb.lastSyncResult.added,'listen','listens')} added`
@@ -155,12 +169,12 @@
 
     return [
       {
-        name:'Concerts', ...concertsState, last:concertsActivity?.finishedAt || structured?.finishedAt, next:nextMwfUtc(now),
-        result:reportResult(concertsActivity,'artist','artists','checked','concert','concerts','added') || legacyPair(legacyStructured,'bandsProcessed','artist','artists','checked','concertsAdded','concert','concerts','added') || 'No recent result reported.',
+        name:'Concerts', ...concertsState, last:concertsActivity?.finishedAt || (concertsActivity ? structured?.finishedAt : selectedLegacyStructured?.finishedAt), next:nextMwfUtc(now),
+        result:reportResult(concertsActivity,'artist','artists','checked','concert','concerts','added') || legacyPair(selectedLegacyStructured,'bandsProcessed','artist','artists','checked','concertsAdded','concert','concerts','added') || 'No recent result reported.',
       },
       {
-        name:'Web concert search', ...focusedState, last:focusedActivity?.finishedAt || focused?.finishedAt, next:nextFocusedWebUtc(now),
-        result:reportResult(focusedActivity,'artist','artists','checked','concert','concerts','added') || legacyPair(legacyFocused,'bandsAttempted','artist','artists','checked','concertsAdded','concert','concerts','added') || 'No recent result reported.',
+        name:'Web concert search', ...focusedState, last:focusedActivity?.finishedAt || (focusedActivity ? focused?.finishedAt : selectedLegacyFocused?.finishedAt), next:nextFocusedWebUtc(now),
+        result:reportResult(focusedActivity,'artist','artists','checked','concert','concerts','added') || legacyPair(selectedLegacyFocused,'bandsAttempted','artist','artists','checked','concertsAdded','concert','concerts','added') || 'No recent result reported.',
       },
       {
         name:'Listening history',
@@ -172,16 +186,16 @@
         result:listeningResult,
       },
       {
-        name:'Artist information', ...artistState, last:artistActivity?.finishedAt || providerIdentity?.finishedAt, next:null,
-        result:reportResult(artistActivity,'artist','artists','checked','artist','artists','updated') || legacyPair(usage.lastProviderIdentityRun,'bandsConsidered','artist','artists','checked','updates','artist','artists','updated') || 'No recent result reported.',
+        name:'Artist information', ...artistState, last:artistActivity?.finishedAt || (artistActivity ? providerIdentity?.finishedAt : selectedLegacyIdentity?.finishedAt), next:null,
+        result:reportResult(artistActivity,'artist','artists','checked','artist','artists','updated') || legacyPair(selectedLegacyIdentity,'bandsConsidered','artist','artists','checked','updates','artist','artists','updated') || 'No recent result reported.',
       },
       {
-        name:'Artist artwork', ...artworkState, last:artworkActivity?.finishedAt || (legacyStructured && finite(legacyStructured.artistImagesUpdated) ? legacyStructured.finishedAt : null), next:nextMwfUtc(now),
+        name:'Artist artwork', ...artworkState, last:artworkActivity?.finishedAt || (selectedLegacyStructured && finite(selectedLegacyStructured.artistImagesUpdated) ? selectedLegacyStructured.finishedAt : null), next:nextMwfUtc(now),
         result:reportResult(artworkActivity,'artist','artists','checked','image','images','added') || 'No recent result reported.',
       },
       {
-        name:'Setlists', ...setlistState, last:setlistsActivity?.finishedAt || structured?.finishedAt, next:nextMwfUtc(now),
-        result:reportResult(setlistsActivity,'show','shows','checked','setlist','setlists','added') || legacyPair(legacyStructured,'setlistChecksAttempted','show','shows','checked','setlistsAdded','setlist','setlists','added') || 'No recent result reported.',
+        name:'Setlists', ...setlistState, last:setlistsActivity?.finishedAt || (setlistsActivity ? structured?.finishedAt : selectedLegacyStructured?.finishedAt), next:nextMwfUtc(now),
+        result:reportResult(setlistsActivity,'show','shows','checked','setlist','setlists','added') || legacyPair(selectedLegacyStructured,'setlistChecksAttempted','show','shows','checked','setlistsAdded','setlist','setlists','added') || 'No recent result reported.',
       },
     ];
   }
