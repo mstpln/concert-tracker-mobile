@@ -142,9 +142,9 @@ This continuity file was compacted on 2026-08-17. Earlier durable decisions rema
 
 **Decision:** A Ticketmaster refresh for the same canonical concert may improve an unknown venue or replace one genuine named venue with another genuine venue, but a provider placeholder (`Unknown venue`, `Unknown`, `Venue unknown`, `TBA`, `TBD`, `Venue TBA`, `Venue TBD`, `To be announced`, or `To be determined`) may never overwrite a genuine venue already stored on that concert.
 
-**Reason:** Ticketmaster's event adapter intentionally emits an honest `Unknown venue` sentinel when an event has no usable venue name. The exact-provider-event upgrade path previously treated every non-empty string as meaningful, so a temporary provider omission could destroy better canonical data recovered earlier by GAU4 or entered by the user.
+**Reason:** Ticketmaster's event adapter intentionally emits an honest `Unknown venue` sentinel when a venue object has no name. The exact-provider-event upgrade path previously treated every non-empty string as meaningful, so a temporary provider omission could destroy better canonical data recovered earlier by GAU4 or entered by the user.
 
-**Consequence:** Venue application is field-aware at the Ticketmaster merge boundary and is re-evaluated against the latest reread concert before persistence. Other valid Ticketmaster-owned fields may still refresh when a venue downgrade is rejected. GAU4's trusted unknown-to-known recovery, stable IDs, user-owned fields and unknown future fields remain preserved.
+**Consequence:** Venue application is field-aware at the Ticketmaster merge boundary and is re-evaluated against the latest reread record before persistence. Other valid Ticketmaster-owned fields may still refresh when a venue downgrade is rejected. GAU4's trusted unknown-to-known recovery, stable IDs, user-owned fields and unknown future fields remain preserved.
 
 ## 2026-08-18 — v143 Sweden filter is an exact, view-only geographic peer
 
