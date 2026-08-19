@@ -1,58 +1,64 @@
-/* v147 focused Start-screen visual corrections on top of merged v146.
-   No concert-day, data, provider, navigation or unrelated layout behavior changes. */
+/* v147 focused Start-page corrections on top of merged v146.
+   Runtime behavior, ticket ownership and concert-day presentation are unchanged. */
 
-/* Normal-day calendar surface: keep the approved horizontal inset, but let
-   the white DATE header meet the existing right inner-frame top edge instead
-   of leaving the visible v146 gap. Keep the previous bottom edge unchanged. */
+/* Normal-day calendar: occupy the exact inside edge of the established v140
+   right inner frame. The SVG frame is a 3-unit centered stroke, so its usable
+   interior begins 1.5 units inside x=525/y=50 and ends 1.5 units before the
+   opposite edges. This removes the visible v146 void without adding a second
+   border or covering the existing frame. */
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub {
-  top: 10.80%;
-  height: 77.32%;
+  left: 64.21%;
+  top: 11.12%;
+  width: 28.66%;
+  height: 77.75%;
+  border-radius: 6.5px;
+  box-shadow: none;
 }
 
-/* DATE is the emphasized label. The actual formatted concert date retains
-   its existing v146 treatment. */
+/* DATE is the emphasized header label. The actual formatted concert date
+   keeps its established v146 weight. */
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-label {
   font-weight: 900;
 }
 
-/* Rebalance the black countdown body. The large day value, DAYS LEFT and
-   detailed timer remain horizontally centered. Vertically, the primary day
-   group moves upward into the body center while the detailed timer aligns
-   with the ticket-quantity row on the left. */
+/* Rebalance the black countdown body. The day value remains in the inherited
+   app/system font family and stays horizontally centered. Move the primary
+   day group upward so it is vertically balanced in the black body, then place
+   the detailed timer on the same visual row as the ticket quantity at left. */
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-countdown {
   left: 0;
-  top: -8%;
+  top: -2%;
   width: 100%;
 }
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-stub-content::after {
   left: 0;
-  top: 57%;
+  top: 59%;
   width: 100%;
 }
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v146-calendar-stub .countdown-v139-time {
   left: 0;
-  top: 77%;
+  top: 75%;
   width: 100%;
 }
 
-/* The existing text box is 12px high above 390px and 11px at <=390px.
-   Place each 1px rule exactly four CSS pixels from that box on both sides. */
-.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count::before {
-  top: -5px;
+/* v140 already has the correct equal four-pixel spacing around the ticket
+   quantity text. Restore those original real line nodes and disable v146's
+   pseudo-line approximation. */
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count-line {
+  opacity: 1;
 }
+.countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count::before,
 .countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count::after {
-  top: 16px;
-}
-@media (max-width: 390px) {
-  .countdown-v140-ticket:not(.countdown-card-today) .countdown-v140-ticket-count::after {
-    top: 15px;
-  }
+  content: none;
+  display: none;
 }
 
-/* Concert Stats should use the same single 1px blue outline treatment as the
-   Start listening card. The legacy inset shadow made this card read thicker. */
+/* Concert Stats: match the single 1px outline thickness used by Listening
+   cards. The historical inset shadow plus the blue border made this edge read
+   twice as heavy. */
 .stats-teaser-card {
   box-shadow: none;
+  border-width: 1px;
 }
 .stats-teaser-card .stats-teaser-footer {
   font-weight: 400;
