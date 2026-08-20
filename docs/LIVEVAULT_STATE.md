@@ -4,7 +4,7 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged baseline is **v149** at merge commit `cd3f473a54dfb058e86cc1644b043ab1299e5ade` (PR #158). The current branch prepares **v150** as a tightly scoped responsive correction for the selected-year Listening by Genre detail. No unrelated Stats content, Start cards, Next Concert presentation, navigation, data calculations, stored fields, providers, backend/Worker behavior, production workflow, or production data is changed.
+The current merged baseline is **v150** at merge commit `fca6309c7cca13e7f4b5dacae885efcc229e466e` (PR #159). The current branch prepares **v151** as a focused runtime correction for the same selected-year Listening by Genre mobile presentation. No unrelated Stats content, Start cards, Next Concert presentation, navigation, data calculations, stored fields, providers, backend/Worker behavior, production workflow, or production data is changed.
 
 ### v149 Start stats cards
 
@@ -20,15 +20,17 @@ The shared ranking movement renderer used by Top Bands and Top Tracks uses the a
 
 The Stats screen uses the existing compound-header typography dynamically. Listening shows `LISTENINGSTATS` with `LISTENING` blue and `STATS` grey; Concerts shows `CONCERTSTATS` with `CONCERT` blue and `STATS` grey. The Listening/Concerts segmented control remains unchanged.
 
-### v150 selected-year genre detail mobile fit
+### v150-v151 selected-year genre detail mobile fit
 
 The selected-year Listening by Genre detail keeps the existing wider-layout wording and presentation. Phone-sized layouts up to 479px use a deterministic compact label/value grid so mobile platform text metrics cannot push the final percentage onto a second line. Compact mode removes only the repeated word `listens` from non-Total genre rows; the Total row keeps `listens`. Durations, listen counts, time percentages, listen percentages and genre labels remain unchanged. A small final font-size reduction is used only if a compact value still needs room.
+
+v151 corrects the live integration path discovered after v150 merged. The older selected-year click handler runs in capture phase and stops later click listeners, so v150's formatting listener could be skipped in the installed app even though direct formatter QA passed. v151 observes the Stats detail DOM instead and applies the same compact formatting after v144 finishes rebuilding the selected-year detail. Focused browser coverage now proves the real click/render path applies compact mode before any direct formatter invocation.
 
 ### Preserved v148 Next Concert behavior
 
 Merged v148 remains authoritative for the normal-day Next Concert ticket: v147 calendar geometry/internal spacing stays fixed; the detailed timer is regular weight; canonical `ticketQuantity` is centered in the muted-grey outline pill; the outer normal-day contour is the thinner 1.1px grey stroke; and the right inner frame uses the matched non-scaling 3px white SVG stroke treatment. Concert day remains the v140 `Show today` / `Get directions` / `Open tickets` contract.
 
-`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at **v150**. v150 reuses the existing `startStatsV149.js` / `startStatsV149.css` shell assets for the focused Stats responsive correction, so the deterministic shell-file list is unchanged. Focused Playwright coverage verifies compact one-line rows at 375px, 414px, 440px and 479px, preserved full wording at 480px, dark/light presentation and no horizontal overflow. Full desktop/mobile Chromium PR QA remains the merge-readiness gate.
+`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at **v151**. v151 reuses the existing `startStatsV149.js` / `startStatsV149.css` shell assets for the focused Stats runtime correction, so the deterministic shell-file list is unchanged. Focused Playwright coverage verifies the real selected-year click path plus compact one-line rows at 375px, 414px, 440px and 479px, preserved full wording at 480px, dark/light presentation and no horizontal overflow. Full desktop/mobile Chromium PR QA remains the merge-readiness gate.
 
 The merged v145 Settings data-correctness and automation-reporting behavior remains intact. The merged v144 genre/My Bands ownership behavior, v143 UI alignment and Sweden filters, v142 Ticketmaster venue-quality protection, v135-v137 provider/release cleanup, and existing listening identity/artwork ownership rules remain authoritative.
 
@@ -51,8 +53,8 @@ The historical GitHub backlog has been reconciled against merged `main` so compl
 
 v135-v137 retired active Releases while preserving stored historical/provider state. Existing provider-neutral link resolution, listening artwork ownership, MusicBrainz/Spotify safety, private-listening boundaries, UsageTracker caps/pacing, Spotify circuit, cross-scheduler lease, optimistic concurrency, reviewed provider-decision preservation and immutable source observations remain authoritative.
 
-v150 is presentation-only. It does not add provider calls, change provider schedules/caps/pacing/matching, read production listening archives in automation, change stored JSON schemas, migrate data, modify stable IDs or user-owned fields, or change any credential boundary.
+v151 is presentation-only. It does not add provider calls, change provider schedules/caps/pacing/matching, read production listening archives in automation, change stored JSON schemas, migrate data, modify stable IDs or user-owned fields, or change any credential boundary.
 
 ## Safety and release boundary
 
-Automated browser QA uses only synthetic fixtures and the QA fake backend. The v150 branch does not authorize or perform a production provider call, production research/data-maintenance workflow, production R2 read/write, production-data migration, Worker deployment, production smoke run or deployment. Merge remains separately authorized by the explicit user command `Merge it`.
+Automated browser QA uses only synthetic fixtures and the QA fake backend. The v151 branch does not authorize or perform a production provider call, production research/data-maintenance workflow, production R2 read/write, production-data migration, Worker deployment, production smoke run or deployment. Merge remains separately authorized by the explicit user command `Merge it`.
