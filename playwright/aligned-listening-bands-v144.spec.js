@@ -131,10 +131,11 @@ test('v144 aligns genre drill-down, My Bands return position, and status icons',
   const detail = page.locator('.genre-year-detail');
   await expect(detail).toBeVisible();
   await expect(detail).toHaveAttribute('data-v144-genre-detail', 'true');
+  await expect(detail).toHaveAttribute('data-v150-genre-rows', desktop ? 'full' : 'compact');
   await expect(detail.locator('div')).toHaveCount(6);
   expect(await page.evaluate(() => ListeningStats.genreDistributionByYear.__liveVaultV144 === true)).toBe(true);
 
-  const expectedRock = await page.evaluate((year) => {
+  const expectedRockFull = await page.evaluate((year) => {
     const item = ListeningStats.genreDistributionByYear(listeningEvents).find((candidate) => candidate.year === year);
     const duration = ListeningStats.formatDuration(item.durations.Rock);
     const timePct = Math.round(item.percentages.Rock || 0);
@@ -142,6 +143,9 @@ test('v144 aligns genre drill-down, My Bands return position, and status icons',
     const listenPct = Math.round(item.listenPercentages.Rock || 0);
     return `${duration} (${timePct} %) · ${listens.toLocaleString()} listen${listens === 1 ? '' : 's'} (${listenPct} %)`;
   }, selectedYear);
+  const expectedRock = desktop
+    ? expectedRockFull
+    : expectedRockFull.replace(/\s+listens?(?=\s+\()/, '');
   const rockRow = detail.locator('div').filter({ hasText: /^Rock/ });
   await expect(rockRow.locator('span')).toHaveText(expectedRock);
   await expect(detail.locator('div').first().locator('span')).not.toContainText('%');
@@ -208,6 +212,7 @@ test('v144 visible additions remain contained in light mode', async ({ page }, t
   await page.locator('[data-v81-genre-year]').last().click();
   const detail = page.locator('.genre-year-detail');
   await expect(detail).toHaveAttribute('data-v144-genre-detail', 'true');
+  await expect(detail).toHaveAttribute('data-v150-genre-rows', desktop ? 'full' : 'compact');
   await expect(detail.locator('div')).toHaveCount(6);
   expect(await detail.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);

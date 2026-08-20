@@ -9,7 +9,7 @@ const REPRESENTATIVE_VALUES = {
   Other: '2 h 32 min (1 %) · 51 listens (1 %)',
 };
 
-async function openGenreDetail(page) {
+async function prepareGenreStats(page) {
   await page.locator('[data-tab="stats"]').click();
   await page.evaluate(() => {
     const assignments = {
@@ -24,9 +24,16 @@ async function openGenreDetail(page) {
     bands.forEach((band) => { if (assignments[band.id]) band.genre = assignments[band.id]; });
     renderStatsScreen();
   });
+}
+
+async function openGenreDetail(page) {
+  await prepareGenreStats(page);
   await page.locator('[data-v81-genre-year]').last().click();
   const detail = page.locator('.genre-year-detail');
   await expect(detail).toHaveAttribute('data-v144-genre-detail', 'true');
+  // This assertion deliberately happens before the test calls the formatter
+  // directly. It protects the real click/render path used by the installed app.
+  await expect(detail).toHaveAttribute('data-v150-genre-rows', /^(compact|full)$/);
   await page.evaluate((values) => {
     const detailNode = document.querySelector('.genre-year-detail');
     [...detailNode.querySelectorAll(':scope > div')].forEach((row) => {
@@ -70,6 +77,25 @@ async function expectCompactGenreDetail(detail) {
   const geometry = await expectSingleLineDetail(detail);
   expect(geometry.rows.every((row) => row.whiteSpace === 'nowrap')).toBe(true);
 }
+
+test('v151 live selected-year click applies compact formatting without a direct formatter call', async ({ page }) => {
+  const browserErrors = [];
+  page.on('pageerror', (error) => browserErrors.push(error.message));
+  await page.setViewportSize({ width: 375, height: 820 });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/');
+
+  await prepareGenreStats(page);
+  await page.locator('[data-v81-genre-year]').last().click();
+  const detail = page.locator('.genre-year-detail');
+  const rockValue = detail.locator(':scope > div').filter({ hasText: /^Rock/ }).locator('span');
+  await expect(detail).toHaveAttribute('data-v144-genre-detail', 'true');
+  await expect(detail).toHaveAttribute('data-v150-genre-rows', 'compact');
+  await expect(detail).toHaveClass(/v150-genre-fit/);
+  await expect(rockValue).not.toContainText('listens');
+  await expectSingleLineDetail(detail);
+  expect(browserErrors).toEqual([]);
+});
 
 for (const colorScheme of ['dark', 'light']) {
   test(`v150 selected-year genre rows stay single-line in ${colorScheme} mode`, async ({ page }, testInfo) => {

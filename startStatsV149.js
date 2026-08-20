@@ -170,13 +170,19 @@
     }));
   }
 
-  function installGenreDetailFitV150() {
+  // v151 runtime correction: the legacy selected-year handler runs in capture
+  // phase and intentionally stops later click listeners. Observe the Stats DOM
+  // instead, then apply v150 after v144 has finished rebuilding the detail.
+  function installGenreDetailFitV151() {
     const screen = document.getElementById('screen-stats');
-    if (!screen || screen.dataset.v150GenreObserved === '1') return;
-    screen.dataset.v150GenreObserved = '1';
-    document.addEventListener('click', (event) => {
-      if (event.target?.closest?.('#screen-stats [data-v81-genre-year]')) scheduleGenreDetailFitV150();
-    });
+    if (!screen || screen.dataset.v151GenreObserved === '1') return;
+    screen.dataset.v151GenreObserved = '1';
+    if (typeof MutationObserver === 'function') {
+      new MutationObserver(() => {
+        const detail = screen.querySelector('.genre-year-detail[data-v144-genre-detail="true"]');
+        if (detail && !detail.dataset.v150GenreRows) scheduleGenreDetailFitV150();
+      }).observe(screen, { childList: true, subtree: true });
+    }
     globalThis.addEventListener?.('resize', scheduleGenreDetailFitV150);
     scheduleGenreDetailFitV150();
   }
@@ -200,12 +206,12 @@
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       observeStartPresentationV149();
-      installGenreDetailFitV150();
+      installGenreDetailFitV151();
       setTimeout(keepStartPresentationV149, 0);
     }, { once: true });
   } else {
     observeStartPresentationV149();
-    installGenreDetailFitV150();
+    installGenreDetailFitV151();
     setTimeout(keepStartPresentationV149, 0);
   }
 
