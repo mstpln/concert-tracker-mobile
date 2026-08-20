@@ -102,8 +102,8 @@
 }
 
 /* v150 responsive correction for the selected-year Listening by Genre detail.
-   Narrow phone widths use this compact label/value grid proactively; wider
-   layouts use it only if the original flex-row value actually wraps. */
+   Phone-sized layouts up to 479px use this compact label/value grid; the
+   existing 480px-and-wider presentation remains untouched. */
 .genre-year-detail.v150-genre-fit > div {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
