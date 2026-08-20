@@ -45,6 +45,12 @@
   padding: 4px 0 4px 8px;
 }
 
+/* The matched v149 cards both use the normal app surface, so the concert
+   values/labels follow the same theme-aware text tokens as the listening
+   card rather than the historical always-dark teaser literals. */
+.start-stats-card-v149 .stats-teaser-value { color: var(--text); }
+.start-stats-card-v149 .stats-teaser-label { color: var(--text-muted); }
+
 .start-stats-card-v149 .listening-card-footer,
 .start-stats-card-v149 .stats-teaser-footer {
   min-height: 38px;
