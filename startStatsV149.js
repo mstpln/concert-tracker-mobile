@@ -112,6 +112,73 @@
     if (title) title.innerHTML = statsHeaderMarkupV149();
   }
 
+  // v150 responsive correction: the selected-year genre detail keeps the
+  // existing full desktop wording whenever it fits. When the same row would
+  // wrap at the available width, all genre rows use the agreed compact form
+  // by removing only the repeated word "listens". Total keeps its existing
+  // wording. No values, percentages, calculations or desktop copy change.
+  function compactGenreValueV150(value) {
+    return String(value || '').replace(/\s+listens?(?=\s+\()/, '');
+  }
+
+  function applyGenreDetailFitV150(doc = document) {
+    const detail = doc?.querySelector('#screen-stats .genre-year-detail[data-v144-genre-detail="true"]');
+    if (!detail) return false;
+    const rows = [...detail.querySelectorAll(':scope > div')];
+    if (!rows.length) return false;
+
+    rows.forEach((row) => {
+      const value = row.querySelector(':scope > span');
+      if (!value) return;
+      if (!value.dataset.v150FullValue) value.dataset.v150FullValue = value.textContent || '';
+      value.textContent = value.dataset.v150FullValue;
+    });
+
+    detail.classList.remove('v150-genre-tight');
+    detail.classList.add('v150-genre-fit');
+    const values = rows.map((row) => row.querySelector(':scope > span')).filter(Boolean);
+    const fullOverflows = values.some((value) => value.scrollWidth > value.clientWidth + 1);
+
+    if (!fullOverflows) {
+      detail.classList.remove('v150-genre-fit');
+      detail.dataset.v150GenreRows = 'full';
+      return true;
+    }
+
+    rows.forEach((row) => {
+      const label = row.querySelector(':scope > b')?.textContent?.trim();
+      const value = row.querySelector(':scope > span');
+      if (!value || label === 'Total') return;
+      value.textContent = compactGenreValueV150(value.dataset.v150FullValue);
+    });
+    detail.dataset.v150GenreRows = 'compact';
+
+    if (values.some((value) => value.scrollWidth > value.clientWidth + 1)) {
+      detail.classList.add('v150-genre-tight');
+    }
+    return true;
+  }
+
+  let genreFitPendingV150 = false;
+  function scheduleGenreDetailFitV150() {
+    if (genreFitPendingV150) return;
+    genreFitPendingV150 = true;
+    const raf = globalThis.requestAnimationFrame || ((callback) => setTimeout(callback, 0));
+    raf(() => raf(() => {
+      genreFitPendingV150 = false;
+      applyGenreDetailFitV150();
+    }));
+  }
+
+  function observeGenreDetailFitV150() {
+    const screen = document.getElementById('screen-stats');
+    if (!screen || screen.dataset.v150GenreObserved === '1') return;
+    screen.dataset.v150GenreObserved = '1';
+    new MutationObserver(() => scheduleGenreDetailFitV150()).observe(screen, { childList: true, subtree: true });
+    globalThis.addEventListener?.('resize', scheduleGenreDetailFitV150);
+    scheduleGenreDetailFitV150();
+  }
+
   installRenderOverridesV149();
 
   if (typeof TAB_BRAND_HTML === 'object' && TAB_BRAND_HTML) {
@@ -123,6 +190,7 @@
     renderStatsScreen = function renderStatsScreenV149(...args) {
       const result = renderStatsScreenBeforeV149(...args);
       applyStatsHeaderV149();
+      scheduleGenreDetailFitV150();
       return result;
     };
   }
@@ -130,10 +198,12 @@
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       observeStartPresentationV149();
+      observeGenreDetailFitV150();
       setTimeout(keepStartPresentationV149, 0);
     }, { once: true });
   } else {
     observeStartPresentationV149();
+    observeGenreDetailFitV150();
     setTimeout(keepStartPresentationV149, 0);
   }
 
@@ -145,5 +215,7 @@
     applyStatsHeader: applyStatsHeaderV149,
     applyStartListeningCard: applyStartListeningCardV149,
     installRenderOverrides: installRenderOverridesV149,
+    compactGenreValue: compactGenreValueV150,
+    applyGenreDetailFit: applyGenreDetailFitV150,
   };
 })();
