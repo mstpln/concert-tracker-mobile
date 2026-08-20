@@ -41,6 +41,25 @@ async function openGenreDetail(page) {
   return detail;
 }
 
+async function expectSingleLineDetail(detail) {
+  const geometry = await detail.evaluate((node) => ({
+    detailOverflow: node.scrollWidth > node.clientWidth + 1,
+    rows: [...node.querySelectorAll(':scope > div')].map((row) => {
+      const value = row.querySelector(':scope > span');
+      const rowBox = row.getBoundingClientRect();
+      return {
+        rowHeight: rowBox.height,
+        valueOverflow: value ? value.scrollWidth > value.clientWidth + 1 : false,
+        whiteSpace: value ? getComputedStyle(value).whiteSpace : '',
+      };
+    }),
+  }));
+  expect(geometry.detailOverflow).toBe(false);
+  expect(geometry.rows.every((row) => row.valueOverflow === false)).toBe(true);
+  expect(geometry.rows.every((row) => row.rowHeight < 20)).toBe(true);
+  return geometry;
+}
+
 for (const colorScheme of ['dark', 'light']) {
   test(`v150 selected-year genre rows stay single-line in ${colorScheme} mode`, async ({ page }, testInfo) => {
     const browserErrors = [];
@@ -66,24 +85,8 @@ for (const colorScheme of ['dark', 'light']) {
       await expect(detail).not.toHaveClass(/v150-genre-fit/);
     }
 
-    const geometry = await detail.evaluate((node) => ({
-      detailOverflow: node.scrollWidth > node.clientWidth + 1,
-      rows: [...node.querySelectorAll(':scope > div')].map((row) => {
-        const value = row.querySelector(':scope > span');
-        const rowBox = row.getBoundingClientRect();
-        return {
-          rowHeight: rowBox.height,
-          valueOverflow: value ? value.scrollWidth > value.clientWidth + 1 : false,
-          whiteSpace: value ? getComputedStyle(value).whiteSpace : '',
-        };
-      }),
-    }));
-    expect(geometry.detailOverflow).toBe(false);
-    if (mobile) {
-      expect(geometry.rows.every((row) => row.valueOverflow === false)).toBe(true);
-      expect(geometry.rows.every((row) => row.whiteSpace === 'nowrap')).toBe(true);
-      expect(geometry.rows.every((row) => row.rowHeight < 20)).toBe(true);
-    }
+    const geometry = await expectSingleLineDetail(detail);
+    if (mobile) expect(geometry.rows.every((row) => row.whiteSpace === 'nowrap')).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
     await detail.scrollIntoViewIfNeeded();
@@ -91,3 +94,41 @@ for (const colorScheme of ['dark', 'light']) {
     expect(browserErrors).toEqual([]);
   });
 }
+
+test('v150 keeps 414px phone rows compact and single-line', async ({ page }) => {
+  const browserErrors = [];
+  page.on('pageerror', (error) => browserErrors.push(error.message));
+  await page.setViewportSize({ width: 414, height: 896 });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/');
+
+  const detail = await openGenreDetail(page);
+  const rows = detail.locator(':scope > div');
+  await expect(detail).toHaveAttribute('data-v150-genre-rows', 'compact');
+  await expect(detail).toHaveClass(/v150-genre-fit/);
+  await expect(rows.filter({ hasText: /^Rock/ }).locator('span')).toHaveText('200 h 06 min (87 %) · 3,701 (86 %)');
+  await expectSingleLineDetail(detail);
+  expect(browserErrors).toEqual([]);
+});
+
+test('v150 wider fallback measures the original flex layout before compacting', async ({ page }) => {
+  const browserErrors = [];
+  page.on('pageerror', (error) => browserErrors.push(error.message));
+  await page.setViewportSize({ width: 480, height: 900 });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/');
+
+  const detail = await openGenreDetail(page);
+  await expect(detail).toHaveAttribute('data-v150-genre-rows', 'full');
+
+  await detail.evaluate((node) => {
+    node.style.width = '340px';
+    StartStatsV149.applyGenreDetailFit();
+  });
+
+  await expect(detail).toHaveAttribute('data-v150-genre-rows', 'compact');
+  await expect(detail).toHaveClass(/v150-genre-fit/);
+  await expect(detail.locator('div').filter({ hasText: /^Rock/ }).locator('span')).not.toContainText('listens');
+  await expectSingleLineDetail(detail);
+  expect(browserErrors).toEqual([]);
+});
