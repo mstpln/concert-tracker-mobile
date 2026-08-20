@@ -147,3 +147,11 @@ The Stats root header follows the selected sub-tab using the existing compound-h
 **Reason:** The Start listening/concert summaries should read as a deliberate matching pair, Toplist navigation should be visually attached to the Top Bands section it controls, ranking movement should use the approved stronger arrow shape consistently, and the Stats page header should communicate the active statistics context using an existing BANDMARKR header pattern.
 
 **Consequence:** v149 is presentation-only. It must not alter listening/concert calculations, Toplist ranking logic, row destinations, concert stats values, Next Concert presentation, stored data, providers, backend/Worker behavior, quotas, credentials, production workflows or unrelated UI.
+
+### v150 keeps selected-year genre detail rows single-line when width is constrained
+
+**Decision:** The selected-year Listening by Genre detail keeps the existing full wording whenever it fits. If the available row width would wrap a genre line, the detail switches to the compact agreed form: a fixed label column plus a right-aligned no-wrap value column, with the repeated word `listens` removed only from non-Total genre rows. The Total row keeps `listens`; durations, counts and both percentage values stay unchanged.
+
+**Reason:** The full desktop copy is readable at wider widths, but on a narrow phone the longest genre rows can wrap into a second line and make the summary visually uneven.
+
+**Consequence:** The correction is responsive to actual available width rather than device identity, preserves the desktop presentation whenever it fits, may use only a small final font-size reduction if compact text still needs room, and must not change genre calculations, selected-year ownership, chart data, navigation, stored data or unrelated Stats UI.
