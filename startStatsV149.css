@@ -102,8 +102,8 @@
 }
 
 /* v150 responsive correction for the selected-year Listening by Genre detail.
-   The class is applied only when the existing full desktop wording would
-   wrap at the available width. Desktop keeps its current flex presentation. */
+   Narrow phone widths use this compact label/value grid proactively; wider
+   layouts use it only if the original flex-row value actually wraps. */
 .genre-year-detail.v150-genre-fit > div {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
