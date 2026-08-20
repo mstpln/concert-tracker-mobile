@@ -74,8 +74,8 @@ setHeaderChrome = function v143SetHeaderChrome(...args) {
 };
 
 // My Concerts keeps its existing renderer. The existing Upcoming label keeps
-// the v143 divider hook; v152 adds Next concert using that exact same hook so
-// typography, lines, color, spacing and padding remain one shared treatment.
+// the v143 hook; v152 uses a distinct hook with the exact same CSS treatment
+// so the established Upcoming selector remains unique for older behavior/tests.
 function v143AlignMyConcertsSeparator() {
   const container = el('screen-myconcerts');
   const labels = container?.querySelectorAll(':scope > .section-label');
@@ -89,7 +89,7 @@ function v143AlignMyConcertsSeparator() {
   const countdown = container?.querySelector('#countdown-card');
   if (countdown && !container.querySelector('.section-label-v152-next')) {
     const nextLabel = document.createElement('p');
-    nextLabel.className = 'section-label section-label-v143-upcoming section-label-v152-next';
+    nextLabel.className = 'section-label section-label-v152-next';
     nextLabel.textContent = 'Next concert';
     countdown.before(nextLabel);
   }
@@ -235,7 +235,7 @@ renderProfileScreen = function v143RenderProfileScreen(bandId, ...rest) {
 
     const empty = el('screen-profile')?.querySelector('.profile-tab-panel .screen-empty');
     if (empty?.textContent.trim() === 'No upcoming European shows for this band right now.') {
-      empty.textContent = 'No upcoming shows in Sweden for this band right now.';
+      empty.textContent = 'No upcoming shows in Sweden right now.';
     }
   } else {
     result = v143BaseRenderProfileScreen.call(this, bandId, ...rest);
