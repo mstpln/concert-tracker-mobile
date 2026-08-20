@@ -101,6 +101,28 @@
   transform: rotate(180deg);
 }
 
+/* v150 responsive correction for the selected-year Listening by Genre detail.
+   The class is applied only when the existing full desktop wording would
+   wrap at the available width. Desktop keeps its current flex presentation. */
+.genre-year-detail.v150-genre-fit > div {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: 6px;
+}
+
+.genre-year-detail.v150-genre-fit > div > span {
+  min-width: 0;
+  max-width: none;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  text-align: right;
+}
+
+.genre-year-detail.v150-genre-fit.v150-genre-tight {
+  font-size: 11px;
+}
+
 @media (max-width: 390px) {
   .rank-movement-v149 {
     width: 28px;
