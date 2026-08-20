@@ -1,195 +1,149 @@
 # LiveVault Decisions
 
-This continuity file was compacted on 2026-08-17. Earlier durable decisions remain recoverable in Git history. The decisions below are the active architectural and safety constraints that must be preserved by future work.
+This continuity file was compacted again on 2026-08-20. Earlier durable decisions and their full rationale remain recoverable in Git history. The active contracts below must be preserved by future work.
 
-## 2026-07-18 — GitHub main is authoritative
+## Repository, safety and data ownership
 
-**Decision:** Treat merged `main`, not chat memory or a stale local copy, as product source of truth.
+### GitHub main is authoritative
 
-**Reason:** Conversations and local checkouts can be stale.
+**Decision:** Treat merged `main`, not chat memory or stale local copies, as product source of truth.
 
-**Consequence:** Read `AGENTS.md`, current state/decisions/build-state, relevant code, recent PRs and current versions before changing the app.
+**Consequence:** Before work, read `AGENTS.md`, current state/decisions/build-state, relevant current code, recent PRs and current versions.
 
-## 2026-07-18 — Synthetic QA and explicit release authorization
+### Synthetic QA and explicit release authorization
 
-**Decision:** Automated QA uses fictional data and the fake backend. A merge requires the explicit phrase `Merge it`; production workflows/data/provider execution require separate authorization when applicable.
-
-**Reason:** Review and testing must not expose or mutate personal production state.
+**Decision:** Automated QA uses fictional data and the fake backend. Merge requires the explicit phrase `Merge it`; production workflows/data/provider execution require separate authorization when applicable.
 
 **Consequence:** Branch/PR creation, a version bump, green CI or mergeability never authorizes merge, deployment, provider calls or production-data writes.
 
-## 2026-07-18 — Stable identity and user ownership are preserved
+### Stable identity and user ownership are preserved
 
-**Decision:** Stable record IDs, user-owned fields, user-reviewed decisions and unknown future fields survive enrichment and reconciliation.
-
-**Reason:** Research and automation must never replace the user's concert/listening history or reviewed decisions.
+**Decision:** Stable IDs, user-owned fields, user-reviewed decisions and unknown future fields survive enrichment and reconciliation.
 
 **Consequence:** Use additive/provider-owned state and latest-record conditional merges. Ambiguity fails closed.
 
-## 2026-08-02 — Existing JSON writes use optimistic concurrency
+### Existing JSON writes use optimistic concurrency
 
-**Decision:** Writes to existing production JSON documents are conditional on the corresponding latest ETag, with only the existing bounded reread/reconciliation behavior.
-
-**Reason:** Browser and automation can edit the same full documents.
+**Decision:** Writes to existing production JSON documents are conditional on the corresponding latest ETag, with only the established bounded reread/reconciliation behavior.
 
 **Consequence:** Stale automation must not overwrite newer user/provider decisions or concurrent additions.
 
-## 2026-08-02 — Browser, automation, maintenance and smoke credentials have separate roles
+### Credentials remain least-privilege and separated by role
 
-**Decision:** Preserve least-privilege credential boundaries. Ordinary automation may access only its allowed JSON/derived routes; private listening archives/manifests are not ordinary automation inputs. Production smoke remains read-only and sanitized.
+**Decision:** Browser, automation, maintenance and smoke credentials remain separate. Ordinary automation may access only its allowed JSON/derived routes; private listening archives/manifests are not ordinary automation inputs. Production smoke is read-only and sanitized.
 
-**Reason:** Private listening history and ticket/user data must not be exposed merely to improve provider automation.
+**Consequence:** Raw private listening history stays in already-authorized private/browser/trusted-local contexts unless a new explicit security design is approved.
 
-**Consequence:** A feature that needs raw private listening history must remain in an already-authorized private/browser/trusted-local context unless a new explicit security design is approved.
+## Listening ownership and provider safety
 
-## 2026-08-03 — Private R2 is the durable listening-history source of truth
+### Private R2 is the durable listening-history source of truth
 
 **Decision:** Complete sanitized listening history is private R2 data with IndexedDB as the device working copy. Source observations remain immutable.
 
-**Reason:** Listening history needs durable recovery without entering GitHub, public QA or provider bulk requests.
+**Consequence:** Derived identity/artwork layers stay separate; provider failures never invalidate a listen or alter listening statistics.
 
-**Consequence:** Derived identity/artwork layers remain separate from source observations; failures never invalidate a listen or alter statistics.
+### Listening artwork metadata remains separate from source events
 
-## 2026-08-03 — Listening artwork metadata remains separate from source events
+**Decision:** Provider-specific artwork metadata lives in its provider-owned derived layer; source listens are not rewritten as provider metadata.
 
-**Decision:** Provider-specific artwork metadata is stored in its provider-owned derived layer; source listens are not rewritten as provider metadata.
+**Consequence:** Spotify metadata remains Spotify-owned. Provider-neutral MusicBrainz/ListenBrainz/Cover Art Archive evidence must not be written into Spotify metadata.
 
-**Reason:** Repeated listens should not duplicate mutable provider metadata, and provider ownership must remain explicit.
+### Historical listening identity is catalogue-first and provider-neutral
 
-**Consequence:** Spotify metadata stays Spotify-owned. Provider-neutral evidence such as MusicBrainz/ListenBrainz/Cover Art Archive must not be written into the Spotify metadata document.
+**Decision:** Reuse existing recording/provider identity and deterministic local catalogue evidence before new provider calls. Spotify is presentation/metadata, not the core historical recording-identity provider.
 
-## 2026-08-10 — Historical listening identity is catalogue-first and provider-neutral
+**Consequence:** Ambiguous or held identity stays unresolved/reviewed rather than guessed.
 
-**Decision:** Reuse existing recording/provider identity and deterministic local catalogue evidence before widening to provider calls. Spotify is presentation/metadata only, not the core historical recording-identity provider.
+### Listening artwork is album-oriented and cumulative
 
-**Reason:** Reuse reduces provider dependence while preserving durable review/retry/error/no-match ownership.
+**Decision:** Safe album groups use conservative local-band/release grouping. Existing reusable artwork is excluded before provider work; unresolved work is bounded and prioritizes recent/important listening. Spotify uses exact trusted track seeds rather than title search.
 
-**Consequence:** Ambiguous or held identity state remains unresolved/reviewed rather than guessed. Provider calls occur only after local reusable evidence is exhausted under the applicable safety gates.
+**Consequence:** Missing release titles, ambiguous ownership, cross-group conflicts and conflicting album identity fail closed.
 
-## 2026-08-12 — Listening artwork is album-oriented and cumulative
+### Spotify safety uses one persisted circuit and one cross-scheduler lease
 
-**Decision:** Safe album groups are conservative local-band/release groups. Existing reusable artwork is excluded before provider work; unresolved work is bounded and prioritizes recent/important listening. Spotify uses exact trusted track seeds, not title search.
+**Decision:** Scheduled Node research and trusted-local Spotify maintenance share the persisted Spotify circuit and scheduler lease. UsageTracker caps/pacing remain authoritative.
 
-**Reason:** Artwork should improve incrementally without turning into an unbounded private-history provider backfill.
+**Consequence:** Provider work never bypasses UsageTracker, pacing, lease or circuit gates.
 
-**Consequence:** Missing release titles, ambiguous ownership, cross-group track conflicts and conflicting album identity fail closed. Source observations remain immutable.
-
-## 2026-08-13 — Node Spotify safety uses one persisted circuit and one cross-scheduler lease
-
-**Decision:** Scheduled Node research and trusted-local Spotify maintenance share the persisted Spotify circuit and persisted scheduler lease. UsageTracker caps/pacing remain authoritative.
-
-**Reason:** Independent processes must not race provider quota/circuit state.
-
-**Consequence:** Active/malformed safety state fails closed; changed safety state is persisted; provider work never bypasses UsageTracker, pacing, lease or circuit gates.
-
-## 2026-08-13 — Scheduled listening artwork remains trusted-local
+### Scheduled listening artwork remains trusted-local
 
 **Decision:** Automatic Spotify listening-artwork maintenance stays on the trusted local host rather than moving private listening reads into GitHub Actions.
 
-**Reason:** Album-artwork planning requires private listening history.
+**Consequence:** Installing/running that scheduler, reading production listening data, calling Spotify and writing production metadata/usage remain separately authorized production actions.
 
-**Consequence:** Installing/running the scheduler, reading production listening data, calling Spotify and writing production metadata/usage remain separately authorized production actions.
-
-## 2026-08-15 — Listening aliases are local attribution only
+### Listening aliases are local attribution only
 
 **Decision:** Optional `listeningAliases` extend local band-name attribution only when one stable BANDMARKR band uniquely owns the normalized name. Explicit known stable band IDs remain authoritative.
 
-**Reason:** Historical display names can differ without proving provider identity.
-
 **Consequence:** Aliases do not create/replace Spotify or MusicBrainz IDs, rewrite source observations or weaken ambiguity rules.
 
-## 2026-08-16 — Missing artist images use privacy-safe exact identity
+### Missing artist images use privacy-safe exact identity
 
-**Decision:** The structured research image-maintenance lane may use the validated aggregate `listening/band-activity.json` for priority but may not read raw listening history. Trusted Spotify identity goes to exact artist lookup; search thumbnails are not trusted artwork.
+**Decision:** Structured research image maintenance may use the validated aggregate `listening/band-activity.json` for priority but may not read raw listening history. Trusted Spotify identity goes to exact artist lookup; search thumbnails are not trusted artwork.
 
-**Reason:** Artist-image maintenance needs useful ordering without widening private-listening access.
+**Consequence:** Manual `photoUrl` is never overwritten and mismatched identity fails closed.
 
-**Consequence:** Manual `photoUrl` is never overwritten; duplicate/mismatched identity fails closed; existing provider-safety contracts remain authoritative.
+## Provider/release and reporting contracts
 
-## 2026-08-17 — v135 retires active release alerts and scheduled release discovery
+### v135 retires active release alerts and scheduled release discovery
 
-**Decision:** Releases is no longer an active user-facing feed/alert surface. Alerts is concert-only. Scheduled structured preload disables release monitoring and lifecycle release-alert planning. Existing stored release/provider data is preserved for compatibility.
+**Decision:** Releases is not an active feed/alert surface. Alerts is concert-only. Scheduled structured preload disables release monitoring and lifecycle release-alert planning while preserving stored historical/provider state.
 
-**Reason:** The unwanted release product path must stop consuming provider budget without destructive migration.
+**Consequence:** Reintroducing releases requires a new explicit decision/build.
 
-**Consequence:** Reintroducing a release feed, release alerts or scheduled release discovery requires a new explicit decision/build. Spotify remains available only for separately justified non-release features.
+### v136 reuses provider-neutral evidence before Spotify-specific work
 
-## 2026-08-17 — v136 reuses provider-neutral evidence before Spotify-specific work
+**Decision:** Non-playlist track links and listening artwork consume safe reusable evidence before new Spotify calls. Exact stored Spotify IDs/URLs and exact ListenBrainz/MusicBrainz Spotify URL relations may satisfy non-playlist links; exact trusted release evidence may satisfy Cover Art Archive artwork before Spotify album-artwork enrichment.
 
-**Decision:** Non-playlist track links and listening artwork must consume safe reusable evidence before making new Spotify calls. Exact stored Spotify track IDs/URLs and exact ListenBrainz/MusicBrainz Spotify URL relations are reusable for non-playlist display/setlist links. Exact MusicBrainz release identity, including exact ListenBrainz CAA release identity, may provide Cover Art Archive artwork before Spotify album-artwork enrichment. Playlist matching remains a separate contract and is not changed by this reuse layer.
+**Consequence:** Shared resolvers remain pure/fail-closed; ordinary scheduled automation does not gain raw private listening access; provider-neutral artwork never becomes Spotify-owned metadata.
 
-**Reason:** The reviewed provider-cleanup scope requires fewer unnecessary Spotify calls without weakening identity, privacy or provider ownership. Ordinary scheduled automation cannot be given raw private listening access merely to improve reuse.
+### Update activity uses one safe per-flow reporting contract
 
-**Consequence:** The shared link resolver is pure and fail-closed on conflicting evidence. Scheduled research may collect only evidence already visible in its allowed concert/band state; private listening evidence may be fed to the same resolver only by callers that already possess it. A single exact CAA release URL may satisfy a safe local album group and removes that group from unresolved Spotify artwork planning; conflicting CAA evidence remains ambiguous. CAA-derived presentation fields are local/provider-neutral and never become Spotify metadata. Trusted-local Spotify artwork operations retain aggregate diagnostics plus UsageTracker, circuit, lease, pacing, authorization and conditional-write controls.
+**Decision:** Settings Update activity uses an additive per-flow status/timestamp/result contract with truthful aggregate counts and only normalized safe failure summaries. Device-owned ListenBrainz stores only its latest processed/added/skipped aggregate in browser-local connection state.
 
-## 2026-08-17 — v139 Next Concert ticket geometry is fixed to the approved reference
+**Consequence:** Missing metrics remain missing rather than invented zeroes; raw provider bodies, stacks, secrets, private URLs, ticket data and listening-event details are never displayed.
 
-**Decision:** The Start-screen Next Concert card uses the approved 820x386 ticket silhouette with tear x=468, graphite contour and matching graphite dashed tear line, and inset frames 358x286 and 238x286. Normal countdown treatment is silver/graphite. On concert day, `Get directions` remains in the left information frame and the right stub becomes the yellow circular `Open tickets` control with a ticket icon and text.
+### Ticketmaster venue quality is monotonic
 
-**Reason:** v138 approximated the aligned visual rather than reproducing the approved geometry precisely.
+**Decision:** A provider placeholder venue may never overwrite a genuine venue already stored for the same canonical concert, while valid provider-owned fields may still refresh.
 
-**Consequence:** This visual decision is superseded by the explicitly approved v140 ticket geometry/color decision below. Maps URL generation and OwnedTickets remain the behavior owners.
+**Consequence:** Venue application remains field-aware and is re-evaluated against the latest reread record before persistence.
 
-## 2026-08-18 — v140 Next Concert ticket adopts the taller black/white stub and neon show-day ticket action
+## Active UI contracts
 
-**Decision:** The Start-screen Next Concert card uses an 820x463 true-black ticket silhouette with shallow center notches, repeated fixed-size side perforations, tear x=468, a thin white outer contour, thicker white inner frames, visually all-caps artist name, compact silver countdown, normal-day concert date and dynamic user-owned `ticketQuantity` display. On concert day, the same tall geometry is retained; `Get directions` remains on the left and `Open tickets` remains on the right using `#5ED8FF` with dark text/icon.
+### v140 Next Concert uses the taller black/white ticket and neon concert-day action
 
-**Reason:** The approved v140 correction replaces the shorter graphite/yellow v139 presentation while preserving established functional ownership.
+**Decision:** The Start Next Concert card uses the approved 820x463 true-black ticket silhouette with shallow center notches, repeated side perforations, tear x=468, white inner frames, all-caps artist presentation, normal-day date/countdown and canonical user-owned `ticketQuantity`. On concert day, `Get directions` remains left and `Open tickets` remains right using `#5ED8FF`.
 
-**Consequence:** Normal-day ticket quantity reads only the canonical user-owned `concert.ticketQuantity` and is omitted for missing/non-positive values; it is not derived from owned ticket artifacts. Concert-day Maps URL generation and OwnedTickets PDF/URL/multiple-ticket behavior remain the authoritative paths and must not be forked by the presentation layer.
+**Consequence:** Maps URL generation and OwnedTickets URL/PDF/multiple-ticket behavior remain authoritative and must not be forked by presentation layers.
 
-## 2026-08-18 — Ticketmaster venue quality is monotonic across placeholder refreshes
+### v143 Sweden filter is an exact view-only peer
 
-**Decision:** A Ticketmaster refresh for the same canonical concert may improve an unknown venue or replace one genuine named venue with another genuine venue, but a provider placeholder (`Unknown venue`, `Unknown`, `Venue unknown`, `TBA`, `TBD`, `Venue TBA`, `Venue TBD`, `To be announced`, or `To be determined`) may never overwrite a genuine venue already stored on that concert.
+**Decision:** ConcertDates and Band Detail → Concerts expose Nearby → `SE` → EU. `SE` means canonical `country` exactly `Sweden` after trim/case normalization. The controls are mutually exclusive; root selection persists and profile selection is transient.
 
-**Reason:** Ticketmaster's event adapter intentionally emits an honest `Unknown venue` sentinel when a venue object has no name. The exact-provider-event upgrade path previously treated every non-empty string as meaningful, so a temporary provider omission could destroy better canonical data recovered earlier by GAU4 or entered by the user.
+**Consequence:** SE filtering never infers country from venue/city/address/coordinates/distance and never writes concert data.
 
-**Consequence:** Venue application is field-aware at the Ticketmaster merge boundary and is re-evaluated against the latest reread record before persistence. Other valid Ticketmaster-owned fields may still refresh when a venue downgrade is rejected. GAU4's trusted unknown-to-known recovery, stable IDs, user-owned fields and unknown future fields remain preserved.
+### v144 genre drill-down and My Bands status/navigation are presentation-only
 
-## 2026-08-18 — v143 Sweden filter is an exact, view-only geographic peer
+**Decision:** Selected-year Listening by Genre detail uses stored BANDMARKR band-genre attribution and reports separate time/listen percentages. My Bands shows only exceptional favorite/muted status indicators before the chevron and restores viewport/filter state when returning from a band profile.
 
-**Decision:** ConcertDates and Band Detail → Concerts expose geographic controls in the order Nearby → `SE` → EU. `SE` means concerts whose canonical `country` is exactly `Sweden` after trim/case normalization. Nearby, SE and EU are mutually exclusive. The root ConcertDates SE choice persists alongside the existing root geographic settings; the Band Detail SE choice is transient and resets when a band page is opened, matching the existing profile-filter lifecycle.
+**Consequence:** Status icons are informational, scroll restoration is transient, and no stored identity/listening ownership changes.
 
-**Reason:** The user wants a country-wide Sweden view that is distinct from the existing southern-Sweden/Denmark Nearby rule and the broader Europe view, without changing canonical concert data or research ownership.
+### v146-v148 lock the current normal-day Next Concert calendar/chrome
 
-**Consequence:** SE filtering never infers country from venue, city, address, coordinates or distance and never writes `concerts.json`. ConcertDates continues to apply geographic filtering to its existing representative upcoming concert per band, and Band Detail continues to filter that band's existing upcoming set. Adding SE must not alter provider behavior, scheduling, stored schema, stable IDs or user-owned fields.
+**Decision:** v146 introduced the full-frame normal-day calendar; v147 fixed its fit/alignment; v148 freezes the v147 calendar geometry/internal spacing while applying only the approved chrome refinements: regular detailed timer weight, centered muted-grey `ticketQuantity` outline pill, thinner 1.1px grey outer contour, and a right inner-frame redraw matching the left frame's exact non-scaling 3px white SVG stroke contract.
 
-## 2026-08-18 — v144 genre drill-down and My Bands status/navigation are presentation-only contracts
+**Consequence:** Future unrelated visual work must not move the v147/v148 right-stub geometry, countdown positions, date/header spacing, countdown IDs/ticker behavior, ticketQuantity ownership, left information layout or concert-day Maps/OwnedTickets path unless explicitly redesigned.
 
-**Decision:** The selected-year Listening by Genre detail uses the same stored BANDMARKR band-genre attribution as its stacked bar. Each genre row reports absolute listening time and listen count plus separate selected-year percentages for time and listens; the Total row remains absolute totals only. My Bands shows only exceptional status indicators — filled heart for `favorite`, crossed-out bell for `muted` — in a small trailing status area immediately before the chevron, using the same glyphs and muted color treatment as Band Detail. Opening a band from My Bands and returning through either the app Back arrow or browser/system history restores the list viewport and existing filter state.
+### v149 aligns Start stats cards, ranking arrows and contextual Stats headers
 
-**Reason:** The prior selected-year detail could disagree with the visible stacked bar, and My Bands lost browsing context when returning from a profile. The approved status treatment should communicate favorite/alerts-off state without adding card clutter or extra actions.
+**Decision:** The two Start stats cards use one shared visual language without changing their data or destinations. `Listening stats` and `Concert stats` are title-case blue card headers on the existing app surface with the normal divider and 1px blue outline. Both cards use the same compact bottom CTA strip height. The Listening preview keeps `YOUR TOP BANDS · 2 WEEKS` in grey uppercase and places the grey uppercase `TOPLIST` action on that same section row; the previous header-level `View all` wording is removed. Concert metrics remain unchanged.
 
-**Consequence:** Source-event genre metadata does not override stored band genre ownership for this chart; time percentage and listen percentage have distinct denominators. My Bands does not show empty-heart or active-bell indicators, and status icons are informational rather than buttons. Scroll restoration is transient browser UI state only and never writes band/concert/listening data. These changes do not alter stable IDs, provider state, listening source observations, stored schema or production data.
+The shared Top Bands/Top Tracks movement indicator uses the approved compact thick SVG arrow: gently rounded point edges, comparatively square tail, and the final 10%-wider rectangular shaft. Up remains blue, down remains grey, and `New` text/ranking calculations are unchanged. This movement-arrow decision does not apply to chevrons, Back controls, navigation arrows or other icons.
 
-## 2026-08-19 — Update activity uses one safe per-flow reporting contract
+The Stats root header follows the selected sub-tab using the existing compound-header pattern: Listening shows `LISTENINGSTATS` with `LISTENING` blue and `STATS` grey; Concerts shows `CONCERTSTATS` with `CONCERT` blue and `STATS` grey. The segmented Listening/Concerts control remains unchanged.
 
-**Decision:** Settings Update activity consumes one additive per-flow automation reporting contract for status, timestamps, truthful aggregate work/result counts, and an optional normalized safe failure code/reason. Structured parent-run health and sub-flow health are separate: Concerts, Artist artwork and Setlists may each report their own result/problem. Focused Web concert search and Artist information use the same contract. Device-owned ListenBrainz keeps only its latest aggregate processed/added/skipped summary in the existing browser-local connection record rather than moving private listening data into shared automation state.
+**Reason:** The Start listening/concert summaries should read as a deliberate matching pair, Toplist navigation should be visually attached to the Top Bands section it controls, ranking movement should use the approved stronger arrow shape consistently, and the Stats page header should communicate the active statistics context using an existing BANDMARKR header pattern.
 
-**Reason:** A single parent run can be globally healthy while one sub-operation fails, and the Settings page must explain what each lane actually did without bespoke Setlists-only logic, false zeroes, raw diagnostics or a UI redesign.
-
-**Consequence:** `apiUsage.json` reporting extensions are optional/additive and preserve existing provider counters, legacy fields and unknown future fields. Zero is a real reported result; absent legacy counters remain missing rather than becoming zero. Settings may display only bounded category-level failure summaries and must never expose raw provider bodies, stack traces, authorization headers, secrets, private URLs, ticket data or listening-event details. Future Update activity flows should adopt this contract rather than introduce custom status/error UI. Provider behavior, schedules, pacing, quotas and ownership boundaries remain unchanged.
-
-## 2026-08-19 — v146 normal-day Next Concert uses a full-frame calendar countdown and softened ticket contour
-
-**Decision:** On normal days only, the Start-screen Next Concert card keeps the v140/v141 820x463 geometry, tear x=468, exact inner-frame geometry and shallow center notches, but the right inner frame becomes the approved edge-to-edge calendar presentation. Its white header shows `DATE` and the formatted concert date; its black body shows a larger live days-left value, `DAYS LEFT`, and the existing detailed countdown. The normal-day outer contour is `#B5B7BC` at the existing 1.5px weight, while the inner frames and dashed tear remain white. Side perforation entry/exit transitions are subtly rounded without changing their count/rhythm, and the ticket-quantity separator rules receive the approved optical spacing correction. Concert day remains the v140 presentation unchanged.
-
-**Reason:** The circular normal-day countdown made the primary days-left value too small, while the pure-white/sharper ticket contour read more angular than the surrounding app. The approved calendar treatment improves hierarchy and aligns the ticket more closely with the app's rounded visual language without changing the ticket's established proportions or functional ownership.
-
-**Consequence:** The existing countdown IDs and one-second ticker in `app.js` remain authoritative and are not forked; the old ring DOM stays as a compatibility mechanism even though its circles are not shown on normal days. Normal-day `ticketQuantity` remains canonical user-owned data with the existing singular/plural/missing rules. Show-day Maps and OwnedTickets URL/PDF/multiple-ticket behavior, `#5ED8FF` Open tickets action, and all unrelated Start/app UI remain unchanged. v146 is presentation-only and introduces no stored-data, provider, backend, API/quota or credential changes.
-
-## 2026-08-19 — v147 corrects calendar fit/alignment and Start stats visual consistency
-
-**Decision:** The v146 normal-day calendar surface must occupy the exact usable interior of the existing v140 right inner frame after accounting for its centered 3-unit stroke, so the white header meets the frame without a visible void or a second border. `DATE` is the bold header label while the formatted concert date keeps its existing weight. The live day number uses the same inherited app/system font family as the rest of the card and is centered horizontally; the days-left group is vertically balanced in the black body, and the detailed countdown aligns to the ticket-quantity row. The `ticketQuantity` separators use the original v140 real line nodes with equal visible spacing above and below the text. The Start Concert Stats teaser uses one 1px blue outline with no extra inset shadow, and its `See your full concert stats` CTA is regular weight.
-
-**Reason:** The merged v146 rendering exposed a visible top gap, low/uneven countdown placement, unequal ticket-rule spacing, and a heavier Concert Stats border/CTA than the corresponding listening treatment.
-
-**Consequence:** v147 is presentation-only. It does not alter countdown timing/IDs, ticketQuantity ownership, concert-day Maps/OwnedTickets behavior, stats values/navigation, stored data, providers, backend, quotas, credentials or production workflows. Future visual changes must preserve the single-frame calendar fit and the Start-card border/weight consistency unless explicitly redesigned.
-
-## 2026-08-19 — v148 freezes v147 countdown spacing while refining ticket chrome
-
-**Decision:** On normal days, v148 preserves the merged v147 calendar surface geometry and all internal right-stub spacing exactly. The white date header, formatted date, large live day value, `DAYS LEFT`, and detailed timer positions must not move. Only the approved chrome changes apply: the detailed timer becomes regular weight; canonical `ticketQuantity` is centered in the existing left quantity lane inside a muted-grey rounded outline pill with the former separator rules hidden; the normal-day outer grey ticket contour becomes slightly thinner; and the right inner frame is visually redrawn with the same exact 3px non-scaling SVG stroke contract and geometry as the existing left frame so both inner outlines read at the same thickness.
-
-**Reason:** The approved v147 content spacing was already correct, while the ticket quantity treatment, outer contour weight, timer weight and perceived left/right inner-frame weight needed refinement. Mockup iterations also demonstrated that changing right-stub padding to compensate for the frame would introduce unwanted layout drift.
-
-**Consequence:** v148 must not alter the v147 right-stub `left/top/width/height`, countdown-group positions, date/header spacing, countdown IDs/ticker behavior, left information layout, ticketQuantity ownership or concert-day Maps/OwnedTickets path. The frame correction is presentation-only and must not resize the calendar surface. Stored data, providers, backend, quotas, credentials, production workflows and unrelated UI remain unchanged.
+**Consequence:** v149 is presentation-only. It must not alter listening/concert calculations, Toplist ranking logic, row destinations, concert stats values, Next Concert presentation, stored data, providers, backend/Worker behavior, quotas, credentials, production workflows or unrelated UI.
