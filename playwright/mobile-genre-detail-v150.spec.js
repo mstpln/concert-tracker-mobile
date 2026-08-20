@@ -60,6 +60,17 @@ async function expectSingleLineDetail(detail) {
   return geometry;
 }
 
+async function expectCompactGenreDetail(detail) {
+  const rows = detail.locator(':scope > div');
+  await expect(detail).toHaveAttribute('data-v150-genre-rows', 'compact');
+  await expect(detail).toHaveClass(/v150-genre-fit/);
+  await expect(rows.filter({ hasText: /^Rock/ }).locator('span')).toHaveText('200 h 06 min (87 %) · 3,701 (86 %)');
+  await expect(rows.first().locator('span')).toHaveText('229 h 31 min · 4,307 listens');
+  await expect(rows.nth(1).locator('span')).not.toContainText('listens');
+  const geometry = await expectSingleLineDetail(detail);
+  expect(geometry.rows.every((row) => row.whiteSpace === 'nowrap')).toBe(true);
+}
+
 for (const colorScheme of ['dark', 'light']) {
   test(`v150 selected-year genre rows stay single-line in ${colorScheme} mode`, async ({ page }, testInfo) => {
     const browserErrors = [];
@@ -74,19 +85,13 @@ for (const colorScheme of ['dark', 'light']) {
     await expect(rows).toHaveCount(6);
 
     if (mobile) {
-      await expect(detail).toHaveAttribute('data-v150-genre-rows', 'compact');
-      await expect(rows.filter({ hasText: /^Rock/ }).locator('span')).toHaveText('200 h 06 min (87 %) · 3,701 (86 %)');
-      await expect(rows.first().locator('span')).toHaveText('229 h 31 min · 4,307 listens');
-      await expect(rows.nth(1).locator('span')).not.toContainText('listens');
-      await expect(detail).toHaveClass(/v150-genre-fit/);
+      await expectCompactGenreDetail(detail);
     } else {
       await expect(detail).toHaveAttribute('data-v150-genre-rows', 'full');
       await expect(rows.filter({ hasText: /^Rock/ }).locator('span')).toHaveText(REPRESENTATIVE_VALUES.Rock);
       await expect(detail).not.toHaveClass(/v150-genre-fit/);
+      await expectSingleLineDetail(detail);
     }
-
-    const geometry = await expectSingleLineDetail(detail);
-    if (mobile) expect(geometry.rows.every((row) => row.whiteSpace === 'nowrap')).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
     await detail.scrollIntoViewIfNeeded();
@@ -95,23 +100,22 @@ for (const colorScheme of ['dark', 'light']) {
   });
 }
 
-test('v150 keeps 414px phone rows compact and single-line', async ({ page }) => {
-  const browserErrors = [];
-  page.on('pageerror', (error) => browserErrors.push(error.message));
-  await page.setViewportSize({ width: 414, height: 896 });
-  await page.emulateMedia({ colorScheme: 'dark' });
-  await page.goto('/');
+for (const width of [414, 440, 479]) {
+  test(`v150 keeps ${width}px phone rows compact and single-line`, async ({ page }) => {
+    const browserErrors = [];
+    page.on('pageerror', (error) => browserErrors.push(error.message));
+    await page.setViewportSize({ width, height: 896 });
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.goto('/');
 
-  const detail = await openGenreDetail(page);
-  const rows = detail.locator(':scope > div');
-  await expect(detail).toHaveAttribute('data-v150-genre-rows', 'compact');
-  await expect(detail).toHaveClass(/v150-genre-fit/);
-  await expect(rows.filter({ hasText: /^Rock/ }).locator('span')).toHaveText('200 h 06 min (87 %) · 3,701 (86 %)');
-  await expectSingleLineDetail(detail);
-  expect(browserErrors).toEqual([]);
-});
+    const detail = await openGenreDetail(page);
+    await expectCompactGenreDetail(detail);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    expect(browserErrors).toEqual([]);
+  });
+}
 
-test('v150 wider fallback measures the original flex layout before compacting', async ({ page }) => {
+test('v150 preserves full desktop wording at 480px', async ({ page }) => {
   const browserErrors = [];
   page.on('pageerror', (error) => browserErrors.push(error.message));
   await page.setViewportSize({ width: 480, height: 900 });
@@ -119,16 +123,10 @@ test('v150 wider fallback measures the original flex layout before compacting', 
   await page.goto('/');
 
   const detail = await openGenreDetail(page);
+  const rockValue = detail.locator('div').filter({ hasText: /^Rock/ }).locator('span');
   await expect(detail).toHaveAttribute('data-v150-genre-rows', 'full');
-
-  await detail.evaluate((node) => {
-    node.style.width = '340px';
-    StartStatsV149.applyGenreDetailFit();
-  });
-
-  await expect(detail).toHaveAttribute('data-v150-genre-rows', 'compact');
-  await expect(detail).toHaveClass(/v150-genre-fit/);
-  await expect(detail.locator('div').filter({ hasText: /^Rock/ }).locator('span')).not.toContainText('listens');
+  await expect(detail).not.toHaveClass(/v150-genre-fit/);
+  await expect(rockValue).toHaveText(REPRESENTATIVE_VALUES.Rock);
   await expectSingleLineDetail(detail);
   expect(browserErrors).toEqual([]);
 });
