@@ -6,6 +6,7 @@
 // Stats header treatment.
 (() => {
   const TWO_WEEKS = 'twoWeeks';
+  const MOBILE_GENRE_BREAKPOINT = 390;
 
   function movementArrowSvgV149() {
     return '<svg class="rank-movement-arrow-v149" viewBox="0 0 34 34" aria-hidden="true" focusable="false"><path d="M16.2 1.8 Q17 1 17.8 1.8 L30.2 13.1 Q31.2 14.1 30.1 15.2 Q29.7 15.6 29.1 15.6 H23.6 V33 H10.4 V15.6 H4.9 Q4.3 15.6 3.9 15.2 Q2.8 14.1 3.8 13.1 Z"/></svg>';
@@ -112,11 +113,10 @@
     if (title) title.innerHTML = statsHeaderMarkupV149();
   }
 
-  // v150 responsive correction: the selected-year genre detail keeps the
-  // existing full desktop wording whenever it fits. When the same row would
-  // wrap at the available width, all genre rows use the agreed compact form
-  // by removing only the repeated word "listens". Total keeps its existing
-  // wording. No values, percentages, calculations or desktop copy change.
+  // v150 responsive correction: narrow phone layouts use the agreed compact
+  // genre-row copy proactively so Android text metrics cannot push the final
+  // percentage onto a second line. Wider layouts keep the existing desktop
+  // wording unless it actually overflows the available row width.
   function compactGenreValueV150(value) {
     return String(value || '').replace(/\s+listens?(?=\s+\()/, '');
   }
@@ -134,15 +134,22 @@
       value.textContent = value.dataset.v150FullValue;
     });
 
-    detail.classList.remove('v150-genre-tight');
-    detail.classList.add('v150-genre-fit');
+    detail.classList.remove('v150-genre-fit', 'v150-genre-tight');
     const values = rows.map((row) => row.querySelector(':scope > span')).filter(Boolean);
-    const fullOverflows = values.some((value) => value.scrollWidth > value.clientWidth + 1);
+    const isNarrowPhone = Number(globalThis.innerWidth || doc.documentElement?.clientWidth || 0) <= MOBILE_GENRE_BREAKPOINT;
 
-    if (!fullOverflows) {
-      detail.classList.remove('v150-genre-fit');
-      detail.dataset.v150GenreRows = 'full';
-      return true;
+    // At wider widths first test the full copy in the no-wrap two-column
+    // geometry. If it fits, restore the original desktop flex layout exactly.
+    if (!isNarrowPhone) {
+      detail.classList.add('v150-genre-fit');
+      const fullOverflows = values.some((value) => value.scrollWidth > value.clientWidth + 1);
+      if (!fullOverflows) {
+        detail.classList.remove('v150-genre-fit');
+        detail.dataset.v150GenreRows = 'full';
+        return true;
+      }
+    } else {
+      detail.classList.add('v150-genre-fit');
     }
 
     rows.forEach((row) => {
@@ -170,11 +177,13 @@
     }));
   }
 
-  function observeGenreDetailFitV150() {
+  function installGenreDetailFitV150() {
     const screen = document.getElementById('screen-stats');
     if (!screen || screen.dataset.v150GenreObserved === '1') return;
     screen.dataset.v150GenreObserved = '1';
-    new MutationObserver(() => scheduleGenreDetailFitV150()).observe(screen, { childList: true, subtree: true });
+    document.addEventListener('click', (event) => {
+      if (event.target?.closest?.('#screen-stats [data-v81-genre-year]')) scheduleGenreDetailFitV150();
+    });
     globalThis.addEventListener?.('resize', scheduleGenreDetailFitV150);
     scheduleGenreDetailFitV150();
   }
@@ -198,12 +207,12 @@
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       observeStartPresentationV149();
-      observeGenreDetailFitV150();
+      installGenreDetailFitV150();
       setTimeout(keepStartPresentationV149, 0);
     }, { once: true });
   } else {
     observeStartPresentationV149();
-    observeGenreDetailFitV150();
+    installGenreDetailFitV150();
     setTimeout(keepStartPresentationV149, 0);
   }
 
