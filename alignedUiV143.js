@@ -45,6 +45,26 @@ async function v143ToggleSwedenOnly() {
 // Alerts uses the same two-tone naming convention as ConcertDates.
 TAB_BRAND_HTML.news = '<span class="brand-blue">CONCERT</span>ALERTS';
 
+// v152: the Start root is presented as Music while its stable internal
+// `myconcerts` tab identity and shared active-tab navigation behavior remain unchanged.
+TAB_BRAND_HTML.myconcerts = '<span class="brand-blue">MY</span>MUSIC';
+TAB_TITLES.myconcerts = 'My Music';
+const V152_MUSIC_NAV_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 16v-4M9 18V8M13 16V5M17 18v-8M21 15v-5"></path></svg>';
+const v152BaseWireTabs = wireTabs;
+wireTabs = function v152WireTabs(...args) {
+  const result = v152BaseWireTabs.apply(this, args);
+  const musicTab = el('tabbar')?.querySelector('[data-tab="myconcerts"]');
+  const musicIcon = musicTab?.querySelector('.tab-icon');
+  if (musicIcon) musicIcon.innerHTML = V152_MUSIC_NAV_ICON;
+  for (const node of musicTab?.childNodes || []) {
+    if (node.nodeType === 3) {
+      node.textContent = 'Music';
+      break;
+    }
+  }
+  return result;
+};
+
 // Keep the third root-header filter aligned with the existing screen chrome.
 const v143BaseSetHeaderChrome = setHeaderChrome;
 setHeaderChrome = function v143SetHeaderChrome(...args) {
@@ -53,15 +73,25 @@ setHeaderChrome = function v143SetHeaderChrome(...args) {
   return result;
 };
 
-// My Concerts keeps its existing renderer; add only a styling hook to the
-// existing Upcoming label so it can mirror the established Past divider.
+// My Concerts keeps its existing renderer. The existing Upcoming label keeps
+// the v143 hook; v152 uses a distinct hook with the exact same CSS treatment
+// so the established Upcoming selector remains unique for older behavior/tests.
 function v143AlignMyConcertsSeparator() {
-  const labels = el('screen-myconcerts')?.querySelectorAll(':scope > .section-label');
+  const container = el('screen-myconcerts');
+  const labels = container?.querySelectorAll(':scope > .section-label');
   for (const label of labels || []) {
     if (label.textContent.trim().toLowerCase() === 'upcoming concerts') {
       label.classList.add('section-label-v143-upcoming');
       break;
     }
+  }
+
+  const countdown = container?.querySelector('#countdown-card');
+  if (countdown && !container.querySelector('.section-label-v152-next')) {
+    const nextLabel = document.createElement('p');
+    nextLabel.className = 'section-label section-label-v152-next';
+    nextLabel.textContent = 'Next concert';
+    countdown.before(nextLabel);
   }
 }
 
