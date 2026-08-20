@@ -10,7 +10,7 @@
 }
 
 .start-stats-card-header-v149 {
-  min-height: 46px;
+  min-height: 38px;
   display: flex;
   align-items: center;
   padding: 0 12px;
@@ -51,11 +51,14 @@
 .start-stats-card-v149 .stats-teaser-value { color: var(--text); }
 .start-stats-card-v149 .stats-teaser-label { color: var(--text-muted); }
 
+/* The user selected the former Concert Stats action-strip height as the
+   shared compact footer. Fix both controls to the same 34px box so the
+   Listening footer no longer inherits its historical 46px minimum. */
 .start-stats-card-v149 .listening-card-footer,
 .start-stats-card-v149 .stats-teaser-footer {
-  min-height: 38px;
-  padding-top: 8px;
-  padding-bottom: 8px;
+  height: 34px;
+  min-height: 34px;
+  padding: 6px 12px;
   background: transparent;
   color: var(--accent);
   border-top: 1px solid var(--border);
@@ -99,9 +102,6 @@
 }
 
 @media (max-width: 390px) {
-  .start-stats-card-header-v149 {
-    min-height: 44px;
-  }
   .rank-movement-v149 {
     width: 28px;
     height: 28px;
