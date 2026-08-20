@@ -6,6 +6,7 @@
 // Stats header treatment.
 (() => {
   const TWO_WEEKS = 'twoWeeks';
+  const MOBILE_GENRE_BREAKPOINT = 479;
 
   function movementArrowSvgV149() {
     return '<svg class="rank-movement-arrow-v149" viewBox="0 0 34 34" aria-hidden="true" focusable="false"><path d="M16.2 1.8 Q17 1 17.8 1.8 L30.2 13.1 Q31.2 14.1 30.1 15.2 Q29.7 15.6 29.1 15.6 H23.6 V33 H10.4 V15.6 H4.9 Q4.3 15.6 3.9 15.2 Q2.8 14.1 3.8 13.1 Z"/></svg>';
@@ -112,6 +113,74 @@
     if (title) title.innerHTML = statsHeaderMarkupV149();
   }
 
+  // v150 responsive correction: phone-sized layouts use the agreed compact
+  // genre-row copy deterministically so platform font metrics cannot push the
+  // final percentage onto a second line. The 480px desktop QA contract and
+  // wider layouts retain the existing full wording and flex presentation.
+  function compactGenreValueV150(value) {
+    return String(value || '').replace(/\s+listens?(?=\s+\()/, '');
+  }
+
+  function applyGenreDetailFitV150(doc = document) {
+    const detail = doc?.querySelector('#screen-stats .genre-year-detail[data-v144-genre-detail="true"]');
+    if (!detail) return false;
+    const rows = [...detail.querySelectorAll(':scope > div')];
+    if (!rows.length) return false;
+
+    rows.forEach((row) => {
+      const value = row.querySelector(':scope > span');
+      if (!value) return;
+      if (!value.dataset.v150FullValue) value.dataset.v150FullValue = value.textContent || '';
+      value.textContent = value.dataset.v150FullValue;
+    });
+
+    detail.classList.remove('v150-genre-fit', 'v150-genre-tight');
+    const values = rows.map((row) => row.querySelector(':scope > span')).filter(Boolean);
+    const viewportWidth = Number(globalThis.innerWidth || doc.documentElement?.clientWidth || 0);
+    const useCompactPhoneLayout = viewportWidth > 0 && viewportWidth <= MOBILE_GENRE_BREAKPOINT;
+
+    if (!useCompactPhoneLayout) {
+      detail.dataset.v150GenreRows = 'full';
+      return true;
+    }
+
+    detail.classList.add('v150-genre-fit');
+    rows.forEach((row) => {
+      const label = row.querySelector(':scope > b')?.textContent?.trim();
+      const value = row.querySelector(':scope > span');
+      if (!value || label === 'Total') return;
+      value.textContent = compactGenreValueV150(value.dataset.v150FullValue);
+    });
+    detail.dataset.v150GenreRows = 'compact';
+
+    if (values.some((value) => value.scrollWidth > value.clientWidth + 1)) {
+      detail.classList.add('v150-genre-tight');
+    }
+    return true;
+  }
+
+  let genreFitPendingV150 = false;
+  function scheduleGenreDetailFitV150() {
+    if (genreFitPendingV150) return;
+    genreFitPendingV150 = true;
+    const raf = globalThis.requestAnimationFrame || ((callback) => setTimeout(callback, 0));
+    raf(() => raf(() => {
+      genreFitPendingV150 = false;
+      applyGenreDetailFitV150();
+    }));
+  }
+
+  function installGenreDetailFitV150() {
+    const screen = document.getElementById('screen-stats');
+    if (!screen || screen.dataset.v150GenreObserved === '1') return;
+    screen.dataset.v150GenreObserved = '1';
+    document.addEventListener('click', (event) => {
+      if (event.target?.closest?.('#screen-stats [data-v81-genre-year]')) scheduleGenreDetailFitV150();
+    });
+    globalThis.addEventListener?.('resize', scheduleGenreDetailFitV150);
+    scheduleGenreDetailFitV150();
+  }
+
   installRenderOverridesV149();
 
   if (typeof TAB_BRAND_HTML === 'object' && TAB_BRAND_HTML) {
@@ -123,6 +192,7 @@
     renderStatsScreen = function renderStatsScreenV149(...args) {
       const result = renderStatsScreenBeforeV149(...args);
       applyStatsHeaderV149();
+      scheduleGenreDetailFitV150();
       return result;
     };
   }
@@ -130,10 +200,12 @@
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       observeStartPresentationV149();
+      installGenreDetailFitV150();
       setTimeout(keepStartPresentationV149, 0);
     }, { once: true });
   } else {
     observeStartPresentationV149();
+    installGenreDetailFitV150();
     setTimeout(keepStartPresentationV149, 0);
   }
 
@@ -145,5 +217,7 @@
     applyStatsHeader: applyStatsHeaderV149,
     applyStartListeningCard: applyStartListeningCardV149,
     installRenderOverrides: installRenderOverridesV149,
+    compactGenreValue: compactGenreValueV150,
+    applyGenreDetailFit: applyGenreDetailFitV150,
   };
 })();
