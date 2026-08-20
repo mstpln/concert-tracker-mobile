@@ -155,3 +155,11 @@ The Stats root header follows the selected sub-tab using the existing compound-h
 **Reason:** The full desktop copy is readable at wider widths, but mobile platform text metrics can make the longest genre rows wrap. A deterministic phone-width presentation is safer and simpler than trying to infer wrapping after platform-specific text layout has already occurred.
 
 **Consequence:** v150 uses a 479px maximum compact breakpoint, preserves the existing 480px-and-wider presentation, may use only a small final font-size reduction if compact text still needs room, and must not change genre calculations, selected-year ownership, chart data, navigation, stored data or unrelated Stats UI.
+
+### v151 applies selected-year genre formatting at the DOM render boundary
+
+**Decision:** The v150 compact/full presentation is applied after the selected-year genre detail appears and v144 finishes decorating it, using a Stats-screen DOM observer rather than a later document click listener.
+
+**Reason:** The established selected-year click handler runs in capture phase and calls `stopImmediatePropagation()`. A later click listener can therefore be skipped even though direct formatter tests pass.
+
+**Consequence:** Tests for this presentation must prove the real selected-year click/render path reaches compact/full mode before any direct formatter call. The correction remains presentation-only and does not alter the established click handler, genre calculations, stored data, navigation or provider/backend behavior.
