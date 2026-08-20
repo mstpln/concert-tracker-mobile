@@ -235,7 +235,7 @@ renderProfileScreen = function v143RenderProfileScreen(bandId, ...rest) {
 
     const empty = el('screen-profile')?.querySelector('.profile-tab-panel .screen-empty');
     if (empty?.textContent.trim() === 'No upcoming European shows for this band right now.') {
-      empty.textContent = 'No upcoming shows in Sweden right now.';
+      empty.textContent = 'No upcoming shows in Sweden for this band right now.';
     }
   } else {
     result = v143BaseRenderProfileScreen.call(this, bandId, ...rest);
