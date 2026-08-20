@@ -57,7 +57,10 @@
   function wireStartListeningCardV149(card) {
     card?.querySelector('#start-top-bands-view-all')?.addEventListener('click', () => openTopBandsScreen());
     card?.querySelector('#start-listening-stats')?.addEventListener('click', () => openStatsScreen({ subTab: 'listening' }));
-    wireListeningBandRows(card);
+    card?.querySelectorAll('[data-listening-band-id]').forEach((row) => row.addEventListener('click', () => {
+      topBandsTimeframe = 'threeMonths';
+      openProfile(row.dataset.listeningBandId, { selectedTab: 'listening' });
+    }));
     wireListeningImages(card);
   }
 
