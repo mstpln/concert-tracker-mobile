@@ -34,7 +34,7 @@ test('v98 keeps ranking semantics and aligns Band Detail listening tabs', async 
   });
   expect(ranking).toEqual({ track: 'Popular Track', trackCount: 3, album: 'Popular Album', albumCount: 3 });
 
-  await page.getByRole('button', { name: 'View all' }).first().click();
+  await page.locator('#start-top-bands-view-all').click();
   await page.locator('.full-top-bands-card .top-band-row').first().click();
   const profile = page.locator('#screen-profile');
   const tabs = profile.locator('.ranked-list-tabs');

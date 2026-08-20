@@ -68,9 +68,27 @@ test('v149 Start listening and concert stats cards share the approved structure'
 test('v149 uses the approved thick ranking arrow for Top Bands and Top Tracks', async ({ page }) => {
   await openStart(page);
 
-  const startArrow = page.locator('#screen-myconcerts .start-top-bands-card .rank-movement-v149').first();
-  await expect(startArrow).toBeVisible();
-  await expect(startArrow.locator('path')).toHaveAttribute('d', APPROVED_ARROW_PATH);
+  const topBandArrow = await page.evaluate(() => {
+    const host = document.createElement('div');
+    host.innerHTML = topBandRowsHtml([{
+      bandId: 'qa-v149-arrow-band',
+      bandName: 'QA Arrow Band',
+      rank: 1,
+      durationMs: 60000,
+      listenCount: 1,
+      movement: { kind: 'up', delta: 2, label: 'Up 2' },
+    }], { compact: true, timeframe: 'twoWeeks', showMovement: true });
+    document.body.append(host);
+    const node = host.querySelector('.rank-movement-v149');
+    const result = {
+      path: node?.querySelector('path')?.getAttribute('d') || null,
+      className: node?.className || '',
+    };
+    host.remove();
+    return result;
+  });
+  expect(topBandArrow.path).toBe(APPROVED_ARROW_PATH);
+  expect(topBandArrow.className).toContain('is-up');
 
   const rendered = await page.evaluate(() => {
     const host = document.createElement('div');

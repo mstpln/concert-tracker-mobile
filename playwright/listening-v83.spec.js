@@ -8,7 +8,7 @@ test('v84 renders the selected two-week chart as visible daily points and keeps 
   await page.goto('/');
 
   await expect(page.locator('#start-version-refresh')).toHaveText(/^v\d+$/);
-  await page.getByRole('button', { name: 'View all' }).first().click();
+  await page.locator('#start-top-bands-view-all').click();
   await page.getByRole('button', { name: '2 weeks' }).click();
   await page.locator('.full-top-bands-card .top-band-row').first().click();
   const profile = page.locator('#screen-profile');
