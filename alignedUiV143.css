@@ -1,7 +1,8 @@
 /* v143: align the requested UI details without changing unrelated layouts. */
 
 /* My Concerts: Upcoming uses the exact same centered divider treatment as Past. */
-#screen-myconcerts .section-label-v143-upcoming {
+#screen-myconcerts .section-label-v143-upcoming,
+#screen-myconcerts .section-label-v152-next {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -10,7 +11,9 @@
   white-space: nowrap;
 }
 #screen-myconcerts .section-label-v143-upcoming::before,
-#screen-myconcerts .section-label-v143-upcoming::after {
+#screen-myconcerts .section-label-v143-upcoming::after,
+#screen-myconcerts .section-label-v152-next::before,
+#screen-myconcerts .section-label-v152-next::after {
   content: '';
   flex: 1;
   height: 1px;
