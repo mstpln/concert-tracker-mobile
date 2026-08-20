@@ -49,6 +49,10 @@ for (const colorScheme of ['dark', 'light']) {
     await expect(page.locator('#screen-myconcerts .section-label-v152-next')).toHaveText(/Next concert/i);
     await expectDividerStylesMatch(page);
 
+    if (colorScheme === 'dark') {
+      await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-v152-start-music.png`), fullPage: true });
+    }
+
     await datesTab.click();
     await expect(datesTab).toHaveClass(/active/);
     await expect(datesTab).toHaveAttribute('aria-current', 'page');
