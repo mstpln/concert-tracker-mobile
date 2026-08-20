@@ -1,0 +1,113 @@
+/* v149 focused Start stats-card and ranking movement presentation.
+   Scope is limited to the two Start stats cards, their shared movement arrows,
+   and the contextual Stats header supplied by startStatsV149.js. */
+
+.start-stats-card-v149 {
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.start-stats-card-header-v149 {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.start-stats-card-header-v149 p {
+  margin: 0;
+  color: var(--accent);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.start-toplist-heading-v149 {
+  padding-top: 10px;
+  padding-bottom: 6px;
+}
+
+.start-toplist-heading-v149 p,
+.start-toplist-link-v149 {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .025em;
+  text-transform: uppercase;
+}
+
+.start-toplist-link-v149 {
+  min-height: 32px;
+  padding: 4px 0 4px 8px;
+}
+
+/* The matched v149 cards both use the normal app surface, so the concert
+   values/labels follow the same theme-aware text tokens as the listening
+   card rather than the historical always-dark teaser literals. */
+.start-stats-card-v149 .stats-teaser-value { color: var(--text); }
+.start-stats-card-v149 .stats-teaser-label { color: var(--text-muted); }
+
+/* The user selected the former Concert Stats action-strip height as the
+   shared compact footer. Fix both controls to the same 34px box so the
+   Listening footer no longer inherits its historical 46px minimum. */
+.start-stats-card-v149 .listening-card-footer,
+.start-stats-card-v149 .stats-teaser-footer {
+  height: 34px;
+  min-height: 34px;
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--accent);
+  border-top: 1px solid var(--border);
+  font-weight: 400;
+}
+
+.start-stats-card-v149 .stats-teaser-footer svg,
+.start-stats-card-v149 .listening-card-footer svg {
+  color: var(--accent);
+  stroke: currentColor;
+}
+
+/* Replace only ranking movement arrows. The shape is the approved short,
+   thick arrow with a 10%-wider rectangular shaft, gently rounded head edges
+   and a comparatively square tail. New-entry text remains unchanged. */
+.rank-movement-v149 {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  font-size: 0;
+  line-height: 0;
+  -webkit-text-stroke: 0;
+}
+
+.rank-movement-v149.is-down {
+  color: var(--text-muted);
+}
+
+.rank-movement-arrow-v149 {
+  display: block;
+  width: 25px;
+  height: 25px;
+  fill: currentColor;
+}
+
+.rank-movement-v149.is-down .rank-movement-arrow-v149 {
+  transform: rotate(180deg);
+}
+
+@media (max-width: 390px) {
+  .rank-movement-v149 {
+    width: 28px;
+    height: 28px;
+  }
+  .rank-movement-arrow-v149 {
+    width: 24px;
+    height: 24px;
+  }
+}

@@ -119,7 +119,7 @@ test('listening stats navigation, rankings, timeframes, and band drill-down use 
   await expect(page.getByRole('tab', { name: 'Concerts', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.goBack();
   await expect(page.locator('#screen-myconcerts')).toBeVisible();
-  await page.getByRole('button', { name: 'View all' }).click();
+  await page.locator('#start-top-bands-view-all').click();
   await expect(page.locator('#screen-top-bands')).toBeVisible();
   await page.getByTestId('back-button').click();
   await expect(page.locator('#screen-myconcerts')).toBeVisible();

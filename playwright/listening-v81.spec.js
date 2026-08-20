@@ -47,7 +47,7 @@ test('v82 listening corrections remain usable, bounded, independent, and respons
   expect(refreshGeometry.viewBox).toBe('0 0 24 24');
 
   const startFortnightText = await page.locator('.start-top-bands-card .top-band-row').first().innerText();
-  await page.getByRole('button', { name: 'View all' }).first().click();
+  await page.locator('#start-top-bands-view-all').click();
   await expect(page.getByRole('button', { name: '3 months' })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: '2 weeks' }).click();
   const topFortnightText = await page.locator('.full-top-bands-card .top-band-row').first().innerText();

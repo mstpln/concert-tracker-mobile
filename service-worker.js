@@ -1,6 +1,7 @@
 'use strict';
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v148';
+const CACHE_NAME_LITERAL = 'v149';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v148'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v147'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v146'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v145'.
@@ -102,6 +103,7 @@ const SHELL_FILES = [
   './nextConcertV148.css',
   './alignedUiV143.css',
   './alignedListeningBandsV144.css',
+  './startStatsV149.css',
   './geoFilterPreloadV143.js',
   './app.js',
   './alignedUiV143.js',
@@ -151,6 +153,7 @@ const SHELL_FILES = [
   './uiPerformanceV126.js',
   './uiPerformanceV127.js',
   './alignedListeningBandsV144.js',
+  './startStatsV149.js',
   './dataLib.js',
   './listeningStats.js',
   './listeningStatsV81.js',
