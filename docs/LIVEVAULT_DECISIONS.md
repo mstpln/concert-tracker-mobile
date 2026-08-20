@@ -168,8 +168,8 @@ The Stats root header follows the selected sub-tab using the existing compound-h
 
 **Decision:** The Start root keeps the stable internal `myconcerts` tab/screen identity but is visibly named `MYMUSIC`, with `MY` using the existing blue compound-header treatment. The first bottom-navigation item is visibly `Music` and uses the approved five-bar equalizer glyph. Root-tab selection continues to be owned exclusively by the existing shared active-tab mechanism, so Music is blue/white only while that page is current and the selected treatment moves normally to Dates, Bands, Stats or Alerts.
 
-The Start page adds `NEXT CONCERT` immediately above the existing ticket by reusing the exact established `UPCOMING CONCERTS` separator styling hook rather than introducing a new visual treatment.
+The Start page adds `NEXT CONCERT` immediately above the existing ticket with its own v152 class grouped into the exact same CSS rule set as `UPCOMING CONCERTS`, rather than introducing a different visual treatment.
 
-**Reason:** Listening statistics are now a meaningful part of the Start experience, so `MyMusic` is a broader visible label while the underlying route can remain stable. Reusing the established separator component creates a natural boundary between the summary cards, Next Concert ticket and chronological list without redesigning any of those components.
+**Reason:** Listening statistics are now a meaningful part of the Start experience, so `MyMusic` is a broader visible label while the underlying route can remain stable. Sharing the established separator rule set creates a natural boundary between the summary cards, Next Concert ticket and chronological list without redesigning any of those components.
 
 **Consequence:** v152 changes no internal tab IDs/routes, permanent selected-state styling, stats-card content, Next Concert ticket geometry/behavior, chronological upcoming ordering, concert-card data, stored fields, providers, backend/Worker behavior, production workflows or production data.
