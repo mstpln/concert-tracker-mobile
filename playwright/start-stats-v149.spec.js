@@ -26,6 +26,14 @@ test('v149 Start listening and concert stats cards share the approved structure'
     await expect(listening.locator('#start-top-bands-view-all')).toHaveText('TOPLIST');
     await expect(listening).not.toContainText('View all');
 
+    const teaserItems = concert.locator('.stats-teaser-item');
+    const traveled = teaserItems.filter({ hasText: 'traveled' });
+    const spent = teaserItems.filter({ hasText: 'spent' });
+    await expect(traveled.locator('.stats-teaser-label')).toHaveText('traveled (km)');
+    await expect(spent.locator('.stats-teaser-label')).toHaveText('spent (kr)');
+    await expect(traveled.locator('.stats-teaser-value')).not.toContainText('km');
+    await expect(spent.locator('.stats-teaser-value')).not.toContainText('kr');
+
     const metrics = await page.evaluate(() => {
       const listening = document.querySelector('#screen-myconcerts .start-top-bands-card');
       const concert = document.querySelector('#screen-myconcerts .stats-teaser-card');

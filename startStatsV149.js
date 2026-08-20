@@ -38,8 +38,8 @@
       <div class="stats-teaser-row stats-teaser-row-4up">
         <div class="stats-teaser-item"><span class="stats-teaser-value">${stats.totalShows.toLocaleString()}</span><span class="stats-teaser-label">shows</span></div>
         <div class="stats-teaser-item"><span class="stats-teaser-value">${stats.countries.toLocaleString()}</span><span class="stats-teaser-label">countries</span></div>
-        <div class="stats-teaser-item"><span class="stats-teaser-value">${dlCompactNumber(stats.kmTraveled)} km</span><span class="stats-teaser-label">traveled</span></div>
-        <div class="stats-teaser-item"><span class="stats-teaser-value">${dlCompactNumber(stats.totalSpend)} kr</span><span class="stats-teaser-label">spent</span></div>
+        <div class="stats-teaser-item"><span class="stats-teaser-value">${dlCompactNumber(stats.kmTraveled)}</span><span class="stats-teaser-label">traveled (km)</span></div>
+        <div class="stats-teaser-item"><span class="stats-teaser-value">${dlCompactNumber(stats.totalSpend)}</span><span class="stats-teaser-label">spent (kr)</span></div>
       </div>
       <button type="button" id="stats-teaser-cta" class="stats-teaser-footer">See your full concert stats${icon('chevronRight')}</button>
     </div>`;
