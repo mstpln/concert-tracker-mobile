@@ -148,10 +148,10 @@ The Stats root header follows the selected sub-tab using the existing compound-h
 
 **Consequence:** v149 is presentation-only. It must not alter listening/concert calculations, Toplist ranking logic, row destinations, concert stats values, Next Concert presentation, stored data, providers, backend/Worker behavior, quotas, credentials, production workflows or unrelated UI.
 
-### v150 keeps selected-year genre detail rows single-line when width is constrained
+### v150 keeps selected-year genre detail rows single-line on phone-sized layouts
 
-**Decision:** The selected-year Listening by Genre detail keeps the existing full wording on wider layouts whenever it fits. Phone layouts through 430px proactively use the compact agreed form: a per-row label/value grid with a right-aligned no-wrap value column, with the repeated word `listens` removed only from non-Total genre rows. Wider layouts also switch to compact mode if the full value actually wraps in the original flex-row geometry. The Total row keeps `listens`; durations, counts and both percentage values stay unchanged.
+**Decision:** The selected-year Listening by Genre detail keeps the existing full wording and flex presentation at 480px and wider. Phone-sized layouts up to 479px use the compact agreed form: a per-row label/value grid with a right-aligned no-wrap value column, with the repeated word `listens` removed only from non-Total genre rows. The Total row keeps `listens`; durations, counts and both percentage values stay unchanged.
 
-**Reason:** The full desktop copy is readable at wider widths, but mobile platform text metrics can make the longest genre rows wrap even where a synthetic browser's simple overflow measurement appears to fit.
+**Reason:** The full desktop copy is readable at wider widths, but mobile platform text metrics can make the longest genre rows wrap. A deterministic phone-width presentation is safer and simpler than trying to infer wrapping after platform-specific text layout has already occurred.
 
-**Consequence:** The correction uses a 430px phone-safety breakpoint plus actual original-layout wrap detection for wider layouts, preserves the desktop presentation whenever it fits, may use only a small final font-size reduction if compact text still needs room, and must not change genre calculations, selected-year ownership, chart data, navigation, stored data or unrelated Stats UI.
+**Consequence:** v150 uses a 479px maximum compact breakpoint, preserves the existing 480px-and-wider presentation, may use only a small final font-size reduction if compact text still needs room, and must not change genre calculations, selected-year ownership, chart data, navigation, stored data or unrelated Stats UI.
