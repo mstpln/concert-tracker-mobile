@@ -44,7 +44,7 @@ test('synthetic app starts, navigates, persists checklist, and resets', async ({
   await page.getByRole('button', { name: 'Bands' }).click();
   await expect(page.locator('#screen-mybands')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}.png`), fullPage: true });
-  await page.getByRole('button', { name: 'Concerts' }).click();
+  await page.locator('#tabbar [data-tab="myconcerts"]').click();
   const prepGroup = page.locator('.concert-prep-group[data-concert-id="qa-show-day"]');
   await prepGroup.locator('[data-prep-toggle="checklist"]').click();
   const prepKey = await prepGroup.locator('input[data-prep-key]:not(:checked)').first().getAttribute('data-prep-key');
@@ -110,7 +110,7 @@ test('listening stats navigation, rankings, timeframes, and band drill-down use 
   await page.setViewportSize(testInfo.project.name === 'mobile-chromium' ? { width: 375, height: 820 } : { width: 480, height: 900 });
   await page.goto('/');
   const navLabels = await page.getByTestId('bottom-navigation').locator('.tabitem').allTextContents();
-  expect(navLabels.map((label) => label.trim())).toEqual(['Concerts', 'Dates', 'Bands', 'Stats', 'Alerts']);
+  expect(navLabels.map((label) => label.trim())).toEqual(['Music', 'Dates', 'Bands', 'Stats', 'Alerts']);
   await expect(page.locator('.start-top-bands-card .top-band-row')).toHaveCount(3);
   await expect(page.locator('.start-top-bands-card')).toContainText('YOUR TOP BANDS · 2 WEEKS');
   await settleVisual(page);
