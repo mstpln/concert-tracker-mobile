@@ -6,7 +6,7 @@
 // Stats header treatment.
 (() => {
   const TWO_WEEKS = 'twoWeeks';
-  const MOBILE_GENRE_BREAKPOINT = 390;
+  const MOBILE_GENRE_BREAKPOINT = 430;
 
   function movementArrowSvgV149() {
     return '<svg class="rank-movement-arrow-v149" viewBox="0 0 34 34" aria-hidden="true" focusable="false"><path d="M16.2 1.8 Q17 1 17.8 1.8 L30.2 13.1 Q31.2 14.1 30.1 15.2 Q29.7 15.6 29.1 15.6 H23.6 V33 H10.4 V15.6 H4.9 Q4.3 15.6 3.9 15.2 Q2.8 14.1 3.8 13.1 Z"/></svg>';
@@ -114,11 +114,25 @@
   }
 
   // v150 responsive correction: narrow phone layouts use the agreed compact
-  // genre-row copy proactively so Android text metrics cannot push the final
+  // genre-row copy proactively so mobile text metrics cannot push the final
   // percentage onto a second line. Wider layouts keep the existing desktop
-  // wording unless it actually overflows the available row width.
+  // wording unless it actually wraps in the original flex-row geometry.
   function compactGenreValueV150(value) {
     return String(value || '').replace(/\s+listens?(?=\s+\()/, '');
+  }
+
+  function valueWrapsV150(value, doc = document) {
+    if (!value) return false;
+    const range = typeof doc?.createRange === 'function' ? doc.createRange() : null;
+    if (range) {
+      range.selectNodeContents(value);
+      const lineRects = [...range.getClientRects()].filter((rect) => rect.width > 0 && rect.height > 0);
+      if (lineRects.length > 1) return true;
+    }
+    const style = globalThis.getComputedStyle?.(value);
+    const lineHeight = Number.parseFloat(style?.lineHeight || '');
+    if (Number.isFinite(lineHeight) && lineHeight > 0 && value.getBoundingClientRect().height > lineHeight * 1.35) return true;
+    return value.scrollWidth > value.clientWidth + 1;
   }
 
   function applyGenreDetailFitV150(doc = document) {
@@ -136,22 +150,16 @@
 
     detail.classList.remove('v150-genre-fit', 'v150-genre-tight');
     const values = rows.map((row) => row.querySelector(':scope > span')).filter(Boolean);
-    const isNarrowPhone = Number(globalThis.innerWidth || doc.documentElement?.clientWidth || 0) <= MOBILE_GENRE_BREAKPOINT;
+    const viewportWidth = Number(globalThis.innerWidth || doc.documentElement?.clientWidth || 0);
+    const usePhoneSafetyLayout = viewportWidth > 0 && viewportWidth <= MOBILE_GENRE_BREAKPOINT;
+    const fullCopyWraps = values.some((value) => valueWrapsV150(value, doc));
 
-    // At wider widths first test the full copy in the no-wrap two-column
-    // geometry. If it fits, restore the original desktop flex layout exactly.
-    if (!isNarrowPhone) {
-      detail.classList.add('v150-genre-fit');
-      const fullOverflows = values.some((value) => value.scrollWidth > value.clientWidth + 1);
-      if (!fullOverflows) {
-        detail.classList.remove('v150-genre-fit');
-        detail.dataset.v150GenreRows = 'full';
-        return true;
-      }
-    } else {
-      detail.classList.add('v150-genre-fit');
+    if (!usePhoneSafetyLayout && !fullCopyWraps) {
+      detail.dataset.v150GenreRows = 'full';
+      return true;
     }
 
+    detail.classList.add('v150-genre-fit');
     rows.forEach((row) => {
       const label = row.querySelector(':scope > b')?.textContent?.trim();
       const value = row.querySelector(':scope > span');
