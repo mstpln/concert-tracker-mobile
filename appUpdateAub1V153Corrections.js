@@ -116,11 +116,35 @@
     return '';
   }
 
+  function fallbackAlertItems(concertList = getConcerts(), bandList = getBands(), nowMs = Date.now()) {
+    const cutoff = Number(nowMs) - (90 * 24 * 60 * 60 * 1000);
+    const bandById = new Map((bandList || []).filter((band) => band?.id != null).map((band) => [String(band.id), band]));
+    const raw = (concertList || []).filter((concert) => {
+      const band = bandById.get(String(concert?.bandId));
+      if (!band || band.muted || concert?.manuallyAdded || !concert?.foundAt) return false;
+      return new Date(concert.foundAt).getTime() >= cutoff;
+    });
+    const byBatch = new Map();
+    for (const concert of raw) {
+      const key = `${concert.bandId}|${concert.foundAt}`;
+      if (!byBatch.has(key)) byBatch.set(key, []);
+      byBatch.get(key).push(concert);
+    }
+    const items = [];
+    for (const group of byBatch.values()) {
+      if (group.length === 1) items.push(group[0]);
+      else items.push({ isBatch: true, bandId: group[0].bandId, bandName: group[0].bandName, foundAt: group[0].foundAt });
+    }
+    return items.sort((a, b) => String(b.foundAt || '').localeCompare(String(a.foundAt || '')));
+  }
+
   function decorateAlerts(doc = root.document) {
     const screen = doc?.querySelector('#screen-news');
     if (!screen?.querySelector('.news-subtab-btn[data-subtab="alerts"].active')) return false;
+    const cards = [...screen.querySelectorAll('.row-card.clickable:not(.release-alert-card)')];
     let items = [];
     try { if (typeof getAlertItems === 'function') items = getAlertItems().filter((item) => !item.isReleaseAlert); } catch (_) {}
+    if (items.length !== cards.length) items = fallbackAlertItems();
     const concertList = getConcerts();
     const nearby = (concert) => {
       try { return typeof dlIsNearby === 'function' && dlIsNearby(concert); } catch (_) { return false; }
@@ -128,7 +152,6 @@
     const europe = (country) => {
       try { return typeof dlIsEuropeCountry === 'function' && dlIsEuropeCountry(country); } catch (_) { return false; }
     };
-    const cards = [...screen.querySelectorAll('.row-card.clickable:not(.release-alert-card)')];
     cards.forEach((card, index) => {
       card.querySelector('.aub1-location-tag')?.remove();
       const tag = relevanceTag(items[index], concertList, nearby, europe);
@@ -217,6 +240,7 @@
     activityMetrics,
     completedYearActivity,
     relevanceTag,
+    fallbackAlertItems,
     decorateAlerts,
     applyAllTimeActivity,
     clearMyBandsSearch,
