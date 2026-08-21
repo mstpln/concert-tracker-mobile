@@ -173,3 +173,15 @@ The Start page adds `NEXT CONCERT` immediately above the existing ticket with it
 **Reason:** Listening statistics are now a meaningful part of the Start experience, so `MyMusic` is a broader visible label while the underlying route can remain stable. Sharing the established separator rule set creates a natural boundary between the summary cards, Next Concert ticket and chronological list without redesigning any of those components.
 
 **Consequence:** v152 changes no internal tab IDs/routes, permanent selected-state styling, stats-card content, Next Concert ticket geometry/behavior, chronological upcoming ordering, concert-card data, stored fields, providers, backend/Worker behavior, production workflows or production data.
+
+### v153 AUB1 keeps new discovery/stat controls view-only and uses existing listening-day semantics
+
+**Decision:** AUB1 is a UI/stat-usability build only. The normal-day Next Concert left panel may use multiline venue/address copy and balanced 28px breathing room while the v147/v148 ticket/right-stub geometry and concert-day behavior remain fixed. `MYMUSIC` uses the approved five-bar equalizer in header/nav; Stats uses the approved angular rising line with arrowhead, no dots and no enclosing box.
+
+Listening `Days active` means unique UTC calendar dates containing at least one valid linked listen under the existing listening-stat contract. `Daily average` means valid listening duration divided by those active dates. `Active days per year` is the average active-day count over the continuous completed-calendar-year span represented from the first valid linked listen through the year before the current one; completed years with zero valid listens contribute zero, while the current incomplete year is excluded. Overview mode changes presentation density only and must retain every yearly point/bar.
+
+Concert-alert geographic relevance is view-only and singular with priority `Nearby` → exact `SE` → `EU` → none. My Bands search is transient view state, composes with the existing filters and is cleared whenever My Bands is left.
+
+**Reason:** AUB1 should improve clarity and discoverability without introducing a competing listening-validity model, silently persisting search/filter state, changing concert data semantics or weakening the existing ticket/data ownership boundaries.
+
+**Consequence:** AUB1 writes no new user/provider fields, adds no migration and changes no provider/backend behavior. Future changes to active-day boundaries, alert-priority semantics, Stats icon identity, overview data retention or My Bands search persistence require an explicit new decision.
