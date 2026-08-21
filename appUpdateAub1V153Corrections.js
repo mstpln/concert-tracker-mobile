@@ -18,6 +18,11 @@
     return root.bands || [];
   }
 
+  function getConcerts() {
+    try { if (typeof concerts !== 'undefined') return concerts; } catch (_) {}
+    return root.concerts || [];
+  }
+
   function getListeningEvents() {
     try { if (typeof listeningEvents !== 'undefined') return listeningEvents; } catch (_) {}
     return root.listeningEvents || [];
@@ -106,6 +111,32 @@
     return '';
   }
 
+  function decorateAlerts(doc = root.document) {
+    const screen = doc?.querySelector('#screen-news');
+    if (!screen?.querySelector('.news-subtab-btn[data-subtab="alerts"].active')) return false;
+    let items = [];
+    try { if (typeof getAlertItems === 'function') items = getAlertItems().filter((item) => !item.isReleaseAlert); } catch (_) {}
+    const concertList = getConcerts();
+    const nearby = (concert) => {
+      try { return typeof dlIsNearby === 'function' && dlIsNearby(concert); } catch (_) { return false; }
+    };
+    const europe = (country) => {
+      try { return typeof dlIsEuropeCountry === 'function' && dlIsEuropeCountry(country); } catch (_) { return false; }
+    };
+    const cards = [...screen.querySelectorAll('.row-card.clickable:not(.release-alert-card)')];
+    cards.forEach((card, index) => {
+      card.querySelector('.aub1-location-tag')?.remove();
+      const tag = relevanceTag(items[index], concertList, nearby, europe);
+      if (!tag) return;
+      const badge = doc.createElement('span');
+      badge.className = 'aub1-location-tag';
+      badge.textContent = tag;
+      badge.setAttribute('aria-label', `Concert relevance: ${tag}`);
+      card.appendChild(badge);
+    });
+    return true;
+  }
+
   function applyAllTimeActivity(doc = root.document) {
     const summary = doc?.querySelector('#screen-stats .aub1-alltime-activity');
     const statsApi = getStatsApi();
@@ -147,6 +178,7 @@
     raf(() => {
       pending = false;
       applyAllTimeActivity(doc);
+      decorateAlerts(doc);
     });
   }
 
@@ -180,6 +212,7 @@
     activityMetrics,
     completedYearActivity,
     relevanceTag,
+    decorateAlerts,
     applyAllTimeActivity,
     clearMyBandsSearch,
     install,
