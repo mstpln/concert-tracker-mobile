@@ -160,6 +160,7 @@ const SHELL_FILES = [
   './alignedListeningBandsV144.js',
   './startStatsV149.js',
   './appUpdateAub1V153.js',
+  './appUpdateAub1V153Corrections.js',
   './dataLib.js',
   './listeningStats.js',
   './listeningStatsV81.js',
