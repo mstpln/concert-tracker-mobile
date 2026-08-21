@@ -6,7 +6,12 @@
 (function attachAppUpdateAub1V153Corrections(root, factory) {
   const api = factory(root || globalThis);
   if (typeof module === 'object' && module.exports) module.exports = api;
-  if (root) root.AppUpdateAub1V153Corrections = api;
+  if (root) {
+    root.AppUpdateAub1V153Corrections = api;
+    if (root.AppUpdateAub1V153) {
+      root.AppUpdateAub1V153 = Object.freeze({ ...root.AppUpdateAub1V153, decorateAlerts: api.decorateAlerts });
+    }
+  }
   if (root?.document) api.install();
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   let statsObserver = null;
