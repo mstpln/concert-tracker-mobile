@@ -33,6 +33,10 @@
     return new Date();
   }
 
+  function normalize(value) {
+    return String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en');
+  }
+
   function linkedValidListens(listens, bandList = getBands(), statsApi = getStatsApi()) {
     if (!statsApi) return [];
     const bandIds = new Set((bandList || []).filter((band) => band?.id != null).map((band) => String(band.id)));
@@ -87,6 +91,19 @@
         : 0,
       allTime: activityMetrics(linked, statsApi),
     };
+  }
+
+  function relevanceTag(item, concertList = [], nearbyFn = null, europeFn = null) {
+    if (!item) return '';
+    const members = item.isBatch
+      ? (concertList || []).filter((concert) => String(concert?.bandId) === String(item.bandId) && String(concert?.foundAt || '') === String(item.foundAt || ''))
+      : [item];
+    const nearby = typeof nearbyFn === 'function' ? nearbyFn : () => false;
+    const europe = typeof europeFn === 'function' ? europeFn : () => false;
+    if (members.some((concert) => nearby(concert))) return 'Nearby';
+    if (members.some((concert) => normalize(concert?.country) === 'sweden')) return 'SE';
+    if (members.some((concert) => europe(concert?.country, concert))) return 'EU';
+    return '';
   }
 
   function applyAllTimeActivity(doc = root.document) {
@@ -162,6 +179,7 @@
     linkedValidListens,
     activityMetrics,
     completedYearActivity,
+    relevanceTag,
     applyAllTimeActivity,
     clearMyBandsSearch,
     install,
