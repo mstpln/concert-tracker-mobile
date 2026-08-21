@@ -1,8 +1,10 @@
 /* AUB1 / v153: focused UI additions only. */
 
-/* Balance the ticket's breathing room without moving the stats-to-divider gap.
-   The established ticket-to-Upcoming gap is 28px on current main. */
-#screen-myconcerts .section-label-v152-next { margin-bottom: 28px; }
+/* Balance the ticket's breathing room without changing the established
+   Next Concert divider treatment shared with Upcoming. The ticket's top
+   margin supplies the extra space while the surrounding summary keeps the
+   existing 28px ticket-to-Upcoming gap. */
+#screen-myconcerts .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) { margin-top: 28px; }
 
 /* Normal-day left panel: remove the old label and use the released space for fuller venue/address copy. */
 .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-info { padding-top: 15px; }
