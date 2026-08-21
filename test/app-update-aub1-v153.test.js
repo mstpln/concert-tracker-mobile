@@ -74,34 +74,26 @@ test('AUB1 completed-year average follows the continuous represented calendar-ye
 });
 
 test('AUB1 alert relevance is singular and follows Nearby > SE > EU > none for single and tour alerts', () => {
-  const previousConcerts = globalThis.concerts;
-  const previousNearby = globalThis.dlIsNearby;
-  const previousEurope = globalThis.dlIsEuropeCountry;
-  try {
-    globalThis.dlIsNearby = (concert) => concert?.nearby === true;
-    globalThis.dlIsEuropeCountry = (country) => ['Sweden', 'Denmark', 'Germany'].includes(country);
-    globalThis.concerts = [
-      { bandId: 'b1', foundAt: '2026-08-20T10:00:00Z', country: 'Germany' },
-      { bandId: 'b1', foundAt: '2026-08-20T10:00:00Z', country: 'Sweden' },
-      { bandId: 'b1', foundAt: '2026-08-20T10:00:00Z', country: 'Denmark', nearby: true },
-    ];
+  const nearby = (concert) => concert?.nearby === true;
+  const europe = (country) => ['Sweden', 'Denmark', 'Germany'].includes(country);
+  const foundAt = '2026-08-20T10:00:00Z';
+  let concerts = [
+    { bandId: 'b1', foundAt, country: 'Germany' },
+    { bandId: 'b1', foundAt, country: 'Sweden' },
+    { bandId: 'b1', foundAt, country: 'Denmark', nearby: true },
+  ];
 
-    assert.equal(base.relevanceTag({ country: 'Sweden' }), 'SE');
-    assert.equal(base.relevanceTag({ country: 'Germany' }), 'EU');
-    assert.equal(base.relevanceTag({ country: 'Canada' }), '');
-    assert.equal(base.relevanceTag({ country: 'Sweden', nearby: true }), 'Nearby');
-    assert.equal(base.relevanceTag({ isBatch: true, bandId: 'b1', foundAt: '2026-08-20T10:00:00Z' }), 'Nearby');
+  assert.equal(corrections.relevanceTag({ country: 'Sweden' }, concerts, nearby, europe), 'SE');
+  assert.equal(corrections.relevanceTag({ country: 'Germany' }, concerts, nearby, europe), 'EU');
+  assert.equal(corrections.relevanceTag({ country: 'Canada' }, concerts, nearby, europe), '');
+  assert.equal(corrections.relevanceTag({ country: 'Sweden', nearby: true }, concerts, nearby, europe), 'Nearby');
+  assert.equal(corrections.relevanceTag({ isBatch: true, bandId: 'b1', foundAt }, concerts, nearby, europe), 'Nearby');
 
-    globalThis.concerts = globalThis.concerts.map((concert) => ({ ...concert, nearby: false }));
-    assert.equal(base.relevanceTag({ isBatch: true, bandId: 'b1', foundAt: '2026-08-20T10:00:00Z' }), 'SE');
+  concerts = concerts.map((concert) => ({ ...concert, nearby: false }));
+  assert.equal(corrections.relevanceTag({ isBatch: true, bandId: 'b1', foundAt }, concerts, nearby, europe), 'SE');
 
-    globalThis.concerts = globalThis.concerts.filter((concert) => concert.country !== 'Sweden');
-    assert.equal(base.relevanceTag({ isBatch: true, bandId: 'b1', foundAt: '2026-08-20T10:00:00Z' }), 'EU');
-  } finally {
-    globalThis.concerts = previousConcerts;
-    globalThis.dlIsNearby = previousNearby;
-    globalThis.dlIsEuropeCountry = previousEurope;
-  }
+  concerts = concerts.filter((concert) => concert.country !== 'Sweden');
+  assert.equal(corrections.relevanceTag({ isBatch: true, bandId: 'b1', foundAt }, concerts, nearby, europe), 'EU');
 });
 
 test('AUB1 approved Stats glyph has angular trend plus arrowhead and no dots or box', () => {
