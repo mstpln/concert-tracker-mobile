@@ -16,6 +16,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   let statsObserver = null;
   let myBandsObserver = null;
+  let newsObserver = null;
   let pending = false;
 
   function getBands() {
@@ -153,9 +154,17 @@
       try { return typeof dlIsEuropeCountry === 'function' && dlIsEuropeCountry(country); } catch (_) { return false; }
     };
     cards.forEach((card, index) => {
-      card.querySelector('.aub1-location-tag')?.remove();
       const tag = relevanceTag(items[index], concertList, nearby, europe);
-      if (!tag) return;
+      const existing = card.querySelector('.aub1-location-tag');
+      if (!tag) {
+        existing?.remove();
+        return;
+      }
+      if (existing) {
+        if (existing.textContent !== tag) existing.textContent = tag;
+        existing.setAttribute('aria-label', `Concert relevance: ${tag}`);
+        return;
+      }
       const badge = doc.createElement('span');
       badge.className = 'aub1-location-tag';
       badge.textContent = tag;
@@ -199,6 +208,17 @@
     return true;
   }
 
+  function installNewsObserver(doc = root.document) {
+    if (newsObserver || !doc || typeof root.MutationObserver !== 'function') return false;
+    const screen = doc.querySelector('#screen-news');
+    if (!screen) return false;
+    newsObserver = new root.MutationObserver(() => decorateAlerts(doc));
+    // renderNewsScreen replaces this screen's direct children. Observe only
+    // that level so adding/updating a tag inside a card cannot recurse.
+    newsObserver.observe(screen, { childList: true });
+    return true;
+  }
+
   function scheduleApply(doc = root.document) {
     if (pending) return;
     pending = true;
@@ -224,11 +244,13 @@
     if (!doc) return false;
     installStatsObserver(doc);
     installMyBandsLeaveObserver(doc);
+    installNewsObserver(doc);
     scheduleApply(doc);
     if (doc.readyState === 'loading') {
       doc.addEventListener('DOMContentLoaded', () => {
         installStatsObserver(doc);
         installMyBandsLeaveObserver(doc);
+        installNewsObserver(doc);
         scheduleApply(doc);
       }, { once: true });
     }
