@@ -1,7 +1,8 @@
 /* AUB1 / v153: focused UI additions only. */
 
-/* Balance the ticket's breathing room without moving the stats-to-divider gap. */
-#screen-myconcerts .section-label-v152-next { margin-bottom: 22px; }
+/* Balance the ticket's breathing room without moving the stats-to-divider gap.
+   The established ticket-to-Upcoming gap is 28px on current main. */
+#screen-myconcerts .section-label-v152-next { margin-bottom: 28px; }
 
 /* Normal-day left panel: remove the old label and use the released space for fuller venue/address copy. */
 .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-info { padding-top: 15px; }
@@ -123,7 +124,6 @@
 .aub1-no-bands-found { margin: 12px 0; text-align: center; }
 
 @media (max-width: 390px) {
-  #screen-myconcerts .section-label-v152-next { margin-bottom: 20px; }
   .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-info { padding-top: 12px; }
   .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-band { font-size: 16px; }
   .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-venue { font-size: 11.5px; }
