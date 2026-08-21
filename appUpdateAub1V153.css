@@ -1,0 +1,133 @@
+/* AUB1 / v153: focused UI additions only. */
+
+/* Balance the ticket's breathing room without moving the stats-to-divider gap. */
+#screen-myconcerts .section-label-v152-next { margin-bottom: 22px; }
+
+/* Normal-day left panel: remove the old label and use the released space for fuller venue/address copy. */
+.countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-info { padding-top: 15px; }
+.countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-band {
+  margin-top: 0;
+  white-space: normal;
+  text-overflow: clip;
+  overflow: visible;
+  line-height: 1.08;
+}
+.countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-artist-line { margin-top: 11px; }
+.countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-venue {
+  margin-top: 12px;
+  white-space: normal;
+  text-overflow: clip;
+  overflow: visible;
+  line-height: 1.18;
+}
+.countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-address {
+  white-space: normal;
+  text-overflow: clip;
+  overflow: visible;
+  line-height: 1.22;
+}
+
+/* Approved Stats identity: rising angular line with arrowhead, no dots or box. */
+.aub1-stats-glyph { display: block; overflow: visible; }
+
+/* Listening Overview control: compact peer of the existing year navigation. */
+.aub1-overview-control {
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+.aub1-overview-control[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.aub1-overview-control:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.aub1-hidden-focused-controls { display: none !important; }
+
+.yearly-listening-card svg[data-aub1-overview="true"] circle { fill: currentColor; stroke: currentColor; }
+.yearly-listening-card svg[data-aub1-overview="true"] text { fill: currentColor; }
+.genre-card[data-aub1-overview="true"] .genre-bars { gap: 4px; }
+.genre-card .aub1-genre-overview-year { min-width: 0; flex: 1 1 0; }
+.genre-card .aub1-overview-year-label { min-height: 13px; font-size: 9px; }
+
+/* Selected-year and all-time listening activity additions. */
+.year-detail .aub1-year-activity { display: block; }
+.aub1-alltime-activity {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.aub1-activity-heading {
+  margin: 0 0 9px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+.aub1-activity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.aub1-activity-metric { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.aub1-activity-metric strong { color: var(--text); font-size: 14px; line-height: 1.1; }
+.aub1-activity-metric > span { color: var(--text-muted); font-size: 10px; line-height: 1.2; }
+
+/* Concert-alert relevance tag, positioned beside the existing favorite-heart area. */
+#screen-news .row-card { position: relative; }
+.aub1-location-tag {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  min-width: 24px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 9.5px;
+  font-weight: 750;
+  line-height: 1;
+  text-align: center;
+  z-index: 2;
+}
+.row-card.has-favorite .aub1-location-tag { right: 40px; }
+
+/* My Bands transient live search. */
+.aub1-band-search { position: relative; margin: 10px 0 12px; }
+.aub1-band-search input {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 38px 8px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.aub1-band-search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.aub1-band-search-clear {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  width: 28px;
+  height: 28px;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+}
+.aub1-search-hidden { display: none !important; }
+.aub1-no-bands-found { margin: 12px 0; text-align: center; }
+
+@media (max-width: 390px) {
+  #screen-myconcerts .section-label-v152-next { margin-bottom: 20px; }
+  .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-info { padding-top: 12px; }
+  .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-band { font-size: 16px; }
+  .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-venue { font-size: 11.5px; }
+  .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-address { font-size: 9px; }
+  .aub1-overview-control { min-height: 26px; padding: 3px 6px; font-size: 10px; }
+  .aub1-activity-grid { gap: 6px; }
+}
