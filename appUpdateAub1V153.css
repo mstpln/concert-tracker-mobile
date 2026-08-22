@@ -94,6 +94,8 @@
   z-index: 2;
 }
 .row-card.has-favorite .aub1-location-tag { right: 40px; }
+#screen-news .row-card.has-aub1-location-tag .alert-row-body { padding-right: 58px; }
+#screen-news .row-card.has-aub1-location-tag.has-favorite .alert-row-body { padding-right: 88px; }
 
 /* My Bands transient live search. */
 .aub1-band-search { position: relative; margin: 10px 0 12px; }

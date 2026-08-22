@@ -94,6 +94,7 @@ test('AUB1 Start ticket spacing/content and Music/Stats icon identities match th
 test('AUB1 listening activity metrics and both Overview modes retain all yearly data', async ({ page }, testInfo) => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
   await openApp(page, testInfo);
   await page.locator('#tabbar [data-tab="stats"]').click();
 
@@ -117,6 +118,36 @@ test('AUB1 listening activity metrics and both Overview modes retain all yearly 
   await expect(yearlyCard.locator('[data-v81-year-point]')).toHaveCount(expectedYears);
   await expect(yearlyCard.getByRole('button', { name: 'Focused' })).toBeVisible();
   await expect(yearlyCard.locator('.genre-range-controls')).toHaveClass(/aub1-hidden-focused-controls/);
+  const ytdLabel = yearlyCard.locator('svg[data-aub1-overview="true"] text').filter({ hasText: 'YTD' });
+  await expect(ytdLabel).toHaveCount(1);
+  await expect(ytdLabel).toHaveText(/^\d{4} · YTD$/);
+  expect(await ytdLabel.evaluate((node) => {
+    const bounds = node.getBBox();
+    const viewBox = node.ownerSVGElement.viewBox.baseVal;
+    const overlapsAnotherLabel = [...node.ownerSVGElement.querySelectorAll('text')]
+      .filter((candidate) => candidate !== node)
+      .some((candidate) => {
+        const other = candidate.getBBox();
+        return bounds.x < other.x + other.width
+          && bounds.x + bounds.width > other.x
+          && bounds.y < other.y + other.height
+          && bounds.y + bounds.height > other.y;
+      });
+    return {
+      anchor: node.getAttribute('text-anchor'),
+      leftInside: bounds.x >= viewBox.x,
+      rightInside: bounds.x + bounds.width <= viewBox.x + viewBox.width,
+      overlapsAnotherLabel,
+    };
+  })).toEqual({ anchor: 'end', leftInside: true, rightInside: true, overlapsAnotherLabel: false });
+  await page.screenshot({ path: testInfo.outputPath('aub1-v153-yearly-overview-light.png'), fullPage: true });
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  expect(await ytdLabel.evaluate((node) => {
+    const bounds = node.getBBox();
+    const viewBox = node.ownerSVGElement.viewBox.baseVal;
+    return bounds.x >= viewBox.x && bounds.x + bounds.width <= viewBox.x + viewBox.width;
+  })).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('aub1-v153-yearly-overview-dark.png'), fullPage: true });
 
   // Return to focused rendering, then exercise the genre Overview separately.
   await yearlyCard.getByRole('button', { name: 'Focused' }).click();
@@ -179,27 +210,46 @@ test('AUB1 My Bands search is live, composes with existing filters, and clears w
 test('AUB1 concert alert cards show exactly one highest-priority location tag', async ({ page }, testInfo) => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
   await openApp(page, testInfo);
 
   await page.evaluate(() => {
     const foundAt = '2027-07-16T11:30:00.000Z';
     const common = { date: '2027-09-01', sourceProvider: 'ticketmaster', foundAt, manuallyAdded: false };
     concerts.push(
-      { ...common, id: 'aub1-nearby-a', bandId: 'qa-artist-one', bandName: 'QA Artist One', venue: 'Nearby One', city: 'Malmo', country: 'Sweden', distanceKm: 50 },
-      { ...common, id: 'aub1-nearby-b', bandId: 'qa-artist-one', bandName: 'QA Artist One', venue: 'Tour Peer', city: 'Berlin', country: 'Germany', distanceKm: 500 },
+      { ...common, id: 'aub1-nearby-a', bandId: 'qa-artist-one', bandName: 'QA Artist One With A Long Synthetic Tour Name', venue: 'Nearby One', city: 'Malmo', country: 'Sweden', distanceKm: 50 },
+      { ...common, id: 'aub1-nearby-b', bandId: 'qa-artist-one', bandName: 'QA Artist One With A Long Synthetic Tour Name', venue: 'Tour Peer', city: 'Berlin', country: 'Germany', distanceKm: 500 },
       { ...common, id: 'aub1-se', bandId: 'qa-artist-five', bandName: 'Synthetic Ensemble', venue: 'Sweden Far', city: 'Stockholm', country: 'Sweden', distanceKm: 600 },
       { ...common, id: 'aub1-eu', bandId: 'qa-artist-two', bandName: 'QA Artist Two', venue: 'EU Hall', city: 'Berlin', country: 'Germany', distanceKm: 500 },
       { ...common, id: 'aub1-none', bandId: 'qa-artist-six', bandName: 'Example Soloist', venue: 'Elsewhere', city: 'Toronto', country: 'Canada', distanceKm: 5000 },
     );
-    newsSubTab = 'alerts';
-    currentTab = 'news';
-    renderNewsScreen();
-    AppUpdateAub1V153.decorateAlerts();
   });
+  await page.locator('#tabbar [data-tab="news"]').click();
+  await expect(page.locator('#screen-news')).toBeVisible();
 
-  const tour = page.locator('#screen-news .row-card').filter({ hasText: 'New tour announced · QA Artist One' }).first();
+  const tour = page.locator('#screen-news .row-card').filter({ hasText: 'New tour announced · QA Artist One With A Long Synthetic Tour Name' }).first();
   await expect(tour.locator('.aub1-location-tag')).toHaveText('Nearby');
   await expect(tour.locator('.aub1-location-tag')).toHaveCount(1);
+  await expect(tour.locator('.alert-favorite-badge')).toBeVisible();
+  const assertNoTitleBadgeOverlap = async () => {
+    expect(await tour.evaluate((card) => {
+      const title = card.querySelector('.alert-title');
+      const location = card.querySelector('.aub1-location-tag');
+      const favorite = card.querySelector('.alert-favorite-badge');
+      if (!title || !location || !favorite) return false;
+      const range = document.createRange();
+      range.selectNodeContents(title);
+      const titleRects = [...range.getClientRects()];
+      const badgeRects = [location.getBoundingClientRect(), favorite.getBoundingClientRect()];
+      return titleRects.every((titleRect) => badgeRects.every((badgeRect) => !(
+        titleRect.left < badgeRect.right
+        && titleRect.right > badgeRect.left
+        && titleRect.top < badgeRect.bottom
+        && titleRect.bottom > badgeRect.top
+      )));
+    })).toBe(true);
+  };
+  await assertNoTitleBadgeOverlap();
 
   const sweden = page.locator('#screen-news .row-card').filter({ hasText: 'Synthetic Ensemble' }).first();
   await expect(sweden.locator('.aub1-location-tag')).toHaveText('SE');
@@ -214,5 +264,10 @@ test('AUB1 concert alert cards show exactly one highest-priority location tag', 
 
   expect(await noHorizontalOverflow(page)).toBe(true);
   expect(errors).toEqual([]);
-  await page.screenshot({ path: testInfo.outputPath('aub1-v153-alert-tags.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('aub1-v153-alert-tags-light.png'), fullPage: true });
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await expect(page.locator('#screen-news')).toBeVisible();
+  await assertNoTitleBadgeOverlap();
+  expect(await noHorizontalOverflow(page)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('aub1-v153-alert-tags-dark.png'), fullPage: true });
 });

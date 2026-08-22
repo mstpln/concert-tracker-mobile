@@ -160,6 +160,7 @@
     cards.forEach((card, index) => {
       const tag = relevanceTag(items[index], concertList, nearby, europe);
       const existing = card.querySelector('.aub1-location-tag');
+      card.classList.toggle('has-aub1-location-tag', !!tag);
       if (!tag) {
         existing?.remove();
         return;

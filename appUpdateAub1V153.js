@@ -271,8 +271,15 @@
     values.forEach((item, index) => {
       const group = svgNode(doc, 'g', { 'data-v81-year-point': item.year, role: 'button', tabindex: '0', 'aria-label': `${item.year}: ${statsApi.formatDuration(item.durationMs)}` });
       group.appendChild(svgNode(doc, 'circle', { cx: x(index), cy: y(item.hours), r: 4 }));
-      if (index % labelStep === 0 || index === values.length - 1) {
-        const text = svgNode(doc, 'text', { x: x(index), y: height - 12, 'text-anchor': 'middle' });
+      const finalIndex = values.length - 1;
+      const isFinalLabel = index === finalIndex;
+      const isRegularLabel = index % labelStep === 0 && finalIndex - index >= labelStep;
+      if (isRegularLabel || isFinalLabel) {
+        const text = svgNode(doc, 'text', {
+          x: x(index),
+          y: height - 12,
+          'text-anchor': isFinalLabel ? 'end' : 'middle',
+        });
         text.textContent = item.isCurrentYear ? `${item.year} · YTD` : String(item.year);
         group.appendChild(text);
       }
@@ -366,6 +373,7 @@
       card.querySelector('.aub1-location-tag')?.remove();
       const item = items[index];
       const tag = relevanceTag(item);
+      card.classList.toggle('has-aub1-location-tag', !!tag);
       if (!tag) return;
       const badge = doc.createElement('span');
       badge.className = 'aub1-location-tag';
