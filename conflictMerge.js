@@ -66,6 +66,22 @@
         continue;
       }
       if (!localHas) continue;
+      // AUB2's legacy initialization adds `headliner` when the stored base is
+      // missing or malformed. That automatic default is not a user decision,
+      // so it must never beat a valid role saved by another client while this
+      // write was in flight. Explicit edits still merge normally: selecting
+      // Support from a legacy record writes `support`, while changing an
+      // established Headliner/Support value has a valid base value.
+      if (
+        key === 'lineupRole'
+        && (!beforeHas || !['headliner', 'support'].includes(base[key]))
+        && intended[key] === 'headliner'
+        && remoteHas
+        && ['headliner', 'support'].includes(latest[key])
+      ) {
+        output[key] = clone(latest[key]);
+        continue;
+      }
       if (!beforeHas) {
         output[key] = remoteHas ? mergeValue(undefined, intended[key], latest[key]) : clone(intended[key]);
         continue;

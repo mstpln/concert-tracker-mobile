@@ -4,7 +4,7 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged baseline is **v153 / AUB1** at merge commit `4718eff8c6cee9acc12acb66914f295780bd9dd1` (PR #162). The current branch prepares **v154** as a focused post-merge visual correction. It preserves the stable internal `myconcerts` identity, stored concert/band schemas, provider boundaries, ticket ownership, chronological concert ordering and all production-data boundaries.
+The current merged baseline is **v154 / AUB1 post-merge correction** at `7636564ebbbbef537eeeb00d1471cc69e297ca40` (PR #163). The current branch prepares **v155 / AUB2**. It preserves the stable internal `myconcerts` identity, provider boundaries, ticket ownership, chronological concert ordering and all production-data boundaries while adding the single additive `lineupRole` concert field.
 
 ### v149 Start stats cards
 
@@ -50,11 +50,19 @@ My Bands adds a transient, case-insensitive band-name search directly below the 
 
 The Stats header and bottom navigation now consume the corrected shared `statsBars` glyph: the approved rising angular line ends in a clean, proportionate upper-right arrowhead with no dots, markers or enclosing box. The Listening Hours Overview card keeps the same All-time activity data and structure while giving its divider, heading, two aligned metrics and bottom edge a deliberate spacing rhythm.
 
+### v155 AUB2 lineup roles and performance stats
+
+Each concert has one additive user-owned `lineupRole`, restricted to `headliner` or `support`. Legacy/malformed records are treated as `headliner` and normalized idempotently in memory, then persisted on their next ordinary safe concert write; no production-wide backfill is required. Marking a concert as attending adds `headliner` only when no valid role already exists. User and unknown fields remain intact, provider refresh/write payloads preserve the latest stored role, and optimistic conflict reconciliation treats an initialization default as lower priority than a valid role concurrently saved by another client.
+
+Attended past and upcoming cards show a compact role badge directly below the band name. Its inline two-choice selector supports native keyboard, touch and pointer input; a successful save collapses it, while a failed save retains the previous value and leaves a local retry message. Concert Stats reports Headliner and Support performance counts and percentages across attended past performances, with every performance contributing exactly once and legacy missing roles counting as headliner.
+
+There is no safe same-event relationship in the current concert schema, so AUB2 deliberately preserves existing chronological card ordering. Event grouping, support-before-headliner ordering within an event, ticket deduplication and event-level statistics remain deferred to AUB3 rather than being inferred from venue/date data.
+
 ### Preserved v148 Next Concert behavior
 
 Merged v148 remains authoritative for the normal-day Next Concert ticket chrome: v147 calendar geometry/internal spacing stays fixed; the detailed timer is regular weight; canonical `ticketQuantity` is centered in the muted-grey outline pill; the outer normal-day contour is the thinner 1.1px grey stroke; and the right inner frame uses the matched non-scaling 3px white SVG stroke treatment. Concert day remains the v140 `Show today` / `Get directions` / `Open tickets` contract.
 
-`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at **v154** for the post-merge correction. The deterministic shell list includes the focused AUB1 CSS/JS layers. Unit and synthetic browser coverage targets activity calculations, alert priority, approved icon identities, balanced Next Concert spacing, multiline venue/address behavior, both Overview charts, My Bands search/filter composition and transient clearing, dark/light-safe existing tokens, narrow/wide layouts and horizontal-overflow safety. Full desktop/mobile Chromium PR QA remains the merge-readiness gate.
+`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at **v155** for AUB2. The deterministic shell list includes the shared lineup-role model and focused AUB2 CSS. Unit and synthetic browser coverage targets role initialization/validation, attending defaults, provider preservation, unknown-field preservation, performance statistics, successful/failed inline saves, native keyboard interaction, dark/light tokens, 375px/480px/desktop layouts and horizontal-overflow safety. Full desktop/mobile Chromium PR QA remains the merge-readiness gate.
 
 The merged v145 Settings data-correctness and automation-reporting behavior remains intact. The merged v144 genre/My Bands ownership behavior, v143 UI alignment and Sweden filters, v142 Ticketmaster venue-quality protection, v135-v137 provider/release cleanup, and existing listening identity/artwork ownership rules remain authoritative.
 
@@ -77,8 +85,8 @@ The historical GitHub backlog has been reconciled against merged `main` so compl
 
 v135-v137 retired active Releases while preserving stored historical/provider state. Existing provider-neutral link resolution, listening artwork ownership, MusicBrainz/Spotify safety, private-listening boundaries, UsageTracker caps/pacing, Spotify circuit, cross-scheduler lease, optimistic concurrency, reviewed provider-decision preservation and immutable source observations remain authoritative.
 
-v153/AUB1 and its v154 visual correction add no provider calls, provider schedules/caps/pacing/matching changes, production listening-archive reads in automation, stored JSON schema changes, migrations, stable-ID changes, user-owned-field writes, backend/Worker behavior, credential changes or production-data operations. Alert relevance and My Bands search are view-only. Listening activity metrics derive from the already-authorized in-app listening history using existing validity/identity semantics.
+v155 adds only the optional `lineupRole` concert field. It adds no provider calls, provider schedules/caps/pacing/matching changes, production listening-archive reads in automation, destructive migration, stable-ID changes, backend/Worker behavior, credential changes or production-data operations. Main and focused concert-research writes use the same role initialization, provider merges preserve the latest stored user role, and missing roles are defaulted locally/on ordinary future writes rather than through a production backfill.
 
 ## Safety and release boundary
 
-Automated browser QA uses only synthetic fixtures and the QA fake backend. The v154 correction branch does not authorize or perform a production provider call, production research/data-maintenance workflow, production R2 read/write, production-data migration, Worker deployment, production smoke run or deployment. Merge remains separately authorized by the explicit user command `Merge it`.
+Automated browser QA uses only synthetic fixtures and the QA fake backend. The v155 AUB2 branch does not authorize or perform a production provider call, production research/data-maintenance workflow, production R2 read/write, production-data migration, Worker deployment, production smoke run or deployment. Merge remains separately authorized by the explicit user command `Merge it`.

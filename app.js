@@ -58,6 +58,8 @@ const ticketOperations = new Map();
 const ticketCacheStatus = new Map();
 const ticketNotices = new Map();
 const pastDetailEditing = new Map(); // transient manual Playlist/Photos form state only
+let lineupRoleOpenConcertId = null; // transient inline selector state only
+const lineupRoleNotices = new Map();
 let spotifyAuthMessage = '';
 // Settings starts on Research each time it is opened. These are deliberately
 // browser-local display choices, never stored with the user's concert data.
@@ -236,7 +238,7 @@ function wireOnboarding() {
 
 async function loadDataAndShowApp() {
   bands = await dlReadJsonFile(remote, 'bands.json', []);
-  concerts = await dlReadJsonFile(remote, 'concerts.json', []);
+  concerts = LineupRoleV155.initializeConcerts(await dlReadJsonFile(remote, 'concerts.json', []));
   news = await dlReadJsonFile(remote, 'news.json', []);
   // Written by the weekly GitHub Actions research pipeline, not by this
   // app — read-only here, just to power the usage counters in Settings.
@@ -1037,6 +1039,11 @@ function rowAvatarHtml(bandId) {
 function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
   const tourName = isPast ? c.setlist?.tourName : null;
   const showPillRow = c.type === 'festival' || isPast;
+  const lineupRole = LineupRoleV155.displayRole(c);
+  const lineupRoleLabel = lineupRole === LineupRoleV155.SUPPORT ? 'Support' : 'Headliner';
+  const lineupSelectorOpen = lineupRoleOpenConcertId === c.id;
+  const lineupNotice = lineupRoleNotices.get(c.id);
+  const lineupSelectorId = `lineup-role-selector-${c.id}`;
   return `
     <div class="row-card-mc row-card clickable has-corner-delete${isPast ? ' is-past' : ''}" data-band-id="${c.bandId}">
       <div class="row-header">
@@ -1051,6 +1058,14 @@ function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
             <span class="row-name">${showBandName ? escapeHtml(c.bandName) : ''}</span>
             <span class="row-chevron">${icon('chevronRight')}</span>
           </div>
+          ${showBandName ? `<div class="lineup-role-wrap">
+            <button type="button" class="lineup-role-badge" data-lineup-role-toggle="${escapeAttr(c.id)}" aria-expanded="${lineupSelectorOpen}" aria-controls="${escapeAttr(lineupSelectorId)}" aria-label="Lineup role: ${lineupRoleLabel}. Change role">${lineupRoleLabel}</button>
+            ${lineupSelectorOpen ? `<div class="lineup-role-selector" id="${escapeAttr(lineupSelectorId)}" role="group" aria-label="Choose lineup role">
+              <button type="button" class="lineup-role-option" data-lineup-role="headliner" data-concert-id="${escapeAttr(c.id)}" aria-pressed="${lineupRole === 'headliner'}">Headliner</button>
+              <button type="button" class="lineup-role-option" data-lineup-role="support" data-concert-id="${escapeAttr(c.id)}" aria-pressed="${lineupRole === 'support'}">Support</button>
+            </div>` : ''}
+            ${lineupNotice ? `<p class="lineup-role-error" role="status">${escapeHtml(lineupNotice)}</p>` : ''}
+          </div>` : ''}
           ${tourName ? `<p class="row-tour">${escapeHtml(tourName)}</p>` : ''}
         </div>
       </div>
@@ -1375,7 +1390,7 @@ function buildGoogleMapsUrl(c) {
 }
 
 async function patchLatestConcert(concertId, patch) {
-  const latest = await dlReadJsonFile(remote, 'concerts.json', []);
+  const latest = LineupRoleV155.initializeConcerts(await dlReadJsonFile(remote, 'concerts.json', []));
   const index = latest.findIndex((item) => item.id === concertId);
   if (index < 0) throw new Error('This concert was removed before it could be saved.');
   const updated = patch(latest[index]);
@@ -1431,6 +1446,7 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
       if (
         ev.target.closest('.icon-btn') ||
         ev.target.closest('.venue-address-link') ||
+        ev.target.closest('.lineup-role-wrap') ||
         ev.target.closest('.concert-prep-group')
       ) return;
       openProfile(row.dataset.bandId);
@@ -1443,6 +1459,45 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
   container.querySelectorAll('.concert-prep-group').forEach((group) => {
     group.addEventListener('click', (ev) => ev.stopPropagation());
   });
+
+  container.querySelectorAll('[data-lineup-role-toggle]').forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const concertId = btn.dataset.lineupRoleToggle;
+    lineupRoleOpenConcertId = lineupRoleOpenConcertId === concertId ? null : concertId;
+    lineupRoleNotices.delete(concertId);
+    refresh();
+    if (lineupRoleOpenConcertId) requestAnimationFrame(() => container.querySelector(`.lineup-role-option[data-concert-id="${CSS.escape(concertId)}"][aria-pressed="true"]`)?.focus());
+  }));
+  container.querySelectorAll('.lineup-role-selector').forEach((selector) => {
+    selector.addEventListener('click', (ev) => ev.stopPropagation());
+    selector.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Escape') return;
+      ev.preventDefault();
+      const concertId = selector.querySelector('[data-concert-id]')?.dataset.concertId;
+      lineupRoleOpenConcertId = null;
+      refresh();
+      requestAnimationFrame(() => container.querySelector(`[data-lineup-role-toggle="${CSS.escape(concertId)}"]`)?.focus());
+    });
+  });
+  container.querySelectorAll('.lineup-role-option').forEach((btn) => btn.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
+    const concertId = btn.dataset.concertId;
+    const role = btn.dataset.lineupRole;
+    const previous = LineupRoleV155.displayRole(concerts.find((concert) => concert.id === concertId));
+    if (role === previous) { lineupRoleOpenConcertId = null; lineupRoleNotices.delete(concertId); refresh(); return; }
+    btn.closest('.lineup-role-selector').querySelectorAll('button').forEach((option) => { option.disabled = true; });
+    try {
+      await patchLatestConcert(concertId, (latest) => LineupRoleV155.withRole(latest, role));
+      lineupRoleOpenConcertId = null;
+      lineupRoleNotices.delete(concertId);
+      refresh();
+    } catch {
+      lineupRoleOpenConcertId = concertId;
+      lineupRoleNotices.set(concertId, 'Could not save lineup role. Try again.');
+      refresh();
+      requestAnimationFrame(() => container.querySelector(`.lineup-role-option[data-concert-id="${CSS.escape(concertId)}"][data-lineup-role="${previous}"]`)?.focus());
+    }
+  }));
 
   container.querySelectorAll('.countdown-pdf-open-btn').forEach((btn) => btn.addEventListener('click', async (ev) => {
     ev.stopPropagation();
@@ -1518,7 +1573,7 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
         } catch (error) { alert(error.message || 'Could not remove this concert.'); }
         return;
       } else {
-        c.attending = false;
+        Object.assign(c, LineupRoleV155.withAttending(c, false));
       }
       await dlWriteJsonFile(remote, 'concerts.json', concerts);
       refresh();
@@ -1806,7 +1861,7 @@ async function onAddPastConcert() {
     date, time: null, distanceKm: null,
     articleUrl: null, ticketUrl: null, ticketRetailerVerified: false,
     isNew: false, foundAt: new Date().toISOString(),
-    attending: true, manuallyAdded: true,
+    attending: true, manuallyAdded: true, lineupRole: LineupRoleV155.HEADLINER,
     type,
   };
   concerts.push(concert);
@@ -2467,8 +2522,16 @@ function buildGoogleCalendarUrl(c) {
 async function toggleAttending(concertId) {
   const c = concerts.find((x) => x.id === concertId);
   if (!c) return;
-  c.attending = !c.attending;
-  await dlWriteJsonFile(remote, 'concerts.json', concerts);
+  const previous = { attending: c.attending, lineupRole: c.lineupRole };
+  Object.assign(c, LineupRoleV155.withAttending(c, !c.attending));
+  try {
+    await dlWriteJsonFile(remote, 'concerts.json', concerts);
+  } catch (error) {
+    c.attending = previous.attending;
+    if (previous.lineupRole === undefined) delete c.lineupRole;
+    else c.lineupRole = previous.lineupRole;
+    throw error;
+  }
 }
 
 function linkIconBtn(url, name) {
@@ -2783,6 +2846,7 @@ function concertStatsHtml() {
   }
 
   const stats = dlConcertStats(past, bands, upcoming);
+  const lineupStats = LineupRoleV155.performanceStats(past);
   const kmCaveat = stats.knownDistanceCount < stats.totalShows
     ? `<br><span class="stats-kpi-caveat">from ${stats.knownDistanceCount} of ${stats.totalShows} concerts</span>`
     : '';
@@ -2877,6 +2941,11 @@ function concertStatsHtml() {
     label: `of concerts rated${stats.ratedCount < stats.totalShows ? `<br><span class="stats-kpi-caveat">${stats.ratedCount} of ${stats.totalShows} concerts</span>` : ''}`,
   });
 
+  const lineupRoleTiles = [
+    { value: lineupStats.headliner.count.toLocaleString(), label: `headliner performances<br><span class="stats-kpi-caveat">${lineupStats.headliner.percentage}% of attended performances</span>` },
+    { value: lineupStats.support.count.toLocaleString(), label: `support performances<br><span class="stats-kpi-caveat">${lineupStats.support.percentage}% of attended performances</span>` },
+  ];
+
   const tileHtml = (t) => `<div class="stats-kpi-tile"><span class="stats-kpi-value">${t.value}</span><span class="stats-kpi-label">${t.label}</span></div>`;
   const gridHtml = (arr) => `<div class="stats-kpi-grid">${arr.map(tileHtml).join('')}</div>`;
   const sectionHtml = (label, arr) => (arr.length > 0 ? `<p class="section-label">${escapeHtml(label)}</p>${gridHtml(arr)}` : '');
@@ -2890,6 +2959,7 @@ function concertStatsHtml() {
     ${sectionHtml('Extremes', extremeTiles)}
     ${sectionHtml('Money', moneyTiles)}
     ${sectionHtml('Ratings', ratingTiles)}
+    ${sectionHtml('Lineup role', lineupRoleTiles)}
     ${stats.topRatedShows.length > 0 ? `
       <p class="section-label">Top-rated concerts</p>
       <div class="stats-list-card">

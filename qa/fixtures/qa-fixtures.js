@@ -197,6 +197,7 @@
           city: 'Sample City',
           country: 'Exampleland',
           attending: true,
+          lineupRole: 'support',
           attended: true,
           rating: 5,
           notes: 'Synthetic note only.',

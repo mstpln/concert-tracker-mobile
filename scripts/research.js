@@ -38,6 +38,7 @@ const predictedSetlist = require('./lib/predictedSetlist');
 const artistImageMaintenance = require('./lib/artistImageMaintenance');
 const { slugify, isValidFullDate, daysAgo, truncate, todayIso } = require('./lib/util');
 const config = require('./lib/config');
+const LineupRole = require('../lineupRoleV155');
 
 // How long to wait before re-checking a past-attended show that didn't have
 // a setlist logged last time — setlist.fm is crowd-sourced, so a fan may
@@ -556,7 +557,7 @@ function finalConcertWritePayload(concerts, newConcerts, { latestConcerts = conc
   let merged = mergeTicketmasterConcertUpgrades(latestConcerts, ticketmasterUpgrades);
   merged = mergePipelineConcertFields(merged, concerts, pipelineUpdatedIds);
   const existingIds = new Set(merged.map((concert) => concert.id));
-  return [...merged, ...(newConcerts || []).filter((concert) => !existingIds.has(concert.id))];
+  return LineupRole.initializeConcerts([...merged, ...(newConcerts || []).filter((concert) => !existingIds.has(concert.id))]);
 }
 
 function concertWriteRequired({ newConcerts = [], ticketmasterUpgrades = [], pipelineUpdates = 0, setlistChecksAttempted = 0, spotifyConcertsProcessed = 0 } = {}) {
