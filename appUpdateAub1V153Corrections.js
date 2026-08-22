@@ -141,7 +141,11 @@
 
   function decorateAlerts(doc = root.document) {
     const screen = doc?.querySelector('#screen-news');
-    if (!screen?.querySelector('.news-subtab-btn[data-subtab="alerts"].active')) return false;
+    if (!screen) return false;
+    const activeSubtab = screen.querySelector('.news-subtab-btn[data-subtab].active');
+    // v135 renders an alerts-only screen with no subtab controls. When the
+    // legacy switch is present, decorate only its Alerts view.
+    if (activeSubtab && activeSubtab.dataset.subtab !== 'alerts') return false;
     const cards = [...screen.querySelectorAll('.row-card.clickable:not(.release-alert-card)')];
     let items = [];
     try { if (typeof getAlertItems === 'function') items = getAlertItems().filter((item) => !item.isReleaseAlert); } catch (_) {}
