@@ -185,3 +185,11 @@ Concert-alert geographic relevance is view-only and singular with priority `Near
 **Reason:** AUB1 should improve clarity and discoverability without introducing a competing listening-validity model, silently persisting search/filter state, changing concert data semantics or weakening the existing ticket/data ownership boundaries.
 
 **Consequence:** AUB1 writes no new user/provider fields, adds no migration and changes no provider/backend behavior. Future changes to active-day boundaries, alert-priority semantics, Stats icon identity, overview data retention or My Bands search persistence require an explicit new decision.
+
+### v154 corrects the shared Stats arrowhead and All-time activity spacing
+
+**Decision:** The shared Stats glyph keeps the approved rising angular line but uses a clean right-angle upper-right arrowhead with balanced proportions; it remains free of dots, markers and an enclosing box. The Listening Hours Overview All-time activity footer keeps its existing heading, two metrics and values while using deliberate divider spacing, aligned columns and sufficient bottom padding.
+
+**Reason:** The merged v153 arrowhead and footer spacing did not visually match the approved aligned treatment at phone widths.
+
+**Consequence:** v154 is presentation-only. Both Stats icon placements must use the shared glyph source, and no listening calculations, data, chart behavior, navigation, provider/backend behavior or unrelated card styling changes.

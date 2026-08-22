@@ -11,7 +11,13 @@
   if (root?.document) api.install();
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   const EQUALIZER_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 16v-4M9 18V8M13 16V5M17 18v-8M21 15v-5"></path></svg>';
-  const STATS_SVG = '<svg class="aub1-stats-glyph" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 18.5 8 12.5l3.2 3.4 3.4-4.8 2.8 3.4L21 6.5"></path><path d="M16.8 6.6 21 6.5l-.1 4.2"></path></svg>';
+  const STATS_SVG_FALLBACK = '<svg class="aub1-stats-glyph" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg>';
+  const STATS_SVG = (() => {
+    try {
+      if (typeof icon === 'function') return icon('statsBars') || STATS_SVG_FALLBACK;
+    } catch (_) {}
+    return STATS_SVG_FALLBACK;
+  })();
   const DAY_MS = 86400000;
   let myBandsQuery = '';
   let installing = false;
