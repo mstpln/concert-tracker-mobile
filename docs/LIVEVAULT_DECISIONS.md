@@ -193,3 +193,13 @@ Concert-alert geographic relevance is view-only and singular with priority `Near
 **Reason:** The merged v153 arrowhead and footer spacing did not visually match the approved aligned treatment at phone widths.
 
 **Consequence:** v154 is presentation-only. Both Stats icon placements must use the shared glyph source, and no listening calculations, data, chart behavior, navigation, provider/backend behavior or unrelated card styling changes.
+
+### v155 makes lineup role a two-value user-owned performance field
+
+**Decision:** A concert may store only `lineupRole: "headliner"` or `lineupRole: "support"`. The value is user-owned once stored. Legacy missing or malformed values are interpreted as `headliner` and normalized idempotently in memory, then written during the next ordinary safe concert write instead of by a production backfill. Setting attending defaults the field only when a valid role is absent; it never overwrites an existing choice. Provider refreshes start from the latest record and may not replace the stored role.
+
+Attended past and upcoming cards expose the value through one inline two-choice selector beneath the band name. Failed saves retain the prior value and a local retry path. Concert Stats counts attended past records as performances, exactly once each, and reports Headliner/Support counts and percentages under the same logical legacy default.
+
+**Reason:** AUB2 needs an explicit, reviewable distinction between the main artist and a support performance without guessing bill structure or coupling user judgment to provider refreshes.
+
+**Consequence:** `lineupRole` is additive and backward compatible; unknown fields remain preserved. The current schema has no proven same-event relation, so chronological ordering remains unchanged. Event grouping, within-event ordering, ticket deduplication, event-level statistics and all other AUB3 work require a later explicit build.
