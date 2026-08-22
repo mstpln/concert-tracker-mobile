@@ -52,7 +52,7 @@ The Stats header and bottom navigation now consume the corrected shared `statsBa
 
 ### v155 AUB2 lineup roles and performance stats
 
-Each concert has one additive user-owned `lineupRole`, restricted to `headliner` or `support`. Legacy/malformed records are treated as `headliner` and normalized idempotently in memory, then persisted on their next ordinary safe concert write; no production-wide backfill is required. Marking a concert as attending adds `headliner` only when no valid role already exists. User and unknown fields remain intact, and provider refresh/write payloads preserve the latest stored role.
+Each concert has one additive user-owned `lineupRole`, restricted to `headliner` or `support`. Legacy/malformed records are treated as `headliner` and normalized idempotently in memory, then persisted on their next ordinary safe concert write; no production-wide backfill is required. Marking a concert as attending adds `headliner` only when no valid role already exists. User and unknown fields remain intact, provider refresh/write payloads preserve the latest stored role, and optimistic conflict reconciliation treats an initialization default as lower priority than a valid role concurrently saved by another client.
 
 Attended past and upcoming cards show a compact role badge directly below the band name. Its inline two-choice selector supports native keyboard, touch and pointer input; a successful save collapses it, while a failed save retains the previous value and leaves a local retry message. Concert Stats reports Headliner and Support performance counts and percentages across attended past performances, with every performance contributing exactly once and legacy missing roles counting as headliner.
 
@@ -85,7 +85,7 @@ The historical GitHub backlog has been reconciled against merged `main` so compl
 
 v135-v137 retired active Releases while preserving stored historical/provider state. Existing provider-neutral link resolution, listening artwork ownership, MusicBrainz/Spotify safety, private-listening boundaries, UsageTracker caps/pacing, Spotify circuit, cross-scheduler lease, optimistic concurrency, reviewed provider-decision preservation and immutable source observations remain authoritative.
 
-v155 adds only the optional `lineupRole` concert field. It adds no provider calls, provider schedules/caps/pacing/matching changes, production listening-archive reads in automation, destructive migration, stable-ID changes, backend/Worker behavior, credential changes or production-data operations. Provider merges preserve the latest stored user role, and missing roles are defaulted locally/on ordinary future writes rather than through a production backfill.
+v155 adds only the optional `lineupRole` concert field. It adds no provider calls, provider schedules/caps/pacing/matching changes, production listening-archive reads in automation, destructive migration, stable-ID changes, backend/Worker behavior, credential changes or production-data operations. Main and focused concert-research writes use the same role initialization, provider merges preserve the latest stored user role, and missing roles are defaulted locally/on ordinary future writes rather than through a production backfill.
 
 ## Safety and release boundary
 

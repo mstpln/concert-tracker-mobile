@@ -7,6 +7,7 @@ const policy = require('./lib/tavilyConcertPolicy');
 const geocode = require('./lib/geocode');
 const { slugify, todayIso } = require('./lib/util');
 const { fetchTourDatesViaTavily, reconcileConcertCandidate } = require('./research');
+const LineupRole = require('../lineupRoleV155');
 
 let sharedUsage = null;
 
@@ -38,6 +39,10 @@ function attachResearchGeocode(candidate) {
   if (!candidate || candidate.distanceKm == null) return candidate;
   const cached = geocode.cachedForCity(candidate.city, candidate.country);
   return cached ? { ...candidate, ...cached } : candidate;
+}
+
+function finalFocusedConcertPayload(concerts) {
+  return LineupRole.initializeConcerts(concerts);
 }
 
 async function main() {
@@ -108,7 +113,7 @@ async function main() {
       const reconciliation = reconcileConcertCandidate(merged, [], candidate);
       if (reconciliation.action === 'add') merged.push(uniqueConcert(candidate, merged));
     }
-    await worker.writeJson('concerts.json', merged);
+    await worker.writeJson('concerts.json', finalFocusedConcertPayload(merged));
   }
 
   if (routingUpdates.length) {
@@ -143,4 +148,4 @@ if (require.main === module) main().catch(async (error) => {
   process.exitCode = 1;
 });
 
-module.exports = { uniqueConcert, applyRoutingUpdates, attachResearchGeocode, main };
+module.exports = { uniqueConcert, applyRoutingUpdates, attachResearchGeocode, finalFocusedConcertPayload, main };

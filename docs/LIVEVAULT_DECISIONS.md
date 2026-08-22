@@ -202,4 +202,4 @@ Attended past and upcoming cards expose the value through one inline two-choice 
 
 **Reason:** AUB2 needs an explicit, reviewable distinction between the main artist and a support performance without guessing bill structure or coupling user judgment to provider refreshes.
 
-**Consequence:** `lineupRole` is additive and backward compatible; unknown fields remain preserved. The current schema has no proven same-event relation, so chronological ordering remains unchanged. Event grouping, within-event ordering, ticket deduplication, event-level statistics and all other AUB3 work require a later explicit build.
+**Consequence:** `lineupRole` is additive and backward compatible; unknown fields remain preserved. During optimistic reconciliation, an automatic legacy `headliner` default cannot overwrite a valid role concurrently saved by another client, while an explicit role edit retains the established local-change semantics. The current schema has no proven same-event relation, so chronological ordering remains unchanged. Event grouping, within-event ordering, ticket deduplication, event-level statistics and all other AUB3 work require a later explicit build.
