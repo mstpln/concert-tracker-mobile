@@ -60,6 +60,8 @@ const ticketNotices = new Map();
 const pastDetailEditing = new Map(); // transient manual Playlist/Photos form state only
 let lineupRoleOpenConcertId = null; // transient inline selector state only
 const lineupRoleNotices = new Map();
+let eventGroupOpenConcertId = null; // transient explicit relationship editor only
+const eventGroupNotices = new Map();
 let spotifyAuthMessage = '';
 // Settings starts on Research each time it is opened. These are deliberately
 // browser-local display choices, never stored with the user's concert data.
@@ -828,7 +830,7 @@ function renderMyConcertsScreen() {
   // Countdown to the next "going" show — always rendered (with an empty
   // state when nothing's upcoming) so it stays in a fixed spot: under the
   // stats card, above the upcoming/past lists.
-  html += countdownCardHtml(upcoming[0] || null);
+  html += countdownCardHtml(EventModelV156.nextEventPresentation(upcoming));
   html += '</div>';
 
   if (upcoming.length === 0 && past.length === 0) {
@@ -883,7 +885,7 @@ function statsTeaserHtml(stats) {
   return `
     <div class="stats-teaser-card">
       <div class="stats-teaser-row stats-teaser-row-4up">
-        <div class="stats-teaser-item"><span class="stats-teaser-value">${stats.totalShows.toLocaleString()}</span><span class="stats-teaser-label">shows</span></div>
+        <div class="stats-teaser-item"><span class="stats-teaser-value">${stats.totalShows.toLocaleString()}</span><span class="stats-teaser-label">concert nights</span></div>
         <div class="stats-teaser-item"><span class="stats-teaser-value">${stats.countries.toLocaleString()}</span><span class="stats-teaser-label">countries</span></div>
         <div class="stats-teaser-item"><span class="stats-teaser-value">${dlCompactNumber(stats.kmTraveled)} km</span><span class="stats-teaser-label">traveled</span></div>
         <div class="stats-teaser-item"><span class="stats-teaser-value">${dlCompactNumber(stats.totalSpend)} kr</span><span class="stats-teaser-label">spent</span></div>
@@ -1026,6 +1028,27 @@ function rowAvatarHtml(bandId) {
   return `<div class="row-avatar">${band.photoUrl ? `<img src="${escapeAttr(band.photoUrl)}" alt="" />` : initials}</div>`;
 }
 
+function eventGroupControlsHtml(c) {
+  const groupId = EventModelV156.validGroupId(c.eventGroupId) ? c.eventGroupId : null;
+  const members = groupId ? concerts.filter((record) => record.eventGroupId === groupId) : [];
+  const open = eventGroupOpenConcertId === c.id;
+  const candidates = EventModelV156.candidateConcerts(c, concerts)
+    .filter((record) => record.eventGroupId !== groupId);
+  const notice = eventGroupNotices.get(c.id);
+  const groupValid = members.length < 2 || EventModelV156.validateEventGroup(members).valid;
+  const label = groupId && members.length > 1
+    ? (groupValid ? `Shared event · ${members.length} performances` : 'Shared event needs review')
+    : 'Link same event';
+  return `<div class="event-group-wrap">
+    <button type="button" class="event-group-toggle" data-event-group-toggle="${escapeAttr(c.id)}" aria-expanded="${open}" aria-controls="event-group-editor-${escapeAttr(c.id)}">${escapeHtml(label)}</button>
+    ${open ? `<div class="event-group-editor" id="event-group-editor-${escapeAttr(c.id)}" role="group" aria-label="Shared event relationship">
+      ${candidates.length ? `<p>Choose a concert with the same date, venue and city:</p>${candidates.map((candidate) => `<button type="button" class="event-group-candidate" data-event-group-link="${escapeAttr(c.id)}" data-event-group-target="${escapeAttr(candidate.id)}">${escapeHtml(candidate.bandName)} · ${escapeHtml(LineupRoleV155.displayRole(candidate) === 'support' ? 'Support' : 'Headliner')}</button>`).join('')}` : '<p class="event-group-empty">No other matching concerts found.</p>'}
+      ${groupId ? `<button type="button" class="event-group-unlink" data-event-group-unlink="${escapeAttr(c.id)}">Unlink from shared event</button>` : ''}
+    </div>` : ''}
+    ${notice ? `<p class="event-group-error" role="status">${escapeHtml(notice)}</p>` : ''}
+  </div>`;
+}
+
 // showBandName is turned off only by the band-profile page's own Past
 // concerts section (see renderProfileScreen) — the band name (and avatar)
 // would just repeat the page you're already on there. My Concerts (where a
@@ -1066,6 +1089,7 @@ function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
             </div>` : ''}
             ${lineupNotice ? `<p class="lineup-role-error" role="status">${escapeHtml(lineupNotice)}</p>` : ''}
           </div>` : ''}
+          ${showBandName ? eventGroupControlsHtml(c) : ''}
           ${tourName ? `<p class="row-tour">${escapeHtml(tourName)}</p>` : ''}
         </div>
       </div>
@@ -1400,6 +1424,16 @@ async function patchLatestConcert(concertId, patch) {
   return updated;
 }
 
+async function updateConcertEventGroup(concertId, targetId = null) {
+  const latest = LineupRoleV155.initializeConcerts(await dlReadJsonFile(remote, 'concerts.json', []));
+  const next = targetId
+    ? EventModelV156.linkConcerts(latest, concertId, targetId)
+    : EventModelV156.unlinkConcert(latest, concertId);
+  await dlWriteJsonFile(remote, 'concerts.json', next);
+  concerts = next;
+  return next;
+}
+
 async function hydrateTicketCacheStatus(concert, refresh) {
   const pdfs = ownedTicketItems(concert).filter((item) => item.type === 'pdf');
   if (!pdfs.length) return;
@@ -1447,6 +1481,7 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
         ev.target.closest('.icon-btn') ||
         ev.target.closest('.venue-address-link') ||
         ev.target.closest('.lineup-role-wrap') ||
+        ev.target.closest('.event-group-wrap') ||
         ev.target.closest('.concert-prep-group')
       ) return;
       openProfile(row.dataset.bandId);
@@ -1496,6 +1531,55 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
       lineupRoleNotices.set(concertId, 'Could not save lineup role. Try again.');
       refresh();
       requestAnimationFrame(() => container.querySelector(`.lineup-role-option[data-concert-id="${CSS.escape(concertId)}"][data-lineup-role="${previous}"]`)?.focus());
+    }
+  }));
+
+  container.querySelectorAll('[data-event-group-toggle]').forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const concertId = btn.dataset.eventGroupToggle;
+    eventGroupOpenConcertId = eventGroupOpenConcertId === concertId ? null : concertId;
+    eventGroupNotices.delete(concertId);
+    refresh();
+    if (eventGroupOpenConcertId) requestAnimationFrame(() => container.querySelector(`#event-group-editor-${CSS.escape(concertId)} button`)?.focus());
+  }));
+  container.querySelectorAll('.event-group-editor').forEach((editor) => {
+    editor.addEventListener('click', (ev) => ev.stopPropagation());
+    editor.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Escape') return;
+      ev.preventDefault();
+      const concertId = editor.id.replace('event-group-editor-', '');
+      eventGroupOpenConcertId = null; refresh();
+      requestAnimationFrame(() => container.querySelector(`[data-event-group-toggle="${CSS.escape(concertId)}"]`)?.focus());
+    });
+  });
+  container.querySelectorAll('[data-event-group-link]').forEach((btn) => btn.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
+    const concertId = btn.dataset.eventGroupLink;
+    const targetId = btn.dataset.eventGroupTarget;
+    const target = concerts.find((record) => record.id === targetId);
+    if (!target || !confirm(`Link this performance with ${target.bandName} as one shared event?`)) return;
+    btn.closest('.event-group-editor').querySelectorAll('button').forEach((option) => { option.disabled = true; });
+    try {
+      await updateConcertEventGroup(concertId, targetId);
+      eventGroupOpenConcertId = null; eventGroupNotices.delete(concertId); refresh();
+    } catch {
+      eventGroupOpenConcertId = concertId;
+      eventGroupNotices.set(concertId, 'Could not save the shared event. Try again.');
+      refresh();
+    }
+  }));
+  container.querySelectorAll('[data-event-group-unlink]').forEach((btn) => btn.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
+    const concertId = btn.dataset.eventGroupUnlink;
+    if (!confirm('Unlink this performance from the shared event?')) return;
+    btn.disabled = true;
+    try {
+      await updateConcertEventGroup(concertId);
+      eventGroupOpenConcertId = null; eventGroupNotices.delete(concertId); refresh();
+    } catch {
+      eventGroupOpenConcertId = concertId;
+      eventGroupNotices.set(concertId, 'Could not unlink the shared event. Try again.');
+      refresh();
     }
   }));
 
@@ -2848,7 +2932,7 @@ function concertStatsHtml() {
   const stats = dlConcertStats(past, bands, upcoming);
   const lineupStats = LineupRoleV155.performanceStats(past);
   const kmCaveat = stats.knownDistanceCount < stats.totalShows
-    ? `<br><span class="stats-kpi-caveat">from ${stats.knownDistanceCount} of ${stats.totalShows} concerts</span>`
+    ? `<br><span class="stats-kpi-caveat">from ${stats.knownDistanceCount} of ${stats.totalShows} concert nights</span>`
     : '';
 
   // Headline row — the same always-shown overview numbers as before, plus
@@ -2856,7 +2940,7 @@ function concertStatsHtml() {
   // top, matching the other labeled sections below instead of standing alone
   // unlabeled.
   const summaryTiles = [
-    { value: stats.totalShows.toLocaleString(), label: 'concerts attended' },
+    { value: stats.totalShows.toLocaleString(), label: 'concert nights attended' },
     { value: stats.countries.toLocaleString(), label: 'countries' },
     { value: stats.kmTraveled.toLocaleString(), label: `km traveled${kmCaveat}` },
     { value: stats.totalUniqueArtists.toLocaleString(), label: 'different artists seen' },
@@ -2913,22 +2997,22 @@ function concertStatsHtml() {
   const moneyTiles = [];
   if (stats.knownSpendCount > 0) {
     const spendCaveat = stats.knownSpendCountPast < stats.totalShows
-      ? `<br><span class="stats-kpi-caveat">from ${stats.knownSpendCountPast} of ${stats.totalShows} past concerts</span>`
+      ? `<br><span class="stats-kpi-caveat">from ${stats.knownSpendCountPast} of ${stats.totalShows} past concert nights</span>`
       : '';
     moneyTiles.push({ value: `${stats.totalSpend.toLocaleString()} kr`, label: `spent on tickets, all time${spendCaveat}` });
-    moneyTiles.push({ value: `${stats.averageTicketPrice.toLocaleString()} kr`, label: 'average ticket price' });
-    moneyTiles.push({ value: `${stats.pctWithTicketPrice}%`, label: 'of concerts with a price logged' });
+    moneyTiles.push({ value: `${stats.averageTicketPrice.toLocaleString()} kr`, label: 'average ticket cost per event' });
+    moneyTiles.push({ value: `${stats.pctWithTicketPrice}%`, label: 'of concert nights with a price logged' });
   }
   if (stats.highestSpendYear) {
     moneyTiles.push({
       value: `${stats.highestSpendYear.total.toLocaleString()} kr`,
-      label: `highest-spend year, ${stats.highestSpendYear.year}<br><span class="stats-kpi-caveat">${stats.highestSpendYear.count} concert${stats.highestSpendYear.count === 1 ? '' : 's'}</span>`,
+      label: `highest-spend year, ${stats.highestSpendYear.year}<br><span class="stats-kpi-caveat">${stats.highestSpendYear.count} event${stats.highestSpendYear.count === 1 ? '' : 's'}</span>`,
     });
   }
   if (stats.lowestSpendYear) {
     moneyTiles.push({
       value: `${stats.lowestSpendYear.total.toLocaleString()} kr`,
-      label: `lowest-spend year, ${stats.lowestSpendYear.year}<br><span class="stats-kpi-caveat">${stats.lowestSpendYear.count} concert${stats.lowestSpendYear.count === 1 ? '' : 's'}</span>`,
+      label: `lowest-spend year, ${stats.lowestSpendYear.year}<br><span class="stats-kpi-caveat">${stats.lowestSpendYear.count} event${stats.lowestSpendYear.count === 1 ? '' : 's'}</span>`,
     });
   }
 
@@ -2938,7 +3022,7 @@ function concertStatsHtml() {
   if (stats.overallAverageRating !== null) ratingTiles.push({ value: stats.overallAverageRating.toFixed(1), label: 'average rating' });
   ratingTiles.push({
     value: `${stats.pctWithRating}%`,
-    label: `of concerts rated${stats.ratedCount < stats.totalShows ? `<br><span class="stats-kpi-caveat">${stats.ratedCount} of ${stats.totalShows} concerts</span>` : ''}`,
+    label: `of performances rated${stats.ratedCount < stats.performanceCount ? `<br><span class="stats-kpi-caveat">${stats.ratedCount} of ${stats.performanceCount} performances</span>` : ''}`,
   });
 
   const lineupRoleTiles = [
@@ -2954,6 +3038,10 @@ function concertStatsHtml() {
 
   return `
     ${sectionHtml('Overview', summaryTiles)}
+    ${stats.invalidEventGroupCount > 0 || stats.eventMetricConflictCount > 0 ? `<p class="stats-event-warning" role="status">${[
+      stats.invalidEventGroupCount > 0 ? `${stats.invalidEventGroupCount} shared-event relationship${stats.invalidEventGroupCount === 1 ? '' : 's'} need context review; ambiguous cost and travel totals are excluded.` : '',
+      stats.eventMetricConflictCount > 0 ? `${stats.eventMetricConflictCount} shared event${stats.eventMetricConflictCount === 1 ? ' has' : 's have'} conflicting ticket or travel values; conservative values are used.` : '',
+    ].filter(Boolean).join(' ')}</p>` : ''}
     ${sectionHtml('Milestones', milestoneTiles)}
     ${sectionHtml('Habits', habitTiles)}
     ${sectionHtml('Extremes', extremeTiles)}

@@ -134,7 +134,7 @@ test('listening stats navigation, rankings, timeframes, and band drill-down use 
   await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}-listening-stats.png`) });
   await page.getByRole('tab', { name: 'Concerts', exact: true }).click();
   await expect(page.locator('#stats-tab-panel')).toContainText('Overview');
-  await expect(page.locator('#stats-tab-panel')).toContainText('concerts attended');
+  await expect(page.locator('#stats-tab-panel')).toContainText('concert nights attended');
   await page.getByRole('tab', { name: 'Listening', exact: true }).click();
   await page.getByRole('button', { name: 'View full top 100' }).click();
   await expect(page.locator('#screen-top-bands')).toBeVisible();

@@ -1,4 +1,7 @@
 'use strict';
+
+const DLEventModel = typeof EventModelV156 !== 'undefined' ? EventModelV156
+  : (typeof require === 'function' ? require('./eventModelV156') : null);
 // Shared read/write/diff helpers for bands.json and concerts.json.
 // Originally used by the Chrome-extension build's background.js (weekly
 // alarm check) and popup.js (UI); this file is copied byte-for-byte into
@@ -261,8 +264,8 @@ function dlPrimaryGenreGroupForBand(band) {
 // concert.
 function dlMyConcerts(concerts) {
   const mine = concerts.filter((c) => c.attending);
-  const upcoming = mine.filter(dlIsUpcoming).sort((a, b) => new Date(a.date) - new Date(b.date));
-  const past = mine.filter((c) => !dlIsUpcoming(c)).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const upcoming = DLEventModel.orderPerformances(mine.filter(dlIsUpcoming).sort((a, b) => new Date(a.date) - new Date(b.date)));
+  const past = DLEventModel.orderPerformances(mine.filter((c) => !dlIsUpcoming(c)).sort((a, b) => new Date(b.date) - new Date(a.date)));
   return { upcoming, past };
 }
 
@@ -320,67 +323,42 @@ function dlCompactNumber(n) {
   return `${rounded}k`;
 }
 
-// Groups attended concerts into physical "visits" to a venue, so a co-headline
-// bill or a multi-day festival counts once, not once per band seen. Two
-// concerts at the same venue always merge into one visit when they're on the
-// exact same date (e.g. Queens of the Stone Age + System of a Down playing
-// the same bill/date). Concerts on consecutive-but-different dates only merge
-// when they're festival shows (a multi-day festival like Roskilde) — a band
-// playing two separate non-festival nights back-to-back at the same venue
-// still counts as two visits. This replaces the older "same venue + same
-// year" dedup (used only for festivals' kmTraveled/festivalsAttended), which
-// was both too coarse — any two festival editions in the same calendar year
-// at a venue would have collapsed together — and missed the same-day,
-// different-bill case for regular (non-festival) shows entirely. Concerts
-// missing a date can't be reliably clustered, so each becomes its own
-// singleton visit rather than being dropped or merged incorrectly.
+// Groups attended performances into physical venue visits. Each ungrouped
+// performance is its own event. Only an explicit, valid
+// eventGroupId relationship combines performances into one venue visit; no
+// date/venue similarity is used as an implicit grouping rule. Malformed
+// explicit groups are excluded from additive travel metrics so they cannot
+// produce totals that look trustworthy until the relationship is corrected.
 function dlVenueVisits(concerts) {
-  const byVenue = new Map();
-  for (const c of concerts) {
-    if (!c.venue) continue;
-    const key = `${c.venue}|${c.city || ''}`;
-    if (!byVenue.has(key)) byVenue.set(key, []);
-    byVenue.get(key).push(c);
-  }
-
-  const visits = [];
-  for (const list of byVenue.values()) {
-    const dated = list.filter((c) => c.date).sort((a, b) => new Date(a.date) - new Date(b.date));
-    const undated = list.filter((c) => !c.date);
-
-    let cluster = null;
-    for (const c of dated) {
-      if (cluster) {
-        const last = cluster.concerts[cluster.concerts.length - 1];
-        const dayDiff = Math.round((new Date(c.date) - new Date(last.date)) / 86400000);
-        const bothFestival = c.type === 'festival' && last.type === 'festival';
-        if (dayDiff === 0 || (dayDiff === 1 && bothFestival)) {
-          cluster.concerts.push(c);
-          continue;
-        }
-      }
-      cluster = { venue: c.venue, city: c.city, concerts: [c] };
-      visits.push(cluster);
-    }
-    for (const c of undated) {
-      visits.push({ venue: c.venue, city: c.city, concerts: [c] });
-    }
-  }
-
-  for (const v of visits) {
-    v.lastDate = v.concerts[v.concerts.length - 1].date || null;
-    v.isFestival = v.concerts.every((c) => c.type === 'festival');
-    const withDist = v.concerts.find((c) => typeof c.distanceKm === 'number' && !Number.isNaN(c.distanceKm));
-    v.representativeDistanceKm = withDist ? withDist.distanceKm : null;
-  }
-  return visits;
+  return DLEventModel.groupConcertPerformances(concerts).map((event) => {
+    const representative = DLEventModel.representativeRecord(event.records);
+    const distance = event.validation.valid ? DLEventModel.resolveEventDistance(event.records) : { value: null, conflict: true };
+    return {
+      venue: representative?.venue || '', city: representative?.city || '', concerts: event.records,
+      lastDate: representative?.date || null,
+      isFestival: event.records.every((concert) => concert.type === 'festival'),
+      representativeDistanceKm: distance.value,
+      validContext: event.validation.valid,
+      conflict: !event.validation.valid || distance.conflict,
+    };
+  }).filter((visit) => visit.venue && visit.validContext);
 }
 
 function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
-  const totalShows = attendedPast.length;
+  const performanceCount = attendedPast.length;
+  const pastEvents = DLEventModel.groupConcertPerformances(attendedPast);
+  const invalidEventGroupCount = pastEvents.filter((event) => event.eventGroupId && event.records.length > 1 && !event.validation.valid).length;
+  const totalShows = pastEvents.reduce((count, event) => count + (event.validation.valid ? 1 : event.records.length), 0);
+  const eventRecords = pastEvents.flatMap((event) => {
+    if (!event.validation.valid) return event.records.map((record) => ({ ...record, distanceKm: null, ticketPrice: null }));
+    const representative = DLEventModel.representativeRecord(event.records);
+    const distance = DLEventModel.resolveEventDistance(event.records);
+    const cost = DLEventModel.resolveEventTicketCost(event.records);
+    return [{ ...representative, distanceKm: distance.value, ticketPrice: cost.unitPrice }];
+  });
   const bandsById = new Map(bands.map((b) => [b.id, b]));
-  // Computed once, shared by kmTraveled, topVenues, and festivalsAttended
-  // below — see dlVenueVisits for the clustering rules.
+  // Computed once and shared by event-level travel, venue, city and festival
+  // metrics. See dlVenueVisits for the explicit-group rules.
   const visits = dlVenueVisits(attendedPast);
 
   const countrySet = new Set();
@@ -400,12 +378,8 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
     if (c.city) citySet.add(c.city.trim().toLowerCase());
   }
 
-  // Distance is summed once per physical visit (see dlVenueVisits above), not
-  // once per band seen — otherwise a single Roskilde trip where you saw 11
-  // bands would count that same round-trip distance 11 times over.
-  // knownDistanceCount still counts every individual show with a known
-  // distance (festival or not) — it's a coverage caveat for the UI, separate
-  // from the dedup applied to the sum itself.
+  // Distance is summed once per valid event, not once per performance.
+  // knownDistanceCount is therefore event coverage for the UI caveat.
   //
   // c.distanceKm itself is one-way (home -> venue, same value the Concerts
   // tab's "203 km away" labels and the Nearby filter use). "km traveled" is
@@ -414,58 +388,49 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
   // to the total.
   let kmTraveled = 0;
   let knownDistanceCount = 0;
-  for (const c of attendedPast) {
-    if (typeof c.distanceKm === 'number' && !Number.isNaN(c.distanceKm)) knownDistanceCount += 1;
-  }
   for (const v of visits) {
-    if (typeof v.representativeDistanceKm === 'number') kmTraveled += v.representativeDistanceKm * 2;
+    if (typeof v.representativeDistanceKm === 'number') { kmTraveled += v.representativeDistanceKm * 2; knownDistanceCount += 1; }
   }
 
-  // Ticket cost. totalSpend sums ticketPrice*ticketQuantity across every show
-  // (past AND upcoming-going, see upcomingGoing param) that has a price
-  // entered — tickets already bought for a future show are real money spent,
-  // so they count toward the running total the same as a past show would.
-  // knownSpendCount says how many shows (past+upcoming combined) that's based
-  // on; knownSpendCountPast is the past-only subset, used for the "from X of
-  // Y shows" caveat against totalShows (which is past-only) so that caveat
-  // never reads oddly if upcoming shows happen to have more prices entered
-  // than past ones. averageTicketPrice is the mean *per-ticket* price across
-  // every ticket bought, not per-show — so a 2-ticket night isn't
-  // double-weighted against a 1-ticket night when averaging.
+  // Ticket spend is resolved once per valid event across past and upcoming
+  // going records. Duplicate values count once. Conflicts use the documented
+  // conservative minimum and remain detectable in the event model; malformed
+  // groups are excluded. averageTicketPrice is the average total cost per
+  // event retained under its legacy property name for compatibility.
   let totalSpend = 0;
   let knownSpendCount = 0;
   let knownSpendCountPast = 0;
-  let totalTicketsWithPrice = 0;
-  for (const c of [...attendedPast, ...upcomingGoing]) {
-    if (typeof c.ticketPrice !== 'number' || Number.isNaN(c.ticketPrice)) continue;
-    const qty = c.ticketQuantity || 1;
-    totalSpend += c.ticketPrice * qty;
-    totalTicketsWithPrice += qty;
-    knownSpendCount += 1;
+  const allEvents = DLEventModel.groupConcertPerformances([...attendedPast, ...upcomingGoing]);
+  const eventMetricConflictCount = allEvents.filter((event) => event.eventGroupId && event.records.length > 1 && event.validation.valid && (
+    DLEventModel.resolveEventTicketQuantity(event.records).conflict
+    || DLEventModel.resolveEventTicketCost(event.records).conflict
+    || DLEventModel.resolveEventDistance(event.records).conflict
+  )).length;
+  for (const event of allEvents) {
+    if (!event.validation.valid) continue;
+    const cost = DLEventModel.resolveEventTicketCost(event.records);
+    if (cost.value === null) continue;
+    totalSpend += cost.value; knownSpendCount += 1;
   }
-  for (const c of attendedPast) {
-    if (typeof c.ticketPrice === 'number' && !Number.isNaN(c.ticketPrice)) knownSpendCountPast += 1;
+  for (const event of pastEvents) {
+    if (event.validation.valid && DLEventModel.resolveEventTicketCost(event.records).value !== null) knownSpendCountPast += 1;
   }
-  const averageTicketPrice = totalTicketsWithPrice ? Math.round(totalSpend / totalTicketsWithPrice) : null;
+  const averageTicketPrice = knownSpendCount ? Math.round(totalSpend / knownSpendCount) : null;
 
-  // % of past concerts with a ticket price logged. Deliberately per-show
-  // (matches knownSpendCountPast above), not per-trip — ticket price is
-  // entered per concert already (each band's share of a festival ticket is
-  // split across its rows manually), so a row-level percentage already
-  // reflects reality without needing trip-based dedup.
+  // Percentage of past concert events with a resolvable ticket cost.
   const pctWithTicketPrice = totalShows ? Math.round((knownSpendCountPast / totalShows) * 100) : 0;
 
-  // Per-year ticket spend — same past+upcoming pool as totalSpend above, and
-  // same per-row basis as pctWithTicketPrice (not trip-deduped) for the same
-  // reason: split festival prices already sum correctly row-by-row.
+  // Per-year spend uses the same event-level resolution as totalSpend.
   const yearSpend = new Map();
-  for (const c of [...attendedPast, ...upcomingGoing]) {
-    if (typeof c.ticketPrice !== 'number' || Number.isNaN(c.ticketPrice)) continue;
-    const year = (c.date || '').slice(0, 4);
+  for (const event of allEvents) {
+    if (!event.validation.valid) continue;
+    const representative = DLEventModel.representativeRecord(event.records);
+    const cost = DLEventModel.resolveEventTicketCost(event.records);
+    if (cost.value === null) continue;
+    const year = (representative?.date || '').slice(0, 4);
     if (!year) continue;
-    const qty = c.ticketQuantity || 1;
     const existing = yearSpend.get(year) || { year, total: 0, count: 0 };
-    existing.total += c.ticketPrice * qty;
+    existing.total += cost.value;
     existing.count += 1;
     yearSpend.set(year, existing);
   }
@@ -492,7 +457,7 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
     }
   }
   const overallAverageRating = ratedCount ? Math.round((ratingSum / ratedCount) * 10) / 10 : null;
-  const pctWithRating = totalShows ? Math.round((ratedCount / totalShows) * 100) : 0;
+  const pctWithRating = performanceCount ? Math.round((ratedCount / performanceCount) * 100) : 0;
 
   // Total songs heard live — summed per-show (setlist.fm data), same as
   // longestSetlist below.
@@ -518,7 +483,7 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
     }
   }
 
-  const sortedByDate = [...attendedPast].filter((c) => c.date).sort((a, b) => new Date(a.date) - new Date(b.date));
+  const sortedByDate = eventRecords.filter((c) => c.date).sort((a, b) => new Date(a.date) - new Date(b.date));
   let longestGap = null;
   for (let i = 1; i < sortedByDate.length; i++) {
     const days = (new Date(sortedByDate[i].date) - new Date(sortedByDate[i - 1].date)) / (1000 * 60 * 60 * 24);
@@ -574,7 +539,7 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
 
   let farthestShow = null;
   let closestShow = null;
-  for (const c of attendedPast) {
+  for (const c of eventRecords) {
     if (typeof c.distanceKm !== 'number' || Number.isNaN(c.distanceKm)) continue;
     if (!farthestShow || c.distanceKm > farthestShow.distanceKm) farthestShow = c;
     if (!closestShow || c.distanceKm < closestShow.distanceKm) closestShow = c;
@@ -589,7 +554,7 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
   // cheapestTicket becomes the cheapest PAID ticket instead.
   let cheapestTicket = null;
   let priciestTicket = null;
-  for (const c of attendedPast) {
+  for (const c of eventRecords) {
     if (typeof c.ticketPrice !== 'number' || Number.isNaN(c.ticketPrice)) continue;
     if (c.ticketPrice > 0 && (!cheapestTicket || c.ticketPrice < cheapestTicket.ticketPrice)) cheapestTicket = c;
     if (!priciestTicket || c.ticketPrice > priciestTicket.ticketPrice) priciestTicket = c;
@@ -671,6 +636,9 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
 
   return {
     totalShows,
+    performanceCount,
+    invalidEventGroupCount,
+    eventMetricConflictCount,
     countries: countrySet.size,
     uniqueVenues: venueKeySet.size,
     uniqueCities: citySet.size,
@@ -707,3 +675,5 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
     festivalsAttended,
   };
 }
+
+if (typeof module === 'object' && module.exports) module.exports = { dlMyConcerts, dlVenueVisits, dlConcertStats };
