@@ -82,8 +82,8 @@ test('AUB1 Start ticket spacing/content and Music/Stats icon identities match th
   expect(statsGlyphs.nav.pathCount).toBe(2);
   expect(statsGlyphs.nav.circles).toBe(0);
   expect(statsGlyphs.nav.rects).toBe(0);
-  expect(statsGlyphs.nav.paths[0]).toContain('M3.5 18.5');
-  expect(statsGlyphs.nav.paths[1]).toContain('M16.8 6.6');
+  expect(statsGlyphs.nav.paths[0]).toBe('M3 17l6-6 4 4 8-9');
+  expect(statsGlyphs.nav.paths[1]).toBe('M15 6h6v6');
   expect(await noHorizontalOverflow(page)).toBe(true);
   expect(errors).toEqual([]);
 
@@ -103,6 +103,33 @@ test('AUB1 listening activity metrics and both Overview modes retain all yearly 
   await expect(allTime).toContainText('active days per year');
   await expect(allTime).toContainText('daily average');
   await expect(allTime).toHaveAttribute('data-aub1-completed-years', /\d+/);
+  const footerLayout = await allTime.evaluate((node) => {
+    const style = getComputedStyle(node);
+    const heading = node.querySelector('.aub1-activity-heading').getBoundingClientRect();
+    const metrics = [...node.querySelectorAll('.aub1-activity-metric')].map((metric) => metric.getBoundingClientRect());
+    const card = node.closest('.yearly-listening-card').getBoundingClientRect();
+    const bounds = node.getBoundingClientRect();
+    return {
+      marginTop: parseFloat(style.marginTop),
+      paddingTop: parseFloat(style.paddingTop),
+      paddingBottom: parseFloat(style.paddingBottom),
+      headingGap: metrics[0].top - heading.bottom,
+      metricsAligned: Math.abs(metrics[0].top - metrics[1].top) <= 1,
+      leftInside: bounds.left >= card.left,
+      rightInside: bounds.right <= card.right,
+      bottomGap: card.bottom - Math.max(...metrics.map((metric) => metric.bottom)),
+    };
+  });
+  expect(footerLayout.marginTop).toBeGreaterThanOrEqual(18);
+  expect(footerLayout.paddingTop).toBeGreaterThanOrEqual(18);
+  expect(footerLayout.paddingBottom).toBeGreaterThanOrEqual(17);
+  expect(footerLayout.headingGap).toBeGreaterThanOrEqual(12);
+  expect(footerLayout.metricsAligned).toBe(true);
+  expect(footerLayout.leftInside).toBe(true);
+  expect(footerLayout.rightInside).toBe(true);
+  expect(footerLayout.bottomGap).toBeGreaterThanOrEqual(16);
+  await page.screenshot({ path: testInfo.outputPath('aub1-v154-stats-footer-light.png'), fullPage: true });
+  await allTime.screenshot({ path: testInfo.outputPath('aub1-v154-stats-footer-light-detail.png') });
 
   const firstPoint = page.locator('.yearly-listening-card [data-v81-year-point]').first();
   await firstPoint.locator('circle').click();
@@ -147,6 +174,7 @@ test('AUB1 listening activity metrics and both Overview modes retain all yearly 
     const viewBox = node.ownerSVGElement.viewBox.baseVal;
     return bounds.x >= viewBox.x && bounds.x + bounds.width <= viewBox.x + viewBox.width;
   })).toBe(true);
+  await allTime.screenshot({ path: testInfo.outputPath('aub1-v154-stats-footer-dark-detail.png') });
   await page.screenshot({ path: testInfo.outputPath('aub1-v153-yearly-overview-dark.png'), fullPage: true });
 
   // Return to focused rendering, then exercise the genre Overview separately.

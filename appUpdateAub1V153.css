@@ -59,21 +59,22 @@
 /* Selected-year and all-time listening activity additions. */
 .year-detail .aub1-year-activity { display: block; }
 .aub1-alltime-activity {
-  margin-top: 14px;
-  padding-top: 12px;
+  margin-top: 18px;
+  padding: 18px 14px 17px;
   border-top: 1px solid var(--border);
 }
 .aub1-activity-heading {
-  margin: 0 0 9px;
-  color: var(--text-muted);
+  margin: 0 0 13px;
+  color: var(--text-secondary);
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: .06em;
 }
-.aub1-activity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.aub1-activity-metric { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.aub1-activity-metric strong { color: var(--text); font-size: 14px; line-height: 1.1; }
-.aub1-activity-metric > span { color: var(--text-muted); font-size: 10px; line-height: 1.2; }
+.aub1-activity-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; }
+.aub1-activity-metric { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.aub1-activity-metric + .aub1-activity-metric { padding-left: 18px; border-left: 1px solid var(--border); }
+.aub1-activity-metric strong { color: var(--text); font-size: 16px; font-weight: 650; line-height: 1.15; }
+.aub1-activity-metric > span { color: var(--text-muted); font-size: 10.5px; line-height: 1.3; }
 
 /* Concert-alert relevance tag, positioned beside the existing favorite-heart area. */
 #screen-news .row-card { position: relative; }
@@ -133,5 +134,7 @@
   .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-venue { font-size: 11.5px; }
   .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-address { font-size: 9px; }
   .aub1-overview-control { min-height: 26px; padding: 3px 6px; font-size: 10px; }
-  .aub1-activity-grid { gap: 6px; }
+  .aub1-alltime-activity { padding-right: 12px; padding-left: 12px; }
+  .aub1-activity-grid { column-gap: 12px; }
+  .aub1-activity-metric + .aub1-activity-metric { padding-left: 12px; }
 }

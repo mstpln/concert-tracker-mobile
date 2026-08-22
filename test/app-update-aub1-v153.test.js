@@ -98,8 +98,8 @@ test('AUB1 alert relevance is singular and follows Nearby > SE > EU > none for s
 
 test('AUB1 approved Stats glyph has angular trend plus arrowhead and no dots or box', () => {
   assert.match(base.STATS_SVG, /aub1-stats-glyph/);
-  assert.match(base.STATS_SVG, /M3\.5 18\.5/);
-  assert.match(base.STATS_SVG, /M16\.8 6\.6/);
+  assert.match(base.STATS_SVG, /M3 17l6-6 4 4 8-9/);
+  assert.match(base.STATS_SVG, /M15 6h6v6/);
   assert.equal(base.STATS_SVG.includes('<circle'), false);
   assert.equal(base.STATS_SVG.includes('<rect'), false);
   assert.equal((base.STATS_SVG.match(/<path/g) || []).length, 2);
