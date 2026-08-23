@@ -227,7 +227,13 @@
 
   function recordMatches(value, record) {
     if (valuesMatch(value, record)) return true;
-    return identityAliases(record).some((alias) => valuesMatch(value, alias));
+    const target = identityParts(value);
+    const primary = identityParts(record);
+    return identityAliases(record).some((alias) => {
+      const aliasParts = identityParts(alias);
+      if (target.address && primary.address && target.address !== primary.address && !aliasParts.address) return false;
+      return valuesMatch(value, alias);
+    });
   }
 
   function findVenueRecord(value, records) {
@@ -236,6 +242,12 @@
     let matches = (records || []).filter((record) => recordMatches(value, record));
     if (matches.length <= 1) return matches[0] || null;
 
+    if (target.country) {
+      const countryMatches = matches.filter((record) => [record, ...identityAliases(record)]
+        .some((variant) => identityParts(variant).country === target.country));
+      if (countryMatches.length === 1) return countryMatches[0];
+      if (countryMatches.length) matches = countryMatches;
+    }
     if (target.address) {
       const addressMatches = matches.filter((record) => [record, ...identityAliases(record)].some((variant) => identityParts(variant).address === target.address));
       if (addressMatches.length === 1) return addressMatches[0];
@@ -341,10 +353,13 @@
     const sameCanonicalIdentity = left.name === right.name && left.city === right.city;
     const leftStreet = streetAddressKey(a.address);
     const rightStreet = streetAddressKey(b.address);
-    const streetCompatible = !leftStreet || !rightStreet || leftStreet === rightStreet;
-    if (sameCanonicalIdentity && streetCompatible) return true;
-    if (duplicateConfirmation(a) || duplicateConfirmation(b)) return true;
-    return false;
+    const confirmed = duplicateConfirmation(a) || duplicateConfirmation(b);
+    if (sameCanonicalIdentity) {
+      if (leftStreet && rightStreet) return leftStreet === rightStreet || confirmed;
+      if (!leftStreet && !rightStreet) return true;
+      return confirmed;
+    }
+    return !!(confirmed && leftStreet && rightStreet && leftStreet === rightStreet);
   }
 
   function recordScore(record) {
