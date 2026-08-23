@@ -4,7 +4,7 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged baseline is **v158 / Venue Metadata Build**. It preserves stable concert IDs, the internal `myconcerts` identity, provider boundaries, ticket ownership and all production-data boundaries while adding a separate reusable venue-information layer. The production manual venue backfill and future scheduled Tavily/Groq venue enrichment remain separate later phases and are not part of the merged v158 core build.
+The current merged baseline is **v158 / Venue Metadata Build**. The current implementation branch `feature/venue-metadata-scheduler-v159` targets **v159 / Venue Metadata Scheduler** while keeping production venue enrichment disabled by default. The manual production venue backfill remains a separate data action, and enabling the scheduled production venue-research lane remains separately authorized after the backfill is validated and uploaded.
 
 ### v149 Start stats cards
 
@@ -24,7 +24,7 @@ The Stats screen uses the existing compound-header typography dynamically. Liste
 
 The selected-year Listening by Genre detail keeps the existing wider-layout wording and presentation. Phone-sized layouts up to 479px use a deterministic compact label/value grid so mobile platform text metrics cannot push the final percentage onto a second line. Compact mode removes only the repeated word `listens` from non-Total genre rows; the Total row keeps `listens`. Durations, listen counts, time percentages, listen percentages and genre labels remain unchanged. A small final font-size reduction is used only if a compact value still needs room.
 
-v151 corrects the live integration path discovered after v150 merged. The older selected-year click handler runs in capture phase and stops later click listeners, so v150's formatting listener could be skipped in the installed app even though direct formatter QA passed. v151 observes the Stats detail DOM instead and applies the same compact formatting after v144 finishes rebuilding the selected-year detail. Focused browser coverage proves the real click/render path applies compact mode before any direct formatter invocation.
+v151 corrects the live integration path discovered after v150 merged. The older selected-year click handler runs in capture phase and stops later click listeners, so v150's formatting listener could be skipped in the installed app even though direct formatter QA passed. v151 observes the Stats detail DOM instead and applies the same compact formatting after v144 finishes rebuilding the selected-year detail. Focused browser coverage proves the real selected-year click/render path applies compact mode before any direct formatter invocation.
 
 ### v152 Start Music presentation
 
@@ -88,11 +88,21 @@ A venue suppresses later research work only when the stored record is structural
 
 The v158 core build does **not** run the manual backfill, call Tavily/Groq, create production `venues.json`, enable scheduled venue enrichment or deploy the Worker. Those are later, separately authorized production/data phases after code and synthetic QA are accepted.
 
+### v159 Venue Metadata Scheduler
+
+The v159 branch adds a focused scheduled venue-research runner without changing the v158 venue schema or concert ownership. It derives targets only from `attending: true` concerts, skips structurally complete venue records, prioritizes upcoming attended venues before historical attended venues, and gives missing/temporary/unresolved/partial records precedence over `review_needed` records. Each run is capped at 10 unique venues so the lane cannot dominate the shared Tavily/Groq budgets.
+
+For each due venue, the runner performs one Tavily search and at most one Groq structured extraction. Provider calls stay behind the existing `UsageTracker` caps and pacing. Groq may only structure supplied search evidence; stored provenance is restricted to exact HTTPS Tavily result URLs, official URLs are accepted only when their origin is represented in the search evidence, and conflicting identity fails closed to `review_needed`. Search/extraction failures persist only a retryable `temporary_error` state and never fabricate capacity, URL, address or description.
+
+Venue writes use the existing least-privilege `DATA_MAINTENANCE_TOKEN`, never the ordinary automation credential. The runner rereads latest `venues.json`, preserves stable IDs and unknown fields, refuses to overwrite a concurrently completed venue, uses strict conditional ETag writes, and allows one bounded reread/retry after a 412 conflict. `concerts.json` remains read-only for this lane.
+
+The existing twice-monthly focused Tavily workflow on the 1st and 15th contains the venue step, but the step is production-inert unless repository variable `VENUE_METADATA_RESEARCH_ENABLED` is exactly `true`. Merging v159 therefore does not itself call Tavily/Groq for venues or write production `venues.json`; enabling the variable after the validated manual backfill remains a separate production authorization/action.
+
 ### Preserved v148 Next Concert behavior
 
 Merged v148 remains authoritative for the normal-day Next Concert ticket chrome: v147 calendar geometry/internal spacing stays fixed; the detailed timer is regular weight; canonical `ticketQuantity` is centered in the muted-grey outline pill; the outer normal-day contour is the thinner 1.1px grey stroke; and the right inner frame uses the matched non-scaling 3px white SVG stroke treatment. Concert day remains the v140 `Show today` / `Get directions` / `Open tickets` contract.
 
-`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at **v158** on the merged baseline. The deterministic shell includes the focused venue metadata model/UI/CSS layers while retaining every existing v157 shell owner. Unit and synthetic browser coverage targets conservative venue identity, verified completion state, positive-only capacity formatting, missing-capacity omission, attended past/upcoming card placement, grouped and single Next Concert geometry preservation, lower-right Venues-card placement including long venue names, clean Venue Detail metadata, source-hiding, 375px/480px overflow safety, opposite light/dark viewport coverage, and backfill target deduplication. Full desktop/mobile Chromium PR QA remains the merge-readiness gate for corrections.
+`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at **v159** on the venue-scheduler branch. The deterministic shell itself is unchanged apart from the release/cache marker; venue scheduling runs only in GitHub Actions and is not cached in the PWA shell. Unit coverage targets attended-only selection, complete-record suppression, upcoming priority, review-needed ordering, evidence-backed completion, identity conflicts, provider failure, quota exhaustion, concurrent complete-record protection and bounded ETag retry. Full desktop/mobile Chromium PR QA remains the merge-readiness gate even though the new behavior is non-visual.
 
 The merged v145 Settings data-correctness and automation-reporting behavior remains intact. The merged v144 genre/My Bands ownership behavior, v143 UI alignment and Sweden filters, v142 Ticketmaster venue-quality protection, v135-v137 provider/release cleanup, and existing listening identity/artwork ownership rules remain authoritative.
 
@@ -117,8 +127,10 @@ v135-v137 retired active Releases while preserving stored historical/provider st
 
 v157 does not change provider ownership, provider matching, schedules, quotas, backend/Worker behavior or production data. Existing stored `eventGroupId`, `lineupRole`, stable IDs, user-owned values and unknown fields remain preserved by the established main/focused concert write and optimistic-concurrency paths. Automatic grouping is a derived read-time interpretation only; it performs no backfill and writes no relationship field.
 
-v158 adds a venue-research ownership boundary without changing concert ownership: max capacity, official venue URL, description and internal research provenance belong to `venues.json`; concert attendance, notes, tickets, ratings, roles, stable IDs and unknown fields remain in their existing records and are never rewritten by venue metadata work. Future Tavily/Groq automation remains disabled until a later explicitly reviewed build.
+v158 adds a venue-research ownership boundary without changing concert ownership: max capacity, official venue URL, description and internal research provenance belong to `venues.json`; concert attendance, notes, tickets, ratings, roles, stable IDs and unknown fields remain in their existing records and are never rewritten by venue metadata work.
+
+v159 adds only the deferred scheduled venue-enrichment implementation. Tavily/Groq remain shared providers under existing UsageTracker limits; the venue lane is attended-only, capped, and evidence-bound. `venues.json` writes remain data-maintenance-only, while `concerts.json` is read-only. The scheduled lane is disabled by repository variable until separately activated after the manual backfill.
 
 ## Safety and release boundary
 
-Automated browser QA uses only synthetic fixtures and the QA fake backend. The merged v158 core build and this focused correction do not authorize or perform production provider calls, production research/data-maintenance workflows, production R2 read/write, production-data migration, Worker deployment, production smoke, deployment, manual venue backfill or scheduled venue enrichment. The manual venue backfill and any future scheduled venue enrichment remain separate production actions requiring explicit authorization.
+Automated browser QA uses only synthetic fixtures and the QA fake backend. The v159 implementation branch does not authorize or perform production provider calls, production R2 reads/writes, manual venue backfill, scheduled venue execution, repository-variable activation, Worker deployment, production smoke or deployment. Merging the code will leave venue automation disabled unless `VENUE_METADATA_RESEARCH_ENABLED` is separately set to `true`; that activation and any required production maintenance credential setup remain explicit later production actions.
