@@ -382,8 +382,9 @@
 
   function mergeDuplicateRecords(a, b) {
     if (!recordsCanConsolidate(a, b)) return null;
-    const primary = recordScore(a) >= recordScore(b) ? { ...a } : { ...b };
-    const secondary = primary.venueId === a.venueId && primary !== a ? a : b;
+    const aIsPrimary = recordScore(a) >= recordScore(b);
+    const primary = { ...(aIsPrimary ? a : b) };
+    const secondary = aIsPrimary ? b : a;
     const merged = { ...secondary, ...primary };
     merged.venueId = primary.venueId;
     const legacyIds = [...(primary.legacyVenueIds || []), ...(secondary.legacyVenueIds || []), secondary.venueId]
