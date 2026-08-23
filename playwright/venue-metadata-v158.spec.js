@@ -19,7 +19,7 @@ async function seedVenueMetadata(page) {
       name: concert.venue,
       city: concert.city,
       country: concert.country || '',
-      address: concert.venueAddress || `${concert.venue} Street 1\n1234 ${concert.city}\n${concert.country || 'Sample Country'}`,
+      address: concert.venueAddress || undefined,
       maxCapacity: capacity,
       officialUrl: 'https://venue.example.test/',
       description: 'A synthetic venue description used only by the BANDMARKR QA fake backend.',
