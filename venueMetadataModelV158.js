@@ -7,6 +7,22 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, () => {
   const RESEARCH_STATUSES = new Set(['complete', 'partial', 'unresolved', 'temporary_error', 'review_needed']);
   const MAX_DESCRIPTION_LENGTH = 900;
+  const PLACEHOLDER_VENUE_NAMES = new Set(['unknown venue', 'unknown', 'tba', 'tbd', 'venue tba', 'venue tbd']);
+  const COUNTRY_ALIAS_KEYS = new Map([
+    ['uk', 'united kingdom'], ['gb', 'united kingdom'], ['great britain', 'united kingdom'],
+    ['england', 'united kingdom'], ['scotland', 'united kingdom'], ['wales', 'united kingdom'],
+    ['northern ireland', 'united kingdom'], ['czechia', 'czech republic'],
+  ]);
+  const CITY_ALIAS_KEYS = new Map([
+    ['goteborg', 'gothenburg'], ['milano', 'milan'], ['napoli', 'naples'], ['koln', 'cologne'], ['munchen', 'munich'],
+  ]);
+  const NON_OFFICIAL_HOSTS = new Set([
+    'bandsintown.com', 'www.bandsintown.com', 'songkick.com', 'www.songkick.com', 'ticketmaster.com', 'www.ticketmaster.com',
+    'ticketmaster.de', 'www.ticketmaster.de', 'ticketmaster.se', 'www.ticketmaster.se', 'eventbrite.com', 'www.eventbrite.com',
+    'facebook.com', 'www.facebook.com', 'instagram.com', 'www.instagram.com', 'twitter.com', 'www.twitter.com', 'x.com', 'www.x.com',
+    'tripadvisor.com', 'www.tripadvisor.com', 'eventseeker.com', 'www.eventseeker.com', 'venuu.se', 'www.venuu.se',
+    'visitgavle.se', 'www.visitgavle.se', 'esmadrid.com', 'www.esmadrid.com',
+  ]);
 
   function normalizeIdentityText(value) {
     return String(value || '')
@@ -16,6 +32,22 @@
       .replace(/[^a-z0-9]+/g, ' ')
       .trim()
       .replace(/\s+/g, ' ');
+  }
+
+  function canonicalCountryKey(value) {
+    const key = normalizeIdentityText(value);
+    return COUNTRY_ALIAS_KEYS.get(key) || key;
+  }
+
+  function canonicalCityKey(value) {
+    const key = normalizeIdentityText(value);
+    if (/^kobenhavn(?:\s+[a-z])?$/.test(key)) return 'copenhagen';
+    if (/^praha(?:\s+\d+)?$/.test(key)) return 'prague';
+    return CITY_ALIAS_KEYS.get(key) || key;
+  }
+
+  function isPlaceholderVenueName(value) {
+    return PLACEHOLDER_VENUE_NAMES.has(normalizeIdentityText(value));
   }
 
   function fnv1a32(value) {
@@ -30,8 +62,8 @@
   function identityParts(value) {
     return {
       name: normalizeIdentityText(value?.name ?? value?.venue),
-      city: normalizeIdentityText(value?.city),
-      country: normalizeIdentityText(value?.country),
+      city: canonicalCityKey(value?.city),
+      country: canonicalCountryKey(value?.country),
       address: normalizeIdentityText(value?.address ?? value?.venueAddress),
     };
   }
@@ -76,6 +108,15 @@
     }
   }
 
+  function officialVenueUrl(value) {
+    const safe = safeOfficialUrl(value);
+    if (!safe) return null;
+    const hostname = new URL(safe).hostname.toLocaleLowerCase('en');
+    if (NON_OFFICIAL_HOSTS.has(hostname)) return null;
+    if (hostname.startsWith('visit') && !hostname.includes('venue')) return null;
+    return safe;
+  }
+
   function addressLines(address) {
     if (!address) return [];
     if (typeof address === 'string') {
@@ -87,6 +128,12 @@
     const locality = [address.postalCode || address.postal || address.zip, address.city].map((part) => String(part || '').trim()).filter(Boolean).join(' ');
     const country = String(address.country || '').trim();
     return [street, second, locality, country].filter(Boolean);
+  }
+
+  function identityAliases(record) {
+    return Array.isArray(record?.identityAliases)
+      ? record.identityAliases.filter((alias) => alias && typeof alias === 'object' && !Array.isArray(alias))
+      : [];
   }
 
   function recordIsValid(record) {
@@ -102,6 +149,15 @@
     if (record.researchStatus != null && !RESEARCH_STATUSES.has(record.researchStatus)) return false;
     if (record.researchedAt != null && (typeof record.researchedAt !== 'string' || !Number.isFinite(Date.parse(record.researchedAt)))) return false;
     if (record.sources != null && (!Array.isArray(record.sources) || record.sources.length > 16 || record.sources.some((url) => !safeOfficialUrl(url)))) return false;
+    if (record.identityAliases != null && (!Array.isArray(record.identityAliases) || record.identityAliases.length > 64 || record.identityAliases.some((alias) => {
+      if (!alias || typeof alias !== 'object' || Array.isArray(alias)) return true;
+      if (typeof alias.name !== 'string' || !alias.name.trim()) return true;
+      if (typeof alias.city !== 'string' || !alias.city.trim()) return true;
+      if (alias.country != null && typeof alias.country !== 'string') return true;
+      if (alias.address != null && !addressLines(alias.address).length) return true;
+      return false;
+    }))) return false;
+    if (record.legacyVenueIds != null && (!Array.isArray(record.legacyVenueIds) || record.legacyVenueIds.length > 64 || record.legacyVenueIds.some((id) => typeof id !== 'string' || !/^venue-[a-f0-9]{8}$/.test(id)))) return false;
     if (record.schemaVersion != null && record.schemaVersion !== 1) return false;
     return true;
   }
@@ -114,7 +170,16 @@
     if (record.country != null) normalized.country = String(record.country).trim();
     if (!normalized.venueId) normalized.venueId = venueIdFor(normalized);
     if (record.description != null) normalized.description = String(record.description).trim();
-    if (record.officialUrl != null) normalized.officialUrl = safeOfficialUrl(record.officialUrl);
+    if (record.officialUrl != null) {
+      const official = officialVenueUrl(record.officialUrl);
+      if (official) normalized.officialUrl = official;
+      else delete normalized.officialUrl;
+    }
+    if ((normalized.researchStatus === 'unresolved' || normalized.researchStatus === 'temporary_error' || !Array.isArray(normalized.sources) || !normalized.sources.length) && normalized.researchedAt) {
+      delete normalized.researchedAt;
+    }
+    if (record.identityAliases != null) normalized.identityAliases = identityAliases(record).map((alias) => ({ ...alias }));
+    if (record.legacyVenueIds != null) normalized.legacyVenueIds = [...new Set(record.legacyVenueIds.map((id) => String(id)))];
     return recordIsValid(normalized) ? normalized : null;
   }
 
@@ -131,26 +196,35 @@
     return out;
   }
 
+  function valuesMatch(target, candidate) {
+    const left = identityParts(target);
+    const right = identityParts(candidate);
+    if (left.name !== right.name || left.city !== right.city) return false;
+    if (left.country && right.country && left.country !== right.country) return false;
+    if (left.address && right.address && left.address !== right.address) return false;
+    return true;
+  }
+
+  function recordMatches(value, record) {
+    if (valuesMatch(value, record)) return true;
+    return identityAliases(record).some((alias) => valuesMatch(value, alias));
+  }
+
   function findVenueRecord(value, records) {
     const target = identityParts(value);
     if (!target.name || !target.city) return null;
-    let matches = (records || []).filter((record) => {
-      const parts = identityParts(record);
-      if (parts.name !== target.name || parts.city !== target.city) return false;
-      if (parts.country && target.country && parts.country !== target.country) return false;
-      if (parts.address && target.address && parts.address !== target.address) return false;
-      return true;
-    });
+    let matches = (records || []).filter((record) => recordMatches(value, record));
     if (matches.length <= 1) return matches[0] || null;
 
-    if (target.country) {
-      const countryMatches = matches.filter((record) => identityParts(record).country === target.country);
-      if (countryMatches.length === 1) return countryMatches[0];
-      if (countryMatches.length) matches = countryMatches;
-    }
     if (target.address) {
-      const addressMatches = matches.filter((record) => identityParts(record).address === target.address);
+      const addressMatches = matches.filter((record) => [record, ...identityAliases(record)].some((variant) => identityParts(variant).address === target.address));
       if (addressMatches.length === 1) return addressMatches[0];
+      if (addressMatches.length) matches = addressMatches;
+    }
+    const complete = matches.filter((record) => isComplete(record));
+    if (complete.length === 1) return complete[0];
+    if (matches.every((record, index) => matches.slice(index + 1).every((other) => recordsCanConsolidate(record, other)))) {
+      return [...matches].sort((a, b) => recordScore(b) - recordScore(a))[0] || null;
     }
     return null;
   }
@@ -159,7 +233,7 @@
     return recordIsValid(record)
       && record.researchStatus === 'complete'
       && validCapacity(record.maxCapacity)
-      && !!safeOfficialUrl(record.officialUrl)
+      && !!officialVenueUrl(record.officialUrl)
       && typeof record.description === 'string'
       && !!record.description.trim()
       && typeof record.researchedAt === 'string'
@@ -171,7 +245,7 @@
   function createVenueSeed(concert) {
     const name = String(concert?.venue || '').trim();
     const city = String(concert?.city || '').trim();
-    if (!name || !city) return null;
+    if (!name || !city || isPlaceholderVenueName(name)) return null;
     const seed = {
       venueId: venueIdFor({ name, city, country: concert?.country }),
       name,
@@ -216,15 +290,132 @@
     });
   }
 
+  function streetAddressKey(value) {
+    const first = addressLines(value)[0] || '';
+    return normalizeIdentityText(first);
+  }
+
+  function duplicateConfirmation(record) {
+    const note = normalizeIdentityText(record?.reviewNote);
+    if (!note || /possibly|likely|relocat|moved|addresses differ/.test(note)) return false;
+    return /confirmed duplicate|confirmed same|same physical address|same physical venue|same venue name variant|same building|same stadium/.test(note);
+  }
+
+  function recordsCanConsolidate(a, b) {
+    const left = identityParts(a);
+    const right = identityParts(b);
+    if (!left.name || !left.city || !right.name || !right.city) return false;
+    if (left.country && right.country && left.country !== right.country) return false;
+    const sameCanonicalIdentity = left.name === right.name && left.city === right.city;
+    const leftStreet = streetAddressKey(a.address);
+    const rightStreet = streetAddressKey(b.address);
+    const streetCompatible = !leftStreet || !rightStreet || leftStreet === rightStreet;
+    if (sameCanonicalIdentity && streetCompatible) return true;
+    if (duplicateConfirmation(a) || duplicateConfirmation(b)) {
+      const cityCompatible = left.city === right.city;
+      const addressCompatible = leftStreet && rightStreet && leftStreet === rightStreet;
+      return cityCompatible && addressCompatible;
+    }
+    return false;
+  }
+
+  function recordScore(record) {
+    const statusScore = { complete: 500, partial: 400, review_needed: 300, unresolved: 200, temporary_error: 100 }[record?.researchStatus] || 0;
+    return statusScore
+      + (validCapacity(record?.maxCapacity) ? 20 : 0)
+      + (officialVenueUrl(record?.officialUrl) ? 20 : 0)
+      + (addressLines(record?.address).length ? 10 : 0)
+      + (typeof record?.description === 'string' && record.description.trim() ? 10 : 0)
+      + (Array.isArray(record?.sources) ? Math.min(record.sources.length, 9) : 0);
+  }
+
+  function aliasFromRecord(record) {
+    const alias = { name: record.name, city: record.city };
+    if (record.country) alias.country = record.country;
+    if (record.address) alias.address = record.address;
+    return alias;
+  }
+
+  function aliasKey(alias) {
+    const parts = identityParts(alias);
+    return `${parts.name}|${parts.city}|${parts.country}|${parts.address}`;
+  }
+
+  function mergeSources(...lists) {
+    const out = [];
+    for (const list of lists) {
+      for (const raw of Array.isArray(list) ? list : []) {
+        const url = safeOfficialUrl(raw);
+        if (url && !out.includes(url)) out.push(url);
+        if (out.length >= 16) return out;
+      }
+    }
+    return out;
+  }
+
+  function mergeDuplicateRecords(a, b) {
+    const primary = recordScore(a) >= recordScore(b) ? { ...a } : { ...b };
+    const secondary = primary.venueId === a.venueId ? b : a;
+    const merged = { ...secondary, ...primary };
+    merged.venueId = primary.venueId;
+    const legacyIds = [...(primary.legacyVenueIds || []), ...(secondary.legacyVenueIds || []), secondary.venueId]
+      .filter((id) => id && id !== primary.venueId);
+    merged.legacyVenueIds = [...new Set(legacyIds)];
+    const aliases = [aliasFromRecord(primary), aliasFromRecord(secondary), ...identityAliases(primary), ...identityAliases(secondary)];
+    const seenAliases = new Set();
+    merged.identityAliases = aliases.filter((alias) => {
+      const key = aliasKey(alias);
+      if (!key || seenAliases.has(key)) return false;
+      seenAliases.add(key);
+      return key !== aliasKey(merged);
+    });
+    merged.sources = mergeSources(primary.sources, secondary.sources);
+
+    if (!officialVenueUrl(merged.officialUrl)) delete merged.officialUrl;
+    if (merged.researchStatus === 'unresolved' || merged.researchStatus === 'temporary_error' || !merged.sources.length) delete merged.researchedAt;
+
+    const conflicts = [];
+    if (validCapacity(primary.maxCapacity) && validCapacity(secondary.maxCapacity) && primary.maxCapacity !== secondary.maxCapacity) conflicts.push('maxCapacity');
+    if (officialVenueUrl(primary.officialUrl) && officialVenueUrl(secondary.officialUrl)
+      && new URL(officialVenueUrl(primary.officialUrl)).origin !== new URL(officialVenueUrl(secondary.officialUrl)).origin) conflicts.push('officialUrl');
+    if (conflicts.length) {
+      merged.researchStatus = 'review_needed';
+      merged.mergeReviewFields = [...new Set([...(Array.isArray(primary.mergeReviewFields) ? primary.mergeReviewFields : []), ...(Array.isArray(secondary.mergeReviewFields) ? secondary.mergeReviewFields : []), ...conflicts])];
+    }
+    if (merged.researchStatus === 'complete' && !isComplete(merged)) merged.researchStatus = 'partial';
+    return normalizeRecord(merged) || primary;
+  }
+
+  function consolidateDocument(records) {
+    const normalized = normalizeDocument(records).filter((record) => !isPlaceholderVenueName(record.name)).map((record) => {
+      const copy = { ...record };
+      if (copy.officialUrl && !officialVenueUrl(copy.officialUrl)) delete copy.officialUrl;
+      if ((copy.researchStatus === 'unresolved' || copy.researchStatus === 'temporary_error') && copy.researchedAt) delete copy.researchedAt;
+      if (copy.researchStatus === 'complete' && !isComplete(copy)) copy.researchStatus = 'partial';
+      return copy;
+    });
+    const out = [];
+    for (const record of normalized) {
+      const index = out.findIndex((candidate) => recordsCanConsolidate(candidate, record));
+      if (index < 0) out.push(record);
+      else out[index] = mergeDuplicateRecords(out[index], record);
+    }
+    return out;
+  }
+
   return Object.freeze({
     RESEARCH_STATUSES,
     normalizeIdentityText,
+    canonicalCountryKey,
+    canonicalCityKey,
+    isPlaceholderVenueName,
     venueIdFor,
     venueIdForAddressVariant,
     validCapacity,
     formatCapacity,
     capacityLabel,
     safeOfficialUrl,
+    officialVenueUrl,
     addressLines,
     recordIsValid,
     normalizeRecord,
@@ -234,5 +425,8 @@
     createVenueSeed,
     uniqueVenueSeeds,
     missingResearchSeeds,
+    recordsCanConsolidate,
+    mergeDuplicateRecords,
+    consolidateDocument,
   });
 });
