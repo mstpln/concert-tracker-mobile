@@ -83,12 +83,38 @@ test('v158 shows capacity on upcoming/past cards and Next Concert without changi
     await expect(pastCard.locator('.venue-max-capacity-concert')).toHaveText(seeded.pastCapacity);
   }
 
-  await expect(page.locator('#countdown-card .venue-max-capacity-next')).toHaveText(seeded.nextCapacity);
+  const nextCapacity = page.locator('#countdown-card .venue-max-capacity-next');
+  await expect(nextCapacity).toHaveText(seeded.nextCapacity);
   await expect(page.locator('#countdown-card .countdown-ticket-outline')).toBeVisible();
 
-  for (const width of [375, 480]) {
+  for (const width of [375, 480, 1280]) {
     await page.setViewportSize({ width, height: 920 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    const nextLayout = await page.locator('#countdown-card').evaluate((card) => {
+      const capacity = card.querySelector('.venue-max-capacity-next');
+      const address = card.querySelector('.countdown-v139-address');
+      const ticketCount = card.querySelector('.countdown-v140-ticket-count');
+      if (!capacity || !address || !ticketCount) return null;
+      const capRect = capacity.getBoundingClientRect();
+      const countRect = ticketCount.getBoundingClientRect();
+      const capStyle = getComputedStyle(capacity);
+      const addressStyle = getComputedStyle(address);
+      return {
+        capacityBottom: capRect.bottom,
+        ticketCountTop: countRect.top,
+        capacityFontSize: capStyle.fontSize,
+        addressFontSize: addressStyle.fontSize,
+        capacityColor: capStyle.color,
+        addressColor: addressStyle.color,
+        capacityWeight: Number(capStyle.fontWeight),
+        addressWeight: Number(addressStyle.fontWeight),
+      };
+    });
+    expect(nextLayout).not.toBeNull();
+    expect(nextLayout.capacityBottom).toBeLessThan(nextLayout.ticketCountTop);
+    expect(nextLayout.capacityFontSize).toBe(nextLayout.addressFontSize);
+    expect(nextLayout.capacityColor).toBe(nextLayout.addressColor);
+    expect(nextLayout.capacityWeight).toBe(nextLayout.addressWeight);
   }
   expect(errors).toEqual([]);
 });
