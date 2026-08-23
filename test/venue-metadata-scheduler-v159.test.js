@@ -205,11 +205,19 @@ test('incomplete venue enrichment preserves stable id and unknown fields', () =>
 
 test('write retries one ETag conflict against latest venue state', async () => {
   const seed = VenueMetadata.createVenueSeed(concert('a', 'Conflict Arena', 'Lund', 'Sweden', '2027-01-01'));
-  const update = { ...seed, researchStatus: 'partial', researchedAt: '2026-08-23T12:00:00.000Z', sources: [], schemaVersion: 1 };
+  const backfilled = { ...seed, researchStatus: 'partial', schemaVersion: 1 };
+  const update = {
+    ...backfilled,
+    researchedAt: '2026-08-23T12:00:00.000Z',
+    sources: [],
+  };
   let reads = 0;
   let writes = 0;
   const client = {
-    async readJson() { reads += 1; return []; },
+    async readJson() {
+      reads += 1;
+      return reads === 1 ? [backfilled] : [{ ...backfilled, futureField: 'concurrent-state' }];
+    },
     async writeJsonStrict() {
       writes += 1;
       if (writes === 1) {
@@ -221,19 +229,22 @@ test('write retries one ETag conflict against latest venue state', async () => {
   };
   const result = await Scheduler.writeWithOneConflictRetry(client, [update]);
   assert.equal(writes, 2);
-  assert.ok(reads >= 2);
+  assert.equal(reads, 2);
   assert.equal(result.changed, 1);
+  assert.equal(result.venues[0].futureField, 'concurrent-state');
+  assert.equal(result.venues[0].researchedAt, '2026-08-23T12:00:00.000Z');
 });
 
 test('conflict retry does not overwrite a venue completed concurrently', async () => {
   const complete = completeVenue();
-  const stale = { ...complete, researchStatus: 'partial', maxCapacity: 9999 };
+  const incomplete = completeVenue({ researchStatus: 'partial', maxCapacity: undefined });
+  const stale = { ...incomplete, maxCapacity: 9999 };
   let reads = 0;
   let writes = 0;
   const client = {
     async readJson() {
       reads += 1;
-      return reads === 1 ? [{ ...complete, researchStatus: 'partial' }] : [complete];
+      return reads === 1 ? [incomplete] : [complete];
     },
     async writeJsonStrict() {
       writes += 1;
@@ -244,6 +255,8 @@ test('conflict retry does not overwrite a venue completed concurrently', async (
   };
   const result = await Scheduler.writeWithOneConflictRetry(client, [stale]);
   assert.equal(writes, 1);
+  assert.equal(reads, 2);
   assert.equal(result.changed, 0);
   assert.equal(result.venues[0].researchStatus, 'complete');
+  assert.equal(result.venues[0].maxCapacity, 16000);
 });
