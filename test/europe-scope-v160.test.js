@@ -10,22 +10,24 @@ const Scheduler = require('../scripts/venueMetadataResearchRun');
 
 const ROOT = path.resolve(__dirname, '..');
 
-test('BANDMARKR EU means the full Europe product scope, not political EU membership', () => {
+test('BANDMARKR EU means the app Europe scope, not political EU membership', () => {
   const european = [
-    'Sweden', 'Norway', 'Iceland', 'United Kingdom', 'Great Britain', 'England', 'Scotland',
-    'Switzerland', 'Turkey', 'Türkiye', 'Serbia', 'Albania', 'Andorra', 'Armenia',
-    'Azerbaijan', 'Belarus', 'Bosnia and Herzegovina', 'Bulgaria', 'Cyprus', 'Georgia',
-    'Kosovo', 'Liechtenstein', 'Malta', 'Moldova', 'Monaco', 'Montenegro',
-    'North Macedonia', 'Russia', 'San Marino', 'Ukraine', 'Vatican City',
-    'SE', 'NO', 'IS', 'GB', 'CH', 'TR', 'RS', 'AL', 'BA', 'BG', 'CY', 'GE', 'MD', 'UA',
+    'Sweden', 'SE', 'Bulgaria', 'BG', 'Cyprus', 'CY', 'Malta', 'MT',
+    'Czech Republic', 'CZ', 'Norway', 'NO', 'Iceland', 'IS',
+    'United Kingdom', 'UK', 'Great Britain', 'GB', 'England',
+    'Switzerland', 'CH', 'Turkey', 'TR', 'Serbia', 'RS',
   ];
   for (const country of european) {
-    assert.equal(EuropeScope.isEuropeCountry(country), true, `${country} should be Europe`);
+    assert.equal(EuropeScope.isEuropeCountry(country), true, `${country} should be in BANDMARKR Europe`);
     assert.equal(Scheduler.isEuCountry(country), true, `scheduler should share Europe scope for ${country}`);
   }
 
-  for (const country of ['USA', 'US', 'Canada', 'CA', 'Australia', 'AU', 'Japan', 'JP', 'Israel', '', null]) {
-    assert.equal(EuropeScope.isEuropeCountry(country), false, `${country} should not be Europe`);
+  const outsideScope = [
+    'USA', 'US', 'Canada', 'CA', 'Australia', 'AU', 'Japan', 'JP', 'Israel',
+    'Albania', 'Georgia', 'Russia', 'Ukraine', '', null,
+  ];
+  for (const country of outsideScope) {
+    assert.equal(EuropeScope.isEuropeCountry(country), false, `${country} should be outside BANDMARKR Europe`);
     assert.equal(Scheduler.isEuCountry(country), false, `scheduler should reject ${country}`);
   }
 });
@@ -40,8 +42,9 @@ test('browser shell replaces the legacy dataLib Europe helper with the canonical
 
   assert.equal(context.dlIsEuropeCountry('Norway'), true);
   assert.equal(context.dlIsEuropeCountry('Great Britain'), true);
-  assert.equal(context.dlIsEuropeCountry('Ukraine'), true);
+  assert.equal(context.dlIsEuropeCountry('Bulgaria'), true);
   assert.equal(context.dlIsEuropeCountry('USA'), false);
+  assert.equal(context.dlIsEuropeCountry('Albania'), false);
 });
 
 test('shared Europe scope is loaded after dataLib and cached by the service worker', () => {
