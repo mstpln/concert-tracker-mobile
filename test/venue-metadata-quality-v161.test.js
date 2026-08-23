@@ -77,6 +77,31 @@ test('normalization removes non-official display URLs and unsuccessful research 
   assert.equal(noEvidencePartial.researchedAt, undefined);
 });
 
+test('same venue id normalization preserves compatible secondary-only fields', () => {
+  const rows = VenueMetadata.normalizeDocument([
+    venue(),
+    venue({
+      researchStatus: 'partial',
+      maxCapacity: undefined,
+      futureField: { preserve: true },
+      sources: ['https://example-arena.test/secondary-facts'],
+    }),
+  ]);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0].futureField, { preserve: true });
+  assert.ok(rows[0].sources.includes('https://example-arena.test/facts'));
+  assert.ok(rows[0].sources.includes('https://example-arena.test/secondary-facts'));
+});
+
+test('same venue id normalization preserves conflicting future-field records separately', () => {
+  const rows = VenueMetadata.normalizeDocument([
+    venue({ futureProviderState: { owner: 'manual', value: 1 } }),
+    venue({ futureProviderState: { owner: 'manual', value: 2 } }),
+  ]);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((row) => row.futureProviderState.value).sort(), [1, 2]);
+});
+
 test('confirmed duplicate aliases consolidate while preserving one stable id and legacy ids', () => {
   const rows = [
     venue(),
