@@ -6,24 +6,11 @@ const { UsageTracker } = require('./lib/usageTracker');
 const tavily = require('./lib/tavily');
 const groq = require('./lib/groq');
 const VenueMetadata = require('../venueMetadataModelV158');
+const EuropeScope = require('../europeScopeV160');
 
 const MAX_VENUES_PER_RUN = 10;
 const GROQ_ESTIMATED_TOKENS = 1200;
 const MAINTENANCE_TOKEN_ENV = 'DATA_MAINTENANCE_TOKEN';
-// BANDMARKR's visible "EU" tag means Europe, not political EU membership.
-// Keep this aligned with the Europe scope used by the app's concert/venue filters,
-// while retaining the ISO aliases already accepted by the scheduler.
-const EU_COUNTRY_KEYS = new Set([
-  'Austria', 'Belgium', 'Bulgaria', 'Croatia', 'Cyprus', 'Czechia', 'Czech Republic',
-  'Denmark', 'Estonia', 'Finland', 'France', 'Germany', 'Greece', 'Hungary', 'Ireland',
-  'Italy', 'Latvia', 'Lithuania', 'Luxembourg', 'Malta', 'Netherlands', 'Poland',
-  'Portugal', 'Romania', 'Slovakia', 'Slovenia', 'Spain', 'Sweden',
-  'Norway', 'Iceland', 'UK', 'United Kingdom', 'Great Britain', 'England',
-  'Switzerland', 'Turkey', 'Serbia',
-  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE',
-  'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
-  'NO', 'IS', 'GB', 'CH', 'TR', 'RS',
-].map((value) => VenueMetadata.normalizeIdentityText(value)));
 
 let sharedUsage = null;
 
@@ -42,8 +29,7 @@ function venueBackfillReady(venues) {
 }
 
 function isEuCountry(value) {
-  const key = VenueMetadata.normalizeIdentityText(value);
-  return !!key && EU_COUNTRY_KEYS.has(key);
+  return EuropeScope.isEuropeCountry(value);
 }
 
 function isUpcoming(concert, today) {
