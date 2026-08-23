@@ -21,7 +21,11 @@
     'ticketmaster.de', 'www.ticketmaster.de', 'ticketmaster.se', 'www.ticketmaster.se', 'eventbrite.com', 'www.eventbrite.com',
     'facebook.com', 'www.facebook.com', 'instagram.com', 'www.instagram.com', 'twitter.com', 'www.twitter.com', 'x.com', 'www.x.com',
     'tripadvisor.com', 'www.tripadvisor.com', 'eventseeker.com', 'www.eventseeker.com', 'venuu.se', 'www.venuu.se',
-    'visitgavle.se', 'www.visitgavle.se', 'esmadrid.com', 'www.esmadrid.com',
+    'visitgavle.se', 'www.visitgavle.se', 'esmadrid.com', 'www.esmadrid.com', 'timeout.com', 'www.timeout.com',
+  ]);
+  const KNOWN_RECORD_FIELDS = new Set([
+    'venueId', 'name', 'city', 'country', 'address', 'maxCapacity', 'officialUrl', 'description', 'researchStatus',
+    'researchedAt', 'sources', 'schemaVersion', 'reviewNote', 'identityAliases', 'legacyVenueIds', 'mergeReviewFields',
   ]);
 
   function normalizeIdentityText(value) {
@@ -40,7 +44,8 @@
   }
 
   function canonicalCityKey(value) {
-    const key = normalizeIdentityText(value);
+    let key = normalizeIdentityText(value);
+    key = key.replace(/\s+(paris|bologna|antwerpen|brussels)$/, '').trim();
     if (/^kobenhavn(?:\s+[a-z])?$/.test(key)) return 'copenhagen';
     if (/^praha(?:\s+\d+)?$/.test(key)) return 'prague';
     return CITY_ALIAS_KEYS.get(key) || key;
@@ -297,8 +302,19 @@
 
   function duplicateConfirmation(record) {
     const note = normalizeIdentityText(record?.reviewNote);
-    if (!note || /possibly|likely|relocat|moved|addresses differ/.test(note)) return false;
-    return /confirmed duplicate|confirmed same|same physical address|same physical venue|same venue name variant|same building|same stadium/.test(note);
+    if (!note || /possibly|likely|relocat|moved|addresses differ|could not fully confirm/.test(note)) return false;
+    return /confirmed duplicate|confirmed same|same physical address|same physical venue|same venue name variant|same building|same stadium|same real square/.test(note);
+  }
+
+  function stableJson(value) {
+    if (value == null || typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+  }
+
+  function unknownFieldsCompatible(a, b) {
+    const shared = Object.keys(a || {}).filter((key) => !KNOWN_RECORD_FIELDS.has(key) && Object.prototype.hasOwnProperty.call(b || {}, key));
+    return shared.every((key) => stableJson(a[key]) === stableJson(b[key]));
   }
 
   function recordsCanConsolidate(a, b) {
@@ -306,16 +322,13 @@
     const right = identityParts(b);
     if (!left.name || !left.city || !right.name || !right.city) return false;
     if (left.country && right.country && left.country !== right.country) return false;
+    if (!unknownFieldsCompatible(a, b)) return false;
     const sameCanonicalIdentity = left.name === right.name && left.city === right.city;
     const leftStreet = streetAddressKey(a.address);
     const rightStreet = streetAddressKey(b.address);
     const streetCompatible = !leftStreet || !rightStreet || leftStreet === rightStreet;
     if (sameCanonicalIdentity && streetCompatible) return true;
-    if (duplicateConfirmation(a) || duplicateConfirmation(b)) {
-      const cityCompatible = left.city === right.city;
-      const addressCompatible = leftStreet && rightStreet && leftStreet === rightStreet;
-      return cityCompatible && addressCompatible;
-    }
+    if (duplicateConfirmation(a) || duplicateConfirmation(b)) return true;
     return false;
   }
 
@@ -354,6 +367,7 @@
   }
 
   function mergeDuplicateRecords(a, b) {
+    if (!recordsCanConsolidate(a, b)) return null;
     const primary = recordScore(a) >= recordScore(b) ? { ...a } : { ...b };
     const secondary = primary.venueId === a.venueId ? b : a;
     const merged = { ...secondary, ...primary };
@@ -383,22 +397,27 @@
       merged.mergeReviewFields = [...new Set([...(Array.isArray(primary.mergeReviewFields) ? primary.mergeReviewFields : []), ...(Array.isArray(secondary.mergeReviewFields) ? secondary.mergeReviewFields : []), ...conflicts])];
     }
     if (merged.researchStatus === 'complete' && !isComplete(merged)) merged.researchStatus = 'partial';
-    return normalizeRecord(merged) || primary;
+    return normalizeRecord(merged) || null;
   }
 
   function consolidateDocument(records) {
     const normalized = normalizeDocument(records).filter((record) => !isPlaceholderVenueName(record.name)).map((record) => {
       const copy = { ...record };
       if (copy.officialUrl && !officialVenueUrl(copy.officialUrl)) delete copy.officialUrl;
-      if ((copy.researchStatus === 'unresolved' || copy.researchStatus === 'temporary_error') && copy.researchedAt) delete copy.researchedAt;
+      if ((copy.researchStatus === 'unresolved' || copy.researchStatus === 'temporary_error' || !Array.isArray(copy.sources) || !copy.sources.length) && copy.researchedAt) delete copy.researchedAt;
       if (copy.researchStatus === 'complete' && !isComplete(copy)) copy.researchStatus = 'partial';
       return copy;
     });
     const out = [];
     for (const record of normalized) {
       const index = out.findIndex((candidate) => recordsCanConsolidate(candidate, record));
-      if (index < 0) out.push(record);
-      else out[index] = mergeDuplicateRecords(out[index], record);
+      if (index < 0) {
+        out.push(record);
+        continue;
+      }
+      const merged = mergeDuplicateRecords(out[index], record);
+      if (merged) out[index] = merged;
+      else out.push(record);
     }
     return out;
   }
