@@ -31,6 +31,29 @@ test('scheduled enrichment preserves existing source evidence while adding new e
   assert.equal(record.researchStatus, 'complete');
 });
 
+test('new facts are ignored when Groq does not identify a retained supporting source', () => {
+  const seed = VenueMetadata.createVenueSeed({ venue: 'Synthetic Arena', city: 'Lund', country: 'Sweden' });
+  const record = Scheduler.buildResearchedRecord({
+    seed,
+    existing: { ...seed, researchStatus: 'partial', sources: ['https://existing.example/facts'], schemaVersion: 1 },
+    extracted: {
+      maxCapacity: 5000,
+      officialUrl: 'https://official.example/',
+      address: 'Street 1, Lund, Sweden',
+      description: 'A synthetic arena used only for testing.',
+      sourceUrls: [],
+      identityConflict: false,
+    },
+    searchResults: [{ title: 'Facts', url: 'https://official.example/facts', content: 'Synthetic venue facts.' }],
+    researchedAt: '2026-08-23T12:00:00.000Z',
+  });
+  assert.equal(record.maxCapacity, undefined);
+  assert.equal(record.officialUrl, undefined);
+  assert.equal(record.address, undefined);
+  assert.equal(record.description, undefined);
+  assert.equal(record.researchStatus, 'partial');
+});
+
 test('existing manual capacity is never replaced by conflicting scheduled evidence', () => {
   const seed = VenueMetadata.createVenueSeed({ venue: 'Synthetic Arena', city: 'Lund', country: 'Sweden' });
   const existing = {
