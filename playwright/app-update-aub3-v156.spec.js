@@ -15,7 +15,9 @@ async function makeSharedFixtureAutomatic(page, { past = false, cityMode = 'same
     const shared = data.concerts.filter((record) => record.id.startsWith('qa-group-'));
     for (const record of shared) {
       delete record.eventGroupId;
-      if (pastDate) record.date = '2027-05-02';
+      record.date = pastDate ? '2027-05-02' : '2027-07-17';
+      record.city = 'Sample City';
+      record.ticketQuantity = 4;
     }
     if (cityModeValue === 'blank') shared.forEach((record) => { record.city = ''; });
     if (cityModeValue === 'different') shared[2].city = 'Other Sample City';
@@ -107,7 +109,7 @@ test('v157 Add a concert wording and dynamic future year create a visible upcomi
   await page.locator('#past-concert-venue').fill('Synthetic Future Hall');
   await page.locator('#past-concert-city').fill('Sample City');
   await page.locator('#past-concert-year').selectOption('2028');
-  await page.locator('#past-concert-month').selectOption('1');
+  await page.locator('#past-concert-month').selectOption('01');
   await page.locator('#past-concert-day').selectOption('10');
   await page.locator('#past-concert-submit').click();
 

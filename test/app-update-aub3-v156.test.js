@@ -134,8 +134,8 @@ test('v157 synthetic shared night is one event, two performances and Support fir
   const stats = dlConcertStats([headliner, support]);
   assert.equal(stats.totalShows, 1);
   assert.equal(stats.performanceCount, 2);
-  assert.equal(stats.kmTraveled, 84 / 2);
-  assert.notEqual(stats.totalSpend, 643 + 0);
+  assert.equal(stats.kmTraveled, 84);
+  assert.notEqual(stats.totalSpend, 643);
 });
 
 test('AUB3 malformed explicit groups are detected and presentation supports multiple support acts', () => {
@@ -168,6 +168,15 @@ test('AUB3 provider refresh and stale grouping preserve relationship and user fi
   assert.equal(merged[0].notes, 'newer note');
   assert.equal(merged[0].rating, 4);
   assert.deepEqual(merged[0].unknownFutureField, { newer: true });
+
+  const concurrent = conflictMerge.merge(
+    [base(), base({ id: 'b', bandId: 'band-b' })],
+    EventModel.linkConcerts([base(), base({ id: 'b', bandId: 'band-b' })], 'a', 'b', () => 'event-12345678'),
+    [base({ notes: 'latest a', unknownFutureField: { a: true } }), base({ id: 'b', bandId: 'band-b', notes: 'latest b', rating: 3, extra: 'preserve' })],
+  );
+  assert.deepEqual(concurrent.map((record) => record.eventGroupId), ['event-12345678', 'event-12345678']);
+  assert.deepEqual(concurrent.map((record) => record.notes), ['latest a', 'latest b']);
+  assert.equal(concurrent[1].extra, 'preserve');
 });
 
 test('AUB3 focused Tavily writes preserve grouping, lineup and unknown user fields', () => {
@@ -194,12 +203,13 @@ test('AUB3 stats keep performances separate while event totals deduplicate expli
   assert.equal(stats.totalUniqueArtists, 3);
   assert.equal(stats.totalSpend, 8000);
   assert.equal(stats.averageTicketPrice, 4000);
-  assert.equal(stats.kmTraveled, 110);
+  assert.equal(stats.kmTraveled, 220);
   assert.equal(stats.uniqueVenues, 1);
   assert.equal(stats.uniqueCities, 1);
   assert.equal(stats.countries, 1);
   assert.equal(stats.ratedCount, 3);
   assert.equal(stats.pctWithRating, 100);
+  assert.equal(stats.topArtists.length, 0);
 });
 
 test('AUB3 malformed explicit groups fail closed for additive cost and journey totals', () => {
