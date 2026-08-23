@@ -223,3 +223,13 @@ The derived relationship is not persisted to the concert records and does not cr
 **Reason:** Obvious same-night performances already contain enough context to avoid a permanent manual relationship CTA, while persisting generated relationship IDs across the historical dataset would add unnecessary write/migration risk. Requiring non-empty city for automatic inference fixes the blank-city false-positive path without weakening user-established v156 identity.
 
 **Consequence:** Event-level calculations and grouped Next Concert consume the same central effective-event model, so concert nights, tickets/cost and travel deduplicate consistently while ratings, notes, setlists, band history and lineup roles remain performance-level. Normal concert cards expose no permanent `Link same event` control. Provider/concurrency writes continue preserving stored `eventGroupId`, `lineupRole`, stable IDs, user-owned values and unknown future fields; automatic grouping itself writes nothing.
+
+### v158 keeps venue metadata reusable and research evidence private
+
+**Decision:** Max capacity, full venue address, official HTTPS website, short factual description and internal research evidence belong to additive venue-level `venues.json` records rather than being copied onto concert records. `Max Capacity` means the highest directly and reliably documented event/concert capacity; missing or conflicting capacity stays absent. Research source URLs and timestamps remain internal and are never rendered in the normal UI. Matching is conservative and ambiguity fails closed.
+
+The browser may read reusable venue metadata but does not write it. `worker.js` owns the route through the existing explicit allowlist and protected JSON path; `PUT /venues.json` is restricted to the data-maintenance role and uses the established conditional ETag write semantics. Automatic Tavily/Groq enrichment is intentionally deferred until after the separately authorized manual backfill/review phase; attendance changes must never wait on venue research.
+
+**Reason:** Venue facts should be fetched once and safely reused for future concerts without creating duplicate or contradictory values on performance records, while provenance and provider credentials should remain out of the visible UI and browser write path.
+
+**Consequence:** Concert stable IDs, attendance, tickets, ratings, notes, lineup roles and unknown fields remain untouched by venue metadata. Missing metadata simply produces no venue-capacity line. Any production `venues.json` creation/backfill, Worker deployment, provider execution or future scheduled enrichment remains a separately authorized action.
