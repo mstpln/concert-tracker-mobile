@@ -225,7 +225,7 @@ test('write retries one ETag conflict against latest venue state', async () => {
   const update = {
     ...backfilled,
     researchedAt: '2026-08-23T12:00:00.000Z',
-    sources: [],
+    sources: ['https://conflict-arena.test/facts'],
   };
   let reads = 0;
   let writes = 0;
