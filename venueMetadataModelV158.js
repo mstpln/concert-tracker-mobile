@@ -32,6 +32,7 @@
     return String(value || '')
       .normalize('NFKD')
       .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[øØ]/g, 'o')
       .toLocaleLowerCase('en')
       .replace(/[^a-z0-9]+/g, ' ')
       .trim()
@@ -364,8 +365,9 @@
   }
 
   function aliasKey(alias) {
-    const parts = identityParts(alias);
-    return `${parts.name}|${parts.city}|${parts.country}|${parts.address}`;
+    return [alias?.name, alias?.city, alias?.country, addressLines(alias?.address).join(' ')]
+      .map(normalizeIdentityText)
+      .join('|');
   }
 
   function mergeSources(...lists) {
