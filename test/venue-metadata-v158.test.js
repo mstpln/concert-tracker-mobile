@@ -56,6 +56,15 @@ test('same-name same-city address collisions retain separate deterministic resea
   assert.equal(new Set(forward.map((row) => row.venueId)).size, 2);
   assert.deepEqual(forward.map((row) => row.venueId).sort(), reverse.map((row) => row.venueId).sort());
   assert.ok(forward.every((row) => row.venueId === VenueMetadata.venueIdForAddressVariant(row)));
+
+  const countryFilledLater = [
+    { ...concerts[0], country: '' },
+    concerts[0],
+    concerts[1],
+  ];
+  const later = VenueMetadata.uniqueVenueSeeds(countryFilledLater);
+  const earlier = VenueMetadata.uniqueVenueSeeds([concerts[0], { ...concerts[0], country: '' }, concerts[1]]);
+  assert.deepEqual(later.map((row) => row.venueId).sort(), earlier.map((row) => row.venueId).sort());
 });
 
 test('venue records preserve unknown future fields and validate complete researched data', () => {
