@@ -28,10 +28,10 @@
     return `event-${token}`;
   }
 
-  // Persisted v156 relationships stay backward compatible: missing city is
-  // allowed, while two different known cities are still a conflict. Automatic
-  // v157 inference passes requireCity=true because absence is not evidence.
-  function validateEventGroup(records, { requireCity = false } = {}) {
+  // Automatic v157 inference deliberately fails closed. In particular, a
+  // missing city is not evidence: two normalized empty strings must never
+  // make two performances look like the same real-world event.
+  function validateEventGroup(records) {
     const list = records || [];
     if (!list.length) return { valid: false, reasons: ['empty'] };
     if (list.length === 1) return { valid: true, reasons: [] };
@@ -41,7 +41,24 @@
     const reasons = [];
     if (dates.size !== 1 || list.some((record) => !String(record?.date || '').trim())) reasons.push('date');
     if (venues.size !== 1 || list.some((record) => !normalize(record?.venue))) reasons.push('venue');
-    if (requireCity ? (cities.size !== 1 || list.some((record) => !normalize(record?.city))) : cities.size > 1) reasons.push('city');
+    if (cities.size !== 1 || list.some((record) => !normalize(record?.city))) reasons.push('city');
+    return { valid: reasons.length === 0, reasons };
+  }
+
+  // Existing v156 eventGroupId relationships are user-established identity.
+  // Preserve their historical compatibility: blank/missing city is tolerated,
+  // but two different known cities still fail closed as an actual conflict.
+  function validateExplicitEventGroup(records) {
+    const list = records || [];
+    if (!list.length) return { valid: false, reasons: ['empty'] };
+    if (list.length === 1) return { valid: true, reasons: [] };
+    const dates = new Set(list.map((record) => String(record?.date || '').trim()).filter(Boolean));
+    const venues = new Set(list.map((record) => normalize(record?.venue)).filter(Boolean));
+    const cities = new Set(list.map((record) => normalize(record?.city)).filter(Boolean));
+    const reasons = [];
+    if (dates.size !== 1 || list.some((record) => !String(record?.date || '').trim())) reasons.push('date');
+    if (venues.size !== 1 || list.some((record) => !normalize(record?.venue))) reasons.push('venue');
+    if (cities.size > 1) reasons.push('city');
     return { valid: reasons.length === 0, reasons };
   }
 
@@ -93,7 +110,9 @@
     });
     return [...groups.values()].map((event) => ({
       ...event,
-      validation: validateEventGroup(event.records, { requireCity: event.relationship === 'automatic' }),
+      validation: event.relationship === 'explicit'
+        ? validateExplicitEventGroup(event.records)
+        : validateEventGroup(event.records),
     }));
   }
 
@@ -242,10 +261,11 @@
   }
 
   return Object.freeze({
-    validGroupId, createGroupId, validateEventGroup, strongAutomaticContext,
-    groupConcertPerformances, stablePerformanceOrder, orderPerformances,
-    sameCandidateContext, candidateConcerts, linkConcerts, unlinkConcert,
-    resolveEventTicketQuantity, resolveEventTicketCost, resolveEventDistance,
-    representativeRecord, presentationForEvent, nextEventPresentation,
+    validGroupId, createGroupId, validateEventGroup, validateExplicitEventGroup,
+    strongAutomaticContext, groupConcertPerformances, stablePerformanceOrder,
+    orderPerformances, sameCandidateContext, candidateConcerts, linkConcerts,
+    unlinkConcert, resolveEventTicketQuantity, resolveEventTicketCost,
+    resolveEventDistance, representativeRecord, presentationForEvent,
+    nextEventPresentation,
   });
 });
