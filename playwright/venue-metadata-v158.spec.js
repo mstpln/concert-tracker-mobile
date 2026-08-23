@@ -90,18 +90,21 @@ test('v158 shows capacity on upcoming/past cards and Next Concert without changi
   for (const width of [375, 480, 1280]) {
     await page.setViewportSize({ width, height: 920 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-    const nextLayout = await page.locator('#countdown-card').evaluate((card) => {
-      const capacity = card.querySelector('.venue-max-capacity-next');
-      const address = card.querySelector('.countdown-v139-address');
-      const ticketCount = card.querySelector('.countdown-v140-ticket-count');
+    const nextLayout = await page.evaluate(() => {
+      const card = document.querySelector('#countdown-card');
+      const capacity = card?.querySelector('.venue-max-capacity-next');
+      const address = card?.querySelector('.countdown-v139-address');
+      const ticketCount = document.querySelector('#screen-myconcerts .countdown-v140-ticket-count strong');
       if (!capacity || !address || !ticketCount) return null;
       const capRect = capacity.getBoundingClientRect();
       const countRect = ticketCount.getBoundingClientRect();
+      const pillStyle = getComputedStyle(ticketCount, '::before');
+      const pillHeight = Number.parseFloat(pillStyle.height) || countRect.height;
       const capStyle = getComputedStyle(capacity);
       const addressStyle = getComputedStyle(address);
       return {
         capacityBottom: capRect.bottom,
-        ticketCountTop: countRect.top,
+        ticketCountTop: countRect.top + (countRect.height / 2) - (pillHeight / 2),
         capacityFontSize: capStyle.fontSize,
         addressFontSize: addressStyle.fontSize,
         capacityColor: capStyle.color,
