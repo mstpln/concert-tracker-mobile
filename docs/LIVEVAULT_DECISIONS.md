@@ -208,7 +208,7 @@ Attended past and upcoming cards expose the value through one inline two-choice 
 
 **Decision:** Concerts remain independent performance records with stable IDs. An optional `eventGroupId` links records only after an explicit, confirmed user action among strong same-date/venue/city candidates. Similar records are never auto-grouped. Linking, regrouping and unlinking are reversible, collision-checked and preserve unknown/user-owned fields. A valid group orders support performances before headliners only within the list slots already occupied by that group.
 
-Valid groups resolve ticket quantity, ticket cost and travel once per event. Identical duplicates count once. Conflicts never sum: the conservative minimum is used and marked as a conflict. A group with inconsistent required date or venue context fails closed, is visibly marked for review and contributes no ambiguous additive cost/travel value.
+At v156, valid groups resolved ticket quantity, ticket cost and travel once per event and used a conservative minimum for conflicting values. **The ticket-cost part of that rule is superseded by v160 below.** Ticket quantity and travel-distance conflict handling remain conservative, and malformed groups still fail closed.
 
 **Reason:** A performance and the concert night containing it are different statistical units, but date/venue resemblance is not a safe durable identity. A direct user relationship supplies the missing identity without merging records or weakening ownership.
 
@@ -222,7 +222,7 @@ The derived relationship is not persisted to the concert records and does not cr
 
 **Reason:** Obvious same-night performances already contain enough context to avoid a permanent manual relationship CTA, while persisting generated relationship IDs across the historical dataset would add unnecessary write/migration risk. Requiring non-empty city for automatic inference fixes the blank-city false-positive path without weakening user-established v156 identity.
 
-**Consequence:** Event-level calculations and grouped Next Concert consume the same central effective-event model, so concert nights, tickets/cost and travel deduplicate consistently while ratings, notes, setlists, band history and lineup roles remain performance-level. Normal concert cards expose no permanent `Link same event` control. Provider/concurrency writes continue preserving stored `eventGroupId`, `lineupRole`, stable IDs, user-owned values and unknown future fields; automatic grouping itself writes nothing.
+**Consequence:** Event-level calculations and grouped Next Concert consume the same central effective-event model, so concert nights, tickets/cost and travel aggregate consistently while ratings, notes, setlists, band history and lineup roles remain performance-level. Normal concert cards expose no permanent `Link same event` control. Provider/concurrency writes continue preserving stored `eventGroupId`, `lineupRole`, stable IDs, user-owned values and unknown future fields; automatic grouping itself writes nothing.
 
 ### v158 keeps venue metadata reusable and research evidence private
 
@@ -245,3 +245,11 @@ Scheduled enrichment is fill-only for existing venue facts. Existing address, ca
 **Reason:** The manual backfill should establish the high-quality initial EU venue corpus; scheduled research should then perform only bounded maintenance for newly attended or incomplete EU venues without granting ordinary automation venue-write authority, rewriting curated venue facts or allowing a merge to start production research automatically.
 
 **Consequence:** Merging v159 does not authorize or execute venue provider calls or venue-data writes. The manual backfill must first be validated and uploaded, and enabling `VENUE_METADATA_RESEARCH_ENABLED` plus ensuring the maintenance credential is available is a separate production activation requiring explicit authorization. `concerts.json` remains read-only to venue enrichment, complete venue records are reused, non-EU/unknown-country venues stay out of scheduled research, and ambiguity remains visible rather than guessed.
+
+### v160 sums ticket-price contributions inside a grouped event
+
+**Decision:** `ticketPrice` remains a user-owned performance-level contribution even when several performances belong to one effective event. For a valid event, every member with a non-negative numeric `ticketPrice` contributes to the event unit price, and event spend is the sum of each contribution multiplied by that performance's valid positive `ticketQuantity`. If a performance has no valid quantity, the existing resolved event quantity is used, falling back to one. Different performance prices are therefore not treated as duplicate/conflicting event values and are never reduced to a minimum.
+
+**Reason:** BANDMARKR's historical data-entry model intentionally allows support acts to be recorded as free (`ticketPrice: 0`) while the full ticket price is stored on the headliner, and also allows a total ticket cost to be intentionally split across several performance records. Event grouping must preserve those user-entered contributions rather than discarding them.
+
+**Consequence:** A grouped event with Support `0` and Headliner `643` contributes `643`, and a grouped event with contributions `200 + 300 + 800` contributes `1300`. Ticket-quantity conflicts remain detectable under the existing conservative quantity resolver, and distance conflict handling is unchanged. Malformed event groups still fail closed. Concert Stats total spend, average event ticket cost, yearly spend totals and ticket extremes use the corrected central resolver. No stored concert record, stable ID, `eventGroupId`, `lineupRole`, provider field or unknown field is rewritten; no migration/backfill or production-data action is required.

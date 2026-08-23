@@ -52,7 +52,7 @@ test('v157 automatic grouping still requires non-empty matching city', () => {
   assert.deepEqual(EventModel.validateEventGroup(records).reasons, ['city']);
 });
 
-test('v157 James-EODM equivalent counts duplicated spend and travel once per automatic event', () => {
+test('v160 grouped ticket cost sums performance contributions while travel remains once per event', () => {
   const support = {
     ...base(),
     id: 'synthetic-support',
@@ -64,7 +64,7 @@ test('v157 James-EODM equivalent counts duplicated spend and travel once per aut
     eventGroupId: undefined,
     lineupRole: 'support',
     ticketQuantity: 1,
-    ticketPrice: 643,
+    ticketPrice: 0,
     distanceKm: 42,
   };
   const headliner = {
@@ -73,6 +73,7 @@ test('v157 James-EODM equivalent counts duplicated spend and travel once per aut
     bandId: 'synthetic-headliner-band',
     bandName: 'Synthetic Headliner',
     lineupRole: 'headliner',
+    ticketPrice: 643,
   };
   const event = EventModel.groupConcertPerformances([headliner, support]);
   assert.equal(event.length, 1);
@@ -81,11 +82,14 @@ test('v157 James-EODM equivalent counts duplicated spend and travel once per aut
   assert.deepEqual(EventModel.orderPerformances([headliner, support]).map((record) => record.id), ['synthetic-support', 'synthetic-headliner']);
   assert.equal(EventModel.resolveEventTicketQuantity(event[0].records).value, 1);
   assert.equal(EventModel.resolveEventTicketCost(event[0].records).value, 643);
+  assert.equal(EventModel.resolveEventTicketCost(event[0].records).unitPrice, 643);
+  assert.equal(EventModel.resolveEventTicketCost(event[0].records).conflict, false);
   assert.equal(EventModel.resolveEventDistance(event[0].records).value, 42);
 
   const stats = dlConcertStats([headliner, support]);
   assert.equal(stats.totalShows, 1);
   assert.equal(stats.performanceCount, 2);
   assert.equal(stats.totalSpend, 643);
+  assert.equal(stats.averageTicketPrice, 643);
   assert.equal(stats.kmTraveled, 84);
 });

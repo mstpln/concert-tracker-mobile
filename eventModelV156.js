@@ -209,21 +209,22 @@
 
   function resolveEventTicketCost(records) {
     const quantity = resolveEventTicketQuantity(records);
-    const prices = scalarResolution(records, (record) => numericField(record, 'ticketPrice'), (value) => Number.isFinite(value) && value >= 0);
-    const totals = (records || []).map((record) => {
+    const contributions = (records || []).map((record) => {
       const price = numericField(record, 'ticketPrice');
       if (!Number.isFinite(price) || price < 0) return null;
       const ownQuantity = numericField(record, 'ticketQuantity');
       const qty = Number.isInteger(ownQuantity) && ownQuantity > 0 ? ownQuantity : (quantity.value || 1);
-      return price * qty;
-    }).filter((value) => value !== null);
-    const uniqueTotals = [...new Set(totals)];
+      return { price, total: price * qty };
+    }).filter(Boolean);
+    if (!contributions.length) {
+      return { value: null, unitPrice: null, conflict: quantity.conflict, knownCount: 0, values: [] };
+    }
     return {
-      value: uniqueTotals.length ? Math.min(...uniqueTotals) : null,
-      unitPrice: prices.value,
-      conflict: prices.conflict || quantity.conflict || uniqueTotals.length > 1,
-      knownCount: totals.length,
-      values: uniqueTotals,
+      value: contributions.reduce((sum, contribution) => sum + contribution.total, 0),
+      unitPrice: contributions.reduce((sum, contribution) => sum + contribution.price, 0),
+      conflict: quantity.conflict,
+      knownCount: contributions.length,
+      values: contributions.map((contribution) => contribution.total),
     };
   }
 
