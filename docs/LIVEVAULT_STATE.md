@@ -4,7 +4,7 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged baseline is **v156 / AUB3**. The current branch prepares **v157 / AUB3 Correction Build**. It preserves stable concert IDs, the internal `myconcerts` identity, provider boundaries, ticket ownership and all production-data boundaries while replacing the normal explicit shared-event linking workflow with conservative read-time automatic grouping for obvious attended same-event performances.
+The current merged baseline is **v157 / AUB3 Correction Build**. It preserves stable concert IDs, the internal `myconcerts` identity, provider boundaries, ticket ownership and all production-data boundaries while using conservative read-time automatic grouping for obvious attended same-event performances instead of the normal explicit shared-event linking workflow.
 
 ### v149 Start stats cards
 
@@ -107,4 +107,4 @@ v157 does not change provider ownership, provider matching, schedules, quotas, b
 
 ## Safety and release boundary
 
-Automated browser QA uses only synthetic fixtures and the QA fake backend. The v157 AUB3 Correction branch does not authorize or perform a production provider call, production research/data-maintenance workflow, production R2 read/write, production-data migration, Worker deployment, production smoke run or deployment. Merge remains separately authorized by the explicit user command `Merge it`.
+Automated browser QA uses only synthetic fixtures and the QA fake backend. Merged v157 did not authorize or perform a production provider call, production research/data-maintenance workflow, production R2 read/write, production-data migration, Worker deployment, production smoke run or deployment. Any future production action remains separately authorized.
