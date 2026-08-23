@@ -190,13 +190,27 @@
 
   function normalizeDocument(records) {
     if (!Array.isArray(records)) return [];
-    const seen = new Set();
     const out = [];
     for (const record of records) {
       const normalized = normalizeRecord(record);
-      if (!normalized || seen.has(normalized.venueId)) continue;
-      seen.add(normalized.venueId);
-      out.push(normalized);
+      if (!normalized) continue;
+      const duplicateIndexes = [];
+      for (let index = 0; index < out.length; index += 1) {
+        if (out[index].venueId === normalized.venueId) duplicateIndexes.push(index);
+      }
+      if (!duplicateIndexes.length) {
+        out.push(normalized);
+        continue;
+      }
+      let merged = false;
+      for (const index of duplicateIndexes) {
+        const candidate = mergeDuplicateRecords(out[index], normalized);
+        if (!candidate) continue;
+        out[index] = candidate;
+        merged = true;
+        break;
+      }
+      if (!merged) out.push(normalized);
     }
     return out;
   }
@@ -369,7 +383,7 @@
   function mergeDuplicateRecords(a, b) {
     if (!recordsCanConsolidate(a, b)) return null;
     const primary = recordScore(a) >= recordScore(b) ? { ...a } : { ...b };
-    const secondary = primary.venueId === a.venueId ? b : a;
+    const secondary = primary.venueId === a.venueId && primary !== a ? a : b;
     const merged = { ...secondary, ...primary };
     merged.venueId = primary.venueId;
     const legacyIds = [...(primary.legacyVenueIds || []), ...(secondary.legacyVenueIds || []), secondary.venueId]
