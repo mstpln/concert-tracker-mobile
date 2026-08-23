@@ -78,10 +78,14 @@ test('existing manual capacity is never replaced by conflicting scheduled eviden
     researchedAt: '2026-08-23T12:00:00.000Z',
   });
   assert.equal(record.maxCapacity, 6000);
+  assert.equal(record.officialUrl, undefined);
+  assert.equal(record.address, undefined);
+  assert.equal(record.description, undefined);
   assert.equal(record.researchStatus, 'review_needed');
+  assert.deepEqual(record.sources, ['https://manual.example/facts', 'https://official.example/facts']);
 });
 
-test('latest concurrent incomplete metadata wins and conflicts become review-needed', () => {
+test('latest concurrent incomplete metadata wins and conflicts add provenance only', () => {
   const seed = VenueMetadata.createVenueSeed({ venue: 'Synthetic Arena', city: 'Lund', country: 'Sweden' });
   const latest = {
     ...seed,
@@ -104,7 +108,8 @@ test('latest concurrent incomplete metadata wins and conflicts become review-nee
   const merged = Scheduler.mergeUpdateIntoLatest(latest, staleUpdate);
   assert.equal(merged.maxCapacity, 7000);
   assert.equal(merged.description, 'Latest manually reviewed description.');
-  assert.equal(merged.officialUrl, 'https://official.example/');
+  assert.equal(merged.officialUrl, undefined);
+  assert.equal(merged.address, undefined);
   assert.equal(merged.researchStatus, 'review_needed');
   assert.deepEqual(merged.sources, ['https://latest.example/facts', 'https://scheduled.example/facts']);
 });
