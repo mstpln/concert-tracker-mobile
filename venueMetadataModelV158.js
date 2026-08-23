@@ -36,10 +36,20 @@
     };
   }
 
-  function venueIdFor(value) {
+  function identityKey(value) {
     const parts = identityParts(value);
-    if (!parts.name || !parts.city) return null;
-    return `venue-${fnv1a32(`${parts.name}|${parts.city}|${parts.country}`)}`;
+    return parts.name && parts.city ? `${parts.name}|${parts.city}|${parts.country}` : '';
+  }
+
+  function venueIdFor(value) {
+    const key = identityKey(value);
+    return key ? `venue-${fnv1a32(key)}` : null;
+  }
+
+  function venueIdForAddressVariant(value) {
+    const parts = identityParts(value);
+    const key = identityKey(value);
+    return key && parts.address ? `venue-${fnv1a32(`${key}|${parts.address}`)}` : venueIdFor(value);
   }
 
   function validCapacity(value) {
@@ -128,6 +138,7 @@
       const parts = identityParts(record);
       if (parts.name !== target.name || parts.city !== target.city) return false;
       if (parts.country && target.country && parts.country !== target.country) return false;
+      if (parts.address && target.address && parts.address !== target.address) return false;
       return true;
     });
     if (matches.length <= 1) return matches[0] || null;
@@ -176,6 +187,15 @@
         if (!existing.address && seed.address) existing.address = seed.address;
         continue;
       }
+      const sameIdentity = seeds.filter((candidate) => identityKey(candidate) === identityKey(seed));
+      if (sameIdentity.length && seed.address) {
+        for (const candidate of sameIdentity) {
+          const candidateParts = identityParts(candidate);
+          if (candidateParts.address && candidate.venueId === venueIdFor(candidate)) candidate.venueId = venueIdForAddressVariant(candidate);
+        }
+        seed.venueId = venueIdForAddressVariant(seed);
+      }
+      if (seeds.some((candidate) => candidate.venueId === seed.venueId)) continue;
       seeds.push(seed);
     }
     return seeds;
@@ -192,6 +212,7 @@
     RESEARCH_STATUSES,
     normalizeIdentityText,
     venueIdFor,
+    venueIdForAddressVariant,
     validCapacity,
     formatCapacity,
     capacityLabel,
