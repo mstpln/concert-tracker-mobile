@@ -24,9 +24,13 @@ function createVenueMaintenanceClient(options = {}) {
 }
 
 function venueBackfillReady(venues) {
-  return Array.isArray(venues)
-    && venues.length > 0
-    && VenueMetadata.normalizeDocument(venues).length === venues.length;
+  if (!Array.isArray(venues) || venues.length === 0) return false;
+  const ids = new Set();
+  for (const record of venues) {
+    if (!VenueMetadata.recordIsValid(record) || ids.has(record.venueId)) return false;
+    ids.add(record.venueId);
+  }
+  return true;
 }
 
 function isEuCountry(value) {
@@ -328,6 +332,27 @@ function changedVenueCount(before, after) {
   return changed;
 }
 
+async function writeWithOneConflictRetry(client, updates) {
+  let latest = await client.readJson('venues.json', []);
+  if (!venueBackfillReady(latest)) throw new Error('Refusing scheduled venue write: latest venues.json is empty or structurally invalid.');
+  if (!updates.length) return { changed: 0, venues: latest };
+  let merged = applyVenueUpdates(latest, updates);
+  let changed = changedVenueCount(latest, merged);
+  if (!changed) return { changed: 0, venues: latest };
+  try {
+    await client.writeJsonStrict('venues.json', merged);
+  } catch (error) {
+    if (error?.code !== 'ETAG_CONFLICT') throw error;
+    latest = await client.readJson('venues.json', []);
+    if (!venueBackfillReady(latest)) throw new Error('Refusing scheduled venue conflict retry: latest venues.json is empty or structurally invalid.');
+    merged = applyVenueUpdates(latest, updates);
+    changed = changedVenueCount(latest, merged);
+    if (!changed) return { changed: 0, venues: latest };
+    await client.writeJsonStrict('venues.json', merged);
+  }
+  return { changed, venues: merged };
+}
+
 async function processTargets({ targets, usage, search = tavily.search, chatJson = groq.chatJson, now = () => new Date().toISOString() }) {
   const updates = [];
   let attempted = 0;
@@ -364,25 +389,6 @@ async function processTargets({ targets, usage, search = tavily.search, chatJson
     }
   }
   return { updates, attempted, completed };
-}
-
-async function writeWithOneConflictRetry(client, updates) {
-  if (!updates.length) return { changed: 0, venues: await client.readJson('venues.json', []) };
-  let latest = await client.readJson('venues.json', []);
-  let merged = applyVenueUpdates(latest, updates);
-  let changed = changedVenueCount(latest, merged);
-  if (!changed) return { changed: 0, venues: latest };
-  try {
-    await client.writeJsonStrict('venues.json', merged);
-  } catch (error) {
-    if (error?.code !== 'ETAG_CONFLICT') throw error;
-    latest = await client.readJson('venues.json', []);
-    merged = applyVenueUpdates(latest, updates);
-    changed = changedVenueCount(latest, merged);
-    if (!changed) return { changed: 0, venues: latest };
-    await client.writeJsonStrict('venues.json', merged);
-  }
-  return { changed, venues: merged };
 }
 
 async function main() {
