@@ -119,5 +119,5 @@ test('source merge deduplicates and enforces the venue schema maximum', () => {
   const merged = Scheduler.mergeSourceUrls(existing, [existing[0], 'https://new.example/facts']);
   assert.equal(merged.length, 16);
   assert.equal(merged[0], existing[0]);
-  assert.equal(merged.includes('https://new.example/facts'), false);
+  assert.equal(new Set(merged).has('https://new.example/facts'), false);
 });
