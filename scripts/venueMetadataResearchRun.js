@@ -199,11 +199,13 @@ function buildResearchedRecord({ seed, existing, extracted, searchResults, resea
     sources,
   };
 
-  if (!positiveCapacity(candidate.maxCapacity) && extractedCapacity) candidate.maxCapacity = extractedCapacity;
-  if (!httpsUrl(candidate.officialUrl) && extractedOfficialUrl) candidate.officialUrl = extractedOfficialUrl;
-  if (!normalizedAddress(candidate.address) && extractedAddress) candidate.address = extractedAddress;
-  if (!(typeof candidate.description === 'string' && candidate.description.trim()) && extractedDescription) {
-    candidate.description = extractedDescription;
+  if (!identityConflict) {
+    if (!positiveCapacity(candidate.maxCapacity) && extractedCapacity) candidate.maxCapacity = extractedCapacity;
+    if (!httpsUrl(candidate.officialUrl) && extractedOfficialUrl) candidate.officialUrl = extractedOfficialUrl;
+    if (!normalizedAddress(candidate.address) && extractedAddress) candidate.address = extractedAddress;
+    if (!(typeof candidate.description === 'string' && candidate.description.trim()) && extractedDescription) {
+      candidate.description = extractedDescription;
+    }
   }
 
   candidate.researchStatus = identityConflict ? 'review_needed' : 'partial';
@@ -255,24 +257,27 @@ function mergeUpdateIntoLatest(latest, update) {
     || conflictingCapacity(latest.maxCapacity, update.maxCapacity)
     || conflictingOfficialUrl(latest.officialUrl, update.officialUrl);
   const stickyReview = latest.researchStatus === 'review_needed';
+  const lockedForReview = conflict || stickyReview;
   const merged = {
     ...latest,
     venueId: latest.venueId,
     sources: mergeSourceUrls(latest.sources, update.sources),
   };
-  if (!positiveCapacity(merged.maxCapacity) && positiveCapacity(update.maxCapacity)) merged.maxCapacity = update.maxCapacity;
-  if (!httpsUrl(merged.officialUrl) && httpsUrl(update.officialUrl)) merged.officialUrl = update.officialUrl;
-  if (!normalizedAddress(merged.address) && normalizedAddress(update.address)) merged.address = update.address;
-  if (!(typeof merged.description === 'string' && merged.description.trim())
-      && typeof update.description === 'string' && update.description.trim()) {
-    merged.description = update.description;
+  if (!lockedForReview) {
+    if (!positiveCapacity(merged.maxCapacity) && positiveCapacity(update.maxCapacity)) merged.maxCapacity = update.maxCapacity;
+    if (!httpsUrl(merged.officialUrl) && httpsUrl(update.officialUrl)) merged.officialUrl = update.officialUrl;
+    if (!normalizedAddress(merged.address) && normalizedAddress(update.address)) merged.address = update.address;
+    if (!(typeof merged.description === 'string' && merged.description.trim())
+        && typeof update.description === 'string' && update.description.trim()) {
+      merged.description = update.description;
+    }
+    if (update.researchedAt) merged.researchedAt = update.researchedAt;
   }
-  if (!conflict && !stickyReview && update.researchedAt) merged.researchedAt = update.researchedAt;
   merged.schemaVersion = 1;
-  merged.researchStatus = conflict || stickyReview ? 'review_needed' : update.researchStatus;
+  merged.researchStatus = lockedForReview ? 'review_needed' : update.researchStatus;
   const normalized = VenueMetadata.normalizeRecord(merged);
   if (!normalized) return latest;
-  if (conflict || stickyReview) normalized.researchStatus = 'review_needed';
+  if (lockedForReview) normalized.researchStatus = 'review_needed';
   else if (VenueMetadata.isComplete({ ...normalized, researchStatus: 'complete' })) normalized.researchStatus = 'complete';
   return normalized;
 }
