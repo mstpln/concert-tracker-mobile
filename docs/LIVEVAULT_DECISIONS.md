@@ -233,3 +233,13 @@ The browser may read reusable venue metadata but does not write it. `worker.js` 
 **Reason:** Venue facts should be fetched once and safely reused for future concerts without creating duplicate or contradictory values on performance records, while provenance and provider credentials should remain out of the visible UI and browser write path.
 
 **Consequence:** Concert stable IDs, attendance, tickets, ratings, notes, lineup roles and unknown fields remain untouched by venue metadata. Missing metadata simply produces no venue-capacity line. Any production `venues.json` creation/backfill, Worker deployment, provider execution or future scheduled enrichment remains a separately authorized action.
+
+### v159 schedules venue enrichment but keeps activation separate
+
+**Decision:** Reuse the existing twice-monthly focused Tavily/Groq workflow for attended-only venue metadata research. The venue lane considers only venues referenced by `attending: true` concerts, skips structurally complete records, prioritizes upcoming attended venues, and caps each run at 10 unique venues. Each venue uses one Tavily search plus at most one Groq extraction under the existing UsageTracker caps and pacing. Groq may structure only the supplied search evidence; source URLs must come from that evidence, conflicting known addresses or identity evidence fail closed, and unsuccessful research never fabricates venue facts.
+
+`venues.json` remains writable only with the data-maintenance credential. The scheduler rereads latest venue state, preserves stable IDs and unknown fields, refuses to overwrite a venue that became complete concurrently, uses strict conditional ETag writes, and permits one bounded reread/retry after a 412. The scheduled lane also requires a non-empty structurally valid manual `venues.json` backfill before it performs provider work. The workflow step remains disabled unless repository variable `VENUE_METADATA_RESEARCH_ENABLED` is explicitly set to `true`.
+
+**Reason:** The manual backfill should establish the high-quality initial venue corpus; scheduled research should then perform only bounded maintenance for newly attended or incomplete venues without granting ordinary automation venue-write authority or allowing a merge to start production research automatically.
+
+**Consequence:** Merging v159 does not authorize or execute venue provider calls or venue-data writes. The manual backfill must first be validated and uploaded, and enabling `VENUE_METADATA_RESEARCH_ENABLED` plus ensuring the maintenance credential is available is a separate production activation requiring explicit authorization. `concerts.json` remains read-only to venue enrichment, complete venue records are reused, and ambiguity remains visible rather than guessed.
