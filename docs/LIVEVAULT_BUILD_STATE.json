@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v156",
-  "serviceWorkerCacheVersion": "v156",
+  "appVersion": "v157",
+  "serviceWorkerCacheVersion": "v157",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 22,
@@ -66,6 +66,7 @@
     "startStatsV149.js",
     "appUpdateAub1V153.js",
     "appUpdateAub1V153Corrections.js",
+    "appUpdateAub3CorrectionV157.js",
     "lineupRoleV155.js",
     "eventModelV156.js",
     "listeningReviewRollout.js",
