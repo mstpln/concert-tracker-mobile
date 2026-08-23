@@ -42,6 +42,28 @@ async function seedVenueMetadata(page) {
   });
 }
 
+async function makeGroupedLongVenueFixture(page) {
+  const longVenue = 'The Extremely Long Synthetic International Concert Hall and Cultural Centre';
+  await page.evaluate((venueName) => {
+    const data = JSON.parse(localStorage.getItem('livevault-qa:data'));
+    const showDay = data.concerts.find((record) => record.id === 'qa-show-day');
+    if (showDay) showDay.attending = false;
+    const shared = data.concerts.filter((record) => record.id.startsWith('qa-group-'));
+    for (const record of shared) {
+      delete record.eventGroupId;
+      record.attending = true;
+      record.date = '2027-07-17';
+      record.venue = venueName;
+      record.city = 'Sample City';
+      record.country = 'Denmark';
+      record.venueAddress = '123 Synthetic Avenue, 2300 Sample City, Denmark';
+    }
+    localStorage.setItem('livevault-qa:data', JSON.stringify(data));
+  }, longVenue);
+  await page.reload();
+  return longVenue;
+}
+
 test('v158 shows capacity on upcoming/past cards and Next Concert without changing the ticket shell', async ({ page }, testInfo) => {
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await openApp(page, testInfo);
@@ -111,4 +133,41 @@ test('v158 hides unknown capacity without reserving a placeholder', async ({ pag
   await expect(page.locator('.venue-max-capacity')).toHaveCount(0);
   await expect(page.locator('body')).not.toContainText('Max Capacity: Unknown');
   await expect(page.locator('body')).not.toContainText('Max Capacity: N/A');
+});
+
+test('v158 grouped Next Concert and long venue cards remain safe in mobile dark and desktop light', async ({ page }, testInfo) => {
+  const errors = []; page.on('pageerror', (error) => errors.push(error.message));
+  await openApp(page, testInfo);
+  const longVenue = await makeGroupedLongVenueFixture(page);
+  const seeded = await seedVenueMetadata(page);
+
+  await expect(page.locator('#countdown-card .countdown-v156-supports')).toBeVisible();
+  await expect(page.locator('#countdown-card .venue-max-capacity-next')).toHaveText(seeded.nextCapacity);
+  await expect(page.locator('#countdown-card .countdown-ticket-outline')).toBeVisible();
+
+  await page.locator('#tabbar [data-tab="concerts"]').click();
+  await page.getByRole('button', { name: 'Venues' }).click();
+  const venueCard = page.locator('.venue-metadata-list-card').filter({ hasText: longVenue }).first();
+  await expect(venueCard).toBeVisible();
+  await expect(venueCard.locator('.venue-card-max-capacity')).toHaveText(seeded.nextCapacity);
+  await expect(venueCard.locator('.row-chevron')).toBeVisible();
+
+  for (const scenario of [
+    { width: 375, colorScheme: 'dark' },
+    { width: 1280, colorScheme: 'light' },
+  ]) {
+    await page.setViewportSize({ width: scenario.width, height: 920 });
+    await page.emulateMedia({ colorScheme: scenario.colorScheme, reducedMotion: 'reduce' });
+    await expect(venueCard.locator('.row-name')).toContainText(longVenue);
+    await expect(venueCard.locator('.venue-card-max-capacity')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    const noCollision = await venueCard.evaluate((card) => {
+      const name = card.querySelector('.row-name').getBoundingClientRect();
+      const chevron = card.querySelector('.row-chevron').getBoundingClientRect();
+      const capacity = card.querySelector('.venue-card-max-capacity').getBoundingClientRect();
+      return name.right <= chevron.left + 1 && capacity.top >= chevron.bottom - 2;
+    });
+    expect(noCollision).toBe(true);
+  }
+  expect(errors).toEqual([]);
 });
