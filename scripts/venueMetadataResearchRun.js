@@ -259,9 +259,14 @@ function unresolvedRecord(seed, existing, researchedAt) {
 }
 
 function sameIdentity(a, b) {
-  const left = VenueMetadata.venueIdFor(a);
-  const right = VenueMetadata.venueIdFor(b);
-  return !!left && left === right;
+  const leftName = VenueMetadata.normalizeIdentityText(a?.name);
+  const rightName = VenueMetadata.normalizeIdentityText(b?.name);
+  const leftCity = VenueMetadata.canonicalCityKey(a?.city);
+  const rightCity = VenueMetadata.canonicalCityKey(b?.city);
+  if (!leftName || leftName !== rightName || !leftCity || leftCity !== rightCity) return false;
+  const leftCountry = VenueMetadata.canonicalCountryKey(a?.country);
+  const rightCountry = VenueMetadata.canonicalCountryKey(b?.country);
+  return !leftCountry || !rightCountry || leftCountry === rightCountry;
 }
 
 function mergeUpdateIntoLatest(latest, update) {
