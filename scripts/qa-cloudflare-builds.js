@@ -9,7 +9,7 @@ function assert(condition, message) {
 const configText = fs.readFileSync('wrangler.jsonc', 'utf8');
 const config = JSON.parse(configText);
 assert(config.name === 'concert-tracker-api', 'Worker name must match the existing production Worker');
-assert(config.main === './workerV158.js', 'Worker entry point must include the reviewed v158 venue metadata wrapper');
+assert(config.main === './worker.js', 'Worker entry point must remain the reviewed protected Worker');
 assert(/^\d{4}-\d{2}-\d{2}$/.test(config.compatibility_date), 'compatibility_date must be explicit');
 assert(config.workers_dev === true, 'workers.dev route must remain enabled');
 assert(config.preview_urls === true, 'preview URLs must remain enabled for safe branch builds');
@@ -24,12 +24,10 @@ assert(worker.includes("upstream.searchParams.set('inc','release-groups')"), 'Mu
 assert(worker.includes("'User-Agent':MUSICBRAINZ_USER_AGENT"), 'MusicBrainz requests must carry the reviewed meaningful User-Agent');
 assert(worker.includes("if(role!=='browser')return response('Forbidden',{status:403})"), 'MusicBrainz context route must remain browser-role only');
 assert(worker.includes('MUSICBRAINZ_TIMEOUT_MS = 10000'), 'MusicBrainz provider request must remain timeout-bounded');
-
-const venueWorker = fs.readFileSync('workerV158.js', 'utf8');
-assert(venueWorker.includes("import baseWorker from './worker.js'"), 'venue wrapper must delegate existing Worker routes');
-assert(venueWorker.includes("const VENUE_FILE = 'venues.json'"), 'venue wrapper must expose only the reviewed venue document');
-assert(venueWorker.includes("if (role !== 'data-maintenance') return response('Forbidden', { status: 403 })"), 'venue metadata writes must remain data-maintenance only');
-assert(!/TAVILY_API_KEY|GROQ_API_KEY/.test(venueWorker), 'venue Worker wrapper must not embed provider secrets');
+assert(worker.includes("'venues.json'"), 'venue metadata must use the primary Worker allowlist');
+assert(worker.includes("filename==='venues.json'&&request.method==='PUT'&&role!=='data-maintenance'"), 'venue metadata writes must remain data-maintenance only');
+assert(worker.includes('requiredWriteCondition(request,env,filename)'), 'venue metadata writes must retain protected conditional-write handling');
+assert(!/TAVILY_API_KEY|GROQ_API_KEY/.test(worker), 'Worker must not embed venue research provider secrets');
 
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 assert(packageJson.scripts['qa:cloudflare-builds'] === 'node scripts/qa-cloudflare-builds.js', 'package script must run the Cloudflare Builds guard');
