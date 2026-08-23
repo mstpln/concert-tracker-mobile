@@ -89,8 +89,13 @@ test('same venue id normalization preserves compatible secondary-only fields', (
   ]);
   assert.equal(rows.length, 1);
   assert.deepEqual(rows[0].futureField, { preserve: true });
-  assert.ok(rows[0].sources.includes('https://example-arena.test/facts'));
-  assert.ok(rows[0].sources.includes('https://example-arena.test/secondary-facts'));
+  assert.deepEqual(
+    new Set(rows[0].sources),
+    new Set([
+      'https://example-arena.test/facts',
+      'https://example-arena.test/secondary-facts',
+    ]),
+  );
 });
 
 test('same venue id normalization preserves conflicting future-field records separately', () => {
