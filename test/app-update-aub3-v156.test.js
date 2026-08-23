@@ -107,26 +107,37 @@ test('v157 same-role ordering remains deterministic', () => {
   assert.deepEqual(EventModel.orderPerformances(records).map((record) => record.id), ['s2', 's1', 'h']);
 });
 
-test('v157 event ticket, cost and journey resolvers deduplicate and never sum conflicts', () => {
+test('v160 event ticket cost sums every performance contribution while quantity and journey conflicts remain conservative', () => {
   const duplicate = [base(), base({ id: 'b' })];
   assert.deepEqual(EventModel.resolveEventTicketQuantity(duplicate), { value: 4, conflict: false, knownCount: 2, values: [4] });
-  assert.equal(EventModel.resolveEventTicketCost(duplicate).value, 4000);
+  assert.equal(EventModel.resolveEventTicketCost(duplicate).value, 8000);
+  assert.equal(EventModel.resolveEventTicketCost(duplicate).unitPrice, 2000);
+  assert.equal(EventModel.resolveEventTicketCost(duplicate).conflict, false);
   assert.equal(EventModel.resolveEventDistance(duplicate).value, 55);
   const conflict = [base(), base({ id: 'b', ticketQuantity: 2, ticketPrice: 800, distanceKm: 60 })];
   assert.deepEqual(EventModel.resolveEventTicketQuantity(conflict), { value: 2, conflict: true, knownCount: 2, values: [4, 2] });
-  assert.equal(EventModel.resolveEventTicketCost(conflict).value, 1600);
+  assert.equal(EventModel.resolveEventTicketCost(conflict).value, 5600);
+  assert.equal(EventModel.resolveEventTicketCost(conflict).unitPrice, 1800);
   assert.equal(EventModel.resolveEventTicketCost(conflict).conflict, true);
   assert.equal(EventModel.resolveEventDistance(conflict).value, 55);
   const stats = dlConcertStats(conflict.map((record) => ({ ...record, date: '2025-10-18' })));
   assert.equal(stats.eventMetricConflictCount, 1);
-  assert.equal(stats.totalSpend, 1600);
+  assert.equal(stats.totalSpend, 5600);
+  const split = [
+    base({ id: 's1', ticketQuantity: 1, ticketPrice: 200 }),
+    base({ id: 's2', ticketQuantity: 1, ticketPrice: 300 }),
+    base({ id: 'h', lineupRole: 'headliner', ticketQuantity: 1, ticketPrice: 800 }),
+  ];
+  assert.equal(EventModel.resolveEventTicketCost(split).value, 1300);
+  assert.equal(EventModel.resolveEventTicketCost(split).unitPrice, 1300);
+  assert.equal(EventModel.resolveEventTicketCost(split).conflict, false);
   const missing = [base({ ticketQuantity: undefined, ticketPrice: undefined, distanceKm: undefined }), base({ id: 'b', ticketQuantity: null, ticketPrice: null, distanceKm: null })];
   assert.equal(EventModel.resolveEventTicketQuantity(missing).value, null);
   assert.equal(EventModel.resolveEventTicketCost(missing).value, null);
   assert.equal(EventModel.resolveEventDistance(missing).value, null);
 });
 
-test('v157 synthetic shared night is one event, two performances and Support first', () => {
+test('v160 synthetic shared night is one event, two performances and adds free support plus paid headliner correctly', () => {
   const support = base({ id: 'synthetic-support', bandId: 'band-support', bandName: 'Synthetic Support', date: '2025-11-06', venue: 'Synthetic Bio', city: 'Copenhagen', ticketPrice: 0, ticketQuantity: 1, distanceKm: 42 });
   const headliner = base({ id: 'synthetic-headliner', bandId: 'band-headliner', bandName: 'Synthetic Headliner', date: '2025-11-06', venue: 'Synthetic Bio', city: 'Copenhagen', lineupRole: 'headliner', ticketPrice: 643, ticketQuantity: 1, distanceKm: 42 });
   const ordered = dlMyConcerts([headliner, support]).past;
@@ -135,7 +146,8 @@ test('v157 synthetic shared night is one event, two performances and Support fir
   assert.equal(stats.totalShows, 1);
   assert.equal(stats.performanceCount, 2);
   assert.equal(stats.kmTraveled, 84);
-  assert.notEqual(stats.totalSpend, 643);
+  assert.equal(stats.totalSpend, 643);
+  assert.equal(stats.averageTicketPrice, 643);
 });
 
 test('AUB3 malformed explicit groups are detected and presentation supports multiple support acts', () => {
@@ -189,7 +201,7 @@ test('AUB3 focused Tavily writes preserve grouping, lineup and unknown user fiel
   assert.deepEqual(payload[0].unknownFutureField, { keep: true });
 });
 
-test('AUB3 stats keep performances separate while event totals deduplicate explicit and automatic groups', () => {
+test('AUB3 stats keep performances separate while event ticket contributions aggregate into event totals', () => {
   const grouped = [
     base({ date: '2025-10-18', eventGroupId: 'event-12345678' }),
     base({ id: 'b', bandId: 'band-b', bandName: 'Headliner', date: '2025-10-18', lineupRole: 'headliner', eventGroupId: 'event-12345678' }),
@@ -201,8 +213,8 @@ test('AUB3 stats keep performances separate while event totals deduplicate expli
   assert.equal(stats.performanceCount, 3);
   assert.equal(stats.totalShows, 2);
   assert.equal(stats.totalUniqueArtists, 3);
-  assert.equal(stats.totalSpend, 8000);
-  assert.equal(stats.averageTicketPrice, 4000);
+  assert.equal(stats.totalSpend, 12000);
+  assert.equal(stats.averageTicketPrice, 6000);
   assert.equal(stats.kmTraveled, 220);
   assert.equal(stats.uniqueVenues, 1);
   assert.equal(stats.uniqueCities, 1);
