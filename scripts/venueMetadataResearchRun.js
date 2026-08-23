@@ -186,7 +186,8 @@ function buildResearchedRecord({ seed, existing, extracted, searchResults, resea
   const dataConflict = conflictingAddress(knownAddress, extractedAddress)
     || conflictingCapacity(base.maxCapacity, extractedCapacity)
     || conflictingOfficialUrl(base.officialUrl, extractedOfficialUrl);
-  const identityConflict = extracted?.identityConflict === true || dataConflict;
+  const stickyReview = existing?.researchStatus === 'review_needed';
+  const identityConflict = stickyReview || (hasPersistedNewEvidence && extracted?.identityConflict === true) || dataConflict;
   const candidate = {
     ...base,
     venueId: existing?.venueId || seed.venueId,
@@ -222,10 +223,11 @@ function buildResearchedRecord({ seed, existing, extracted, searchResults, resea
 }
 
 function incompleteResearchRecord(seed, existing, researchedAt, status) {
+  const stickyStatus = existing?.researchStatus === 'review_needed' ? 'review_needed' : status;
   return VenueMetadata.normalizeRecord({
     ...(existing || seed),
     venueId: existing?.venueId || seed.venueId,
-    researchStatus: status,
+    researchStatus: stickyStatus,
     researchedAt,
     sources: Array.isArray(existing?.sources) ? existing.sources : [],
     schemaVersion: 1,
@@ -252,6 +254,7 @@ function mergeUpdateIntoLatest(latest, update) {
   const conflict = conflictingAddress(latest.address, update.address)
     || conflictingCapacity(latest.maxCapacity, update.maxCapacity)
     || conflictingOfficialUrl(latest.officialUrl, update.officialUrl);
+  const stickyReview = latest.researchStatus === 'review_needed';
   const merged = {
     ...latest,
     venueId: latest.venueId,
@@ -264,12 +267,12 @@ function mergeUpdateIntoLatest(latest, update) {
       && typeof update.description === 'string' && update.description.trim()) {
     merged.description = update.description;
   }
-  if (!conflict && update.researchedAt) merged.researchedAt = update.researchedAt;
+  if (!conflict && !stickyReview && update.researchedAt) merged.researchedAt = update.researchedAt;
   merged.schemaVersion = 1;
-  merged.researchStatus = conflict ? 'review_needed' : update.researchStatus;
+  merged.researchStatus = conflict || stickyReview ? 'review_needed' : update.researchStatus;
   const normalized = VenueMetadata.normalizeRecord(merged);
   if (!normalized) return latest;
-  if (conflict) normalized.researchStatus = 'review_needed';
+  if (conflict || stickyReview) normalized.researchStatus = 'review_needed';
   else if (VenueMetadata.isComplete({ ...normalized, researchStatus: 'complete' })) normalized.researchStatus = 'complete';
   return normalized;
 }
