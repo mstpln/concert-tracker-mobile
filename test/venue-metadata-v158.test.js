@@ -93,3 +93,15 @@ test('primary Worker owns venue storage and restricts venue writes to data-maint
   assert.doesNotMatch(worker, /TAVILY_API_KEY|GROQ_API_KEY/);
   assert.match(wrangler, /"main": "\.\/worker\.js"/);
 });
+
+test('optional venue metadata is not a production smoke prerequisite before backfill', () => {
+  const worker = fs.readFileSync('worker.js', 'utf8');
+  const match = worker.match(/QA_SMOKE_JSON_ROOT_TYPES = \{[^}]*\}/);
+  assert.ok(match);
+  assert.match(match[0], /'bands\.json':'array'/);
+  assert.match(match[0], /'concerts\.json':'array'/);
+  assert.match(match[0], /'news\.json':'array'/);
+  assert.match(match[0], /'apiUsage\.json':'object'/);
+  assert.doesNotMatch(match[0], /venues\.json/);
+  assert.match(worker, /Object\.entries\(QA_SMOKE_JSON_ROOT_TYPES\)/);
+});
