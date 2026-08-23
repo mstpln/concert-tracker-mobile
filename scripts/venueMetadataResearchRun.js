@@ -121,6 +121,16 @@ function sourceUrlsFromExtraction(extracted, searchResults) {
   return out.slice(0, 16);
 }
 
+function mergeSourceUrls(existingSources, newSources) {
+  const out = [];
+  for (const raw of [...(Array.isArray(existingSources) ? existingSources : []), ...(newSources || [])]) {
+    const url = httpsUrl(raw);
+    if (url && !out.includes(url)) out.push(url);
+    if (out.length >= 16) break;
+  }
+  return out;
+}
+
 function officialUrlFromExtraction(value, searchResults) {
   const url = httpsUrl(value);
   if (!url) return null;
@@ -143,7 +153,7 @@ function normalizedAddress(value) {
 
 function buildResearchedRecord({ seed, existing, extracted, searchResults, researchedAt }) {
   const base = { ...(existing || seed) };
-  const sources = sourceUrlsFromExtraction(extracted, searchResults);
+  const sources = mergeSourceUrls(base.sources, sourceUrlsFromExtraction(extracted, searchResults));
   const extractedAddress = typeof extracted?.address === 'string' && extracted.address.trim() ? extracted.address.trim() : null;
   const knownAddress = base.address || seed.address || null;
   const addressConflict = !!(
@@ -347,6 +357,7 @@ module.exports = {
   venueSearchQuery,
   safeSearchResults,
   extractionPrompts,
+  mergeSourceUrls,
   buildResearchedRecord,
   temporaryFailureRecord,
   unresolvedRecord,
