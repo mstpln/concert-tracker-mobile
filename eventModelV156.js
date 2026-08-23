@@ -28,10 +28,10 @@
     return `event-${token}`;
   }
 
-  // Multi-performance event context deliberately fails closed. In particular,
-  // a missing city is not evidence: two normalized empty strings must never
-  // make two performances look like the same real-world event.
-  function validateEventGroup(records) {
+  // Persisted v156 relationships stay backward compatible: missing city is
+  // allowed, while two different known cities are still a conflict. Automatic
+  // v157 inference passes requireCity=true because absence is not evidence.
+  function validateEventGroup(records, { requireCity = false } = {}) {
     const list = records || [];
     if (!list.length) return { valid: false, reasons: ['empty'] };
     if (list.length === 1) return { valid: true, reasons: [] };
@@ -41,7 +41,7 @@
     const reasons = [];
     if (dates.size !== 1 || list.some((record) => !String(record?.date || '').trim())) reasons.push('date');
     if (venues.size !== 1 || list.some((record) => !normalize(record?.venue))) reasons.push('venue');
-    if (cities.size !== 1 || list.some((record) => !normalize(record?.city))) reasons.push('city');
+    if (requireCity ? (cities.size !== 1 || list.some((record) => !normalize(record?.city))) : cities.size > 1) reasons.push('city');
     return { valid: reasons.length === 0, reasons };
   }
 
@@ -91,7 +91,10 @@
       group.records.push(concert);
       group.indexes.push(index);
     });
-    return [...groups.values()].map((event) => ({ ...event, validation: validateEventGroup(event.records) }));
+    return [...groups.values()].map((event) => ({
+      ...event,
+      validation: validateEventGroup(event.records, { requireCity: event.relationship === 'automatic' }),
+    }));
   }
 
   // Keep every unrelated card in its existing chronological slot. Only the
