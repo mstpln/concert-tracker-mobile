@@ -15,6 +15,12 @@ function createVenueMaintenanceClient(options = {}) {
   return createWorkerClient({ tokenEnv: MAINTENANCE_TOKEN_ENV, ...options });
 }
 
+function venueBackfillReady(venues) {
+  return Array.isArray(venues)
+    && venues.length > 0
+    && VenueMetadata.normalizeDocument(venues).length === venues.length;
+}
+
 function isUpcoming(concert, today) {
   return !!(concert?.attending && typeof concert.date === 'string' && concert.date >= today);
 }
@@ -302,9 +308,13 @@ async function writeWithOneConflictRetry(client, updates) {
 
 async function main() {
   const maintenance = createVenueMaintenanceClient();
-  const [concerts, venues, usage] = await Promise.all([
+  const venues = await maintenance.readJson('venues.json', []);
+  if (!venueBackfillReady(venues)) {
+    console.log('Venue metadata research skipped: a non-empty valid manual venues.json backfill is required before scheduled enrichment.');
+    return;
+  }
+  const [concerts, usage] = await Promise.all([
     browserWorker.readJson('concerts.json', []),
-    maintenance.readJson('venues.json', []),
     UsageTracker.load(),
   ]);
   const targets = dueVenueTargets(concerts, venues);
@@ -332,6 +342,7 @@ module.exports = {
   GROQ_ESTIMATED_TOKENS,
   MAINTENANCE_TOKEN_ENV,
   createVenueMaintenanceClient,
+  venueBackfillReady,
   dueVenueTargets,
   venueSearchQuery,
   safeSearchResults,
