@@ -84,11 +84,12 @@ test('runtime wiring keeps metadata separate from concert records and source evi
   assert.match(css, /right: 16px;[\s\S]*bottom: 14px;/);
 });
 
-test('Worker wrapper allows venue writes only through data-maintenance and does not enable scheduled provider research', () => {
-  const worker = fs.readFileSync('workerV158.js', 'utf8');
+test('primary Worker owns venue storage and restricts venue writes to data-maintenance', () => {
+  const worker = fs.readFileSync('worker.js', 'utf8');
   const wrangler = fs.readFileSync('wrangler.jsonc', 'utf8');
-  assert.match(worker, /role !== 'data-maintenance'/);
-  assert.match(worker, /VENUE_FILE = 'venues\.json'/);
+  assert.match(worker, /ALLOWED_FILES = new Set\(\[[^\]]*'venues\.json'/);
+  assert.match(worker, /filename==='venues\.json'&&request\.method==='PUT'&&role!=='data-maintenance'/);
+  assert.match(worker, /requiredWriteCondition\(request,env,filename\)/);
   assert.doesNotMatch(worker, /TAVILY_API_KEY|GROQ_API_KEY/);
-  assert.match(wrangler, /"main": "\.\/workerV158\.js"/);
+  assert.match(wrangler, /"main": "\.\/worker\.js"/);
 });
