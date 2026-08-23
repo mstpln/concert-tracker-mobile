@@ -28,6 +28,9 @@
     return `event-${token}`;
   }
 
+  // Multi-performance event context deliberately fails closed. In particular,
+  // a missing city is not evidence: two normalized empty strings must never
+  // make two performances look like the same real-world event.
   function validateEventGroup(records) {
     const list = records || [];
     if (!list.length) return { valid: false, reasons: ['empty'] };
@@ -38,44 +41,84 @@
     const reasons = [];
     if (dates.size !== 1 || list.some((record) => !String(record?.date || '').trim())) reasons.push('date');
     if (venues.size !== 1 || list.some((record) => !normalize(record?.venue))) reasons.push('venue');
-    if (cities.size > 1) reasons.push('city');
+    if (cities.size !== 1 || list.some((record) => !normalize(record?.city))) reasons.push('city');
     return { valid: reasons.length === 0, reasons };
   }
 
+  function strongAutomaticContext(record) {
+    if (!record?.attending) return null;
+    const date = String(record.date || '').trim();
+    const venue = normalize(record.venue);
+    const city = normalize(record.city);
+    if (!date || !venue || !city) return null;
+    return { date, venue, city, key: `${date}\u001f${venue}\u001f${city}` };
+  }
+
+  function automaticGroupId(contextKey) {
+    // Deterministic internal ID only. It is returned by the event model so
+    // existing event-level accounting can treat the derived relationship as
+    // one event, but it is never written back to concert records.
+    let hash = 2166136261;
+    for (let i = 0; i < contextKey.length; i += 1) {
+      hash ^= contextKey.charCodeAt(i);
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+    return `event-auto-${hash.toString(36).padStart(8, '0')}`;
+  }
+
+  // v157 keeps v156's persisted eventGroupId relationships intact, while
+  // deriving conservative automatic relationships for otherwise ungrouped
+  // attended performances with exact date + normalized venue + non-empty
+  // matching city. Explicit groups remain authoritative and are never
+  // silently expanded or rewritten by this read-time interpretation.
   function groupConcertPerformances(concerts) {
     const groups = new Map();
     (concerts || []).forEach((concert, index) => {
       const explicit = validGroupId(concert?.eventGroupId);
-      const key = explicit ? `group:${concert.eventGroupId}` : `concert:${concert?.id ?? index}`;
-      if (!groups.has(key)) groups.set(key, { key, eventGroupId: explicit ? concert.eventGroupId : null, records: [], firstIndex: index });
-      groups.get(key).records.push(concert);
+      const context = explicit ? null : strongAutomaticContext(concert);
+      const key = explicit
+        ? `group:${concert.eventGroupId}`
+        : context ? `auto:${context.key}` : `concert:${concert?.id ?? index}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          eventGroupId: explicit ? concert.eventGroupId : (context ? automaticGroupId(context.key) : null),
+          relationship: explicit ? 'explicit' : (context ? 'automatic' : 'single'),
+          records: [], indexes: [], firstIndex: index,
+        });
+      }
+      const group = groups.get(key);
+      group.records.push(concert);
+      group.indexes.push(index);
     });
     return [...groups.values()].map((event) => ({ ...event, validation: validateEventGroup(event.records) }));
   }
 
-  // Keep every unrelated card in its existing stable chronological slot.
-  // Only records occupying slots for the same explicit group exchange places.
+  // Keep every unrelated card in its existing chronological slot. Only the
+  // slots occupied by performances in one valid effective event exchange
+  // places, and same-role order remains stable.
   function orderPerformances(concerts) {
-    const output = [...(concerts || [])];
-    for (const event of groupConcertPerformances(output)) {
-      if (!event.eventGroupId || event.records.length < 2 || !event.validation.valid) continue;
-      const indexes = [];
-      output.forEach((record, index) => { if (record?.eventGroupId === event.eventGroupId) indexes.push(index); });
-      const ordered = stablePerformanceOrder(indexes.map((index) => output[index]));
-      indexes.forEach((index, offset) => { output[index] = ordered[offset]; });
+    const input = [...(concerts || [])];
+    const output = [...input];
+    for (const event of groupConcertPerformances(input)) {
+      if (event.records.length < 2 || !event.validation.valid) continue;
+      const ordered = stablePerformanceOrder(event.records);
+      event.indexes.forEach((index, offset) => { output[index] = ordered[offset]; });
     }
     return output;
   }
 
   function sameCandidateContext(first, second) {
-    if (!first || !second || first.id === second.id) return false;
+    if (!first || !second || first.id === second.id || !first.attending || !second.attending) return false;
+    const firstCity = normalize(first.city);
+    const secondCity = normalize(second.city);
     return !!first.date && first.date === second.date
       && !!normalize(first.venue) && normalize(first.venue) === normalize(second.venue)
-      && normalize(first.city) === normalize(second.city);
+      && !!firstCity && !!secondCity && firstCity === secondCity;
   }
 
   function candidateConcerts(source, concerts) {
-    return (concerts || []).filter((candidate) => candidate?.attending && sameCandidateContext(source, candidate));
+    return (concerts || []).filter((candidate) => sameCandidateContext(source, candidate));
   }
 
   function cleanupSingletonGroup(concerts, groupId) {
@@ -105,7 +148,7 @@
     const source = list.find((record) => String(record?.id) === String(sourceId));
     const target = list.find((record) => String(record?.id) === String(targetId));
     if (!source || !target || source === target) throw new Error('Choose two existing concerts.');
-    if (!sameCandidateContext(source, target)) throw new Error('Only concerts with the same date, venue and city can be linked.');
+    if (!sameCandidateContext(source, target)) throw new Error('Only attended concerts with the same date, venue and non-empty city can be linked.');
     const oldGroup = validGroupId(source.eventGroupId) ? source.eventGroupId : null;
     const sameExistingGroup = validGroupId(source.eventGroupId) && source.eventGroupId === target.eventGroupId;
     let groupId = sameExistingGroup ? source.eventGroupId
@@ -189,15 +232,17 @@
 
   function nextEventPresentation(upcoming) {
     const first = upcoming?.[0];
-    if (!first || !validGroupId(first.eventGroupId)) return first || null;
-    const members = (upcoming || []).filter((record) => record.eventGroupId === first.eventGroupId);
-    return members.length > 1 && validateEventGroup(members).valid ? presentationForEvent(members) : first;
+    if (!first) return null;
+    const firstId = String(first.id);
+    const event = groupConcertPerformances(upcoming || []).find((candidate) => candidate.records.some((record) => String(record?.id) === firstId));
+    return event?.records.length > 1 && event.validation.valid ? presentationForEvent(event.records) : first;
   }
 
   return Object.freeze({
-    validGroupId, createGroupId, validateEventGroup, groupConcertPerformances,
-    stablePerformanceOrder, orderPerformances, sameCandidateContext, candidateConcerts,
-    linkConcerts, unlinkConcert, resolveEventTicketQuantity, resolveEventTicketCost,
-    resolveEventDistance, representativeRecord, presentationForEvent, nextEventPresentation,
+    validGroupId, createGroupId, validateEventGroup, strongAutomaticContext,
+    groupConcertPerformances, stablePerformanceOrder, orderPerformances,
+    sameCandidateContext, candidateConcerts, linkConcerts, unlinkConcert,
+    resolveEventTicketQuantity, resolveEventTicketCost, resolveEventDistance,
+    representativeRecord, presentationForEvent, nextEventPresentation,
   });
 });
