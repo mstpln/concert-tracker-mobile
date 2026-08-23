@@ -190,8 +190,7 @@
       const sameIdentity = seeds.filter((candidate) => identityKey(candidate) === identityKey(seed));
       if (sameIdentity.length && seed.address) {
         for (const candidate of sameIdentity) {
-          const candidateParts = identityParts(candidate);
-          if (candidateParts.address && candidate.venueId === venueIdFor(candidate)) candidate.venueId = venueIdForAddressVariant(candidate);
+          if (identityParts(candidate).address) candidate.venueId = venueIdForAddressVariant(candidate);
         }
         seed.venueId = venueIdForAddressVariant(seed);
       }
