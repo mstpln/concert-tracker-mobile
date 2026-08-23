@@ -151,19 +151,38 @@ function normalizedAddress(value) {
   );
 }
 
+function conflictingCapacity(existing, candidate) {
+  const left = positiveCapacity(existing);
+  const right = positiveCapacity(candidate);
+  return !!(left && right && left !== right);
+}
+
+function conflictingOfficialUrl(existing, candidate) {
+  const left = httpsUrl(existing);
+  const right = httpsUrl(candidate);
+  if (!left || !right) return false;
+  return new URL(left).origin !== new URL(right).origin;
+}
+
+function conflictingAddress(existing, candidate) {
+  const left = normalizedAddress(existing);
+  const right = normalizedAddress(candidate);
+  return !!(left && right && left !== right);
+}
+
 function buildResearchedRecord({ seed, existing, extracted, searchResults, researchedAt }) {
   const base = { ...(existing || seed) };
   const sources = mergeSourceUrls(base.sources, sourceUrlsFromExtraction(extracted, searchResults));
   const extractedAddress = typeof extracted?.address === 'string' && extracted.address.trim() ? extracted.address.trim() : null;
+  const extractedCapacity = positiveCapacity(extracted?.maxCapacity);
+  const extractedOfficialUrl = officialUrlFromExtraction(extracted?.officialUrl, searchResults);
+  const extractedDescription = typeof extracted?.description === 'string' && extracted.description.trim()
+    ? extracted.description.trim().slice(0, 900) : null;
   const knownAddress = base.address || seed.address || null;
-  const addressConflict = !!(
-    knownAddress
-    && extractedAddress
-    && normalizedAddress(knownAddress)
-    && normalizedAddress(extractedAddress)
-    && normalizedAddress(knownAddress) !== normalizedAddress(extractedAddress)
-  );
-  const identityConflict = extracted?.identityConflict === true || addressConflict;
+  const dataConflict = conflictingAddress(knownAddress, extractedAddress)
+    || conflictingCapacity(base.maxCapacity, extractedCapacity)
+    || conflictingOfficialUrl(base.officialUrl, extractedOfficialUrl);
+  const identityConflict = extracted?.identityConflict === true || dataConflict;
   const candidate = {
     ...base,
     venueId: existing?.venueId || seed.venueId,
@@ -175,15 +194,12 @@ function buildResearchedRecord({ seed, existing, extracted, searchResults, resea
     sources,
   };
 
-  const capacity = positiveCapacity(extracted?.maxCapacity);
-  const officialUrl = officialUrlFromExtraction(extracted?.officialUrl, searchResults);
-  const description = typeof extracted?.description === 'string' && extracted.description.trim()
-    ? extracted.description.trim().slice(0, 900) : null;
-
-  if (capacity) candidate.maxCapacity = capacity;
-  if (officialUrl) candidate.officialUrl = officialUrl;
-  if (extractedAddress && !addressConflict) candidate.address = extractedAddress;
-  if (description) candidate.description = description;
+  if (!positiveCapacity(candidate.maxCapacity) && extractedCapacity) candidate.maxCapacity = extractedCapacity;
+  if (!httpsUrl(candidate.officialUrl) && extractedOfficialUrl) candidate.officialUrl = extractedOfficialUrl;
+  if (!normalizedAddress(candidate.address) && extractedAddress) candidate.address = extractedAddress;
+  if (!(typeof candidate.description === 'string' && candidate.description.trim()) && extractedDescription) {
+    candidate.description = extractedDescription;
+  }
 
   candidate.researchStatus = identityConflict ? 'review_needed' : 'partial';
   const normalized = VenueMetadata.normalizeRecord(candidate);
@@ -227,21 +243,48 @@ function sameIdentity(a, b) {
     && (!a?.country || !b?.country || normalize(a.country) === normalize(b.country));
 }
 
+function mergeUpdateIntoLatest(latest, update) {
+  if (!sameIdentity(latest, update)) return latest;
+  const conflict = conflictingAddress(latest.address, update.address)
+    || conflictingCapacity(latest.maxCapacity, update.maxCapacity)
+    || conflictingOfficialUrl(latest.officialUrl, update.officialUrl);
+  const merged = {
+    ...latest,
+    venueId: latest.venueId,
+    sources: mergeSourceUrls(latest.sources, update.sources),
+  };
+  if (!positiveCapacity(merged.maxCapacity) && positiveCapacity(update.maxCapacity)) merged.maxCapacity = update.maxCapacity;
+  if (!httpsUrl(merged.officialUrl) && httpsUrl(update.officialUrl)) merged.officialUrl = update.officialUrl;
+  if (!normalizedAddress(merged.address) && normalizedAddress(update.address)) merged.address = update.address;
+  if (!(typeof merged.description === 'string' && merged.description.trim())
+      && typeof update.description === 'string' && update.description.trim()) {
+    merged.description = update.description;
+  }
+  if (!conflict && update.researchedAt) merged.researchedAt = update.researchedAt;
+  merged.schemaVersion = 1;
+  merged.researchStatus = conflict ? 'review_needed' : update.researchStatus;
+  const normalized = VenueMetadata.normalizeRecord(merged);
+  if (!normalized) return latest;
+  if (conflict) normalized.researchStatus = 'review_needed';
+  else if (VenueMetadata.isComplete({ ...normalized, researchStatus: 'complete' })) normalized.researchStatus = 'complete';
+  return normalized;
+}
+
 function applyVenueUpdates(latestVenues, updates) {
   const out = VenueMetadata.normalizeDocument(latestVenues);
   for (const update of updates) {
     if (!update) continue;
     const byId = out.findIndex((record) => record.venueId === update.venueId);
     if (byId >= 0) {
-      if (VenueMetadata.isComplete(out[byId]) || !sameIdentity(out[byId], update)) continue;
-      out[byId] = VenueMetadata.normalizeRecord({ ...out[byId], ...update, venueId: out[byId].venueId }) || out[byId];
+      if (VenueMetadata.isComplete(out[byId])) continue;
+      out[byId] = mergeUpdateIntoLatest(out[byId], update);
       continue;
     }
     const match = VenueMetadata.findVenueRecord(update, out);
     if (match) {
       const index = out.indexOf(match);
-      if (VenueMetadata.isComplete(match) || !sameIdentity(match, update)) continue;
-      out[index] = VenueMetadata.normalizeRecord({ ...match, ...update, venueId: match.venueId }) || match;
+      if (VenueMetadata.isComplete(match)) continue;
+      out[index] = mergeUpdateIntoLatest(match, { ...update, venueId: match.venueId });
       continue;
     }
     const normalized = VenueMetadata.normalizeRecord(update);
@@ -359,6 +402,7 @@ module.exports = {
   extractionPrompts,
   mergeSourceUrls,
   buildResearchedRecord,
+  mergeUpdateIntoLatest,
   temporaryFailureRecord,
   unresolvedRecord,
   applyVenueUpdates,
