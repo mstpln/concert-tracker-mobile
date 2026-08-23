@@ -156,7 +156,16 @@
   }
 
   function isComplete(record) {
-    return !!record && validCapacity(record.maxCapacity) && !!safeOfficialUrl(record.officialUrl) && typeof record.description === 'string' && !!record.description.trim();
+    return recordIsValid(record)
+      && record.researchStatus === 'complete'
+      && validCapacity(record.maxCapacity)
+      && !!safeOfficialUrl(record.officialUrl)
+      && typeof record.description === 'string'
+      && !!record.description.trim()
+      && typeof record.researchedAt === 'string'
+      && Number.isFinite(Date.parse(record.researchedAt))
+      && Array.isArray(record.sources)
+      && record.sources.length > 0;
   }
 
   function createVenueSeed(concert) {
