@@ -19,6 +19,8 @@ const EU_COUNTRY_KEYS = new Set([
   'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
 ].map((value) => VenueMetadata.normalizeIdentityText(value)));
 
+let sharedUsage = null;
+
 function createVenueMaintenanceClient(options = {}) {
   return createWorkerClient({ tokenEnv: MAINTENANCE_TOKEN_ENV, ...options });
 }
@@ -402,6 +404,7 @@ async function main() {
     browserWorker.readJson('concerts.json', []),
     UsageTracker.load(),
   ]);
+  sharedUsage = usage;
   const targets = dueVenueTargets(concerts, venues);
   const result = await processTargets({ targets, usage });
   const write = await writeWithOneConflictRetry(maintenance, result.updates);
@@ -417,8 +420,15 @@ async function main() {
   console.log(`Venue metadata run complete. Due ${targets.length}; attempted ${result.attempted}; completed ${result.completed}; changed ${write.changed}.`);
 }
 
-if (require.main === module) main().catch((error) => {
+if (require.main === module) main().catch(async (error) => {
   console.error('Venue metadata research failed:', error.message);
+  try {
+    const usage = sharedUsage || await UsageTracker.load();
+    usage.finishRun({ mode: 'venue-metadata-only', status: 'error', error: error.message });
+    await usage.save();
+  } catch (saveError) {
+    console.error('Additionally failed to save venue metadata usage error state:', saveError.message);
+  }
   process.exitCode = 1;
 });
 
