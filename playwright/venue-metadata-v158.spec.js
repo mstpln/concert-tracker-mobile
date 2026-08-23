@@ -9,6 +9,11 @@ async function openApp(page, testInfo) {
 
 async function seedVenueMetadata(page) {
   return page.evaluate(() => {
+    // This regression is specifically for the normal future-event ticket with
+    // a visible quantity pill. Keep the synthetic show-day fixture out of the
+    // Next Concert slot so the four-ticket grouped event exercises the overlap.
+    const showDay = concerts.find((concert) => concert.id === 'qa-show-day');
+    if (showDay) showDay.attending = false;
     const live = concerts.filter((concert) => bands.some((band) => band.id === concert.bandId));
     const { upcoming, past } = dlMyConcerts(live);
     const next = EventModelV156.nextEventPresentation(upcoming);
@@ -86,6 +91,7 @@ test('v158 shows capacity on upcoming/past cards and Next Concert without changi
   const nextCapacity = page.locator('#countdown-card .venue-max-capacity-next');
   await expect(nextCapacity).toHaveText(seeded.nextCapacity);
   await expect(page.locator('#countdown-card .countdown-ticket-outline')).toBeVisible();
+  await expect(page.locator('#countdown-card .countdown-v140-ticket-count strong')).toHaveText('4 TICKETS');
 
   for (const width of [375, 480, 1280]) {
     await page.setViewportSize({ width, height: 920 });
@@ -94,7 +100,7 @@ test('v158 shows capacity on upcoming/past cards and Next Concert without changi
       const card = document.querySelector('#countdown-card');
       const capacity = card?.querySelector('.venue-max-capacity-next');
       const address = card?.querySelector('.countdown-v139-address');
-      const ticketCount = document.querySelector('#screen-myconcerts .countdown-v140-ticket-count strong');
+      const ticketCount = card?.querySelector('.countdown-v140-ticket-count strong');
       if (!capacity || !address || !ticketCount) return null;
       const capRect = capacity.getBoundingClientRect();
       const countRect = ticketCount.getBoundingClientRect();
