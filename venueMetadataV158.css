@@ -118,6 +118,6 @@
 
 @media (max-width: 390px) {
   .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-info .venue-max-capacity-next {
-    font-size: 9px;
+    font-size: 9px !important;
   }
 }
