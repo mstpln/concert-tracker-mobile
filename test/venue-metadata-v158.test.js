@@ -30,11 +30,12 @@ test('capacity is positive-only and formats with spaces', () => {
   assert.equal(VenueMetadata.capacityLabel('6500'), '');
 });
 
-test('venue identity is conservative across city and country', () => {
+test('venue identity is conservative across city, country and conflicting known addresses', () => {
   const rows = [royal, { ...royal, venueId: 'venue-5678abcd', city: 'Other City' }];
   assert.equal(VenueMetadata.findVenueRecord({ venue: 'ROYAL ARENA', city: ' Copenhagen ', country: 'Denmark' }, rows)?.venueId, royal.venueId);
   assert.equal(VenueMetadata.findVenueRecord({ venue: 'Royal Arena', city: 'Other Place', country: 'Denmark' }, rows), null);
   assert.equal(VenueMetadata.findVenueRecord({ venue: 'Royal Arena', city: 'Copenhagen', country: 'Sweden' }, rows), null);
+  assert.equal(VenueMetadata.findVenueRecord({ venue: 'Royal Arena', city: 'Copenhagen', country: 'Denmark', venueAddress: 'Different Street 99' }, [royal]), null);
 });
 
 test('ambiguous same-name same-city records fail closed unless country/address disambiguates', () => {
@@ -42,6 +43,19 @@ test('ambiguous same-name same-city records fail closed unless country/address d
   const second = { ...royal, venueId: 'venue-22222222', country: '', address: 'Street B' };
   assert.equal(VenueMetadata.findVenueRecord({ venue: 'Royal Arena', city: 'Copenhagen' }, [first, second]), null);
   assert.equal(VenueMetadata.findVenueRecord({ venue: 'Royal Arena', city: 'Copenhagen', venueAddress: 'Street B' }, [first, second])?.venueId, second.venueId);
+});
+
+test('same-name same-city address collisions retain separate deterministic research targets', () => {
+  const concerts = [
+    { id: 'a', attending: true, venue: 'Shared Hall', city: 'Copenhagen', country: 'Denmark', venueAddress: 'Street A 1' },
+    { id: 'b', attending: true, venue: 'Shared Hall', city: 'Copenhagen', country: 'Denmark', venueAddress: 'Street B 2' },
+  ];
+  const forward = VenueMetadata.uniqueVenueSeeds(concerts);
+  const reverse = VenueMetadata.uniqueVenueSeeds([...concerts].reverse());
+  assert.equal(forward.length, 2);
+  assert.equal(new Set(forward.map((row) => row.venueId)).size, 2);
+  assert.deepEqual(forward.map((row) => row.venueId).sort(), reverse.map((row) => row.venueId).sort());
+  assert.ok(forward.every((row) => row.venueId === VenueMetadata.venueIdForAddressVariant(row)));
 });
 
 test('venue records preserve unknown future fields and validate complete researched data', () => {
@@ -84,11 +98,12 @@ test('runtime wiring keeps metadata separate from concert records and source evi
   assert.match(css, /right: 16px;[\s\S]*bottom: 14px;/);
 });
 
-test('primary Worker owns venue storage and restricts venue writes to data-maintenance', () => {
+test('primary Worker owns venue storage, validates venue records and restricts writes to data-maintenance', () => {
   const worker = fs.readFileSync('worker.js', 'utf8');
   const wrangler = fs.readFileSync('wrangler.jsonc', 'utf8');
   assert.match(worker, /ALLOWED_FILES = new Set\(\[[^\]]*'venues\.json'/);
   assert.match(worker, /filename==='venues\.json'&&request\.method==='PUT'&&role!=='data-maintenance'/);
+  assert.match(worker, /venueDocumentIsValid\(parsed\)/);
   assert.match(worker, /requiredWriteCondition\(request,env,filename\)/);
   assert.doesNotMatch(worker, /TAVILY_API_KEY|GROQ_API_KEY/);
   assert.match(wrangler, /"main": "\.\/worker\.js"/);
