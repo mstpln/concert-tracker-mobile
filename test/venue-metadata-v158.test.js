@@ -75,6 +75,19 @@ test('venue records preserve unknown future fields and validate complete researc
   assert.equal(VenueMetadata.recordIsValid({ ...royal, officialUrl: 'http://example.com' }), false);
 });
 
+test('research completion requires complete status, timestamp and source evidence', () => {
+  for (const researchStatus of ['partial', 'unresolved', 'temporary_error', 'review_needed']) {
+    assert.equal(VenueMetadata.isComplete({ ...royal, researchStatus }), false);
+  }
+  assert.equal(VenueMetadata.isComplete({ ...royal, researchedAt: undefined }), false);
+  assert.equal(VenueMetadata.isComplete({ ...royal, sources: [] }), false);
+  assert.equal(VenueMetadata.isComplete({ ...royal, sources: undefined }), false);
+
+  const concerts = [{ id: 'a', attending: true, venue: royal.name, city: royal.city, country: royal.country, venueAddress: royal.address }];
+  assert.equal(buildReport(concerts, [{ ...royal, researchStatus: 'review_needed' }], {}).researchNeeded, 1);
+  assert.equal(buildReport(concerts, [royal], {}).researchNeeded, 0);
+});
+
 test('address helper supports stored full strings and structured address fields', () => {
   assert.deepEqual(VenueMetadata.addressLines('Street 1\n1234 City\nCountry'), ['Street 1', '1234 City', 'Country']);
   assert.deepEqual(VenueMetadata.addressLines({ street: 'Street 1', postalCode: '1234', city: 'City', country: 'Country' }), ['Street 1', '1234 City', 'Country']);
