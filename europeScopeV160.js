@@ -6,33 +6,23 @@
   if (root) {
     root.BandmarkrEuropeScopeV160 = api;
     // dataLib.js predates this shared contract. In the browser it is loaded
-    // immediately before this file, so replace the legacy global helper with
-    // the canonical implementation consumed by both UI filters and Node jobs.
+    // immediately before this file, so replace the legacy helper with the
+    // same country classifier used by scheduled venue research.
     if (typeof root.dlIsEuropeCountry === 'function') root.dlIsEuropeCountry = api.isEuropeCountry;
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, () => {
   function normalizeCountry(value) {
-    return String(value || '')
-      .normalize('NFKD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLocaleLowerCase('en')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .trim()
-      .replace(/\s+/g, ' ');
+    return String(value || '').trim().toLocaleLowerCase('en');
   }
 
-  // BANDMARKR's visible "EU" tag means Europe, not European Union membership.
-  // Keep aliases here so every browser filter and scheduled research lane uses
-  // one product-level definition instead of maintaining independent country lists.
+  // BANDMARKR's "EU" product scope is broader than EU membership. Preserve
+  // the EU-27 scheduler coverage and add only the non-EU countries already
+  // treated as Europe by the app: Norway, Iceland, United Kingdom,
+  // Switzerland, Turkey and Serbia. Aliases cover values present in source
+  // data plus the ISO-2 forms already accepted by the scheduler.
   const EUROPE_COUNTRY_ALIASES = Object.freeze([
-    'Albania', 'AL',
-    'Andorra', 'AD',
-    'Armenia', 'AM',
     'Austria', 'AT',
-    'Azerbaijan', 'AZ',
-    'Belarus', 'BY',
     'Belgium', 'BE',
-    'Bosnia and Herzegovina', 'Bosnia & Herzegovina', 'Bosnia', 'BA',
     'Bulgaria', 'BG',
     'Croatia', 'HR',
     'Cyprus', 'CY',
@@ -41,48 +31,29 @@
     'Estonia', 'EE',
     'Finland', 'FI',
     'France', 'FR',
-    'Georgia', 'GE',
     'Germany', 'DE',
     'Greece', 'GR',
     'Hungary', 'HU',
-    'Iceland', 'IS',
     'Ireland', 'IE',
     'Italy', 'IT',
-    'Kosovo', 'XK',
     'Latvia', 'LV',
-    'Liechtenstein', 'LI',
     'Lithuania', 'LT',
     'Luxembourg', 'LU',
     'Malta', 'MT',
-    'Moldova', 'Republic of Moldova', 'MD',
-    'Monaco', 'MC',
-    'Montenegro', 'ME',
     'Netherlands', 'NL',
-    'North Macedonia', 'Macedonia', 'MK',
-    'Norway', 'NO',
     'Poland', 'PL',
     'Portugal', 'PT',
     'Romania', 'RO',
-    'Russia', 'Russian Federation', 'RU',
-    'San Marino', 'SM',
-    'Serbia', 'RS',
     'Slovakia', 'SK',
     'Slovenia', 'SI',
     'Spain', 'ES',
     'Sweden', 'SE',
+    'Norway', 'NO',
+    'Iceland', 'IS',
+    'United Kingdom', 'UK', 'Great Britain', 'GB', 'England',
     'Switzerland', 'CH',
-    'Turkey', 'Türkiye', 'TR',
-    'Ukraine', 'UA',
-    'United Kingdom', 'UK', 'Great Britain', 'GB',
-    'England', 'Scotland', 'Wales', 'Northern Ireland',
-    'Vatican City', 'Holy See', 'VA',
-    'Aland Islands', 'Åland Islands', 'AX',
-    'Faroe Islands', 'FO',
-    'Gibraltar', 'GI',
-    'Guernsey', 'GG',
-    'Isle of Man', 'IM',
-    'Jersey', 'JE',
-    'Svalbard and Jan Mayen', 'SJ',
+    'Turkey', 'TR',
+    'Serbia', 'RS',
   ]);
 
   const EUROPE_COUNTRY_KEYS = new Set(EUROPE_COUNTRY_ALIASES.map(normalizeCountry));
