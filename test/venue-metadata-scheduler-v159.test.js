@@ -56,21 +56,25 @@ test('scheduler EU scope means BANDMARKR Europe, including non-EU European count
     concert('dk-code', 'Danish Hall', 'Copenhagen', 'DK', '2027-01-02'),
     concert('cz-alias', 'Czech Hall', 'Prague', 'Czech Republic', '2027-01-03'),
     concert('uk', 'UK Hall', 'London', 'United Kingdom', '2027-01-04'),
-    concert('no', 'Norway Hall', 'Oslo', 'Norway', '2027-01-05'),
-    concert('ch', 'Swiss Hall', 'Zurich', 'Switzerland', '2027-01-06'),
-    concert('is', 'Iceland Hall', 'Reykjavik', 'Iceland', '2027-01-07'),
-    concert('tr', 'Turkey Hall', 'Istanbul', 'Turkey', '2027-01-08'),
-    concert('rs', 'Serbia Hall', 'Belgrade', 'Serbia', '2027-01-09'),
-    concert('us', 'US Hall', 'New York', 'USA', '2027-01-10'),
-    concert('no-country', 'Unknown Hall', 'Somewhere', '', '2027-01-11'),
+    concert('gb-name', 'Great Britain Hall', 'London', 'Great Britain', '2027-01-05'),
+    concert('england', 'England Hall', 'Manchester', 'England', '2027-01-06'),
+    concert('no', 'Norway Hall', 'Oslo', 'Norway', '2027-01-07'),
+    concert('ch', 'Swiss Hall', 'Zurich', 'Switzerland', '2027-01-08'),
+    concert('is', 'Iceland Hall', 'Reykjavik', 'Iceland', '2027-01-09'),
+    concert('tr', 'Turkey Hall', 'Istanbul', 'Turkey', '2027-01-10'),
+    concert('rs', 'Serbia Hall', 'Belgrade', 'Serbia', '2027-01-11'),
+    concert('us', 'US Hall', 'New York', 'USA', '2027-01-12'),
+    concert('no-country', 'Unknown Hall', 'Somewhere', '', '2027-01-13'),
   ];
   const targets = Scheduler.dueVenueTargets(concerts, [], { today: '2026-08-23', limit: 20 });
   assert.deepEqual(targets.map((row) => row.seed.name), [
-    'Czech Hall', 'Danish Hall', 'Iceland Hall', 'Norway Hall', 'Serbia Hall',
-    'Swedish Hall', 'Swiss Hall', 'Turkey Hall', 'UK Hall',
+    'Czech Hall', 'Danish Hall', 'England Hall', 'Great Britain Hall', 'Iceland Hall',
+    'Norway Hall', 'Serbia Hall', 'Swedish Hall', 'Swiss Hall', 'Turkey Hall', 'UK Hall',
   ]);
   assert.equal(Scheduler.isEuCountry('Norway'), true);
   assert.equal(Scheduler.isEuCountry('United Kingdom'), true);
+  assert.equal(Scheduler.isEuCountry('Great Britain'), true);
+  assert.equal(Scheduler.isEuCountry('England'), true);
   assert.equal(Scheduler.isEuCountry('Switzerland'), true);
   assert.equal(Scheduler.isEuCountry('USA'), false);
   assert.equal(Scheduler.isEuCountry(''), false);
