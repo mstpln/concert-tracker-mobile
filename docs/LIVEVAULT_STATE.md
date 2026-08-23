@@ -4,7 +4,7 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged baseline is **v157 / AUB3 Correction Build**. It preserves stable concert IDs, the internal `myconcerts` identity, provider boundaries, ticket ownership and all production-data boundaries while using conservative read-time automatic grouping for obvious attended same-event performances instead of the normal explicit shared-event linking workflow.
+The current merged baseline is **v157 / AUB3 Correction Build**. The current implementation branch `feature/venue-metadata-v158` targets **v158 / Venue Metadata Build** without changing production data. It preserves stable concert IDs, the internal `myconcerts` identity, provider boundaries, ticket ownership and all production-data boundaries while adding a separate reusable venue-information layer.
 
 ### v149 Start stats cards
 
@@ -76,11 +76,21 @@ Within any valid effective event, Support performance cards occupy the group's e
 
 The manual form is visibly `ADD A CONCERT` with CTA `Add a concert`. It continues to create both historical and upcoming attended records through the existing path, keeps the existing `manuallyAdded` lifecycle unchanged, and exposes exactly the current calendar year plus one future year above the historical range to 1960.
 
+### v158 Venue Metadata Build
+
+The v158 branch adds a separate durable `venues.json` metadata document rather than copying venue facts onto concert records. Venue records carry a stable `venueId`, canonical name/city/country context, optional full address, positive-integer `maxCapacity`, official HTTPS URL, short factual description, research status/timestamp and internal source evidence. Unknown future venue fields are preserved by ordinary object normalization. Matching is conservative: normalized venue name + city are required, known countries may not conflict, and ambiguous same-name/same-city candidates require an exact available address match or fail closed.
+
+The UI reads venue metadata once during ordinary app loading and reuses it across surfaces. Past and upcoming attended cards show exact `Max Capacity: X XXX` wording under the address and above distance. The Next Concert left information area shows the same capacity without changing the v147/v148 ticket shell or right-side calendar/countdown geometry. Dates > Venues keeps the existing left hierarchy and upper-right chevron while placing capacity in the lower-right corner. Venue Detail now surfaces the fullest available address, capacity when known, a clickable official website and a short factual About description above the existing show history. Missing capacity produces no placeholder, and research source URLs/timestamps are never rendered.
+
+The primary `worker.js` now owns `venues.json` through its existing explicit file allowlist and protected JSON write path. Venue metadata reads remain authenticated, while `PUT /venues.json` is restricted to the data-maintenance role and retains the established conditional ETag creation/update semantics, size/content-type checks and root document validation. `wrangler.jsonc` continues to point directly to `worker.js`; no wrapper Worker or client-side provider secret path is introduced. Scheduled automation is intentionally not granted venue-write access in this build. The local `scripts/venueMetadataBackfillDryRun.js` planner can derive conservative unique research targets from supplied JSON files without network/provider/R2 access; it defaults to attended venues and supports an explicitly requested wider local target set.
+
+The v158 core build does **not** run the manual backfill, call Tavily/Groq, create production `venues.json`, enable scheduled venue enrichment or deploy the Worker. Those are later, separately authorized production/data phases after code and synthetic QA are accepted.
+
 ### Preserved v148 Next Concert behavior
 
 Merged v148 remains authoritative for the normal-day Next Concert ticket chrome: v147 calendar geometry/internal spacing stays fixed; the detailed timer is regular weight; canonical `ticketQuantity` is centered in the muted-grey outline pill; the outer normal-day contour is the thinner 1.1px grey stroke; and the right inner frame uses the matched non-scaling 3px white SVG stroke treatment. Concert day remains the v140 `Show today` / `Get directions` / `Open tickets` contract.
 
-`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at **v157** for the AUB3 Correction Build. The deterministic shell includes the shared event model and the focused v157 correction script. Unit and synthetic browser coverage targets automatic strong-context grouping, missing/different-city negatives, Support-first ordering, existing explicit-group compatibility including missing-city historical groups, provider/concurrency preservation, event/performance statistics, grouped Next Concert behavior, conservative ticket/cost/travel conflicts, Add a Concert future-date behavior, 375px/480px/desktop layouts and horizontal-overflow safety. Full desktop/mobile Chromium PR QA remains the merge-readiness gate.
+`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at **v158** on the Venue Metadata Build branch. The deterministic shell adds the focused venue metadata model/UI/CSS layers while retaining every existing v157 shell owner. Unit and synthetic browser coverage targets conservative venue identity, positive-only capacity formatting, missing-capacity omission, attended past/upcoming card placement, Next Concert geometry preservation, lower-right Venues-card placement, clean Venue Detail metadata, source-hiding, 375px/480px overflow safety, and backfill target deduplication. Full desktop/mobile Chromium PR QA remains the merge-readiness gate.
 
 The merged v145 Settings data-correctness and automation-reporting behavior remains intact. The merged v144 genre/My Bands ownership behavior, v143 UI alignment and Sweden filters, v142 Ticketmaster venue-quality protection, v135-v137 provider/release cleanup, and existing listening identity/artwork ownership rules remain authoritative.
 
@@ -105,6 +115,8 @@ v135-v137 retired active Releases while preserving stored historical/provider st
 
 v157 does not change provider ownership, provider matching, schedules, quotas, backend/Worker behavior or production data. Existing stored `eventGroupId`, `lineupRole`, stable IDs, user-owned values and unknown fields remain preserved by the established main/focused concert write and optimistic-concurrency paths. Automatic grouping is a derived read-time interpretation only; it performs no backfill and writes no relationship field.
 
+v158 adds a venue-research ownership boundary without changing concert ownership: max capacity, official venue URL, description and internal research provenance belong to `venues.json`; concert attendance, notes, tickets, ratings, roles, stable IDs and unknown fields remain in their existing records and are never rewritten by venue metadata work. Future Tavily/Groq automation remains disabled until a later explicitly reviewed build.
+
 ## Safety and release boundary
 
-Automated browser QA uses only synthetic fixtures and the QA fake backend. Merged v157 did not authorize or perform a production provider call, production research/data-maintenance workflow, production R2 read/write, production-data migration, Worker deployment, production smoke run or deployment. Any future production action remains separately authorized.
+Automated browser QA uses only synthetic fixtures and the QA fake backend. The v158 branch has not authorized or performed a production provider call, production research/data-maintenance workflow, production R2 read/write, production-data migration, Worker deployment, production smoke run or deployment. The manual venue backfill and any future scheduled venue enrichment remain separate production actions requiring explicit authorization.

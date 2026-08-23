@@ -1,6 +1,7 @@
 'use strict';
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v157';
+const CACHE_NAME_LITERAL = 'v158';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v157'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v156'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v155'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v154'.
@@ -115,6 +116,7 @@ const SHELL_FILES = [
   './appUpdateAub1V153.css',
   './appUpdateAub2V155.css',
   './appUpdateAub3V156.css',
+  './venueMetadataV158.css',
   './geoFilterPreloadV143.js',
   './app.js',
   './alignedUiV143.js',
@@ -168,6 +170,8 @@ const SHELL_FILES = [
   './appUpdateAub1V153.js',
   './appUpdateAub1V153Corrections.js',
   './appUpdateAub3CorrectionV157.js',
+  './venueMetadataModelV158.js',
+  './venueMetadataV158.js',
   './lineupRoleV155.js',
   './eventModelV156.js',
   './dataLib.js',
