@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const VenueMetadata = require('../venueMetadataModelV158');
+const Scheduler = require('../scripts/venueMetadataResearchRun');
 const { dedupeDocument } = require('../scripts/venueMetadataDedupeV161');
 
 function venue(overrides = {}) {
@@ -56,6 +57,34 @@ test('known reseller, directory, social and tourism URLs cannot be official venu
   assert.equal(VenueMetadata.officialVenueUrl('https://www.timeout.com/example'), null);
   assert.equal(VenueMetadata.officialVenueUrl('https://www.instagram.com/example'), null);
   assert.equal(VenueMetadata.officialVenueUrl('https://example-arena.test/'), 'https://example-arena.test/');
+});
+
+test('research prompt requires highest documented venue capacity rather than event-specific attendance', () => {
+  const prompts = Scheduler.extractionPrompts(
+    { name: 'Example Arena', city: 'London', country: 'United Kingdom' },
+    [{ title: 'Facts', url: 'https://example-arena.test/facts', content: 'Synthetic venue evidence.' }],
+  );
+  assert.match(prompts.system, /highest reliably documented maximum capacity/i);
+  assert.match(prompts.system, /multiple normal configurations/i);
+  assert.match(prompts.system, /attendance for a particular event/i);
+  assert.match(prompts.system, /unsupported estimate/i);
+});
+
+test('failed research attempts do not create or overwrite successful researchedAt timestamps', () => {
+  const seed = VenueMetadata.createVenueSeed({
+    venue: 'Example Arena', city: 'London', country: 'United Kingdom', attending: true,
+  });
+  const attemptAt = '2026-08-24T10:00:00.000Z';
+  const unresolved = Scheduler.unresolvedRecord(seed, null, attemptAt);
+  const temporary = Scheduler.temporaryFailureRecord(seed, null, attemptAt);
+  assert.equal(unresolved.researchedAt, undefined);
+  assert.equal(temporary.researchedAt, undefined);
+
+  const priorAt = '2026-08-23T12:00:00.000Z';
+  const review = venue({ researchStatus: 'review_needed', maxCapacity: undefined, researchedAt: priorAt });
+  const retried = Scheduler.temporaryFailureRecord(seed, review, attemptAt);
+  assert.equal(retried.researchStatus, 'review_needed');
+  assert.equal(retried.researchedAt, priorAt);
 });
 
 test('normalization removes non-official display URLs and unsuccessful research timestamps', () => {
