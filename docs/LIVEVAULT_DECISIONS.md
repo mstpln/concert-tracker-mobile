@@ -203,3 +203,13 @@ Attended past and upcoming cards expose the value through one inline two-choice 
 **Reason:** AUB2 needs an explicit, reviewable distinction between the main artist and a support performance without guessing bill structure or coupling user judgment to provider refreshes.
 
 **Consequence:** `lineupRole` is additive and backward compatible; unknown fields remain preserved. During optimistic reconciliation, an automatic legacy `headliner` default cannot overwrite a valid role concurrently saved by another client, while an explicit role edit retains the established local-change semantics. The current schema has no proven same-event relation, so chronological ordering remains unchanged. Event grouping, within-event ordering, ticket deduplication, event-level statistics and all other AUB3 work require a later explicit build.
+
+### v156 groups performances only through an explicit user-owned relationship
+
+**Decision:** Concerts remain independent performance records with stable IDs. An optional `eventGroupId` links records only after an explicit, confirmed user action among strong same-date/venue/city candidates. Similar records are never auto-grouped. Linking, regrouping and unlinking are reversible, collision-checked and preserve unknown/user-owned fields. A valid group orders support performances before headliners only within the list slots already occupied by that group.
+
+Valid groups resolve ticket quantity, ticket cost and travel once per event. Identical duplicates count once. Conflicts never sum: the conservative minimum is used and marked as a conflict. A group with inconsistent required date or venue context fails closed, is visibly marked for review and contributes no ambiguous additive cost/travel value.
+
+**Reason:** A performance and the concert night containing it are different statistical units, but date/venue resemblance is not a safe durable identity. A direct user relationship supplies the missing identity without merging records or weakening ownership.
+
+**Consequence:** The grouped Next Concert ticket may show multiple supports and one headliner while preserving the established ticket silhouette and actions. Concert-night, spend, travel and visit metrics are event-level; artist appearances, ratings, setlists, genres and lineup roles remain performance-level. `eventGroupId` is additive and backward compatible, requires no migration or provider call, and must be preserved by provider and concurrency write paths.

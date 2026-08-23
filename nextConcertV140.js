@@ -100,6 +100,12 @@
     const location = locationLines(concert);
     const city = String(concert.city || '').trim();
     const venueLine = [venue, city].filter(Boolean).join(', ');
+    const performances = Array.isArray(concert.eventPerformances) ? concert.eventPerformances : [];
+    if (performances.length > 1) {
+      const headliner = [...performances].reverse().find((record) => record.lineupRole !== 'support') || performances[performances.length - 1];
+      const supports = performances.filter((record) => record.id !== headliner.id);
+      return `<div class="countdown-v139-info countdown-v156-grouped-info"><p class="countdown-v139-label">${today ? 'Show today' : 'Next up'}</p><p class="countdown-v139-band countdown-v156-headliner">${escapeHtml(headliner.bandName)}</p><div class="countdown-v156-supports">${supports.map((record) => `<p>${escapeHtml(record.bandName)}</p>`).join('')}</div><span class="countdown-v139-artist-line" aria-hidden="true"></span><p class="countdown-v139-venue">${escapeHtml(venue)}</p>${city ? `<p class="countdown-v139-address">${escapeHtml(city)}</p>` : ''}${today ? directionsHtml(concert) : ''}</div>`;
+    }
     const lowerContent = today
       ? `<p class="countdown-v139-show-venue">${escapeHtml(venueLine)}</p>${directionsHtml(concert)}`
       : `<p class="countdown-v139-venue">${escapeHtml(venue)}</p>${location.map((line) => `<p class="countdown-v139-address">${escapeHtml(line)}</p>`).join('')}`;
@@ -111,7 +117,8 @@
     const quantity = registeredTicketQuantity(concert);
     if (!quantity) return '';
     const label = quantity === 1 ? '1 TICKET' : `${quantity} TICKETS`;
-    return `<div class="countdown-v140-ticket-count" aria-label="${escapeAttr(label.toLocaleLowerCase())}"><span class="countdown-v140-ticket-count-line" aria-hidden="true"></span><strong>${label}</strong><span class="countdown-v140-ticket-count-line" aria-hidden="true"></span></div>`;
+    const conflict = concert.eventTicketQuantityConflict === true;
+    return `<div class="countdown-v140-ticket-count${conflict ? ' countdown-v156-ticket-conflict' : ''}" aria-label="${escapeAttr(`${label.toLocaleLowerCase()}${conflict ? ', grouped ticket counts differ' : ''}`)}"><span class="countdown-v140-ticket-count-line" aria-hidden="true"></span><strong>${label}</strong><span class="countdown-v140-ticket-count-line" aria-hidden="true"></span>${conflict ? '<small>CHECK COUNT</small>' : ''}</div>`;
   }
 
   function normalStubHtml(parts, concert) {
