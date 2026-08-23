@@ -4,7 +4,7 @@
 
 LiveVault is `mstpln/concert-tracker-mobile`. GitHub `main` is authoritative. Production is a GitHub Pages static PWA backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged baseline is **v155 / AUB2**. The current branch prepares **v156 / AUB3**. It preserves stable concert IDs, the internal `myconcerts` identity, provider boundaries, ticket ownership and all production-data boundaries while adding the single optional `eventGroupId` relationship between otherwise independent performance records.
+The current merged baseline is **v156 / AUB3**. The current branch prepares **v157 / AUB3 Correction Build**. It preserves stable concert IDs, the internal `myconcerts` identity, provider boundaries, ticket ownership and all production-data boundaries while replacing the normal explicit shared-event linking workflow with conservative read-time automatic grouping for obvious attended same-event performances.
 
 ### v149 Start stats cards
 
@@ -66,11 +66,21 @@ The Start Next Concert ticket presents a valid grouped event as support act(s), 
 
 Concert Stats now distinguishes event metrics from performance metrics. Concert nights, spend, travel, venue/city visits, chronological event milestones and ticket extremes are event-level. Artist appearances, ratings, setlists, genres and lineup roles remain performance-level. Provider and optimistic-concurrency writes preserve `eventGroupId`, `lineupRole`, user-owned values and unknown fields.
 
+### v157 AUB3 correction: automatic shared-event interpretation
+
+v157 keeps the v156 event/performance model and all independent performance records, but changes the normal relationship-establishment path. An ungrouped record is eligible for a derived shared event only when it is `attending: true` and has an exact date, a non-empty venue under the existing conservative normalization, and a non-empty normalized city. Two or more eligible records share an effective event only when all three context values match. Missing or blank city always fails closed; `lineupRole`, same date alone, same venue alone, same city alone and provider similarity never establish event identity.
+
+The automatic relationship is interpreted centrally in `eventModelV156.js` at read time. It does not write a generated `eventGroupId` back into concert records and therefore requires no production backfill or historical record rewrite. Existing valid v156 `eventGroupId` relationships remain authoritative and are preserved by provider/concurrency paths. Multi-record explicit groups now also require a present matching city to be considered valid.
+
+Within any valid effective event, Support performance cards occupy the group's existing list slots before Headliner cards with stable same-role ordering; unrelated concerts keep chronological placement. Grouped Next Concert, one-night event statistics, ticket quantity/cost conflict handling and travel deduplication reuse the same central event interpretation. Normal cards no longer expose the permanent `Link same event` control.
+
+The manual form is visibly `ADD A CONCERT` with CTA `Add a concert`. It continues to create both historical and upcoming attended records through the existing path, keeps the existing `manuallyAdded` lifecycle unchanged, and exposes exactly the current calendar year plus one future year above the historical range to 1960.
+
 ### Preserved v148 Next Concert behavior
 
 Merged v148 remains authoritative for the normal-day Next Concert ticket chrome: v147 calendar geometry/internal spacing stays fixed; the detailed timer is regular weight; canonical `ticketQuantity` is centered in the muted-grey outline pill; the outer normal-day contour is the thinner 1.1px grey stroke; and the right inner frame uses the matched non-scaling 3px white SVG stroke treatment. Concert day remains the v140 `Show today` / `Get directions` / `Open tickets` contract.
 
-`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at **v156** for AUB3. The deterministic shell includes the shared event model and focused AUB3 CSS. Unit and synthetic browser coverage targets explicit link/regroup/unlink, collision safety, malformed groups, provider/concurrency preservation, event/performance statistics, grouped Next Concert behavior, conservative conflicts, dark/light presentation, 375px/480px/desktop layouts and horizontal-overflow safety. Full desktop/mobile Chromium PR QA remains the merge-readiness gate.
+`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at **v157** for the AUB3 Correction Build. The deterministic shell includes the shared event model and the focused v157 correction script. Unit and synthetic browser coverage targets automatic strong-context grouping, missing/different-city negatives, Support-first ordering, existing explicit-group compatibility, provider/concurrency preservation, event/performance statistics, grouped Next Concert behavior, conservative ticket/cost/travel conflicts, Add a Concert future-date behavior, 375px/480px/desktop layouts and horizontal-overflow safety. Full desktop/mobile Chromium PR QA remains the merge-readiness gate.
 
 The merged v145 Settings data-correctness and automation-reporting behavior remains intact. The merged v144 genre/My Bands ownership behavior, v143 UI alignment and Sweden filters, v142 Ticketmaster venue-quality protection, v135-v137 provider/release cleanup, and existing listening identity/artwork ownership rules remain authoritative.
 
@@ -93,8 +103,8 @@ The historical GitHub backlog has been reconciled against merged `main` so compl
 
 v135-v137 retired active Releases while preserving stored historical/provider state. Existing provider-neutral link resolution, listening artwork ownership, MusicBrainz/Spotify safety, private-listening boundaries, UsageTracker caps/pacing, Spotify circuit, cross-scheduler lease, optimistic concurrency, reviewed provider-decision preservation and immutable source observations remain authoritative.
 
-v156 adds only the optional `eventGroupId` relationship and does not change the v155 `lineupRole` contract. It adds no provider calls, provider schedules/caps/pacing/matching changes, production listening-archive reads, destructive migration, stable-ID changes, backend/Worker behavior, credentials or production-data operations. Main and focused concert-research writes preserve the latest stored user relationship and unknown fields; there is no backfill.
+v157 does not change provider ownership, provider matching, schedules, quotas, backend/Worker behavior or production data. Existing stored `eventGroupId`, `lineupRole`, stable IDs, user-owned values and unknown fields remain preserved by the established main/focused concert write and optimistic-concurrency paths. Automatic grouping is a derived read-time interpretation only; it performs no backfill and writes no relationship field.
 
 ## Safety and release boundary
 
-Automated browser QA uses only synthetic fixtures and the QA fake backend. The v156 AUB3 branch does not authorize or perform a production provider call, production research/data-maintenance workflow, production R2 read/write, production-data migration, Worker deployment, production smoke run or deployment. Merge remains separately authorized by the explicit user command `Merge it`.
+Automated browser QA uses only synthetic fixtures and the QA fake backend. The v157 AUB3 Correction branch does not authorize or perform a production provider call, production research/data-maintenance workflow, production R2 read/write, production-data migration, Worker deployment, production smoke run or deployment. Merge remains separately authorized by the explicit user command `Merge it`.
