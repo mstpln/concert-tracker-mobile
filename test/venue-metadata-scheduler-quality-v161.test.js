@@ -71,3 +71,29 @@ test('scheduler reconciliation treats UK country aliases as one venue identity',
   assert.equal(merged.maxCapacity, 5000);
   assert.deepEqual(merged.futureField, { preserve: true });
 });
+
+test('scheduler reconciliation preserves a stable legacy id when country is filled later', () => {
+  const latest = {
+    ...seed(),
+    venueId: 'venue-11111111',
+    country: '',
+    researchStatus: 'partial',
+    schemaVersion: 1,
+    futureField: { preserve: true },
+  };
+  const update = {
+    ...seed(),
+    venueId: latest.venueId,
+    country: 'United Kingdom',
+    maxCapacity: 5000,
+    researchStatus: 'partial',
+    researchedAt: '2026-08-23T12:00:00.000Z',
+    sources: ['https://synthetic-arena.test/facts'],
+    schemaVersion: 1,
+  };
+  const merged = Scheduler.mergeUpdateIntoLatest(latest, update);
+  assert.equal(merged.venueId, latest.venueId);
+  assert.equal(merged.maxCapacity, 5000);
+  assert.equal(merged.researchedAt, '2026-08-23T12:00:00.000Z');
+  assert.deepEqual(merged.futureField, { preserve: true });
+});
