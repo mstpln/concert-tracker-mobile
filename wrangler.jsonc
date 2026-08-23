@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
 
   "name": "concert-tracker-api",
-  "main": "./workerV158.js",
+  "main": "./worker.js",
   "compatibility_date": "2026-08-03",
   "workers_dev": true,
   "preview_urls": true,
