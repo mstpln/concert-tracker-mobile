@@ -177,6 +177,7 @@ const SHELL_FILES = [
   './lineupRoleV155.js',
   './eventModelV156.js',
   './dataLib.js',
+  './europeScopeV160.js',
   './listeningStats.js',
   './listeningStatsV81.js',
   './listeningFixtures.js',
