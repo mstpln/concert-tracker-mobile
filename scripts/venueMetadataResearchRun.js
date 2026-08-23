@@ -172,11 +172,15 @@ function conflictingAddress(existing, candidate) {
 
 function buildResearchedRecord({ seed, existing, extracted, searchResults, researchedAt }) {
   const base = { ...(existing || seed) };
-  const sources = mergeSourceUrls(base.sources, sourceUrlsFromExtraction(extracted, searchResults));
-  const extractedAddress = typeof extracted?.address === 'string' && extracted.address.trim() ? extracted.address.trim() : null;
-  const extractedCapacity = positiveCapacity(extracted?.maxCapacity);
-  const extractedOfficialUrl = officialUrlFromExtraction(extracted?.officialUrl, searchResults);
-  const extractedDescription = typeof extracted?.description === 'string' && extracted.description.trim()
+  const newSources = sourceUrlsFromExtraction(extracted, searchResults);
+  const sources = mergeSourceUrls(base.sources, newSources);
+  const hasPersistedNewEvidence = newSources.some((url) => sources.includes(url));
+  const extractedAddress = hasPersistedNewEvidence && typeof extracted?.address === 'string' && extracted.address.trim()
+    ? extracted.address.trim() : null;
+  const extractedCapacity = hasPersistedNewEvidence ? positiveCapacity(extracted?.maxCapacity) : null;
+  const extractedOfficialUrl = hasPersistedNewEvidence
+    ? officialUrlFromExtraction(extracted?.officialUrl, searchResults) : null;
+  const extractedDescription = hasPersistedNewEvidence && typeof extracted?.description === 'string' && extracted.description.trim()
     ? extracted.description.trim().slice(0, 900) : null;
   const knownAddress = base.address || seed.address || null;
   const dataConflict = conflictingAddress(knownAddress, extractedAddress)
@@ -211,7 +215,7 @@ function buildResearchedRecord({ seed, existing, extracted, searchResults, resea
     sources,
     schemaVersion: 1,
   });
-  if (!identityConflict && VenueMetadata.isComplete({ ...normalized, researchStatus: 'complete' })) {
+  if (!identityConflict && hasPersistedNewEvidence && VenueMetadata.isComplete({ ...normalized, researchStatus: 'complete' })) {
     normalized.researchStatus = 'complete';
   }
   return normalized;
