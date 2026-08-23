@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const EventModel = require('../eventModelV156');
+const { dlConcertStats } = require('../dataLib');
 
 const base = (overrides = {}) => ({
   id: 'a',
@@ -49,4 +50,42 @@ test('v157 automatic grouping still requires non-empty matching city', () => {
   assert.equal(events.length, 2);
   assert.equal(events.every((event) => event.relationship === 'single'), true);
   assert.deepEqual(EventModel.validateEventGroup(records).reasons, ['city']);
+});
+
+test('v157 James-EODM equivalent counts duplicated spend and travel once per automatic event', () => {
+  const support = {
+    ...base(),
+    id: 'synthetic-support',
+    bandId: 'synthetic-support-band',
+    bandName: 'Synthetic Support',
+    date: '2025-11-06',
+    venue: 'Synthetic Bio',
+    city: 'Copenhagen',
+    eventGroupId: undefined,
+    lineupRole: 'support',
+    ticketQuantity: 1,
+    ticketPrice: 643,
+    distanceKm: 42,
+  };
+  const headliner = {
+    ...support,
+    id: 'synthetic-headliner',
+    bandId: 'synthetic-headliner-band',
+    bandName: 'Synthetic Headliner',
+    lineupRole: 'headliner',
+  };
+  const event = EventModel.groupConcertPerformances([headliner, support]);
+  assert.equal(event.length, 1);
+  assert.equal(event[0].relationship, 'automatic');
+  assert.equal(event[0].validation.valid, true);
+  assert.deepEqual(EventModel.orderPerformances([headliner, support]).map((record) => record.id), ['synthetic-support', 'synthetic-headliner']);
+  assert.equal(EventModel.resolveEventTicketQuantity(event[0].records).value, 1);
+  assert.equal(EventModel.resolveEventTicketCost(event[0].records).value, 643);
+  assert.equal(EventModel.resolveEventDistance(event[0].records).value, 42);
+
+  const stats = dlConcertStats([headliner, support]);
+  assert.equal(stats.totalShows, 1);
+  assert.equal(stats.performanceCount, 2);
+  assert.equal(stats.totalSpend, 643);
+  assert.equal(stats.kmTraveled, 84);
 });
