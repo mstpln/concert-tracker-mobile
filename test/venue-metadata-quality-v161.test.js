@@ -30,6 +30,8 @@ test('country and city aliases reuse one canonical venue identity', () => {
   assert.equal(VenueMetadata.canonicalCityKey('Göteborg'), 'gothenburg');
   assert.equal(VenueMetadata.canonicalCityKey('København S'), 'copenhagen');
   assert.equal(VenueMetadata.canonicalCityKey('Praha 9'), 'prague');
+  assert.equal(VenueMetadata.canonicalCityKey('Saint-Denis (Paris)'), 'saint denis');
+  assert.equal(VenueMetadata.canonicalCityKey('Casalecchio di Reno (Bologna)'), 'casalecchio di reno');
 
   const a = VenueMetadata.venueIdFor({ name: 'Example Arena', city: 'London', country: 'UK' });
   const b = VenueMetadata.venueIdFor({ name: 'Example Arena', city: 'London', country: 'Great Britain' });
@@ -51,6 +53,7 @@ test('known reseller, directory, social and tourism URLs cannot be official venu
   assert.equal(VenueMetadata.officialVenueUrl('https://www.ticketmaster.de/venue/example'), null);
   assert.equal(VenueMetadata.officialVenueUrl('https://www.visitgavle.se/en/furuvik-live'), null);
   assert.equal(VenueMetadata.officialVenueUrl('https://www.esmadrid.com/en/whats-on/mad-cool-festival'), null);
+  assert.equal(VenueMetadata.officialVenueUrl('https://www.timeout.com/example'), null);
   assert.equal(VenueMetadata.officialVenueUrl('https://www.instagram.com/example'), null);
   assert.equal(VenueMetadata.officialVenueUrl('https://example-arena.test/'), 'https://example-arena.test/');
 });
@@ -69,6 +72,9 @@ test('normalization removes non-official display URLs and unsuccessful research 
 
   const evidencedPartial = VenueMetadata.normalizeRecord(venue({ researchStatus: 'partial', maxCapacity: undefined }));
   assert.equal(evidencedPartial.researchedAt, '2026-08-23T12:00:00.000Z');
+
+  const noEvidencePartial = VenueMetadata.normalizeRecord(venue({ researchStatus: 'partial', maxCapacity: undefined, sources: [] }));
+  assert.equal(noEvidencePartial.researchedAt, undefined);
 });
 
 test('confirmed duplicate aliases consolidate while preserving one stable id and legacy ids', () => {
@@ -111,6 +117,16 @@ test('confirmed relocation is not merged into one physical venue record', () => 
   ];
   const { cleaned } = dedupeDocument(rows);
   assert.equal(cleaned.length, 2);
+});
+
+test('conflicting unknown future fields prevent automatic consolidation', () => {
+  const rows = [
+    venue({ venueId: 'venue-11111111', futureProviderState: { owner: 'manual', value: 1 } }),
+    venue({ venueId: 'venue-22222222', country: 'England', futureProviderState: { owner: 'manual', value: 2 } }),
+  ];
+  const { cleaned } = dedupeDocument(rows);
+  assert.equal(cleaned.length, 2);
+  assert.deepEqual(cleaned.map((row) => row.futureProviderState.value).sort(), [1, 2]);
 });
 
 test('dedupe removes placeholder records and invalid official URLs without inventing facts', () => {
