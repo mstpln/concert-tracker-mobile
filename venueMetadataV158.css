@@ -1,0 +1,109 @@
+/* v158 venue metadata presentation. Keep existing card/ticket geometry intact. */
+.venue-max-capacity {
+  margin: 3px 0 0;
+  color: var(--text-secondary, #b7b9bd);
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.row-card-mc .venue-max-capacity-concert {
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+.venue-metadata-list-card.has-venue-capacity {
+  position: relative;
+  padding-bottom: 38px;
+}
+
+.venue-card-max-capacity {
+  position: absolute;
+  right: 16px;
+  bottom: 14px;
+  margin: 0;
+  color: var(--text-secondary, #b7b9bd);
+  font-size: 11.5px;
+  line-height: 1.2;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.venue-detail-metadata {
+  margin: 0 0 18px;
+  padding: 16px;
+  border: 1px solid var(--border, rgba(255,255,255,.12));
+  border-radius: 14px;
+  background: var(--surface, #222a31);
+}
+
+.venue-detail-location {
+  margin: 0 0 14px;
+  color: var(--text-secondary, #b7b9bd);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.venue-detail-block {
+  padding: 13px 0;
+  border-top: 1px solid var(--border, rgba(255,255,255,.12));
+}
+
+.venue-detail-block:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.venue-detail-block:last-child {
+  padding-bottom: 0;
+}
+
+.venue-detail-label {
+  margin: 0 0 5px;
+  color: var(--text-secondary, #909398);
+  font-size: 10.5px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.venue-detail-value,
+.venue-detail-description {
+  margin: 0;
+  color: var(--text-primary, #f4f4f4);
+  font-size: 13px;
+  line-height: 1.48;
+}
+
+.venue-detail-capacity {
+  font-weight: 700;
+}
+
+.venue-detail-official-link {
+  color: var(--blue, #0b56e8);
+  font-weight: 650;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.venue-detail-official-link:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.countdown-v139-info .venue-max-capacity-next {
+  margin-top: 5px;
+  color: #b8b8bc;
+  font-size: 17px;
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+@media (max-width: 479px) {
+  .venue-card-max-capacity { font-size: 11px; }
+  .venue-detail-metadata { padding: 14px; }
+  .countdown-v139-info .venue-max-capacity-next { font-size: 15px; }
+}
