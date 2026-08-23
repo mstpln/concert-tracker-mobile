@@ -63,7 +63,7 @@ test('v158 shows capacity on upcoming/past cards and Next Concert without changi
 
   await expect(page.locator('#countdown-card .venue-max-capacity-next')).toHaveText(seeded.nextCapacity);
   await expect(page.locator('#countdown-card .countdown-ticket-outline')).toBeVisible();
-  await expect(page.locator('#countdown-card .countdown-v148-right-frame-overlay')).toBeVisible();
+  await expect(page.locator('#countdown-card .countdown-v148-right-frame')).toBeVisible();
 
   for (const width of [375, 480]) {
     await page.setViewportSize({ width, height: 920 });
