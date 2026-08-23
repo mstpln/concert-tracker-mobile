@@ -50,6 +50,20 @@ test('scheduler targets attended venues only, skips complete records and priorit
   assert.deepEqual(targets.map((row) => row.seed.name), ['Future Arena', 'Past Hall']);
 });
 
+test('scheduler only targets venues with explicit EU country evidence', () => {
+  const concerts = [
+    concert('se', 'Swedish Hall', 'Malmo', 'Sweden', '2027-01-01'),
+    concert('dk-code', 'Danish Hall', 'Copenhagen', 'DK', '2027-01-02'),
+    concert('cz-alias', 'Czech Hall', 'Prague', 'Czech Republic', '2027-01-03'),
+    concert('uk', 'UK Hall', 'London', 'United Kingdom', '2027-01-04'),
+    concert('no-country', 'Unknown Hall', 'Somewhere', '', '2027-01-05'),
+  ];
+  const targets = Scheduler.dueVenueTargets(concerts, [], { today: '2026-08-23', limit: 10 });
+  assert.deepEqual(targets.map((row) => row.seed.name), ['Czech Hall', 'Danish Hall', 'Swedish Hall']);
+  assert.equal(Scheduler.isEuCountry('Norway'), false);
+  assert.equal(Scheduler.isEuCountry(''), false);
+});
+
 test('scheduler keeps review-needed due but behind ordinary incomplete work', () => {
   const concerts = [
     concert('a', 'Review Hall', 'Lund', 'Sweden', '2025-01-01'),
