@@ -19,6 +19,12 @@
       .filter((variant) => variant && typeof variant === 'object' && !Array.isArray(variant));
   }
 
+  function addressText(value) {
+    const venueAddress = model.addressLines(value?.venueAddress).join(' ');
+    if (venueAddress) return venueAddress;
+    return model.addressLines(value?.address).join(' ');
+  }
+
   function normalizedAddress(value) {
     return model.normalizeIdentityText(model.addressLines(value).join(' '));
   }
@@ -52,29 +58,37 @@
   function namedVenueEvidenceScore(value, record) {
     const targetName = model.normalizeIdentityText(value?.venue ?? value?.name);
     if (!targetName) return 0;
+    const sourceAddress = addressText(value);
+    const sourceFull = normalizedAddress(sourceAddress);
+    const sourceHead = addressHead(sourceAddress);
+    const primaryAddress = model.addressLines(record?.address).join(' ');
+    const primaryFull = normalizedAddress(primaryAddress);
     let best = 0;
+
     for (const variant of recordVariants(record)) {
       if (!countriesCompatible(value?.country, variant?.country)) continue;
       if (model.normalizeIdentityText(variant?.name) !== targetName) continue;
 
-      const sameCity = model.canonicalCityKey(value?.city) === model.canonicalCityKey(variant?.city)
-        && !!model.canonicalCityKey(value?.city);
-      const sourceAddress = String(value?.venueAddress ?? value?.address ?? '').trim();
+      const sourceCity = model.canonicalCityKey(value?.city);
+      const sameCity = !!sourceCity && sourceCity === model.canonicalCityKey(variant?.city);
       const variantAddress = model.addressLines(variant?.address).join(' ');
-      const sourceFull = normalizedAddress(sourceAddress);
       const variantFull = normalizedAddress(variantAddress);
-      const sourceHead = addressHead(sourceAddress);
       const variantHead = addressHead(variantAddress);
 
       if (sourceFull && variantFull && sourceFull === variantFull) best = Math.max(best, 5);
       else if (sourceHead && variantHead && sourceHead === variantHead) best = Math.max(best, 4);
-      else if (sameCity && (!sourceAddress || !variantAddress)) best = Math.max(best, 2);
+      else if (sameCity && (!sourceAddress || !variantAddress)) {
+        // Match the base model's conflict safeguard: an address-less alias
+        // cannot bypass a known conflicting primary address.
+        if (sourceFull && primaryFull && sourceFull !== primaryFull && !variantFull) continue;
+        best = Math.max(best, 2);
+      }
     }
     return best;
   }
 
   function placeholderVenueEvidenceScore(value, record) {
-    const sourceAddress = String(value?.venueAddress ?? value?.address ?? '').trim();
+    const sourceAddress = addressText(value);
     if (!sourceAddress) return 0;
     const sourceFull = normalizedAddress(sourceAddress);
     const sourceHead = addressHead(sourceAddress);
@@ -97,7 +111,11 @@
   }
 
   function metadataFor(value) {
-    const direct = model.findVenueRecord(value, venueRecords);
+    return model.findVenueRecord(value, venueRecords);
+  }
+
+  function canonicalMetadataFor(value) {
+    const direct = metadataFor(value);
     if (direct) return direct;
 
     const rawVenue = String(value?.venue ?? value?.name ?? '').trim();
@@ -145,7 +163,7 @@
     const rawVenue = String(value?.venue ?? value?.name ?? '').trim();
     if (!rawVenue) return null;
 
-    const record = metadataFor(value);
+    const record = canonicalMetadataFor(value);
     if (model.isPlaceholderVenueName(rawVenue) && !record) return null;
 
     const venue = String(record?.name || rawVenue).trim();
@@ -156,7 +174,7 @@
     const nameKey = model.normalizeIdentityText(venue);
     const cityKey = model.canonicalCityKey(city);
     const countryKey = canonicalCountry(country);
-    const sourceAddressHead = addressHead(value?.venueAddress ?? value?.address);
+    const sourceAddressHead = addressHead(value?.venueAddress) || addressHead(value?.address);
     const recordAddressHead = addressHead(record?.address);
     return {
       key: `physical:${nameKey}|${cityKey}`,
@@ -219,16 +237,6 @@
       if (!group.country && concert?.country) group.country = String(concert.country).trim();
     }
     return groups.sort((a, b) => a.venue.localeCompare(b.venue));
-  }
-
-  function canonicalizeConcertSet(concertList) {
-    const replacements = new Map();
-    for (const group of canonicalVenueGroups(concertList)) {
-      for (const concert of group.concerts) {
-        replacements.set(concert, { ...concert, venue: group.venue, city: group.city, country: group.country });
-      }
-    }
-    return (concertList || []).map((concert) => replacements.get(concert) || { ...concert });
   }
 
   function canonicalTopVenueVisits(concertList) {
@@ -441,8 +449,6 @@
     metadataFor,
     canonicalVenueIdentity,
     canonicalVenueGroups,
-    canonicalizeConcertSet,
-    canonicalTopVenueVisits,
     detailAddressLines,
     venueMetadataPanelHtml,
     insertCapacityIntoConcertCard,
