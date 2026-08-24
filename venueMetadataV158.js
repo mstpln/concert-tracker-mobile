@@ -28,14 +28,16 @@
     return model.normalizeIdentityText(String(raw || '').split(',')[0]);
   }
 
-  function locationsCompatible(value, variant) {
-    const leftCity = model.canonicalCityKey(value?.city);
-    const rightCity = model.canonicalCityKey(variant?.city);
-    if (leftCity && rightCity && leftCity !== rightCity) return false;
-    const leftCountry = model.canonicalCountryKey(value?.country);
-    const rightCountry = model.canonicalCountryKey(variant?.country);
-    if (leftCountry && rightCountry && leftCountry !== rightCountry) return false;
-    return true;
+  function canonicalCountry(value) {
+    const key = model.canonicalCountryKey(value);
+    if (['usa', 'us', 'u s', 'united states of america'].includes(key)) return 'united states';
+    return key;
+  }
+
+  function countriesCompatible(left, right) {
+    const a = canonicalCountry(left);
+    const b = canonicalCountry(right);
+    return !a || !b || a === b;
   }
 
   function uniqueBestRecord(scored) {
@@ -52,18 +54,22 @@
     if (!targetName) return 0;
     let best = 0;
     for (const variant of recordVariants(record)) {
-      if (!locationsCompatible(value, variant)) continue;
+      if (!countriesCompatible(value?.country, variant?.country)) continue;
       if (model.normalizeIdentityText(variant?.name) !== targetName) continue;
+
+      const sameCity = model.canonicalCityKey(value?.city) === model.canonicalCityKey(variant?.city)
+        && !!model.canonicalCityKey(value?.city);
       const sourceAddress = String(value?.venueAddress ?? value?.address ?? '').trim();
       const variantAddress = model.addressLines(variant?.address).join(' ');
-      if (!sourceAddress || !variantAddress) {
-        best = Math.max(best, 1);
-        continue;
-      }
       const sourceFull = normalizedAddress(sourceAddress);
       const variantFull = normalizedAddress(variantAddress);
-      if (sourceFull && variantFull && sourceFull === variantFull) best = Math.max(best, 4);
-      else if (addressHead(sourceAddress) && addressHead(sourceAddress) === addressHead(variantAddress)) best = Math.max(best, 3);
+      const sourceHead = addressHead(sourceAddress);
+      const variantHead = addressHead(variantAddress);
+
+      if (sourceFull && variantFull && sourceFull === variantFull) best = Math.max(best, 5);
+      else if (sourceHead && variantHead && sourceHead === variantHead) best = Math.max(best, 4);
+      else if (sameCity && (!sourceAddress || !variantAddress)) best = Math.max(best, 2);
+      else if (sameCity && sourceAddress && variantAddress) best = Math.max(best, 1);
     }
     return best;
   }
@@ -75,16 +81,17 @@
     const sourceHead = addressHead(sourceAddress);
     let best = 0;
     for (const variant of recordVariants(record)) {
-      if (!locationsCompatible(value, variant)) continue;
+      if (!countriesCompatible(value?.country, variant?.country)) continue;
+      const sameCity = !value?.city || !variant?.city || model.canonicalCityKey(value.city) === model.canonicalCityKey(variant.city);
       const targetAddress = model.addressLines(variant?.address).join(' ');
       const targetFull = normalizedAddress(targetAddress);
       const targetHead = addressHead(targetAddress);
-      if (sourceFull && targetFull && sourceFull === targetFull) best = Math.max(best, 5);
-      else if (sourceHead && targetHead && sourceHead === targetHead) best = Math.max(best, 4);
+      if (sameCity && sourceFull && targetFull && sourceFull === targetFull) best = Math.max(best, 6);
+      else if (sameCity && sourceHead && targetHead && sourceHead === targetHead) best = Math.max(best, 5);
 
       const venueName = model.normalizeIdentityText(variant?.name || record?.name);
-      if (venueName && sourceFull && (sourceFull === venueName || sourceFull.startsWith(`${venueName} `))) {
-        best = Math.max(best, 3);
+      if (sameCity && venueName && sourceFull && (sourceFull === venueName || sourceFull.startsWith(`${venueName} `))) {
+        best = Math.max(best, 4);
       }
     }
     return best;
@@ -124,14 +131,15 @@
     return values[0] || '';
   }
 
-  function fallbackVenueKey(value) {
-    const base = [
-      model.normalizeIdentityText(value?.venue),
-      model.canonicalCityKey(value?.city),
-      model.canonicalCountryKey(value?.country),
-    ].join('|');
-    const street = addressHead(value?.venueAddress);
-    return `fallback:${base}${street ? `|${street}` : ''}`;
+  function recordPreferenceScore(record) {
+    if (!record) return 0;
+    const status = { complete: 50, partial: 40, review_needed: 30, unresolved: 20, temporary_error: 10 }[record.researchStatus] || 0;
+    return status
+      + (Array.isArray(record.identityAliases) ? Math.min(record.identityAliases.length, 8) : 0)
+      + (Array.isArray(record.legacyVenueIds) ? Math.min(record.legacyVenueIds.length, 8) : 0)
+      + (model.validCapacity(record.maxCapacity) ? 4 : 0)
+      + (model.addressLines(record.address).length ? 3 : 0)
+      + (model.safeOfficialUrl(record.officialUrl) ? 2 : 0);
   }
 
   function canonicalVenueIdentity(value) {
@@ -146,49 +154,79 @@
     const country = String(record?.country || value?.country || '').trim();
     if (!venue || !city || model.isPlaceholderVenueName(venue)) return null;
 
+    const nameKey = model.normalizeIdentityText(venue);
+    const cityKey = model.canonicalCityKey(city);
+    const countryKey = canonicalCountry(country);
+    const sourceAddressHead = addressHead(value?.venueAddress ?? value?.address);
+    const recordAddressHead = addressHead(record?.address);
     return {
-      key: record?.venueId ? `venue:${record.venueId}` : fallbackVenueKey({ ...value, venue, city, country }),
+      key: `physical:${nameKey}|${cityKey}`,
       venue,
       city,
       country,
+      nameKey,
+      cityKey,
+      countryKey,
+      addressHead: sourceAddressHead || recordAddressHead,
       record: record || null,
     };
   }
 
-  function canonicalizeConcertVenue(concert) {
-    const identity = canonicalVenueIdentity(concert);
-    if (!identity) return { ...concert };
-    return { ...concert, venue: identity.venue, city: identity.city, country: identity.country };
+  function identitiesMatch(left, right) {
+    if (!left || !right) return false;
+    if (left.record?.venueId && right.record?.venueId && left.record.venueId === right.record.venueId) return true;
+    if (!left.nameKey || left.nameKey !== right.nameKey) return false;
+    if (left.countryKey && right.countryKey && left.countryKey !== right.countryKey) return false;
+    if (left.cityKey && right.cityKey && left.cityKey === right.cityKey) return true;
+    return !!(left.addressHead && right.addressHead && left.addressHead === right.addressHead);
   }
 
   function canonicalVenueGroups(concertList) {
-    const byKey = new Map();
+    const groups = [];
+    const byName = new Map();
     for (const concert of concertList || []) {
       const identity = canonicalVenueIdentity(concert);
       if (!identity) continue;
 
-      let group = byKey.get(identity.key);
+      const candidates = byName.get(identity.nameKey) || [];
+      let group = candidates.find((candidate) => identitiesMatch(candidate.identity, identity));
       if (!group) {
         group = {
-          key: identity.key,
+          key: `${identity.key}:${groups.length}`,
           venue: identity.venue,
           city: identity.city,
           country: identity.country,
           concerts: [],
           record: identity.record,
+          identity,
         };
-        byKey.set(identity.key, group);
-      } else if (!group.record && identity.record) {
+        groups.push(group);
+        candidates.push(group);
+        byName.set(identity.nameKey, candidates);
+      } else if (recordPreferenceScore(identity.record) > recordPreferenceScore(group.record)) {
         group.record = identity.record;
         group.venue = identity.venue;
         group.city = identity.city;
         group.country = identity.country;
+        group.identity = { ...identity, addressHead: group.identity.addressHead || identity.addressHead };
+      } else if (!group.identity.addressHead && identity.addressHead) {
+        group.identity.addressHead = identity.addressHead;
       }
 
       group.concerts.push(concert);
       if (!group.country && concert?.country) group.country = String(concert.country).trim();
     }
-    return [...byKey.values()].sort((a, b) => a.venue.localeCompare(b.venue));
+    return groups.sort((a, b) => a.venue.localeCompare(b.venue));
+  }
+
+  function canonicalizeConcertSet(concertList) {
+    const replacements = new Map();
+    for (const group of canonicalVenueGroups(concertList)) {
+      for (const concert of group.concerts) {
+        replacements.set(concert, { ...concert, venue: group.venue, city: group.city, country: group.country });
+      }
+    }
+    return (concertList || []).map((concert) => replacements.get(concert) || { ...concert });
   }
 
   function detailAddressLines(record, group) {
@@ -342,17 +380,15 @@
   if (typeof root.dlConcertStats === 'function') {
     const priorConcertStats = root.dlConcertStats;
     root.dlConcertStats = function dlConcertStatsCanonicalVenues(attendedPast, bandsArg = [], upcomingGoing = [], ...args) {
-      const canonicalPast = (attendedPast || []).map(canonicalizeConcertVenue);
-      const canonicalUpcoming = (upcomingGoing || []).map(canonicalizeConcertVenue);
+      const combined = [...(attendedPast || []), ...(upcomingGoing || [])];
+      const canonicalCombined = canonicalizeConcertSet(combined);
+      const canonicalPast = canonicalCombined.slice(0, (attendedPast || []).length);
+      const canonicalUpcoming = canonicalCombined.slice((attendedPast || []).length);
       const result = priorConcertStats.call(this, canonicalPast, bandsArg, canonicalUpcoming, ...args);
       if (!result || typeof result !== 'object') return result;
-      const visibleKeys = new Set(canonicalPast
-        .map(canonicalVenueIdentity)
-        .filter(Boolean)
-        .map((identity) => identity.key));
       return {
         ...result,
-        uniqueVenues: visibleKeys.size,
+        uniqueVenues: canonicalVenueGroups(attendedPast || []).length,
         topVenues: Array.isArray(result.topVenues)
           ? result.topVenues.filter((entry) => !model.isPlaceholderVenueName(entry?.venue))
           : result.topVenues,
@@ -376,9 +412,9 @@
     getRecords,
     setRecords,
     metadataFor,
-    canonicalizeConcertVenue,
     canonicalVenueIdentity,
     canonicalVenueGroups,
+    canonicalizeConcertSet,
     detailAddressLines,
     venueMetadataPanelHtml,
     insertCapacityIntoConcertCard,
