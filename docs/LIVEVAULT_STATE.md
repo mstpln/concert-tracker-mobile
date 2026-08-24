@@ -6,11 +6,11 @@ This continuity file was compacted on 2026-08-24. Earlier detailed state remains
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged application baseline is **v163** at `a79a114c0e7927349c542197b2dcb2d9396987d6`. The active unmerged venue-directory correction is **v164** on `fix/venue-directory-canonical-grouping-v164`; `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v164` on that branch. PR #179 is the active review surface.
+The current merged application baseline is **v164** at `374f5421d149695ceabdf6b7eef3553603f24a2c`, which merged PR #179. The active unmerged provider-decision safety correction is **v165** on `fix/manual-provider-decision-safety-v165`; `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v165` on that branch.
 
-PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool and merged to `main` at `c9af931190599828e66c27b583f87932c5f23b9e`. PR #176 compacted continuity to the v162 merged baseline. PR #177 merged the v163 Ticketmaster data-integrity remediation. PR #178 then recorded the completed v163 production cleanup state.
+PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool. PR #176 compacted continuity to the v162 merged baseline. PR #177 merged the v163 Ticketmaster data-integrity remediation. PR #178 recorded the completed v163 production cleanup state. PR #179 merged the v164 canonical venue-directory correction.
 
-No deployment, production provider call, production research workflow or production smoke is authorized by the v164 implementation branch.
+No deployment, production provider call, production research workflow, production smoke or production-data mutation is authorized by the v165 implementation branch.
 
 ## v163 Ticketmaster concert data integrity
 
@@ -115,6 +115,16 @@ The canonical fallback is intentionally scoped to the venue directory and venue-
 
 The verified post-v163 production concert snapshot audit found 1,364 raw venue/city combinations, including 25 placeholder cards covering 64 records and 15 definite non-placeholder same-venue/canonical-city duplicate groups. Synthetic regression coverage includes Royal Arena, Pumpehuset, Nordichallen placeholder recovery, Filmstudion, Roxy, Ippodromo SNAI San Siro, Hollywood Bowl, distinct Greek Theatre venues, unresolved/ambiguous placeholders, AFAS Dome/Lotto Arena shared-address safety, alias address-conflict safety, and preservation of non-venue event statistics.
 
+## v165 reviewed provider-decision safety
+
+v165 closes a browser-side ownership gap exposed by the manual Ticketmaster identity enrichment. The Settings MusicBrainz review actions (`Use this artist`, `None of these`, and `Try again`) rebuild the root `musicbrainz` identity, but now carry forward every direct nested provider object whose status is `manual_confirmed` or `manual_rejected`. This includes Ticketmaster, Spotify and unknown future providers, and preserves each reviewed provider object wholesale including unknown future fields.
+
+The preservation is intentionally narrow: ordinary automated nested provider state and stale MusicBrainz metadata are not carried into a new root MusicBrainz decision. Node-side automation and conflict merges retain their existing reviewed-decision protections.
+
+The Band Data view now presents the existing manual provider markers naturally: stored `confidence: "user_confirmed"` renders as `User confirmed`, and `matchMethod: "user_approved_exact_id"` renders as `User-approved exact ID`. The persisted schema and provider trust semantics are unchanged; this is display-only normalization.
+
+v165 changes no provider selection rules, Ticketmaster admission rules, quotas, pacing, schedules or production data. The version/cache bump exists because the browser safety/UI correction is user-visible and must invalidate the PWA shell cache.
+
 ## Event/performance statistics contract
 
 Concert performance records remain independent. `lineupRole` is a user-owned `headliner`/`support` field. Existing explicit `eventGroupId` relationships remain authoritative, while v157 also derives an effective shared event at read time only when attended records have exactly matching date plus conservative venue and non-empty normalized city context. Automatic grouping writes no relationship field.
@@ -140,8 +150,8 @@ ConcertDates/Band Detail geographic filters retain Nearby -> SE -> EU semantics,
 
 ## Backlog hygiene
 
-Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening remains separate from v164.
+Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening remains separate from v165.
 
 ## Next operational steps
 
-Finish exact-head review and CI for PR #179. Do not merge without explicit `Merge it`, and do not deploy, mutate production data, manually run venue research or run production smoke as part of v164 validation.
+Finish exact-head review and CI for the v165 provider-decision safety PR. Do not merge without explicit `Merge it`, and do not deploy, mutate production data, manually run production research or run production smoke as part of v165 validation.
