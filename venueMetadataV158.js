@@ -231,6 +231,34 @@
     return (concertList || []).map((concert) => replacements.get(concert) || { ...concert });
   }
 
+  function canonicalTopVenueVisits(concertList) {
+    if (typeof dlVenueVisits !== 'function') return null;
+    const visits = dlVenueVisits(concertList || []);
+    const visitRecords = visits.map((visit) => {
+      const records = Array.isArray(visit?.concerts) ? visit.concerts : [];
+      const representative = (typeof EventModelV156 !== 'undefined' && typeof EventModelV156.representativeRecord === 'function')
+        ? EventModelV156.representativeRecord(records)
+        : records[0];
+      return {
+        ...(representative || {}),
+        venue: String(visit?.venue || representative?.venue || '').trim(),
+        city: String(visit?.city || representative?.city || '').trim(),
+        date: visit?.lastDate || representative?.date || null,
+      };
+    });
+    return canonicalVenueGroups(visitRecords)
+      .map((group) => ({
+        venue: group.venue,
+        city: group.city,
+        count: group.concerts.length,
+        lastDate: group.concerts.reduce((latest, concert) => (
+          concert?.date && (!latest || concert.date > latest) ? concert.date : latest
+        ), null),
+      }))
+      .sort((a, b) => b.count - a.count || (b.lastDate || '').localeCompare(a.lastDate || ''))
+      .slice(0, 5);
+  }
+
   function detailAddressLines(record, group) {
     let lines = model.addressLines(record?.address);
     if (!lines.length) lines = model.addressLines(bestConcertAddress(group));
@@ -382,18 +410,15 @@
   if (typeof root.dlConcertStats === 'function') {
     const priorConcertStats = root.dlConcertStats;
     root.dlConcertStats = function dlConcertStatsCanonicalVenues(attendedPast, bandsArg = [], upcomingGoing = [], ...args) {
-      const combined = [...(attendedPast || []), ...(upcomingGoing || [])];
-      const canonicalCombined = canonicalizeConcertSet(combined);
-      const canonicalPast = canonicalCombined.slice(0, (attendedPast || []).length);
-      const canonicalUpcoming = canonicalCombined.slice((attendedPast || []).length);
-      const result = priorConcertStats.call(this, canonicalPast, bandsArg, canonicalUpcoming, ...args);
+      const result = priorConcertStats.call(this, attendedPast, bandsArg, upcomingGoing, ...args);
       if (!result || typeof result !== 'object') return result;
+      const topVenues = canonicalTopVenueVisits(attendedPast || []);
       return {
         ...result,
         uniqueVenues: canonicalVenueGroups(attendedPast || []).length,
-        topVenues: Array.isArray(result.topVenues)
-          ? result.topVenues.filter((entry) => !model.isPlaceholderVenueName(entry?.venue))
-          : result.topVenues,
+        topVenues: Array.isArray(topVenues)
+          ? topVenues
+          : (Array.isArray(result.topVenues) ? result.topVenues.filter((entry) => !model.isPlaceholderVenueName(entry?.venue)) : result.topVenues),
       };
     };
   }
@@ -417,6 +442,7 @@
     canonicalVenueIdentity,
     canonicalVenueGroups,
     canonicalizeConcertSet,
+    canonicalTopVenueVisits,
     detailAddressLines,
     venueMetadataPanelHtml,
     insertCapacityIntoConcertCard,
