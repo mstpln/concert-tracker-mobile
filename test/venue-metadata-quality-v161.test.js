@@ -196,6 +196,43 @@ test('different-name duplicate still merges when the review note explicitly name
   assert.ok(cleaned[0].legacyVenueIds.includes('venue-22222222'));
 });
 
+test('cleanup does not pre-merge differently named records that happen to share a venue id', () => {
+  const rows = [
+    venue({
+      venueId: 'venue-11111111',
+      name: 'AFAS Dome',
+      city: 'Merksem (Antwerpen)',
+      country: 'Belgium',
+      address: 'Schijnpoortweg 119, Merksem (Antwerpen), Belgium',
+      reviewNote: 'Confirmed same venue as AFAS Dome only.',
+    }),
+    venue({
+      venueId: 'venue-11111111',
+      name: 'Lotto Arena Antwerpen',
+      city: 'Merksem (Antwerpen)',
+      country: 'Belgium',
+      address: 'Schijnpoortweg 119, Merksem (Antwerpen), Belgium',
+      officialUrl: 'https://lotto-arena.example.test/',
+    }),
+  ];
+  const { cleaned } = dedupeDocument(rows);
+  assert.equal(cleaned.length, 2);
+});
+
+test('negated confirmation language cannot authorize a different-name merge', () => {
+  const rows = [
+    venue({ venueId: 'venue-11111111', name: 'Example Arena', address: 'Arena Road 1, London, United Kingdom' }),
+    venue({
+      venueId: 'venue-22222222',
+      name: 'Example Arena London',
+      address: 'Arena Road 1, London, United Kingdom',
+      reviewNote: 'Not confirmed duplicate of Example Arena; needs manual review.',
+    }),
+  ];
+  const { cleaned } = dedupeDocument(rows);
+  assert.equal(cleaned.length, 2);
+});
+
 test('same-name venues with conflicting streets are not automatically merged', () => {
   const rows = [
     venue({ venueId: 'venue-11111111', address: 'Street A 1, London, United Kingdom' }),
