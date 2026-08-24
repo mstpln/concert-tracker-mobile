@@ -42,6 +42,18 @@ This continuity file was compacted on 2026-08-24. Earlier durable decisions and 
 
 **Consequence:** Ambiguous identity stays unresolved/reviewed rather than guessed. Missing artist images and album artwork use exact trusted identity only.
 
+### Listening aliases are local attribution only
+
+**Decision:** Optional `listeningAliases` extend local band-name attribution only when one stable BANDMARKR band uniquely owns the normalized alias. Explicit known stable band IDs remain authoritative.
+
+**Consequence:** Aliases do not create or replace Spotify/MusicBrainz identity, rewrite source observations or weaken ambiguity rules.
+
+### Scheduled listening artwork remains trusted-local
+
+**Decision:** Automatic Spotify listening-artwork maintenance stays on the trusted local host rather than moving private listening reads into GitHub Actions.
+
+**Consequence:** Installing/running that scheduler, reading production listening data, calling Spotify and writing production listening metadata/usage remain separately authorized production actions.
+
 ### Provider calls remain bounded
 
 **Decision:** UsageTracker caps/pacing, the persisted Spotify circuit and cross-scheduler lease remain authoritative.
@@ -53,6 +65,18 @@ This continuity file was compacted on 2026-08-24. Earlier durable decisions and 
 **Decision:** Releases is not an active feed/alert surface; Alerts is concert-only.
 
 **Consequence:** Reintroducing release alerts or scheduled release discovery requires a new explicit build/decision.
+
+### Update Activity uses safe aggregate reporting
+
+**Decision:** Settings Update Activity uses additive per-flow status/timestamp/result reporting with truthful aggregate counts and normalized safe failure summaries. Device-owned ListenBrainz stores only its latest processed/added/skipped aggregate in browser-local connection state.
+
+**Consequence:** Missing metrics stay missing rather than invented zeroes, and raw provider bodies, stacks, secrets, private URLs, ticket data and listening-event details are never displayed.
+
+### Ticketmaster venue quality is monotonic
+
+**Decision:** A provider placeholder venue may never overwrite a genuine venue already stored for the same canonical concert, while valid provider-owned fields may still refresh.
+
+**Consequence:** Venue application remains field-aware and must be re-evaluated against the latest reread record before persistence.
 
 ## Concert/event ownership and statistics
 
