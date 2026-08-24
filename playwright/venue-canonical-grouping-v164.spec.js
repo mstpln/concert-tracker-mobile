@@ -166,3 +166,46 @@ test('v164 venue statistics use the same canonical venue identity without changi
   expect(result.topVenues.find((venue) => venue.venue === 'Nordichallen')?.count).toBe(1);
   expect(result.topVenues.find((venue) => venue.venue === 'Hollywood Bowl')?.count).toBe(2);
 });
+
+test('v164 canonical venue stats do not change event-level calculations', async ({ page }, testInfo) => {
+  await openApp(page, testInfo);
+  await seedCanonicalVenueCases(page);
+
+  const result = await page.evaluate(() => {
+    const original = [
+      {
+        id: 'scope-1', bandId: 'scope-a', bandName: 'Scope A', venue: 'Royal Arena', city: 'Copenhagen', country: 'Denmark',
+        date: '2025-07-01', attending: true, ticketPrice: 100, ticketQuantity: 1, distanceKm: 10,
+      },
+      {
+        id: 'scope-2', bandId: 'scope-b', bandName: 'Scope B', venue: 'Royal Arena', city: 'København S', country: 'Denmark',
+        date: '2025-07-01', attending: true, ticketPrice: 200, ticketQuantity: 1, distanceKm: 20,
+      },
+    ];
+    const before = JSON.stringify(original);
+    const stats = dlConcertStats(original, [], []);
+    return {
+      before,
+      after: JSON.stringify(original),
+      totalShows: stats.totalShows,
+      totalSpend: stats.totalSpend,
+      knownSpendCount: stats.knownSpendCount,
+      averageTicketPrice: stats.averageTicketPrice,
+      kmTraveled: stats.kmTraveled,
+      knownDistanceCount: stats.knownDistanceCount,
+      uniqueVenues: stats.uniqueVenues,
+      topVenues: stats.topVenues,
+    };
+  });
+
+  expect(result.after).toBe(result.before);
+  expect(result.totalShows).toBe(2);
+  expect(result.totalSpend).toBe(300);
+  expect(result.knownSpendCount).toBe(2);
+  expect(result.averageTicketPrice).toBe(150);
+  expect(result.kmTraveled).toBe(60);
+  expect(result.knownDistanceCount).toBe(2);
+  expect(result.uniqueVenues).toBe(1);
+  expect(result.topVenues).toHaveLength(1);
+  expect(result.topVenues[0]).toMatchObject({ venue: 'Royal Arena', count: 2 });
+});
