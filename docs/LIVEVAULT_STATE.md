@@ -26,6 +26,8 @@ The scheduled venue lane reuses the twice-monthly focused Tavily/Groq workflow a
 
 Targets are derived only from `attending: true` concerts, incomplete venues are prioritized, and each run is capped at 10 unique venues. Provider calls remain behind UsageTracker limits/pacing. Automation is fill-only for established venue facts; conflicts preserve stored display facts and move/keep records at `review_needed`. `concerts.json` is read-only for this lane. Venue writes use the least-privilege data-maintenance credential.
 
+The user has confirmed the production repository variable `VENUE_METADATA_RESEARCH_ENABLED=true` and the required `DATA_MAINTENANCE_TOKEN` secret are configured. Those are current production configuration facts, not authorization to manually dispatch the broad workflow or run providers on demand.
+
 ### v161 venue data-quality hardening
 
 v161 tightened venue identity and evidence quality. Safe country/city aliases are canonicalized for matching while stored aliases/legacy IDs can be retained. Placeholder venue names such as Unknown/TBA/TBD do not become research targets. Known-country/address conflicts fail closed. Unknown future fields are preserved, and conflicting shared unknown fields block automatic consolidation.
