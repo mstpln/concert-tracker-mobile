@@ -40,6 +40,49 @@
     return values[0] || '';
   }
 
+  function canonicalVenueGroups(concertList) {
+    const byKey = new Map();
+    for (const concert of concertList || []) {
+      const rawVenue = String(concert?.venue || '').trim();
+      if (!rawVenue || model.isPlaceholderVenueName(rawVenue)) continue;
+
+      const record = metadataFor(concert);
+      const canonicalName = String(record?.name || rawVenue).trim();
+      const canonicalCity = String(record?.city || concert?.city || '').trim();
+      const canonicalCountry = String(record?.country || concert?.country || '').trim();
+      if (!canonicalName || !canonicalCity) continue;
+
+      const fallbackIdentity = [
+        model.normalizeIdentityText(canonicalName),
+        model.canonicalCityKey(canonicalCity),
+        model.canonicalCountryKey(canonicalCountry),
+      ].join('|');
+      const key = record?.venueId ? `venue:${record.venueId}` : `fallback:${fallbackIdentity}`;
+
+      let group = byKey.get(key);
+      if (!group) {
+        group = {
+          key,
+          venue: canonicalName,
+          city: canonicalCity,
+          country: canonicalCountry,
+          concerts: [],
+          record: record || null,
+        };
+        byKey.set(key, group);
+      } else if (!group.record && record) {
+        group.record = record;
+        group.venue = String(record.name || group.venue).trim();
+        group.city = String(record.city || group.city).trim();
+        group.country = String(record.country || group.country).trim();
+      }
+
+      group.concerts.push(concert);
+      if (!group.country && concert?.country) group.country = String(concert.country).trim();
+    }
+    return [...byKey.values()].sort((a, b) => a.venue.localeCompare(b.venue));
+  }
+
   function detailAddressLines(record, group) {
     let lines = model.addressLines(record?.address);
     if (!lines.length) lines = model.addressLines(bestConcertAddress(group));
@@ -72,7 +115,7 @@
 
   function renderVenueRows() {
     const liveConcerts = currentConcerts().filter((concert) => currentBands().some((band) => band.id === concert.bandId));
-    const allGroups = dlVenueGroups(liveConcerts);
+    const allGroups = canonicalVenueGroups(liveConcerts);
     const totalVenueCount = allGroups.length;
     let groups = allGroups;
 
@@ -91,7 +134,7 @@
     if (!groups.length) return totalHeader + filterRow + '<p class="screen-empty">No venues match these filters yet.</p>';
 
     const rows = groups.map((group) => {
-      const record = metadataFor({ venue: group.venue, city: group.city, country: group.country, venueAddress: bestConcertAddress(group) });
+      const record = group.record || metadataFor({ venue: group.venue, city: group.city, country: group.country, venueAddress: bestConcertAddress(group) });
       const capacity = model.capacityLabel(record?.maxCapacity);
       return `
         <div class="row-card clickable venue-metadata-list-card${capacity ? ' has-venue-capacity' : ''}" data-venue-key="${escapeAttr(group.key)}">
@@ -110,12 +153,12 @@
   function renderVenueDetail(key) {
     const container = document.getElementById('screen-venue-detail');
     const liveConcerts = currentConcerts().filter((concert) => currentBands().some((band) => band.id === concert.bandId));
-    const group = dlVenueGroups(liveConcerts).find((candidate) => candidate.key === key);
+    const group = canonicalVenueGroups(liveConcerts).find((candidate) => candidate.key === key);
     if (!group) {
       container.innerHTML = '<p class="screen-empty">Venue not found.</p>';
       return;
     }
-    const record = metadataFor({ venue: group.venue, city: group.city, country: group.country, venueAddress: bestConcertAddress(group) });
+    const record = group.record || metadataFor({ venue: group.venue, city: group.city, country: group.country, venueAddress: bestConcertAddress(group) });
     const sorted = [...group.concerts].sort((a, b) => new Date(b.date) - new Date(a.date));
     container.innerHTML = `
       <p class="venue-detail-location">${escapeHtml(group.city)}${group.country ? ', ' + escapeHtml(group.country) : ''}</p>
@@ -204,6 +247,7 @@
     getRecords,
     setRecords,
     metadataFor,
+    canonicalVenueGroups,
     detailAddressLines,
     venueMetadataPanelHtml,
     insertCapacityIntoConcertCard,
