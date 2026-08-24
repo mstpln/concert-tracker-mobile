@@ -72,6 +72,34 @@ This continuity file was compacted on 2026-08-24. Earlier durable decisions and 
 
 **Consequence:** Missing metrics stay missing rather than invented zeroes, and raw provider bodies, stacks, secrets, private URLs, ticket data and listening-event details are never displayed.
 
+### Ticketmaster concert admission requires trusted provider identity
+
+**Decision:** Automatic Ticketmaster concert fetching may only use a `confirmed` or `manual_confirmed` Ticketmaster attraction ID for the followed BANDMARKR artist. Keyword/name containment may discover or present an identity candidate for review but has no authority to create concert records.
+
+**Reason:** Production data demonstrated that whole-word containment could attach unrelated namesakes and derivative acts to followed artists, including Queen/other *Queen* names and The Beatles/The Beatles Dub Club.
+
+**Consequence:** Bands without a trusted Ticketmaster attraction identity skip automatic Ticketmaster event admission. Collision-prone exact-name identity searches fail to `needs_review` when the candidate set contains similarly named Music attractions or cannot be shown complete. Existing manual confirmations remain authoritative.
+
+### Ticketmaster ticket offers are not physical-performance identity
+
+**Decision:** A Ticketmaster event/listing ID identifies a provider offer, not necessarily a unique real-world concert. Standard and VIP/package/premium/lounge/sound-check listings for the same followed artist, date, physical venue and compatible start time represent one BANDMARKR physical performance when evidence is strong.
+
+**Reason:** KATSEYE and Loreen production examples showed one real performance represented by multiple Ticketmaster listing IDs.
+
+**Consequence:** v163 preserves a canonical Ticketmaster event ID/URL plus alternate provider offer IDs/URLs as provenance. Provider venue ID is preferred for location identity; exact normalized address/venue evidence is fallback. Materially different same-day start times remain separate performances. Different followed artists at a multi-act event are never cross-collapsed.
+
+### Ticketmaster venue and lifecycle evidence fails closed
+
+**Decision:** Preserve Ticketmaster venue ID, event title, provider source and lifecycle status as provider evidence. Missing embedded venue names may use one bounded/cached provider-venue lookup. Canceled, postponed and rescheduled candidates are not admitted as ordinary new upcoming concerts.
+
+**Consequence:** Unresolved venue identity is held instead of manufacturing `Unknown venue`; offsale alone is not destructive evidence; provider lifecycle changes do not authorize deleting user-owned concert history.
+
+### Ticketmaster cleanup is audit-first and separately authorized
+
+**Decision:** Existing Ticketmaster concert cleanup starts with a local read-only audit using the same v163 identity/performance rules. Production mutation is a distinct action requiring explicit user authorization after the exact dry-run is reviewed.
+
+**Consequence:** Package duplicates retain one canonical stable BANDMARKR ID and alternate provider provenance. Provider-attraction conflicts and legacy name-fallback records are classified for cleanup/review. Any record carrying user-owned state or event relationships is held for manual review rather than automatically removed. Unknown future fields and ownership boundaries remain protected.
+
 ### Ticketmaster venue quality is monotonic
 
 **Decision:** A provider placeholder venue may never overwrite a genuine venue already stored for the same canonical concert, while valid provider-owned fields may still refresh.
