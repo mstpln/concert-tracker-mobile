@@ -132,11 +132,11 @@ test('66 conservative Ticketmaster matching accepts clear venue variants and rej
   assert.equal(sameConcertLocation(existing, candidate), true);
   for (const changed of [{ city: 'Aarhus' }, { venue: 'Forum Copenhagen' }, { date: '2026-10-11' }, { bandId: 'other-band' }, { country: 'Sweden' }]) assert.equal(sameConcertLocation(existing, { ...candidate, ...changed }), false);
   assert.equal(findTicketmasterConcertMatch([sourceConcert({ sourceProvider: 'ticketmaster', providerEventId: 'other-event' })], candidate).kind, 'none');
-  assert.equal(findTicketmasterConcertMatch([sourceConcert({ providerEventId: 'tm-event-1' })], candidate).reason, 'provider_event_id');
+  assert.equal(findTicketmasterConcertMatch([sourceConcert({ sourceProvider: 'ticketmaster', providerEventId: 'tm-event-1' })], candidate).reason, 'provider_event_id');
 });
 
 test('67 exact Ticketmaster event IDs require the same band and date before upgrading', () => {
-  const existing = sourceConcert({ providerEventId: 'tm-event-1' }); const candidate = ticketmasterConcert();
+  const existing = sourceConcert({ sourceProvider: 'ticketmaster', providerEventId: 'tm-event-1' }); const candidate = ticketmasterConcert();
   const exact = findTicketmasterConcertMatch([existing], candidate);
   assert.deepEqual({ kind: exact.kind, reason: exact.reason, id: exact.concert.id }, { kind: 'match', reason: 'provider_event_id', id: existing.id });
   const reconciliation = reconcileConcertCandidate([existing], [], candidate);
@@ -150,6 +150,15 @@ test('67 exact Ticketmaster event IDs require the same band and date before upgr
   const differentBand = ticketmasterConcert({ bandId: 'b2', bandName: 'Other Band' });
   assert.equal(findTicketmasterConcertMatch([existing], differentBand).kind, 'none');
   assert.equal(reconcileConcertCandidate([existing], [], differentBand).action, 'add');
+});
+
+test('67b provider event IDs never cross provider namespaces', () => {
+  const tm = ticketmasterConcert({ time: null, venue: null, city: null, country: null });
+  const tavily = sourceConcert({ providerEventId: 'tm-event-1', time: null, venue: null, city: null, country: null });
+  assert.notEqual(findTicketmasterConcertMatch([tavily], tm).reason, 'provider_event_id');
+  assert.equal(reconcileConcertCandidate([tavily], [], tm).action, 'hold_for_review');
+  assert.notEqual(findTicketmasterConcertMatch([tm], tavily, { existingTicketmasterOnly: true }).reason, 'provider_event_id');
+  assert.equal(reconcileConcertCandidate([tm], [], tavily).action, 'hold_for_review');
 });
 
 test('68 candidate reconciliation skips same-run Tavily duplicates and holds uncertain Ticketmaster matches', () => {

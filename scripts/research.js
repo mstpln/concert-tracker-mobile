@@ -466,8 +466,13 @@ function crossProviderPerformanceRelationship(first, second) {
 }
 
 function findTicketmasterConcertMatch(records, candidate, { existingTicketmasterOnly = false } = {}) {
-  const candidateEventId = ticketmasterEventId(candidate);
-  const exactProviderMatches = candidateEventId ? records.filter((concert) => ticketmasterEventId(concert) === candidateEventId && concert.bandId === candidate.bandId && concert.date === candidate.date) : [];
+  const candidateEventId = isTicketmasterConcert(candidate) ? ticketmasterEventId(candidate) : null;
+  const exactProviderMatches = candidateEventId ? records.filter((concert) => (
+    isTicketmasterConcert(concert)
+    && ticketmasterEventId(concert) === candidateEventId
+    && concert.bandId === candidate.bandId
+    && concert.date === candidate.date
+  )) : [];
   if (exactProviderMatches.length === 1) return { kind: 'match', concert: exactProviderMatches[0], reason: 'provider_event_id' };
   if (exactProviderMatches.length > 1) return { kind: 'ambiguous' };
 
@@ -547,7 +552,12 @@ function reconcileConcertCandidate(existingConcerts, newConcerts, candidate) {
   if (isTicketmasterConcert(candidate)) {
     const candidateEventId = ticketmasterEventId(candidate);
     const exactProviderMatches = candidateEventId
-      ? records.filter((concert) => ticketmasterEventId(concert) === candidateEventId && concert.bandId === candidate.bandId && concert.date === candidate.date)
+      ? records.filter((concert) => (
+        isTicketmasterConcert(concert)
+        && ticketmasterEventId(concert) === candidateEventId
+        && concert.bandId === candidate.bandId
+        && concert.date === candidate.date
+      ))
       : [];
     if (exactProviderMatches.length === 1) {
       return {

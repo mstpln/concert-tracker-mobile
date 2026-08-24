@@ -1,6 +1,20 @@
 'use strict';
 
-const ALTERNATE_OFFER_PATTERN = /\b(vip|premium|package|hospitality|lounge|sound\s*check|soundcheck|meet\s*(?:and|&)\s*greet|early\s*entry|early\s*access|upgrade|experience|vinyl\s*room|club\s*access|suite)\b/i;
+// Strong terms can identify an alternate offer on their own. Generic words
+// such as "experience", "premium", "lounge" and "suite" require ticket or
+// access context so ordinary show names are not classified as packages.
+const ALTERNATE_OFFER_PATTERN = /\b(vip|packages?|hospitality|sound\s*check|soundcheck|meet\s*(?:(?:and|&)\s*)?greet|early\s*entry|early\s*access|upgrades?|vinyl\s*room|club\s*access)\b/i;
+const CONTEXTUAL_ALTERNATE_OFFER_PATTERNS = [
+  /\bpremium\s+(?:tickets?|packages?|offers?|seats?|access|upgrades?)\b/i,
+  /\b(?:tickets?|packages?|offers?|seats?|access|upgrades?)\s+premium\b/i,
+  /\blounge\s+(?:access|tickets?|packages?|hospitality)\b/i,
+  /\b(?:access|tickets?|packages?|hospitality)\s+lounge\b/i,
+  /\bexperience\s+(?:packages?|access|upgrades?)\b/i,
+  /\b(?:packages?|access|upgrades?)\s+experience\b/i,
+  /\bfan\s+experience\b/i,
+  /\bsuite\s+(?:access|tickets?|packages?|hospitality)\b/i,
+  /\b(?:access|tickets?|packages?|hospitality)\s+suite\b/i,
+];
 const UNSAFE_EVENT_STATUSES = new Set(['cancelled', 'canceled', 'postponed', 'rescheduled']);
 const UNKNOWN_VENUE_NAMES = new Set([
   'unknown venue', 'unknown', 'venue unknown', 'tba', 'tbd', 'venue tba', 'venue tbd',
@@ -12,7 +26,7 @@ const UNKNOWN_VENUE_NAMES = new Set([
 const USER_OWNED_FIELDS = [
   'attending', 'attended', 'rating', 'notes', 'ticketPrice', 'ticketQuantity', 'freeTicket', 'freeTickets',
   'ownedTickets', 'tickets', 'playlistUrl', 'playlistProgress', 'photoUrl', 'photos', 'eventGroupId',
-  'lineupRole', 'setlist', 'prepChecklist', 'concertDay', 'userLinks',
+  'lineupRole', 'setlist', 'prepChecklist', 'concertDay', 'userLinks', 'manuallyAdded',
 ];
 
 function normalize(value) {
@@ -34,17 +48,51 @@ function isUnknownVenueName(value) {
 }
 
 function offerKind(value) {
-  return ALTERNATE_OFFER_PATTERN.test(String(value || '')) ? 'alternate_offer' : 'standard';
+  return alternateOfferVocabularyMatch(value) ? 'alternate_offer' : 'standard';
 }
 
-function alternateOfferVocabularyMatch(value) {
+function normalizedOfferText(value) {
   let text = String(value || '');
   try {
     text = decodeURIComponent(text);
   } catch {
-    // A malformed legacy URL is still safe to inspect as stored text.
+    // A malformed value is still safe to inspect as stored text.
   }
-  return ALTERNATE_OFFER_PATTERN.test(text.replace(/[-_+./?=&%]+/g, ' '));
+  return text.replace(/[-_+./?=&%]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function alternateOfferVocabularyMatch(value, { source = 'text' } = {}) {
+  let candidate = String(value || '').trim();
+  if (!candidate) return false;
+  if (source === 'url') {
+    try {
+      // Only the path is evidence. Host names, query parameters and fragments
+      // often contain tracking words such as "vip" that describe no offer.
+      candidate = new URL(candidate, 'https://ticketmaster.invalid').pathname;
+    } catch {
+      return false;
+    }
+  }
+  const text = normalizedOfferText(candidate);
+  return ALTERNATE_OFFER_PATTERN.test(text)
+    || CONTEXTUAL_ALTERNATE_OFFER_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function recordOfferClassification(record) {
+  const explicit = record?.providerOfferType;
+  const nameAlternate = alternateOfferVocabularyMatch(record?.providerEventName);
+  const urlAlternate = alternateOfferVocabularyMatch(record?.ticketUrl, { source: 'url' });
+  const positiveReasons = [
+    nameAlternate && 'provider_event_name_package_pattern',
+    urlAlternate && 'ticket_url_package_pattern',
+  ].filter(Boolean);
+  if (explicit === 'alternate_offer') return { kind: 'alternate_offer', reason: 'explicit_provider_offer_type', positiveReasons };
+  if (explicit === 'standard' && positiveReasons.length) {
+    return { kind: 'ambiguous', reason: 'conflicting_provider_offer_evidence', positiveReasons };
+  }
+  if (explicit === 'standard') return { kind: 'standard', reason: 'explicit_provider_offer_type', positiveReasons };
+  if (positiveReasons.length) return { kind: 'alternate_offer', reason: positiveReasons[0], positiveReasons };
+  return { kind: 'unknown', reason: 'no_positive_alternate_offer_evidence', positiveReasons };
 }
 
 function minutesFromTime(value) {
@@ -97,13 +145,22 @@ function locationEvidence(first, second) {
   return venueA === venueB ? 'exact_venue_name' : null;
 }
 
+function ticketmasterLocationEvidence(first, second) {
+  const venueIdA = String(first?.providerVenueId || '').trim();
+  const venueIdB = String(second?.providerVenueId || '').trim();
+  if (venueIdA && venueIdB) return venueIdA === venueIdB ? 'provider_venue_id' : null;
+  const addressA = normalize(first?.venueAddress);
+  const addressB = normalize(second?.venueAddress);
+  return addressA && addressB && addressA === addressB ? 'exact_address' : null;
+}
+
 function physicalPerformanceMatch(first, second) {
   if (!first || !second || first.bandId !== second.bandId || first.date !== second.date) return { match: false, reason: 'band_or_date' };
   const firstAttraction = String(first?.providerAttractionId || '').trim();
   const secondAttraction = String(second?.providerAttractionId || '').trim();
   if (!firstAttraction || !secondAttraction) return { match: false, reason: 'attraction_missing' };
   if (!providerAttractionMatches(first, second)) return { match: false, reason: 'attraction_conflict' };
-  const locationReason = locationEvidence(first, second);
+  const locationReason = ticketmasterLocationEvidence(first, second);
   if (!locationReason) return { match: false, reason: 'location' };
   if (minutesFromTime(first.time) == null || minutesFromTime(second.time) == null) return { match: false, reason: 'time_missing' };
   if (!compatibleTimes(first.time, second.time)) return { match: false, reason: 'time_conflict' };
@@ -118,7 +175,7 @@ function physicalPerformanceRelationship(first, second) {
   if (!firstAttraction || !secondAttraction) return { kind: 'ambiguous', reason: 'attraction_missing' };
   if (firstAttraction !== secondAttraction) return { kind: 'ambiguous', reason: 'attraction_conflict' };
 
-  const locationReason = locationEvidence(first, second);
+  const locationReason = ticketmasterLocationEvidence(first, second);
   if (!locationReason) {
     const venueIdA = String(first?.providerVenueId || '').trim();
     const venueIdB = String(second?.providerVenueId || '').trim();
@@ -129,6 +186,14 @@ function physicalPerformanceRelationship(first, second) {
     const countryA = normalize(first?.country);
     const countryB = normalize(second?.country);
     if (countryA && countryB && countryA !== countryB) return { kind: 'distinct', reason: 'country_conflict' };
+    const addressA = normalize(first?.venueAddress);
+    const addressB = normalize(second?.venueAddress);
+    if (addressA && addressB && addressA !== addressB) return { kind: 'distinct', reason: 'address_conflict' };
+    const venueA = normalize(first?.venue);
+    const venueB = normalize(second?.venue);
+    if (venueA && venueB && !isUnknownVenueName(first?.venue) && !isUnknownVenueName(second?.venue) && venueA !== venueB) {
+      return { kind: 'distinct', reason: 'venue_name_conflict' };
+    }
     return { kind: 'ambiguous', reason: 'location_incomplete' };
   }
 
@@ -182,9 +247,10 @@ function mergeAlternateOffer(existing, incoming) {
   const match = physicalPerformanceMatch(existing, incoming);
   if (!match.match) return null;
 
-  const existingKind = existing.providerOfferType || offerKind(existing.providerEventName);
-  const incomingKind = incoming.providerOfferType || offerKind(incoming.providerEventName);
-  if (existingKind !== 'alternate_offer' && incomingKind !== 'alternate_offer') return null;
+  const existingKind = recordOfferClassification(existing).kind;
+  const incomingKind = recordOfferClassification(incoming).kind;
+  if (!new Set([existingKind, incomingKind]).has('standard')
+    || !new Set([existingKind, incomingKind]).has('alternate_offer')) return null;
 
   const preferIncomingPrimary = existingKind === 'alternate_offer' && incomingKind !== 'alternate_offer';
   const primary = preferIncomingPrimary ? incoming : existing;
@@ -218,19 +284,36 @@ function mergeAlternateOffer(existing, incoming) {
 }
 
 function collapseTicketmasterOffers(records) {
-  const output = [];
-  for (const record of records || []) {
-    let merged = false;
-    for (let index = 0; index < output.length; index += 1) {
-      const candidate = mergeAlternateOffer(output[index], record);
-      if (!candidate) continue;
-      output[index] = candidate;
-      merged = true;
-      break;
+  const input = [...(records || [])].sort((a, b) => recordSortKey(a).localeCompare(recordSortKey(b)));
+  const standards = input.filter((record) => recordOfferClassification(record).kind === 'standard');
+  const alternates = input.filter((record) => recordOfferClassification(record).kind === 'alternate_offer');
+  const untouched = input.filter((record) => !['standard', 'alternate_offer'].includes(recordOfferClassification(record).kind));
+  const groupedAlternates = new Map();
+
+  for (const alternate of alternates) {
+    const matches = standards.filter((standard) => physicalPerformanceMatch(standard, alternate).match);
+    if (matches.length !== 1) {
+      untouched.push(alternate);
+      continue;
     }
-    if (!merged) output.push(record);
+    const current = groupedAlternates.get(matches[0]) || [];
+    current.push(alternate);
+    groupedAlternates.set(matches[0], current);
   }
-  return output;
+
+  const collapsed = standards.map((standard) => {
+    let merged = standard;
+    for (const alternate of groupedAlternates.get(standard) || []) {
+      merged = mergeAlternateOffer(merged, alternate) || merged;
+    }
+    return merged;
+  });
+  return [...collapsed, ...untouched].sort((a, b) => recordSortKey(a).localeCompare(recordSortKey(b)));
+}
+
+function recordSortKey(record) {
+  return [record?.bandId, record?.date, record?.time, record?.providerVenueId, record?.providerEventId, record?.id]
+    .map((value) => String(value || '')).join('|');
 }
 
 function meaningfulUserOwnedValue(field, value) {
@@ -256,8 +339,11 @@ function trustedTicketmasterIdentity(band) {
 
 function wrongArtistReason(record, band) {
   if (record?.sourceProvider !== 'ticketmaster') return null;
+  if (!band) return 'band_metadata_missing';
   const trustedId = trustedTicketmasterIdentity(band);
   const recordId = String(record?.providerAttractionId || '').trim();
+  if (!trustedId) return 'trusted_band_identity_missing';
+  if (!recordId) return 'provider_attraction_missing';
   if (trustedId && recordId && trustedId !== recordId) return 'provider_attraction_conflict';
   if (record?.artistMatchMethod === 'validated_name_fallback') return 'untrusted_name_fallback';
   return null;
@@ -272,17 +358,20 @@ module.exports = {
   isUnknownVenueName,
   offerKind,
   alternateOfferVocabularyMatch,
+  recordOfferClassification,
   minutesFromTime,
   compatibleTimes,
   performanceTimeRelationship,
   providerAttractionMatches,
   locationEvidence,
+  ticketmasterLocationEvidence,
   physicalPerformanceMatch,
   physicalPerformanceRelationship,
   providerOfferEvidence,
   mergeOfferLists,
   mergeAlternateOffer,
   collapseTicketmasterOffers,
+  recordSortKey,
   meaningfulUserOwnedValue,
   userOwnedFieldNames,
   hasUserOwnedData,

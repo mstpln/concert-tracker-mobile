@@ -40,7 +40,7 @@ function packageAudit(packageState = {}) {
   const report = Audit.auditConcerts([
     { ...shared, id: 'standard', providerEventId: 'standard', providerEventName: 'Artist', providerOfferType: 'standard' },
     { ...shared, id: 'package', providerEventId: 'package', providerEventName: 'Artist VIP Package', providerOfferType: 'alternate_offer', ...packageState },
-  ]);
+  ], [band('Artist', 'artist', 'tm-artist')]);
   return report.issues.find((issue) => issue.type === 'package_duplicate_group');
 }
 
@@ -53,7 +53,7 @@ function legacyAudit({ standard = {}, alternate = {} } = {}) {
   return Audit.auditConcerts([
     { ...shared, id: 'legacy-standard', providerEventId: 'legacy-standard-event', ticketUrl: 'https://www.ticketmaster.test/event/legacy-standard', ...standard },
     { ...shared, id: 'legacy-alternate', providerEventId: 'legacy-alternate-event', ...alternate },
-  ]);
+  ], [band('Legacy Artist', 'legacy-artist', 'tm-legacy-artist')]);
 }
 
 test('KATSEYE standard plus two Vinyl Room package listings becomes one physical concert', async () => {
@@ -454,7 +454,7 @@ test('cleanup requires manual review for headliner/support conflicts in either d
   const report = Audit.auditConcerts([
     { ...shared, id: 'standard', providerEventId: 'standard', providerEventName: 'Artist', providerOfferType: 'standard', lineupRole: 'support' },
     { ...shared, id: 'package', providerEventId: 'package', providerEventName: 'Artist VIP Package', providerOfferType: 'alternate_offer', lineupRole: 'headliner' },
-  ]);
+  ], [band('Artist', 'artist', 'tm-artist')]);
   const canonicalSupport = report.issues.find((issue) => issue.type === 'package_duplicate_group');
   assert.equal(canonicalSupport.automaticRemediationSafe, false);
   assert.deepEqual(canonicalSupport.cleanupAssessment.reasons, ['conflicting_lineup_role']);
@@ -475,7 +475,7 @@ test('cleanup allows clean matching headliners and matching support state alread
   const report = Audit.auditConcerts([
     { ...shared, id: 'standard', providerEventId: 'standard', providerEventName: 'Artist', providerOfferType: 'standard' },
     { ...shared, id: 'package', providerEventId: 'package', providerEventName: 'Artist VIP Package', providerOfferType: 'alternate_offer' },
-  ]);
+  ], [band('Artist', 'artist', 'tm-artist')]);
   const supports = report.issues.find((issue) => issue.type === 'package_duplicate_group');
   assert.equal(supports.automaticRemediationSafe, true);
   assert.deepEqual(supports.cleanupAssessment, {
@@ -496,7 +496,7 @@ test('cleanup compares user-owned values across the group and remains conservati
   const report = Audit.auditConcerts([
     { ...shared, id: 'standard', providerEventId: 'standard', providerEventName: 'Artist', providerOfferType: 'standard' },
     { ...shared, id: 'package', providerEventId: 'package', providerEventName: 'Artist VIP Package', providerOfferType: 'alternate_offer' },
-  ]);
+  ], [band('Artist', 'artist', 'tm-artist')]);
   const issue = report.issues.find((candidate) => candidate.type === 'package_duplicate_group');
   assert.equal(issue.automaticRemediationSafe, false);
   assert.deepEqual(issue.cleanupAssessment.protectedFields, []);
@@ -540,4 +540,254 @@ test('alternate provider provenance merge is monotonic for poorer and richer rep
     providerEventStatus: 'offsale',
     providerSource: 'ticketmaster',
   });
+});
+
+test('alternate-offer vocabulary is conservative for names and inspects URL paths only', () => {
+  for (const value of [
+    'Artist VIP Ticket', 'Artist Premium Ticket', 'Artist Hospitality', 'Artist Lounge Access',
+    'Artist Sound Check', 'Artist Meet & Greet', 'Artist Early Entry', 'Artist Early Access',
+    'Artist Upgrade', 'Artist Experience Package', 'Artist Vinyl Room', 'Artist Club Access',
+    'Artist Suite Hospitality',
+  ]) assert.equal(Integrity.alternateOfferVocabularyMatch(value), true, value);
+
+  for (const value of ['The Eminem Experience', 'Premium', 'Lounge', 'Suite', 'Experience']) {
+    assert.equal(Integrity.alternateOfferVocabularyMatch(value), false, value);
+  }
+  assert.equal(Integrity.alternateOfferVocabularyMatch('https://tickets.test/event/artist-%56IP-package', { source: 'url' }), true);
+  assert.equal(Integrity.alternateOfferVocabularyMatch('https://tickets.test/event/artist_soundcheck+upgrade', { source: 'url' }), true);
+  assert.equal(Integrity.alternateOfferVocabularyMatch('https://vip.ticketmaster.test/event/ordinary-show?campaign=vip-package#upgrade', { source: 'url' }), false);
+  assert.equal(Integrity.alternateOfferVocabularyMatch('https://tickets.test/event/the-eminem-experience-tickets', { source: 'url' }), false);
+});
+
+test('explicit standard/package conflicts never merge or become automatic cleanup', () => {
+  const shared = {
+    id: 'standard', bandId: 'artist', sourceProvider: 'ticketmaster', date: '2026-09-01', time: '20:00',
+    venue: 'Arena', city: 'Stockholm', country: 'Sweden', providerVenueId: 'venue',
+    providerAttractionId: 'artist-attraction', providerEventId: 'standard', lineupRole: 'headliner',
+  };
+  const conflict = { ...shared, id: 'conflict', providerEventId: 'conflict', providerEventName: 'Artist VIP Package', providerOfferType: 'standard' };
+  assert.equal(Integrity.recordOfferClassification(conflict).kind, 'ambiguous');
+  assert.equal(Integrity.mergeAlternateOffer(shared, conflict), null);
+  assert.equal(Integrity.collapseTicketmasterOffers([shared, conflict]).length, 2);
+  const finding = Audit.auditConcerts([shared, conflict]).issues.find((issue) => issue.type === 'package_relationship_review');
+  assert.ok(finding);
+  assert.equal(finding.automaticRemediationSafe, false);
+  assert.equal(finding.reason, 'conflicting_provider_offer_evidence');
+});
+
+test('preventive package collapse is direct-match and input-order independent', () => {
+  const shared = {
+    bandId: 'artist', date: '2026-09-01', venue: 'Arena', city: 'Stockholm', country: 'Sweden',
+    providerVenueId: 'venue', providerAttractionId: 'attraction', providerOfferType: 'standard',
+    providerEventName: 'Artist',
+  };
+  const standard = { ...shared, id: 'standard', time: '20:00', providerEventId: 'standard' };
+  const near = { ...shared, id: 'near', time: '20:04', providerEventId: 'near', providerOfferType: 'alternate_offer', providerEventName: 'Artist VIP Package' };
+  const bridgeOnly = { ...shared, id: 'bridge-only', time: '20:08', providerEventId: 'bridge-only', providerOfferType: 'alternate_offer', providerEventName: 'Artist VIP Package' };
+  for (const input of [[standard, near, bridgeOnly], [bridgeOnly, near, standard], [near, standard, bridgeOnly]]) {
+    const output = Integrity.collapseTicketmasterOffers(input);
+    assert.equal(output.length, 2);
+    const canonical = output.find((record) => record.providerEventId === 'standard');
+    assert.deepEqual(canonical.alternateProviderOffers.map((offer) => offer.providerEventId), ['near']);
+    assert.ok(output.some((record) => record.providerEventId === 'bridge-only'));
+  }
+});
+
+test('preventive package consolidation holds incomplete Ticketmaster location evidence', () => {
+  const standard = {
+    id: 'standard', bandId: 'artist', date: '2026-09-01', time: '20:00', venue: 'Same Arena',
+    city: 'Stockholm', country: 'Sweden', providerAttractionId: 'attraction', providerEventId: 'standard',
+    providerOfferType: 'standard', providerEventName: 'Artist', sourceProvider: 'ticketmaster',
+  };
+  const alternate = {
+    ...standard, id: 'package', providerEventId: 'package', providerOfferType: 'alternate_offer',
+    providerEventName: 'Artist VIP Package',
+  };
+  assert.equal(Integrity.physicalPerformanceRelationship(standard, alternate).kind, 'ambiguous');
+  assert.equal(Integrity.mergeAlternateOffer(standard, alternate), null);
+  assert.equal(Integrity.collapseTicketmasterOffers([standard, alternate]).length, 2);
+  assert.equal(research.reconcileConcertCandidate([standard], [], alternate).action, 'hold_for_review');
+});
+
+test('cleanup bridge case validates every removal directly and is order independent', () => {
+  const shared = {
+    bandId: 'artist', sourceProvider: 'ticketmaster', date: '2026-09-01', venue: 'Arena',
+    city: 'Stockholm', country: 'Sweden', providerVenueId: 'venue', providerAttractionId: 'attraction',
+    lineupRole: 'headliner',
+  };
+  const records = [
+    { ...shared, id: 'standard', time: '20:00', providerEventId: 'standard', providerOfferType: 'standard', providerEventName: 'Artist' },
+    { ...shared, id: 'near', time: '20:04', providerEventId: 'near', providerOfferType: 'alternate_offer', providerEventName: 'Artist VIP Package' },
+    { ...shared, id: 'bridge-only', time: '20:08', providerEventId: 'bridge-only', providerOfferType: 'alternate_offer', providerEventName: 'Artist VIP Package' },
+  ];
+  const decisions = [];
+  for (const input of [records, [...records].reverse(), [records[1], records[2], records[0]]]) {
+    const report = Audit.auditConcerts(input, [band('Artist', 'artist', 'attraction')]);
+    const automatic = report.issues.find((issue) => issue.type === 'package_duplicate_group');
+    assert.deepEqual(automatic.proposedMutation.removeConcertIds, ['near']);
+    assert.ok(automatic.directCanonicalMatches.every((match) => match.kind === 'same'));
+    assert.deepEqual(automatic.alternateProviderOffers.map((offer) => offer.providerEventId), ['near']);
+    const held = report.issues.find((issue) => issue.type === 'package_relationship_review' && issue.concertId === 'bridge-only');
+    assert.ok(held);
+    assert.equal(held.automaticRemediationSafe, false);
+    decisions.push({ retain: automatic.canonicalConcertId, remove: automatic.proposedMutation.removeConcertIds, held: held.concertId });
+  }
+  assert.deepEqual(decisions, [decisions[0], decisions[0], decisions[0]]);
+});
+
+test('positive package evidence with incomplete or conflicting performance evidence is always review-visible', () => {
+  const standard = {
+    id: 'standard', bandId: 'artist', sourceProvider: 'ticketmaster', date: '2026-09-01', time: '20:00',
+    venue: 'Arena', city: 'Stockholm', country: 'Sweden', venueAddress: 'Arena 1, Stockholm, Sweden',
+    providerVenueId: 'venue', providerAttractionId: 'attraction', providerEventId: 'standard',
+    providerEventName: 'Artist', providerOfferType: 'standard', lineupRole: 'headliner',
+  };
+  const basePackage = {
+    ...standard, id: 'package', providerEventId: 'package', providerEventName: 'Artist VIP Package',
+    providerOfferType: 'alternate_offer',
+  };
+  const cases = [
+    ['time_missing', { time: null }],
+    ['attraction_missing', { providerAttractionId: null }],
+    ['location_incomplete', { providerVenueId: null, venueAddress: null }],
+    ['unknown_venue', { venue: 'TBA' }],
+    ['location_incomplete', { providerVenueId: null, venueAddress: '' }],
+    ['provider_venue_conflict', { providerVenueId: 'other-venue' }],
+    ['attraction_conflict', { providerAttractionId: 'other-attraction' }],
+  ];
+  for (const [reason, change] of cases) {
+    const finding = Audit.auditConcerts([standard, { ...basePackage, ...change }]).issues
+      .find((issue) => issue.type === 'package_relationship_review');
+    assert.ok(finding, reason);
+    assert.equal(finding.safety, 'manual_review_required', reason);
+    assert.equal(finding.automaticRemediationSafe, false, reason);
+    assert.ok(finding.physicalRelationships.some((relationship) => relationship.reason === reason), reason);
+  }
+
+  const linkedStandard = { ...standard, alternateProviderOffers: [{ providerEventId: 'linked-package' }] };
+  const linkedLegacy = {
+    ...basePackage, id: 'linked', providerEventId: 'linked-package', providerEventName: null,
+    providerOfferType: null, time: null,
+  };
+  const linkedFinding = Audit.auditConcerts([linkedStandard, linkedLegacy]).issues
+    .find((issue) => issue.type === 'package_relationship_review' && issue.concertId === 'linked');
+  assert.ok(linkedFinding);
+  assert.ok(linkedFinding.packageEvidenceReasons.includes('referenced_by_alternate_provider_offers'));
+  assert.ok(linkedFinding.physicalRelationships.some((relationship) => relationship.reason === 'time_missing'));
+});
+
+test('alternateProviderOffers evidence is scoped to the referencing band and date', () => {
+  const owner = {
+    id: 'owner', bandId: 'artist-a', date: '2026-09-01', sourceProvider: 'ticketmaster',
+    providerEventId: 'owner-event', alternateProviderOffers: [{ providerEventId: 'reused-id' }],
+  };
+  const unrelated = {
+    id: 'unrelated', bandId: 'artist-b', date: '2026-10-02', sourceProvider: 'ticketmaster',
+    providerEventId: 'reused-id', ticketUrl: 'https://tickets.test/event/ordinary',
+  };
+  const references = Audit.referencedAlternateEventIds([owner, unrelated]);
+  assert.equal(Audit.offerClassification(unrelated, references).kind, 'unknown');
+});
+
+test('missing or invalid lineup roles block automatic package cleanup', () => {
+  for (const packageRole of [undefined, null, 'guest']) {
+    const issue = packageAudit({ lineupRole: packageRole });
+    assert.equal(issue.automaticRemediationSafe, false);
+    assert.ok(issue.cleanupAssessment.reasons.includes('missing_or_invalid_lineup_role'));
+  }
+});
+
+test('manually added concerts are explicit user-owned cleanup state', () => {
+  const issue = packageAudit({ manuallyAdded: true });
+  assert.equal(issue.automaticRemediationSafe, false);
+  assert.ok(issue.cleanupAssessment.protectedFields.includes('manuallyAdded'));
+});
+
+test('wrong-artist cleanup fails closed for incomplete identity and protected state', () => {
+  const base = {
+    id: 'record', bandId: 'artist', sourceProvider: 'ticketmaster', date: '2026-09-01', time: '20:00',
+    venue: 'Arena', providerVenueId: 'venue', providerEventId: 'event', providerAttractionId: 'wrong',
+    lineupRole: 'headliner',
+  };
+  const trusted = band('Artist', 'artist', 'trusted');
+  const conflict = Audit.auditConcerts([base], [trusted]).issues.find((issue) => issue.type === 'wrong_artist');
+  assert.equal(conflict.automaticRemediationSafe, true);
+  const protectedConflict = Audit.auditConcerts([{ ...base, notes: 'keep' }], [trusted]).issues.find((issue) => issue.type === 'wrong_artist');
+  assert.equal(protectedConflict.automaticRemediationSafe, false);
+  const unknownConflict = Audit.auditConcerts([{ ...base, futureField: true }], [trusted]).issues.find((issue) => issue.type === 'wrong_artist');
+  assert.equal(unknownConflict.automaticRemediationSafe, false);
+  assert.equal(Audit.auditConcerts([base], []).issues.find((issue) => issue.type === 'identity_review').reason, 'band_metadata_missing');
+  assert.equal(Audit.auditConcerts([{ ...base, providerAttractionId: null }], [trusted]).issues.find((issue) => issue.type === 'identity_review').reason, 'provider_attraction_missing');
+  assert.equal(Audit.auditConcerts([{ ...base, providerAttractionId: 'trusted', artistMatchMethod: 'validated_name_fallback' }], [trusted]).issues.find((issue) => issue.type === 'identity_review').reason, 'untrusted_name_fallback');
+  const manualConfirmed = { ...trusted, musicbrainz: { ...trusted.musicbrainz, ticketmaster: { id: 'trusted', status: 'manual_confirmed' } } };
+  assert.equal(Audit.auditConcerts([{ ...base, providerAttractionId: 'trusted' }], [manualConfirmed]).issues.some((issue) => issue.type === 'identity_review' || issue.type === 'wrong_artist'), false);
+});
+
+test('automatic cleanup requires current trusted band identity and a resolved role', () => {
+  const shared = {
+    id: 'standard', bandId: 'artist', sourceProvider: 'ticketmaster', date: '2026-09-01', time: '20:00',
+    venue: 'Arena', providerVenueId: 'venue', providerEventId: 'standard', providerAttractionId: 'trusted',
+    providerEventName: 'Artist', providerOfferType: 'standard', lineupRole: 'headliner',
+  };
+  const alternate = { ...shared, id: 'package', providerEventId: 'package', providerEventName: 'Artist VIP Package', providerOfferType: 'alternate_offer' };
+  const missingBand = Audit.auditConcerts([shared, alternate]).issues.find((issue) => issue.type === 'package_duplicate_group');
+  assert.equal(missingBand.automaticRemediationSafe, false);
+  assert.ok(missingBand.cleanupAssessment.reasons.includes('identity_not_proven'));
+
+  const wrongRoleRecord = { ...shared, id: 'wrong-role', providerAttractionId: 'wrong', lineupRole: null };
+  const wrongArtist = Audit.auditConcerts([wrongRoleRecord], [band('Artist', 'artist', 'trusted')]).issues.find((issue) => issue.type === 'wrong_artist');
+  assert.equal(wrongArtist.automaticRemediationSafe, false);
+});
+
+test('offsale remains non-destructive while unsafe lifecycle states require review', () => {
+  const base = { id: 'concert', bandId: 'artist', sourceProvider: 'ticketmaster', providerEventId: 'event', lineupRole: 'headliner', venue: 'Arena' };
+  assert.equal(Audit.auditConcerts([{ ...base, providerEventStatus: 'offsale' }]).issues.some((issue) => issue.type === 'lifecycle_review'), false);
+  for (const status of ['canceled', 'cancelled', 'postponed', 'rescheduled']) {
+    const issue = Audit.auditConcerts([{ ...base, providerEventStatus: status }]).issues.find((candidate) => candidate.type === 'lifecycle_review');
+    assert.ok(issue, status);
+    assert.equal(issue.automaticRemediationSafe, false, status);
+  }
+});
+
+test('incomplete attraction searches keep even long exact names in review', async () => {
+  const result = await ticketmaster.resolveAttractionIdentity({
+    band: { id: 'long-name', name: 'The Long Exact Artist Name', musicbrainz: { status: 'confirmed' } },
+    metadata: { artistName: 'The Long Exact Artist Name', aliases: [] },
+    usage: usage(),
+    now: '2026-08-24T00:00:00.000Z',
+    fetchImpl: async () => ({ ok: true, json: async () => ({
+      _embedded: { attractions: [{ id: 'exact', name: 'The Long Exact Artist Name', classifications: [{ segment: { name: 'Music' } }] }] },
+      page: { totalElements: 2 },
+    }) }),
+  });
+  assert.equal(result.kind, 'needs_review');
+});
+
+test('placeholder embedded venues use one bounded provider venue recovery lookup', async () => {
+  const calls = [];
+  const tracker = usage();
+  const result = await ticketmaster.fetchUpcomingEvents(band('Artist', 'artist', 'attraction'), tracker, {
+    now: '2026-08-24T00:00:00.000Z',
+    fetchImpl: async (url) => {
+      calls.push(url);
+      if (url.includes('/venues/venue-tba.json')) return { ok: true, json: async () => ({ id: 'venue-tba', name: 'Recovered Arena', city: { name: 'Stockholm' }, country: { name: 'Sweden' }, address: { line1: 'Arena 1' } }) };
+      return { ok: true, json: async () => ({
+        _embedded: { events: [event({ id: 'show', attractionId: 'attraction', attractionName: 'Artist', name: 'Artist', venueId: 'venue-tba', venue: 'TBA' })] },
+        page: { totalPages: 1 },
+      }) };
+    },
+  });
+  assert.equal(result[0].venue, 'Recovered Arena');
+  assert.equal(calls.filter((url) => url.includes('/venues/venue-tba.json')).length, 1);
+  assert.equal(tracker.calls, 2);
+});
+
+test('legacy and malformed optional offer shapes remain additive and safe', () => {
+  const legacy = {
+    id: 'legacy', bandId: 'artist', sourceProvider: 'ticketmaster', date: '2026-09-01', time: null,
+    venue: null, providerEventId: 'legacy-event', providerAttractionId: null, alternateProviderOffers: { malformed: true },
+    lineupRole: 'headliner',
+  };
+  assert.doesNotThrow(() => Audit.auditConcerts([legacy]));
+  assert.deepEqual(Integrity.mergeOfferLists(undefined, null, {}, [], [{ providerEventId: 'one' }, { providerEventId: 'one', ticketUrl: 'https://tickets.test/one' }]), [{ providerEventId: 'one', ticketUrl: 'https://tickets.test/one' }]);
 });

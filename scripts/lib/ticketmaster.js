@@ -97,7 +97,7 @@ function venueFields(venue) {
 
 async function resolveVenue(eventVenue, usage, fetchImpl, venueCache) {
   const embedded = venueFields(eventVenue);
-  if (embedded.venue) return embedded;
+  if (embedded.venue && !ConcertIntegrity.isUnknownVenueName(embedded.venue)) return embedded;
   if (!embedded.providerVenueId) return embedded;
   if (venueCache.has(embedded.providerVenueId)) return { ...embedded, ...venueCache.get(embedded.providerVenueId) };
 
@@ -136,7 +136,7 @@ async function eventToConcert(event, band, attractionId, usage, fetchImpl, venue
   const embeddedVenue = event?._embedded?.venues?.[0];
   if (!embeddedVenue) return null;
   const venue = await resolveVenue(embeddedVenue, usage, fetchImpl, venueCache);
-  if (!venue.venue) {
+  if (ConcertIntegrity.isUnknownVenueName(venue.venue)) {
     note(usage, `Ticketmaster venue unresolved for "${band.name}" on ${localDate}; event held instead of storing Unknown venue`);
     return null;
   }
@@ -285,8 +285,6 @@ function aliasIdentityNames(metadata) {
 
 function collisionRisk(candidate, candidates, canonicalNames, searchComplete) {
   const exact = identityNorm(candidate?.name);
-  const tokenCount = exact.split(' ').filter(Boolean).length;
-  const shortOrGeneric = tokenCount <= 1 || exact.length <= 6;
   const similarCandidateExists = candidates.some((other) => {
     if (!other?.id || other.id === candidate.id || !candidateIsMusic(other)) return false;
     const otherName = identityNorm(other.name);
@@ -294,7 +292,9 @@ function collisionRisk(candidate, candidates, canonicalNames, searchComplete) {
     return containsWholeWords(otherName, exact) || containsWholeWords(exact, otherName);
   });
   if (similarCandidateExists) return true;
-  return shortOrGeneric && !searchComplete;
+  // A partial result page cannot prove that a same-named/namesake candidate
+  // is absent, regardless of how long the artist name is.
+  return !searchComplete;
 }
 
 async function resolveAttractionIdentity({ band, metadata, usage, fetchImpl = fetch, now = new Date().toISOString() }) {
@@ -355,6 +355,7 @@ module.exports = {
   trustedAttractionId,
   eventStatus,
   venueFields,
+  resolveVenue,
   collisionRisk,
   canonicalIdentityNames,
   aliasIdentityNames,
