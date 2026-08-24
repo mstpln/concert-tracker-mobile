@@ -6,9 +6,25 @@ This continuity file was compacted on 2026-08-24. Earlier detailed state remains
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged application baseline is **v162**. `APP_VERSION` and `CACHE_NAME_LITERAL` are both `v162`, and `docs/LIVEVAULT_BUILD_STATE.json` reports `versionsMatch: true`. PR #174 fixed the Next Concert capacity layout without changing venue data semantics. PR #175 then hardened the offline venue-cleanup tool; it merged to `main` at `c9af931190599828e66c27b583f87932c5f23b9e`.
+The current merged application baseline is **v162**. The active unmerged Ticketmaster data-integrity build is **v163** on `fix/ticketmaster-data-integrity-v163`; `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v163` on that branch. The build changes the Ticketmaster research/data-maintenance path, not the normal app UI.
 
-No app/service-worker version bump was required for PR #175 because it changed only offline cleanup tooling and tests. No deployment or production workflow was triggered by that PR.
+PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool and merged to `main` at `c9af931190599828e66c27b583f87932c5f23b9e`. PR #176 then compacted continuity to the current v162 merged baseline.
+
+No merge, deployment, production provider call, production workflow or production concert-data write is authorized by the v163 implementation branch.
+
+## v163 Ticketmaster concert data integrity
+
+The Ticketmaster ingestion path is now identity-first. Automatic Ticketmaster event lookup requires a `confirmed` or `manual_confirmed` Ticketmaster attraction ID. Loose keyword/name containment remains only a discovery/review helper and cannot directly create concert records. Bands without a trusted attraction identity skip automatic Ticketmaster event fetching until identity resolution is reviewed.
+
+Attraction resolution requests a broader Music candidate set and fails to `needs_review` for collision-prone short/single-token identities when similarly named Music attractions exist or the search set is incomplete. Existing confirmed/manual-confirmed decisions remain authoritative and are reused.
+
+Trusted event candidates preserve Ticketmaster event, attraction and venue IDs plus provider event title, lifecycle status, source and offer type. Canceled/postponed/rescheduled candidates are not admitted as ordinary upcoming concerts. Missing embedded venue names use a bounded provider-venue lookup when a venue ID exists; unresolved venue identity is held rather than creating another `Unknown venue` concert.
+
+Ticketmaster standard and VIP/package/premium/lounge/sound-check style listings are classified separately from the physical performance. The shared v163 integrity helper compares band/date, attraction, provider venue or exact location evidence and compatible start time, keeps genuinely distinct same-day performance times separate, and collapses alternate offers to one canonical concert while retaining alternate provider event IDs/URLs as provenance. The standard Ticketmaster listing is preferred as the primary provider reference when present.
+
+`scripts/ticketmasterConcertAuditV163.js` is a local read-only cleanup audit path. It reads supplied local `concerts.json` and optional `bands.json`, never R2 or provider APIs, and classifies package duplicate groups, provider-attraction conflicts, legacy name-fallback identity records, recoverable/unknown venues, unsafe lifecycle states and lineup-role review cases. Records carrying user-owned state are marked manual-review-required rather than automatic cleanup candidates. Production cleanup remains a separately authorized next phase after the preventive code is merged and the exact production dry-run is reviewed.
+
+The broader `lineupRole`/event-grouping/statistics model is not redesigned by v163.
 
 ## Venue metadata implementation
 
@@ -88,6 +104,6 @@ ConcertDates/Band Detail geographic filters retain Nearby -> SE -> EU semantics,
 
 Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds.
 
-## Next operational venue step
+## Next operational steps
 
-The production venue dataset cleanup is complete by user confirmation. The next normal venue-maintenance milestone is the first real scheduled venue-research run under the existing twice-monthly schedule and its operational verification. Do not manually dispatch the broad production workflow merely to test the venue lane; manual provider/workflow execution remains separately authorized.
+For v163, finish exact-branch validation and review the generated Ticketmaster cleanup dry run after the preventive code is merge-ready. Do not mutate production `concerts.json` until the user separately authorizes that cleanup action. The normal venue-maintenance milestone remains the first real scheduled venue-research run under its existing twice-monthly schedule; do not manually dispatch the broad workflow merely to test it.
