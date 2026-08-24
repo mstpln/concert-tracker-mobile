@@ -3,11 +3,22 @@
 // Shared, pure state transitions for the Settings review actions. Kept free
 // of storage/UI concerns so the browser and focused tests use identical rules.
 (function (root) {
+  function reviewedProviderDecisions(previous) {
+    return Object.fromEntries(Object.entries(previous || {}).filter(([, value]) => (
+      value && typeof value === 'object' && !Array.isArray(value)
+      && ['manual_confirmed', 'manual_rejected'].includes(value.status)
+    )));
+  }
+
   function retainedMetadata(previous) {
     return {
       source: previous.source || 'MusicBrainz',
       lastAttemptedAt: previous.lastAttemptedAt || null,
       rejectedCandidateMbids: [...new Set(previous.rejectedCandidateMbids || [])],
+      // Root MusicBrainz review owns only the MB identity. Nested provider
+      // decisions are separate user-reviewed state and must survive choosing,
+      // rejecting, or retrying a MusicBrainz candidate.
+      ...reviewedProviderDecisions(previous),
     };
   }
 
@@ -65,7 +76,7 @@
     return summary;
   }
 
-  const api = { confirmedIdentity, rejectCandidates, retryIdentity, artistIdentitySummary };
+  const api = { reviewedProviderDecisions, confirmedIdentity, rejectCandidates, retryIdentity, artistIdentitySummary };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.MusicbrainzState = api;
 })(typeof window !== 'undefined' ? window : globalThis);
