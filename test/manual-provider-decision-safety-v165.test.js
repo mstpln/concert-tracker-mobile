@@ -75,13 +75,23 @@ test('MusicBrainz retry preserves nested reviewed provider decisions', () => {
   assertReviewedProvidersPreserved(next);
 });
 
-test('manual provider presentation formats semantic confidence without a percent suffix', () => {
-  assert.equal(UiCorrections.providerIdentityConfidenceText('user_confirmed'), 'User confirmed');
-  assert.equal(UiCorrections.providerIdentityConfidenceText(100), '100%');
-  assert.equal(UiCorrections.providerIdentityConfidenceText(null), null);
-  const html = '<span>user_confirmed%</span><span>user approved exact id</span>';
-  assert.equal(
-    UiCorrections.providerIdentityHtmlCorrections(html),
-    '<span>User confirmed</span><span>User-approved exact ID</span>'
-  );
+test('manual provider presentation only normalizes the intended Data-tab rows', () => {
+  const input = [
+    ['Confidence', 'user_confirmed%'],
+    ['Match method', 'user approved exact id'],
+    ['Confidence', '100%'],
+    ['Provider artist', 'user_confirmed%'],
+    ['Candidate', 'user approved exact id'],
+    ['Attraction ID', 'K8vZ917test', 'profile-data-id'],
+  ];
+  const snapshot = JSON.parse(JSON.stringify(input));
+  assert.deepEqual(UiCorrections.providerIdentityDataRows(input), [
+    ['Confidence', 'User confirmed'],
+    ['Match method', 'User-approved exact ID'],
+    ['Confidence', '100%'],
+    ['Provider artist', 'user_confirmed%'],
+    ['Candidate', 'user approved exact id'],
+    ['Attraction ID', 'K8vZ917test', 'profile-data-id'],
+  ]);
+  assert.deepEqual(input, snapshot);
 });
