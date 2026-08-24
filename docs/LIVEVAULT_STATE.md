@@ -6,11 +6,11 @@ This continuity file was compacted on 2026-08-24. Earlier detailed state remains
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged application baseline is **v162**. The active unmerged Ticketmaster data-integrity build is **v163** on `fix/ticketmaster-data-integrity-v163`; `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v163` on that branch. The build changes the Ticketmaster research/data-maintenance path, not the normal app UI.
+The current merged application baseline is **v163**. PR #177 merged the Ticketmaster data-integrity build to `main` at `f42763104a38a4bc8827d406c762efada50faa31`; `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v163`. The build changes the Ticketmaster research/data-maintenance path, not the normal app UI.
 
-PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool and merged to `main` at `c9af931190599828e66c27b583f87932c5f23b9e`. PR #176 then compacted continuity to the current v162 merged baseline.
+PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool and merged to `main` at `c9af931190599828e66c27b583f87932c5f23b9e`. PR #176 compacted continuity to the v162 merged baseline. PR #177 then merged the v163 Ticketmaster data-integrity remediation.
 
-No merge, deployment, production provider call, production workflow or production concert-data write is authorized by the v163 implementation branch.
+No deployment, production provider call, production research workflow or production smoke was triggered as part of the v163 merge or the subsequent authorized `concerts.json` cleanup.
 
 ## v163 Ticketmaster concert data integrity
 
@@ -26,9 +26,31 @@ v163 introduces no provider or quota bypass and does not change configured limit
 
 `scripts/ticketmasterConcertAuditV163.js` is a local read-only cleanup audit path. It reads supplied local `concerts.json` and optional `bands.json`, never R2 or provider APIs, and classifies package duplicates/uncertainties, identity conflicts or incomplete identity, recoverable/unknown venues, unsafe lifecycle states and lineup-role review cases. Automatic package plans require current trusted band metadata, one deterministic standard/legacy-standard canonical, direct same-performance proof from every proposed removal to that canonical, complete alternate provenance, valid stable IDs/roles, safe lifecycle state, and lossless ownership checks. Direct proof uses matching attraction, compatible time, and exact provider venue ID or complete matching legacy address; transitive connectivity and venue-name similarity cannot authorize deletion. Positive package evidence with missing/conflicting performance facts is always emitted as `manual_review_required`, including missing time/attraction/location, unknown or incompatible venue evidence, and scoped `alternateProviderOffers` linkage. Linkage is keyed by band/date/event ID and never bypasses physical proof.
 
-For pre-v163 records without event-title/offer-type metadata, alternate classification requires positive stored event-name, URL-path or scoped linkage evidence; absent evidence stays unknown. Conflicting explicit offer metadata, multiple possible canonicals and standard-vs-standard same-show evidence remain manual. Reports name stable IDs, direct relationship reasons, primary/alternate provider evidence and classification reasons, protected fields, unknown fields and proposed actions. Equal meaningful user state may be considered preserved only when the canonical already has the exact value; conflicts, missing/invalid roles, manually added state and unknown future fields remain manual. Wrong-artist removal is automatic only for a clear trusted-attraction conflict with a valid stable ID/role and no protected or unknown state. Supplying no current band metadata makes identity-dependent cleanup review-only. Production cleanup remains separately authorized after the preventive code is merged and the exact production dry-run is reviewed.
+For pre-v163 records without event-title/offer-type metadata, alternate classification requires positive stored event-name, URL-path or scoped linkage evidence; absent evidence stays unknown. Conflicting explicit offer metadata, multiple possible canonicals and standard-vs-standard same-show evidence remain manual. Reports name stable IDs, direct relationship reasons, primary/alternate provider evidence and classification reasons, protected fields, unknown fields and proposed actions. Equal meaningful user state may be considered preserved only when the canonical already has the exact value; conflicts, missing/invalid roles, manually added state and unknown future fields remain manual. Wrong-artist removal is automatic only for a clear trusted-attraction conflict with a valid stable ID/role and no protected or unknown state. Supplying no current band metadata makes identity-dependent cleanup review-only.
 
 The broader `lineupRole`/event-grouping/statistics model is not redesigned by v163.
+
+## Production Ticketmaster cleanup completed
+
+On 2026-08-24 the user supplied current production `concerts.json` and `bands.json` snapshots for offline review, explicitly authorized the exact production replacement, uploaded the validated cleaned `concerts.json` to the top level of the production R2 bucket, then downloaded that production object again for verification.
+
+The source snapshot contained **3,596 concert records**. The validated production replacement contains **3,262 records**, removing **334** legacy Ticketmaster records:
+
+- **243** clearly wrong-artist legacy Ticketmaster matches;
+- **91** redundant VIP/package/premium ticket-offer records;
+- **0** attending concert IDs removed or changed; all **76** `attending: true` IDs are identical before/after;
+- **0** meaningful user-owned fields changed on retained records;
+- **0** removed records carried meaningful user-owned state or unknown future fields;
+- **0** new stable concert IDs were introduced;
+- **73** retained records changed only by adding/updating `alternateProviderOffers` provenance;
+- removed package Ticketmaster event IDs/URLs are retained as alternate provider provenance on their canonical concert;
+- ticket-cost total remains **31,337** before and after cleanup.
+
+The downloaded post-upload production object is byte-for-byte identical to the authorized cleanup candidate: **3,262 records**, size **2,711,433 bytes**, SHA-256 `d30c413cfe84a002e2e93361d94eb05854c529588dc20f7ba0b9fabefa8b3bab`.
+
+Known Queen/Beatles/Johnny Cash legacy pollution patterns targeted by the remediation are absent from the verified production replacement. No live Ticketmaster/Tavily/Groq call, production research workflow, deployment or production smoke was used for this cleanup.
+
+Three legacy offer labels observed during the cleanup are not explicit v163 vocabulary cases and remain a focused future-ingestion hardening candidate: `Premium Experience`, `Logen Seat`, and plain `Box Seat`. The cleanup handled the reviewed existing records conservatively; any code change for these labels should remain a separate focused correction.
 
 ## Venue metadata implementation
 
@@ -110,4 +132,4 @@ Completed/superseded historical work must not be treated as current debt. PR #13
 
 ## Next operational steps
 
-For v163, finish exact-branch validation and review the generated Ticketmaster cleanup dry run after the preventive code is merge-ready. Do not mutate production `concerts.json` until the user separately authorizes that cleanup action. The normal venue-maintenance milestone remains the first real scheduled venue-research run under its existing twice-monthly schedule; do not manually dispatch the broad workflow merely to test it.
+The v163 preventive Ticketmaster integrity build and the authorized production `concerts.json` cleanup are complete. The next Ticketmaster-specific maintenance candidate is the focused offer-label hardening noted above; it should be isolated from unrelated builds. The normal venue-maintenance milestone remains the first real scheduled venue-research run under its existing twice-monthly schedule; do not manually dispatch the broad workflow merely to test it.
