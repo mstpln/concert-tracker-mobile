@@ -1,76 +1,18 @@
 'use strict';
-// Ticketmaster Discovery API client — the primary, structured source for
-// tour dates. Because every event Ticketmaster returns already carries a
-// full explicit date, results from here automatically satisfy the
-// mandatory-year policy; the only filtering needed is making sure the
-// event is actually by the band we asked about (keyword search can return
-// loosely-related matches) and that the venue has a resolvable location.
 
 const config = require('./config');
 const { haversineKm, slugify, isValidFullDate } = require('./util');
+const ConcertIntegrity = require('./ticketmasterConcertIntegrityV163');
 
 function apiKey() {
-  const k = process.env[config.TICKETMASTER.apiKeyEnv];
-  if (!k) throw new Error(`Missing required environment variable: ${config.TICKETMASTER.apiKeyEnv}`);
-  return k;
+  const key = process.env[config.TICKETMASTER.apiKeyEnv];
+  if (!key) throw new Error(`Missing required environment variable: ${config.TICKETMASTER.apiKeyEnv}`);
+  return key;
 }
 
-// Loose name match: lowercase, strip punctuation, require the band name to
-// appear as a substring of the attraction name or vice versa. Good enough
-// to reject "keyword happened to match" false positives without being so
-// strict it rejects legitimate minor formatting differences ("Blink-182"
-// vs "blink182").
-//
-// One real bug this let through on the first live run: "Arctic Monkeys
-// Tribute" at a small Istanbul bar matched against "Arctic Monkeys" because
-// it's a pure substring match, and independent WebSearch verification
-// afterward confirmed the real Arctic Monkeys have no announced 2026 tour
-// at all. Tribute/cover acts routinely reuse the original band's exact name
-// as a substring, so they need an explicit exclusion rather than relying on
-// the substring check to somehow reject them.
-//
-// A second, distinct round of real mismatches found in production data
-// (2026-07-13 QA pass) showed this single keyword list wasn't enough:
-//   - "Green Days" (a real Newcastle-based Green Day tribute act) slipped
-//     through because plain substring matching doesn't care about word
-//     boundaries — normalized("green day") is a substring of
-//     normalized("green days") even though "Days" is a different word, not
-//     a formatting variant of "Day". Fixed below by requiring containment
-//     to happen on a whole-word boundary (namesMatchNormalized).
-//   - "Ultimate Coldplay", "The Eminem Experience", and "Not Green Day" all
-//     slipped through even with the OLD keyword list, because none of
-//     "ultimate"/"not" were in it, and word-boundary matching alone doesn't
-//     help here — "Ultimate Coldplay" contains "Coldplay" as a legitimately
-//     whole-word-bounded substring, structurally identical to a legitimate
-//     case like "Coldplay: Music of the Spheres Tour". The only way to tell
-//     these apart is the specific qualifier word, so the keyword list below
-//     was expanded with the common tribute/parody-naming vocabulary
-//     ("not", "ultimate", "definitive", "totally", "unofficial", etc).
-//   - These were caught in that QA pass by their ticketUrl literally
-//     spelling it out ("not-green-day-tickets", "ultimate-coldplay-tickets",
-//     "the-eminem-experience-in-london"), which is why the check below also
-//     runs against event.name/event.url, not just the attraction name —
-//     tribute nights are frequently sold under a bundled festival/event
-//     title ("Christmas Rocks Day 4", "When We Were Punk '26", "Inbetween
-//     Days") that says nothing tribute-flavored in the attraction name
-//     itself but gives it away in the event title or URL slug.
-//
-// None of this makes the check bulletproof — creative tribute-act names
-// ("No Way Sis" for Oasis) that don't contain the real band's name at all
-// are excluded automatically (good), but a sufficiently creative name that
-// both contains the real band's name AND isn't in this keyword list could
-// still slip through. Treat this as a strong reduction in false positives,
-// not a guarantee — if another one is spotted, add its qualifier word here.
 const TRIBUTE_ACT_PATTERN =
-  /\b(tribute|tributes|cover\s*band|coverband|revival|allstars?|experience|reunion|homage|ultimate|definitive|definitely|totally|simply|absolutely|unofficial|salut(e|ing)|remembering|celebrating|bootleg|counterfeit|replica|not|almost|nearly)\b/i;
+  /\b(tribute|tributes|cover\s*band|coverband|revival|allstars?|experience|reunion|homage|ultimate|definitive|definitely|totally|simply|absolutely|unofficial|salut(e|ing)|remembering|celebrating|bootleg|counterfeit|replica|not|almost|nearly|roadshow|legacy\s+continues)\b/i;
 
-// Whole-word-boundary-aware containment: true if `needle` appears in
-// `haystack` as a run of whole words, bounded by spaces (or the start/end
-// of the string) on both sides — NOT glued onto a longer word. This is what
-// distinguishes "green day: saviours tour" (contains "green day" followed
-// by a space — legitimate tour-title suffix) from "green days" (contains
-// "green day" followed immediately by "s" — a different word, not a
-// formatting variant).
 function containsWholeWords(haystack, needle) {
   if (!needle) return false;
   const idx = haystack.indexOf(needle);
@@ -81,174 +23,326 @@ function containsWholeWords(haystack, needle) {
   return before && after;
 }
 
-// Like the old norm(), but replaces stripped punctuation with a space
-// instead of deleting it outright, so word boundaries survive
-// normalization (needed by containsWholeWords above). Multiple spaces are
-// collapsed and the result trimmed.
-function normWords(s) {
-  return String(s || '')
+function normWords(value) {
+  return String(value || '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
     .replace(/\s+/g, ' ');
 }
 
+// Retained as a review/discovery helper and for historical regression tests.
+// It is deliberately NOT an authority for automatic concert admission.
 function namesMatch(bandName, attractionName, eventName, eventUrl) {
   if (
     TRIBUTE_ACT_PATTERN.test(attractionName || '') ||
     TRIBUTE_ACT_PATTERN.test(eventName || '') ||
     TRIBUTE_ACT_PATTERN.test((eventUrl || '').replace(/[-_/]/g, ' '))
-  ) {
-    return false;
-  }
-  const a = normWords(bandName);
-  const b = normWords(attractionName);
-  if (!a || !b) return false;
-  if (a === b) return true;
-  return containsWholeWords(b, a) || containsWholeWords(a, b);
+  ) return false;
+  const band = normWords(bandName);
+  const attraction = normWords(attractionName);
+  if (!band || !attraction) return false;
+  if (band === attraction) return true;
+  return containsWholeWords(attraction, band) || containsWholeWords(band, attraction);
 }
 
-// Returns an array of raw candidate concerts (not yet deduped against
-// concerts.json) for a single band, or [] if nothing usable was found.
-async function fetchUpcomingEvents(band, usage) {
-  if (!usage.canCallTicketmaster()) {
-    usage.note(`Ticketmaster per-run/daily cap reached — skipping "${band.name}"`);
-    return [];
-  }
+function trustedAttractionId(band) {
+  return ConcertIntegrity.trustedTicketmasterIdentity(band);
+}
+
+function note(usage, message) {
+  if (typeof usage?.note === 'function') usage.note(message);
+}
+
+async function ticketmasterRequest(url, usage, fetchImpl) {
+  if (!usage?.canCallTicketmaster?.()) return { kind: 'quota' };
   await usage.recordTicketmasterCall();
-
-  const url = new URL(`${config.TICKETMASTER.baseUrl}/events.json`);
-  url.searchParams.set('apikey', apiKey());
-  const attractionId = config.STRUCTURED_RESEARCH.enabled && ['confirmed', 'manual_confirmed'].includes(band.musicbrainz?.ticketmaster?.status) ? band.musicbrainz.ticketmaster.id : null;
-  if (attractionId) url.searchParams.set('attractionId', attractionId);
-  else url.searchParams.set('keyword', band.name);
-  url.searchParams.set('classificationName', 'Music');
-  url.searchParams.set('sort', 'date,asc');
-  // Raised from 20 to 100 (2026-07): a band with 20+ near-term shows before
-  // a later tour leg (e.g. Eagles of Death Metal's 21 North American dates
-  // preceding their European leg) silently truncated the page before ever
-  // reaching the later shows, and since Ticketmaster DID return some
-  // results, the Tavily/Groq fallback in research.js never fired to catch
-  // the gap. 100 gives 5x headroom over any realistic full tour. No cost
-  // implication — Ticketmaster bills per request, not per page size, so
-  // this is still exactly one API call per band either way.
-  url.searchParams.set('size', '100');
-  // Defensive, even though Ticketmaster appears to already exclude past
-  // events by default without this: explicitly ask for events from right
-  // now onward, in the yyyy-MM-ddTHH:mm:ssZ format their API requires. This
-  // is belt-and-suspenders alongside the two other upcoming-only checks
-  // (the Tavily/Groq fallback prompt, and the final merge-time filter in
-  // research.js) — three independent layers, since a real live run already
-  // showed one of those layers alone wasn't enough (the Tavily/Groq path
-  // let 30 past-dated shows through before this was added).
-  url.searchParams.set('startDateTime', new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'));
-
-  let res;
+  let response;
   try {
-    res = await fetch(url.toString());
-  } catch (e) {
-    usage.note(`Ticketmaster request failed for "${band.name}": ${e.message}`);
+    response = await fetchImpl(url.toString());
+  } catch (error) {
+    return { kind: 'error', error: error.message || 'request_failed' };
+  }
+  if (response.status === 404) return { kind: 'not_found' };
+  if (!response.ok) return { kind: 'error', error: `http_${response.status}` };
+  try {
+    return { kind: 'ok', data: await response.json() };
+  } catch (error) {
+    return { kind: 'error', error: 'malformed_json' };
+  }
+}
+
+function providerSource(event) {
+  const source = event?.source;
+  if (typeof source === 'string' && source.trim()) return source.trim();
+  if (typeof source?.name === 'string' && source.name.trim()) return source.name.trim();
+  if (typeof source?.id === 'string' && source.id.trim()) return source.id.trim();
+  return null;
+}
+
+function venueFields(venue) {
+  const city = venue?.city?.name || '';
+  const country = venue?.country?.name || '';
+  const addressLine = venue?.address?.line1 || '';
+  return {
+    venue: typeof venue?.name === 'string' && venue.name.trim() ? venue.name.trim() : null,
+    city,
+    country,
+    venueAddress: [addressLine, city, country].filter(Boolean).join(', ') || null,
+    providerVenueId: typeof venue?.id === 'string' && venue.id.trim() ? venue.id.trim() : null,
+    latitude: venue?.location?.latitude ? parseFloat(venue.location.latitude) : null,
+    longitude: venue?.location?.longitude ? parseFloat(venue.location.longitude) : null,
+  };
+}
+
+async function resolveVenue(eventVenue, usage, fetchImpl, venueCache) {
+  const embedded = venueFields(eventVenue);
+  if (embedded.venue) return embedded;
+  if (!embedded.providerVenueId) return embedded;
+  if (venueCache.has(embedded.providerVenueId)) return { ...embedded, ...venueCache.get(embedded.providerVenueId) };
+
+  const url = new URL(`${config.TICKETMASTER.baseUrl}/venues/${encodeURIComponent(embedded.providerVenueId)}.json`);
+  url.searchParams.set('apikey', apiKey());
+  const result = await ticketmasterRequest(url, usage, fetchImpl);
+  if (result.kind !== 'ok') {
+    venueCache.set(embedded.providerVenueId, {});
+    return embedded;
+  }
+  const recovered = venueFields(result.data);
+  venueCache.set(embedded.providerVenueId, recovered);
+  return { ...embedded, ...recovered, providerVenueId: embedded.providerVenueId };
+}
+
+function eventStatus(event) {
+  const value = event?.dates?.status?.code;
+  return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : null;
+}
+
+async function eventToConcert(event, band, attractionId, usage, fetchImpl, venueCache, now) {
+  const attractions = event?._embedded?.attractions || [];
+  const matchingAttraction = attractions.find((attraction) => attraction?.id === attractionId);
+  if (!matchingAttraction) return null;
+
+  const localDate = event?.dates?.start?.localDate;
+  const start = event?.dates?.start || {};
+  if (start.dateTBD || start.dateTBA || !isValidFullDate(localDate)) return null;
+
+  const status = eventStatus(event);
+  if (ConcertIntegrity.isUnsafeEventStatus(status)) {
+    note(usage, `Ticketmaster ${status} event held from automatic concert admission for "${band.name}" on ${localDate}`);
+    return null;
+  }
+
+  const embeddedVenue = event?._embedded?.venues?.[0];
+  if (!embeddedVenue) return null;
+  const venue = await resolveVenue(embeddedVenue, usage, fetchImpl, venueCache);
+  if (!venue.venue) {
+    note(usage, `Ticketmaster venue unresolved for "${band.name}" on ${localDate}; event held instead of storing Unknown venue`);
+    return null;
+  }
+
+  const distanceKm = haversineKm(config.HOME_LAT, config.HOME_LON, venue.latitude, venue.longitude);
+  const eventName = typeof event?.name === 'string' && event.name.trim() ? event.name.trim() : null;
+  return {
+    id: `${band.id}-${localDate}-${slugify(venue.city || venue.venue)}`,
+    bandId: band.id,
+    bandName: band.name,
+    venue: venue.venue,
+    city: venue.city,
+    country: venue.country,
+    date: localDate,
+    time: start.localTime || null,
+    distanceKm,
+    articleUrl: null,
+    ticketUrl: event.url || null,
+    ticketRetailerVerified: true,
+    isNew: true,
+    foundAt: now,
+    venueAddress: venue.venueAddress,
+    sourceProvider: 'ticketmaster',
+    providerEventId: event.id || null,
+    providerAttractionId: attractionId,
+    providerVenueId: venue.providerVenueId,
+    providerEventName: eventName,
+    providerEventStatus: status,
+    providerSource: providerSource(event),
+    providerOfferType: ConcertIntegrity.offerKind(eventName),
+    artistMatchMethod: 'confirmed_attraction_id',
+  };
+}
+
+// Automatic event admission is identity-first. Bands without a trusted,
+// reviewed Ticketmaster attraction ID do not make an events request and can
+// only obtain identity through the separate resolver below.
+async function fetchUpcomingEvents(band, usage, { fetchImpl = fetch, now = new Date().toISOString() } = {}) {
+  const attractionId = trustedAttractionId(band);
+  if (!attractionId) {
+    note(usage, `Ticketmaster event lookup skipped for "${band.name}": trusted attraction identity required`);
     return [];
   }
-  if (res.status === 404) return []; // Ticketmaster returns 404 for "no results" on this endpoint
-  if (!res.ok) {
-    usage.note(`Ticketmaster returned ${res.status} for "${band.name}"`);
-    return [];
+
+  const venueCache = new Map();
+  const rawEvents = [];
+  const pageSize = 200;
+  const maxPages = 5; // Ticketmaster deep paging is capped at 1,000 items.
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const url = new URL(`${config.TICKETMASTER.baseUrl}/events.json`);
+    url.searchParams.set('apikey', apiKey());
+    url.searchParams.set('attractionId', attractionId);
+    url.searchParams.set('classificationName', 'Music');
+    url.searchParams.set('sort', 'date,asc');
+    url.searchParams.set('size', String(pageSize));
+    url.searchParams.set('page', String(page));
+    url.searchParams.set('startDateTime', now.replace(/\.\d{3}Z$/, 'Z'));
+
+    const result = await ticketmasterRequest(url, usage, fetchImpl);
+    if (result.kind === 'quota') {
+      note(usage, `Ticketmaster per-run/daily cap reached while paging "${band.name}"`);
+      break;
+    }
+    if (result.kind === 'not_found') break;
+    if (result.kind !== 'ok') {
+      note(usage, `Ticketmaster request failed for "${band.name}": ${result.error}`);
+      break;
+    }
+
+    const events = result.data?._embedded?.events || [];
+    rawEvents.push(...events);
+    const totalPages = Number(result.data?.page?.totalPages);
+    if (!events.length || !Number.isFinite(totalPages) || page + 1 >= totalPages) break;
   }
-  const data = await res.json();
-  const events = data?._embedded?.events || [];
 
-  const results = [];
-  for (const event of events) {
-    const attractions = event?._embedded?.attractions || [];
-    const matchingAttraction = attractionId
-      ? attractions.find((a) => a?.id === attractionId)
-      : attractions.find((a) => namesMatch(band.name, a.name, event.name, event.url));
-    if (!matchingAttraction) continue;
-
-    const localDate = event?.dates?.start?.localDate;
-    const tbd = event?.dates?.start?.dateTBD || event?.dates?.start?.dateTBA;
-    if (tbd || !isValidFullDate(localDate)) continue; // mandatory-year policy: skip, never guess
-
-    const venue = event?._embedded?.venues?.[0];
-    if (!venue) continue;
-
-    const lat = venue.location?.latitude ? parseFloat(venue.location.latitude) : null;
-    const lon = venue.location?.longitude ? parseFloat(venue.location.longitude) : null;
-    const distanceKm = haversineKm(config.HOME_LAT, config.HOME_LON, lat, lon);
-
-    const city = venue.city?.name || '';
-    const country = venue.country?.name || '';
-    const addressLine = venue.address?.line1 || '';
-    const venueAddress = [addressLine, city, country].filter(Boolean).join(', ') || null;
-    // Provider payloads are untrusted. Only a real non-empty string may
-    // become canonical venue evidence; malformed/blank names use the same
-    // honest sentinel that the merge layer already treats as a downgrade.
-    const venueName = typeof venue.name === 'string' && venue.name.trim() ? venue.name.trim() : 'Unknown venue';
-
-    results.push({
-      id: `${band.id}-${localDate}-${slugify(city)}`,
-      bandId: band.id,
-      bandName: band.name,
-      venue: venueName,
-      city,
-      country,
-      date: localDate,
-      time: event?.dates?.start?.localTime || null,
-      distanceKm,
-      articleUrl: null,
-      ticketUrl: event.url || null,
-      ticketRetailerVerified: true,
-      isNew: true,
-      foundAt: new Date().toISOString(),
-      venueAddress,
-      sourceProvider: 'ticketmaster',
-      providerEventId: event.id || null,
-      providerAttractionId: matchingAttraction.id || null,
-      artistMatchMethod: attractionId ? 'confirmed_attraction_id' : 'validated_name_fallback',
-    });
+  const concerts = [];
+  for (const event of rawEvents) {
+    const concert = await eventToConcert(event, band, attractionId, usage, fetchImpl, venueCache, now);
+    if (concert) concerts.push(concert);
   }
-  return results;
+  return ConcertIntegrity.collapseTicketmasterOffers(concerts);
 }
 
 const identityNorm = (value) => String(value || '').toLocaleLowerCase().normalize('NFKD').replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/^the\s+/u, '').replace(/\s+/g, ' ');
+
 function attractionIdentity(candidate, now = new Date().toISOString()) {
-  return { id: candidate.id, attractionName: candidate.name || null, url: candidate.url || null, status: 'confirmed', matchMethod: 'exact_music_attraction', confidence: 100,
-    matchedAt: now, lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: now, nextEligibleCheckAt: null, errorCategory: null, reviewCandidates: [] };
+  return {
+    id: candidate.id,
+    attractionName: candidate.name || null,
+    url: candidate.url || null,
+    status: 'confirmed',
+    matchMethod: 'exact_music_attraction',
+    confidence: 100,
+    matchedAt: now,
+    lastAttemptedAt: now,
+    lastCheckedAt: now,
+    lastSuccessfulAt: now,
+    nextEligibleCheckAt: null,
+    errorCategory: null,
+    reviewCandidates: [],
+  };
 }
+
 function attractionReviewCandidates(candidates) {
   const seen = new Set();
-  return (candidates || []).filter((candidate) => candidate?.id && !seen.has(candidate.id) && seen.add(candidate.id)).slice(0, 5)
+  return (candidates || [])
+    .filter((candidate) => candidate?.id && !seen.has(candidate.id) && seen.add(candidate.id))
+    .slice(0, 5)
     .map((candidate) => ({ id: candidate.id, attractionName: candidate.name || null, url: candidate.url || null }));
 }
+
 function unresolvedAttraction(prior, status, now, errorCategory = null, candidates = []) {
-  const retryMs = (status === 'error' ? config.STRUCTURED_RESEARCH.temporaryErrorRetryHours * 3600000 : config.STRUCTURED_RESEARCH.unresolvedIdentityRetryDays * 86400000);
-  return { ...prior, id: null, attractionName: null, url: null, status, matchMethod: null, confidence: null, matchedAt: null,
-    lastAttemptedAt: now, lastCheckedAt: now, lastSuccessfulAt: prior?.lastSuccessfulAt || null, nextEligibleCheckAt: new Date(Date.parse(now) + retryMs).toISOString(), errorCategory,
-    reviewCandidates: status === 'needs_review' ? attractionReviewCandidates(candidates) : [] };
+  const retryMs = status === 'error'
+    ? config.STRUCTURED_RESEARCH.temporaryErrorRetryHours * 3600000
+    : config.STRUCTURED_RESEARCH.unresolvedIdentityRetryDays * 86400000;
+  return {
+    ...prior,
+    id: null,
+    attractionName: null,
+    url: null,
+    status,
+    matchMethod: null,
+    confidence: null,
+    matchedAt: null,
+    lastAttemptedAt: now,
+    lastCheckedAt: now,
+    lastSuccessfulAt: prior?.lastSuccessfulAt || null,
+    nextEligibleCheckAt: new Date(Date.parse(now) + retryMs).toISOString(),
+    errorCategory,
+    reviewCandidates: status === 'needs_review' ? attractionReviewCandidates(candidates) : [],
+  };
 }
+
+function candidateIsMusic(candidate) {
+  return (candidate?.classifications || []).some((classification) => String(classification?.segment?.name || '').toLowerCase() === 'music');
+}
+
+function exactIdentityNames(band, metadata) {
+  return new Set([band?.name, metadata?.artistName, ...(metadata?.aliases || [])].map(identityNorm).filter(Boolean));
+}
+
+function collisionRisk(candidate, candidates, canonicalNames, searchComplete) {
+  const exact = identityNorm(candidate?.name);
+  const tokenCount = exact.split(' ').filter(Boolean).length;
+  const shortOrGeneric = tokenCount <= 1 || exact.length <= 6;
+  if (!shortOrGeneric) return false;
+  if (!searchComplete) return true;
+  return candidates.some((other) => {
+    if (!other?.id || other.id === candidate.id || !candidateIsMusic(other)) return false;
+    const otherName = identityNorm(other.name);
+    if (!otherName || canonicalNames.has(otherName)) return false;
+    return containsWholeWords(otherName, exact) || containsWholeWords(exact, otherName);
+  });
+}
+
 async function resolveAttractionIdentity({ band, metadata, usage, fetchImpl = fetch, now = new Date().toISOString() }) {
   const prior = band.musicbrainz?.ticketmaster;
   if (['confirmed', 'manual_confirmed'].includes(prior?.status) && prior.id) return { kind: 'reused', identity: prior };
   if (prior?.status === 'manual_rejected') return { kind: 'skipped', identity: prior };
   if (prior?.nextEligibleCheckAt && Date.parse(prior.nextEligibleCheckAt) > Date.parse(now)) return { kind: 'skipped', identity: prior };
   if (!usage.canCallTicketmaster()) return { kind: 'skipped', identity: prior || null };
+
   try {
-    await usage.recordTicketmasterCall();
     const url = new URL(`${config.TICKETMASTER.baseUrl}/attractions.json`);
-    url.searchParams.set('apikey', apiKey()); url.searchParams.set('keyword', metadata?.artistName || band.name); url.searchParams.set('classificationName', 'Music'); url.searchParams.set('size', '20');
-    const res = await fetchImpl(url.toString());
-    if (res.status === 404) return { kind: 'no_match', identity: unresolvedAttraction(prior, 'no_match', now) };
-    if (!res.ok) return { kind: 'error', identity: unresolvedAttraction(prior, 'error', now, `http_${res.status}`) };
-    const data = await res.json();
-    const names = new Set([band.name, metadata?.artistName, ...(metadata?.aliases || [])].map(identityNorm).filter(Boolean));
-    const matches = (data?._embedded?.attractions || []).filter((candidate) => {
-      const music = (candidate.classifications || []).some((c) => String(c?.segment?.name || '').toLowerCase() === 'music');
-      return music && names.has(identityNorm(candidate.name)) && !TRIBUTE_ACT_PATTERN.test(`${candidate.name} ${candidate.url || ''}`);
+    url.searchParams.set('apikey', apiKey());
+    url.searchParams.set('keyword', metadata?.artistName || band.name);
+    url.searchParams.set('classificationName', 'Music');
+    url.searchParams.set('size', '200');
+    await usage.recordTicketmasterCall();
+    const response = await fetchImpl(url.toString());
+    if (response.status === 404) return { kind: 'no_match', identity: unresolvedAttraction(prior, 'no_match', now) };
+    if (!response.ok) return { kind: 'error', identity: unresolvedAttraction(prior, 'error', now, `http_${response.status}`) };
+    const data = await response.json();
+    const candidates = data?._embedded?.attractions || [];
+    const names = exactIdentityNames(band, metadata);
+    const exactMatches = candidates.filter((candidate) => {
+      const candidateName = identityNorm(candidate.name);
+      return candidateIsMusic(candidate)
+        && names.has(candidateName)
+        && !TRIBUTE_ACT_PATTERN.test(`${candidate.name || ''} ${candidate.url || ''}`);
     });
-    if (matches.length === 1) return { kind: 'confirmed', identity: attractionIdentity(matches[0], now) };
-    return { kind: matches.length ? 'needs_review' : 'no_match', identity: unresolvedAttraction(prior, matches.length ? 'needs_review' : 'no_match', now, null, matches) };
-  } catch (error) { return { kind: 'error', identity: unresolvedAttraction(prior, 'error', now, error.message || 'request_failed') }; }
+    const totalElements = Number(data?.page?.totalElements);
+    const searchComplete = !Number.isFinite(totalElements) || totalElements <= candidates.length;
+
+    if (exactMatches.length === 1 && !collisionRisk(exactMatches[0], candidates, names, searchComplete)) {
+      return { kind: 'confirmed', identity: attractionIdentity(exactMatches[0], now) };
+    }
+    if (exactMatches.length) {
+      const reviewPool = [...exactMatches, ...candidates.filter((candidate) => candidateIsMusic(candidate) && namesMatch(band.name, candidate.name))];
+      return { kind: 'needs_review', identity: unresolvedAttraction(prior, 'needs_review', now, null, reviewPool) };
+    }
+    return { kind: 'no_match', identity: unresolvedAttraction(prior, 'no_match', now) };
+  } catch (error) {
+    return { kind: 'error', identity: unresolvedAttraction(prior, 'error', now, error.message || 'request_failed') };
+  }
 }
 
-module.exports = { fetchUpcomingEvents, resolveAttractionIdentity, namesMatch, attractionReviewCandidates, unresolvedAttraction };
+module.exports = {
+  fetchUpcomingEvents,
+  resolveAttractionIdentity,
+  namesMatch,
+  attractionReviewCandidates,
+  unresolvedAttraction,
+  trustedAttractionId,
+  eventStatus,
+  venueFields,
+  collisionRisk,
+};
