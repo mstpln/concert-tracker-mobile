@@ -6,9 +6,12 @@ const UNKNOWN_VENUE_NAMES = new Set([
   'unknown venue', 'unknown', 'venue unknown', 'tba', 'tbd', 'venue tba', 'venue tbd',
   'to be announced', 'to be determined',
 ]);
+// Fields that make an automatic destructive cleanup unsafe. lineupRole is
+// intentionally audited separately because v155 lazily initialized it on
+// ordinary writes; its mere presence does not prove an explicit user edit.
 const USER_OWNED_FIELDS = [
   'attending', 'rating', 'notes', 'ticketPrice', 'ticketQuantity', 'freeTicket', 'freeTickets',
-  'ownedTickets', 'tickets', 'playlistUrl', 'photoUrl', 'photos', 'eventGroupId', 'lineupRole', 'setlist',
+  'ownedTickets', 'tickets', 'playlistUrl', 'photoUrl', 'photos', 'eventGroupId', 'setlist',
 ];
 
 function normalize(value) {
