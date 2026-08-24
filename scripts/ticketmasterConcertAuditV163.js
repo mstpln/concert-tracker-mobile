@@ -38,6 +38,7 @@ function ticketmasterRecords(concerts) {
 }
 
 function alternateReferenceKey(record, providerEventId = record?.providerEventId) {
+  if (!Integrity.sameBandAndDate(record, record)) return null;
   return [record?.bandId, record?.date, String(providerEventId || '').trim()].map((value) => String(value || '')).join('|');
 }
 
@@ -46,7 +47,8 @@ function referencedAlternateEventIds(records) {
   for (const record of records) {
     for (const offer of Array.isArray(record?.alternateProviderOffers) ? record.alternateProviderOffers : []) {
       const providerEventId = String(offer?.providerEventId || '').trim();
-      if (providerEventId) referenced.add(alternateReferenceKey(record, providerEventId));
+      const key = providerEventId ? alternateReferenceKey(record, providerEventId) : null;
+      if (key) referenced.add(key);
     }
   }
   return referenced;
@@ -58,7 +60,8 @@ function offerClassification(record, referencedEventIds = new Set()) {
   const explicit = record?.providerOfferType;
   const eventNameAlternate = Integrity.alternateOfferVocabularyMatch(record?.providerEventName);
   const ticketUrlAlternate = Integrity.alternateOfferVocabularyMatch(record?.ticketUrl, { source: 'url' });
-  const referencedAsAlternate = referencedEventIds.has(alternateReferenceKey(record));
+  const referenceKey = alternateReferenceKey(record);
+  const referencedAsAlternate = Boolean(referenceKey && referencedEventIds.has(referenceKey));
   const positiveReasons = [
     eventNameAlternate && 'provider_event_name_package_pattern',
     ticketUrlAlternate && 'legacy_ticket_url_package_pattern',
@@ -77,7 +80,7 @@ function offerClassification(record, referencedEventIds = new Set()) {
 // Cleanup requires exact provider venue identity or a complete matching legacy
 // address. Venue-name similarity alone is deliberately review-only.
 function cleanupPhysicalRelationship(first, second) {
-  if (!first || !second || first.bandId !== second.bandId || first.date !== second.date) {
+  if (!Integrity.sameBandAndDate(first, second)) {
     return { kind: 'distinct', reason: 'band_or_date' };
   }
   const attractionA = String(first.providerAttractionId || '').trim();
@@ -321,7 +324,7 @@ function auditConcerts(concerts, bands = []) {
   for (const alternate of suspicious) {
     const classification = classifications.get(alternate);
     const candidates = records.filter((record) => (
-      record !== alternate && record.bandId === alternate.bandId && record.date === alternate.date
+      record !== alternate && Integrity.sameBandAndDate(record, alternate)
       && ['standard', 'unknown'].includes(classifications.get(record).kind)
     ));
     const relationships = candidates.map((candidate) => ({ candidate, relationship: cleanupPhysicalRelationship(candidate, alternate) }));
@@ -403,7 +406,7 @@ function auditConcerts(concerts, bands = []) {
   for (let i = 0; i < records.length; i += 1) {
     for (let j = i + 1; j < records.length; j += 1) {
       const first = records[i]; const second = records[j];
-      if (first.bandId !== second.bandId || first.date !== second.date) continue;
+      if (!Integrity.sameBandAndDate(first, second)) continue;
       if (['alternate_offer', 'ambiguous'].includes(classifications.get(first).kind)
         || ['alternate_offer', 'ambiguous'].includes(classifications.get(second).kind)) continue;
       const relationship = cleanupPhysicalRelationship(first, second);

@@ -47,6 +47,20 @@ function isUnknownVenueName(value) {
   return !normalized || UNKNOWN_VENUE_NAMES.has(normalized);
 }
 
+function validFullDate(value) {
+  const text = String(value || '').trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!match) return false;
+  const date = new Date(`${text}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text;
+}
+
+function sameBandAndDate(first, second) {
+  const bandA = String(first?.bandId || '').trim();
+  const bandB = String(second?.bandId || '').trim();
+  return Boolean(bandA && bandB && bandA === bandB && validFullDate(first?.date) && first.date === second?.date);
+}
+
 function offerKind(value) {
   return alternateOfferVocabularyMatch(value) ? 'alternate_offer' : 'standard';
 }
@@ -155,7 +169,7 @@ function ticketmasterLocationEvidence(first, second) {
 }
 
 function physicalPerformanceMatch(first, second) {
-  if (!first || !second || first.bandId !== second.bandId || first.date !== second.date) return { match: false, reason: 'band_or_date' };
+  if (!sameBandAndDate(first, second)) return { match: false, reason: 'band_or_date' };
   const firstAttraction = String(first?.providerAttractionId || '').trim();
   const secondAttraction = String(second?.providerAttractionId || '').trim();
   if (!firstAttraction || !secondAttraction) return { match: false, reason: 'attraction_missing' };
@@ -168,7 +182,7 @@ function physicalPerformanceMatch(first, second) {
 }
 
 function physicalPerformanceRelationship(first, second) {
-  if (!first || !second || first.bandId !== second.bandId || first.date !== second.date) return { kind: 'distinct', reason: 'band_or_date' };
+  if (!sameBandAndDate(first, second)) return { kind: 'distinct', reason: 'band_or_date' };
 
   const firstAttraction = String(first?.providerAttractionId || '').trim();
   const secondAttraction = String(second?.providerAttractionId || '').trim();
@@ -356,6 +370,8 @@ module.exports = {
   normalize,
   isUnsafeEventStatus,
   isUnknownVenueName,
+  validFullDate,
+  sameBandAndDate,
   offerKind,
   alternateOfferVocabularyMatch,
   recordOfferClassification,

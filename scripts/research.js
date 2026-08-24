@@ -432,7 +432,7 @@ function trustedVenueRecoveryMatch(existing, candidate) {
 }
 
 function crossProviderPerformanceRelationship(first, second) {
-  if (!first || !second || first.bandId !== second.bandId || first.date !== second.date) {
+  if (!TicketmasterIntegrity.sameBandAndDate(first, second)) {
     return { kind: 'distinct', reason: 'band_or_date' };
   }
 
@@ -470,8 +470,7 @@ function findTicketmasterConcertMatch(records, candidate, { existingTicketmaster
   const exactProviderMatches = candidateEventId ? records.filter((concert) => (
     isTicketmasterConcert(concert)
     && ticketmasterEventId(concert) === candidateEventId
-    && concert.bandId === candidate.bandId
-    && concert.date === candidate.date
+    && TicketmasterIntegrity.sameBandAndDate(concert, candidate)
   )) : [];
   if (exactProviderMatches.length === 1) return { kind: 'match', concert: exactProviderMatches[0], reason: 'provider_event_id' };
   if (exactProviderMatches.length > 1) return { kind: 'ambiguous' };
@@ -555,8 +554,7 @@ function reconcileConcertCandidate(existingConcerts, newConcerts, candidate) {
       ? records.filter((concert) => (
         isTicketmasterConcert(concert)
         && ticketmasterEventId(concert) === candidateEventId
-        && concert.bandId === candidate.bandId
-        && concert.date === candidate.date
+        && TicketmasterIntegrity.sameBandAndDate(concert, candidate)
       ))
       : [];
     if (exactProviderMatches.length === 1) {
@@ -571,7 +569,7 @@ function reconcileConcertCandidate(existingConcerts, newConcerts, candidate) {
 
     const samePerformances = [];
     const ambiguousPerformances = [];
-    for (const concert of records.filter((value) => isTicketmasterConcert(value) && value.bandId === candidate.bandId && value.date === candidate.date)) {
+    for (const concert of records.filter((value) => isTicketmasterConcert(value) && TicketmasterIntegrity.sameBandAndDate(value, candidate))) {
       const relationship = TicketmasterIntegrity.physicalPerformanceRelationship(concert, candidate);
       if (relationship.kind === 'same') samePerformances.push({ concert, relationship });
       else if (relationship.kind === 'ambiguous') ambiguousPerformances.push({ concert, relationship });

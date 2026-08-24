@@ -791,3 +791,29 @@ test('legacy and malformed optional offer shapes remain additive and safe', () =
   assert.doesNotThrow(() => Audit.auditConcerts([legacy]));
   assert.deepEqual(Integrity.mergeOfferLists(undefined, null, {}, [], [{ providerEventId: 'one' }, { providerEventId: 'one', ticketUrl: 'https://tickets.test/one' }]), [{ providerEventId: 'one', ticketUrl: 'https://tickets.test/one' }]);
 });
+
+test('missing or invalid band/date evidence can never establish physical identity or scoped linkage', () => {
+  const shared = {
+    sourceProvider: 'ticketmaster', time: '20:00', venue: 'Arena', providerVenueId: 'venue',
+    providerAttractionId: 'attraction', lineupRole: 'headliner',
+  };
+  const malformedStandard = {
+    ...shared, id: 'standard', providerEventId: 'standard', providerOfferType: 'standard',
+    alternateProviderOffers: [{ providerEventId: 'package' }],
+  };
+  const malformedPackage = {
+    ...shared, id: 'package', providerEventId: 'package', providerEventName: 'Artist VIP Package',
+    providerOfferType: 'alternate_offer',
+  };
+  assert.equal(Integrity.sameBandAndDate(malformedStandard, malformedPackage), false);
+  assert.equal(Integrity.physicalPerformanceRelationship(malformedStandard, malformedPackage).kind, 'distinct');
+  const report = Audit.auditConcerts([malformedStandard, malformedPackage]);
+  assert.equal(report.issues.some((issue) => issue.type === 'package_duplicate_group'), false);
+  const held = report.issues.find((issue) => issue.type === 'package_relationship_review');
+  assert.ok(held);
+  assert.equal(held.reason, 'no_candidate_listing');
+
+  const invalidDate = { ...malformedPackage, bandId: 'artist', date: '2026-02-31' };
+  assert.equal(Integrity.validFullDate(invalidDate.date), false);
+  assert.equal(Integrity.sameBandAndDate(invalidDate, invalidDate), false);
+});
