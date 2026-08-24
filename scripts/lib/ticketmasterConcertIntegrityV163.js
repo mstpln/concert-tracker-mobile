@@ -6,12 +6,13 @@ const UNKNOWN_VENUE_NAMES = new Set([
   'unknown venue', 'unknown', 'venue unknown', 'tba', 'tbd', 'venue tba', 'venue tbd',
   'to be announced', 'to be determined',
 ]);
-// Fields that make an automatic destructive cleanup unsafe. lineupRole is
-// intentionally audited separately because v155 lazily initialized it on
-// ordinary writes; its mere presence does not prove an explicit user edit.
+// Fields that make an automatic destructive cleanup unsafe when they carry
+// meaningful state. A stored support role is protected; headliner alone is
+// not, because v155 lazily defaulted missing legacy roles to headliner.
 const USER_OWNED_FIELDS = [
-  'attending', 'rating', 'notes', 'ticketPrice', 'ticketQuantity', 'freeTicket', 'freeTickets',
-  'ownedTickets', 'tickets', 'playlistUrl', 'photoUrl', 'photos', 'eventGroupId', 'setlist',
+  'attending', 'attended', 'rating', 'notes', 'ticketPrice', 'ticketQuantity', 'freeTicket', 'freeTickets',
+  'ownedTickets', 'tickets', 'playlistUrl', 'playlistProgress', 'photoUrl', 'photos', 'eventGroupId',
+  'lineupRole', 'setlist', 'prepChecklist', 'concertDay', 'userLinks',
 ];
 
 function normalize(value) {
@@ -49,6 +50,14 @@ function compatibleTimes(first, second, toleranceMinutes = 5) {
   const b = minutesFromTime(second);
   if (a == null || b == null) return false;
   return Math.abs(a - b) <= toleranceMinutes;
+}
+
+function performanceTimeRelationship(first, second, toleranceMinutes = 5) {
+  const firstMinutes = minutesFromTime(first?.time);
+  const secondMinutes = minutesFromTime(second?.time);
+  if (firstMinutes == null || secondMinutes == null) return { kind: 'ambiguous', reason: 'time_missing' };
+  if (Math.abs(firstMinutes - secondMinutes) > toleranceMinutes) return { kind: 'distinct', reason: 'time_conflict' };
+  return { kind: 'same', reason: 'compatible_time' };
 }
 
 function providerAttractionMatches(first, second) {
@@ -113,23 +122,27 @@ function physicalPerformanceRelationship(first, second) {
     return { kind: 'ambiguous', reason: 'location_incomplete' };
   }
 
-  const firstTime = minutesFromTime(first?.time);
-  const secondTime = minutesFromTime(second?.time);
-  if (firstTime == null || secondTime == null) return { kind: 'ambiguous', reason: 'time_missing' };
-  if (Math.abs(firstTime - secondTime) > 5) return { kind: 'distinct', reason: 'time_conflict' };
+  const timing = performanceTimeRelationship(first, second);
+  if (timing.kind !== 'same') return timing;
   return { kind: 'same', reason: locationReason };
 }
 
 function providerOfferEvidence(record) {
   const eventId = String(record?.providerEventId || '').trim();
   if (!eventId) return null;
+  const eventName = typeof record.providerEventName === 'string' && record.providerEventName.trim()
+    ? record.providerEventName
+    : null;
+  const explicitOfferType = ['standard', 'alternate_offer'].includes(record?.providerOfferType)
+    ? record.providerOfferType
+    : null;
   return {
     providerEventId: eventId,
     ticketUrl: typeof record.ticketUrl === 'string' && record.ticketUrl.trim() ? record.ticketUrl : null,
-    providerEventName: typeof record.providerEventName === 'string' && record.providerEventName.trim() ? record.providerEventName : null,
+    providerEventName: eventName,
     providerEventStatus: typeof record.providerEventStatus === 'string' && record.providerEventStatus.trim() ? record.providerEventStatus : null,
     providerSource: typeof record.providerSource === 'string' && record.providerSource.trim() ? record.providerSource : null,
-    providerOfferType: record.providerOfferType === 'alternate_offer' ? 'alternate_offer' : 'standard',
+    providerOfferType: explicitOfferType || (eventName ? offerKind(eventName) : null),
   };
 }
 
@@ -137,9 +150,19 @@ function mergeOfferLists(...lists) {
   const byId = new Map();
   for (const list of lists) {
     for (const offer of Array.isArray(list) ? list : []) {
-      if (!offer?.providerEventId) continue;
-      const prior = byId.get(offer.providerEventId) || {};
-      byId.set(offer.providerEventId, { ...prior, ...offer });
+      const providerEventId = String(offer?.providerEventId || '').trim();
+      if (!providerEventId) continue;
+      const prior = byId.get(providerEventId) || {};
+      const merged = { ...prior, providerEventId };
+      for (const [field, value] of Object.entries(offer)) {
+        if (field === 'providerEventId') continue;
+        if (value == null) continue;
+        if (typeof value === 'string' && !value.trim()) continue;
+        if (Array.isArray(value) && !value.length) continue;
+        if (typeof value === 'object' && !Array.isArray(value) && !Object.keys(value).length) continue;
+        merged[field] = value;
+      }
+      byId.set(providerEventId, merged);
     }
   }
   return [...byId.values()].sort((a, b) => String(a.providerEventId).localeCompare(String(b.providerEventId)));
@@ -200,14 +223,20 @@ function collapseTicketmasterOffers(records) {
   return output;
 }
 
+function meaningfulUserOwnedValue(field, value) {
+  if (field === 'lineupRole') return value === 'support';
+  if (value == null || value === false || value === '') return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
+function userOwnedFieldNames(record) {
+  return USER_OWNED_FIELDS.filter((field) => meaningfulUserOwnedValue(field, record?.[field]));
+}
+
 function hasUserOwnedData(record) {
-  return USER_OWNED_FIELDS.some((field) => {
-    const value = record?.[field];
-    if (value == null || value === false || value === '') return false;
-    if (Array.isArray(value)) return value.length > 0;
-    if (typeof value === 'object') return Object.keys(value).length > 0;
-    return true;
-  });
+  return userOwnedFieldNames(record).length > 0;
 }
 
 function trustedTicketmasterIdentity(band) {
@@ -232,7 +261,9 @@ module.exports = {
   isUnsafeEventStatus,
   isUnknownVenueName,
   offerKind,
+  minutesFromTime,
   compatibleTimes,
+  performanceTimeRelationship,
   providerAttractionMatches,
   locationEvidence,
   physicalPerformanceMatch,
@@ -241,6 +272,8 @@ module.exports = {
   mergeOfferLists,
   mergeAlternateOffer,
   collapseTicketmasterOffers,
+  meaningfulUserOwnedValue,
+  userOwnedFieldNames,
   hasUserOwnedData,
   trustedTicketmasterIdentity,
   wrongArtistReason,

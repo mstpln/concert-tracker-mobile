@@ -394,6 +394,11 @@ function isTicketmasterConcert(concert) {
 }
 
 function hasDifferentTicketmasterEvent(existing, candidate) {
+  // Explicit non-Ticketmaster provider IDs live in a different namespace and
+  // cannot prove two physical performances are different. Missing source
+  // remains legacy-compatible because older Ticketmaster records may omit it.
+  if (existing?.sourceProvider && !isTicketmasterConcert(existing)) return false;
+  if (candidate?.sourceProvider && !isTicketmasterConcert(candidate)) return false;
   const existingEventId = ticketmasterEventId(existing); const candidateEventId = ticketmasterEventId(candidate);
   return !!(existingEventId && candidateEventId && existingEventId !== candidateEventId);
 }
@@ -413,6 +418,7 @@ function trustedVenueRecoveryMatch(existing, candidate) {
   if (!isTicketmasterConcert(candidate)) return false;
   if (!isUnknownVenueName(existing?.venue) || isUnknownVenueName(candidate?.venue)) return false;
   if (!sameConcertCityCountry(existing, candidate) || hasDifferentTicketmasterEvent(existing, candidate)) return false;
+  if (TicketmasterIntegrity.performanceTimeRelationship(existing, candidate).kind !== 'same') return false;
 
   const existingAddress = normalizeConcertLocation(existing?.venueAddress);
   const candidateAddress = normalizeConcertLocation(candidate?.venueAddress);
@@ -425,26 +431,61 @@ function trustedVenueRecoveryMatch(existing, candidate) {
   return exactAddressEvidence || exactTicketEvidence;
 }
 
+function crossProviderPerformanceRelationship(first, second) {
+  if (!first || !second || first.bandId !== second.bandId || first.date !== second.date) {
+    return { kind: 'distinct', reason: 'band_or_date' };
+  }
+
+  const timing = TicketmasterIntegrity.performanceTimeRelationship(first, second);
+  // A material known time difference is strong evidence of two performances,
+  // even when artist/date/venue otherwise match.
+  if (timing.kind === 'distinct') return timing;
+
+  const recoveryMatch = trustedVenueRecoveryMatch(first, second) || trustedVenueRecoveryMatch(second, first);
+  const locationReason = (recoveryMatch ? 'trusted_venue_evidence' : null)
+    || TicketmasterIntegrity.locationEvidence(first, second)
+    || (sameConcertLocation(first, second) ? 'same_show_location' : null);
+  if (locationReason) {
+    return timing.kind === 'same'
+      ? { kind: 'same', reason: locationReason }
+      : { kind: 'ambiguous', reason: timing.reason };
+  }
+
+  const firstVenueId = String(first?.providerVenueId || '').trim();
+  const secondVenueId = String(second?.providerVenueId || '').trim();
+  if (firstVenueId && secondVenueId && firstVenueId !== secondVenueId) {
+    return { kind: 'distinct', reason: 'provider_venue_conflict' };
+  }
+  const firstCity = normalizeConcertLocation(first?.city);
+  const secondCity = normalizeConcertLocation(second?.city);
+  if (firstCity && secondCity && firstCity !== secondCity) return { kind: 'distinct', reason: 'city_conflict' };
+  const firstCountry = normalizeConcertLocation(first?.country);
+  const secondCountry = normalizeConcertLocation(second?.country);
+  if (firstCountry && secondCountry && firstCountry !== secondCountry) return { kind: 'distinct', reason: 'country_conflict' };
+  return { kind: 'ambiguous', reason: 'location_incomplete' };
+}
+
 function findTicketmasterConcertMatch(records, candidate, { existingTicketmasterOnly = false } = {}) {
   const candidateEventId = ticketmasterEventId(candidate);
   const exactProviderMatches = candidateEventId ? records.filter((concert) => ticketmasterEventId(concert) === candidateEventId && concert.bandId === candidate.bandId && concert.date === candidate.date) : [];
   if (exactProviderMatches.length === 1) return { kind: 'match', concert: exactProviderMatches[0], reason: 'provider_event_id' };
   if (exactProviderMatches.length > 1) return { kind: 'ambiguous' };
 
-  const venueRecoveryMatches = records.filter((concert) => {
-    if (existingTicketmasterOnly && !isTicketmasterConcert(concert)) return false;
-    return trustedVenueRecoveryMatch(concert, candidate);
+  const relationships = records.flatMap((concert) => {
+    if (existingTicketmasterOnly && !isTicketmasterConcert(concert)) return [];
+    if (hasDifferentTicketmasterEvent(concert, candidate)) return [];
+    if (candidateEventId && ticketmasterEventId(concert) && isTicketmasterConcert(candidate) && isTicketmasterConcert(concert)) return [];
+    const relationship = isTicketmasterConcert(candidate) && isTicketmasterConcert(concert)
+      ? TicketmasterIntegrity.physicalPerformanceRelationship(concert, candidate)
+      : crossProviderPerformanceRelationship(concert, candidate);
+    return relationship.kind === 'distinct' ? [] : [{ concert, relationship }];
   });
-  if (venueRecoveryMatches.length === 1) return { kind: 'match', concert: venueRecoveryMatches[0], reason: 'trusted_venue_evidence' };
-  if (venueRecoveryMatches.length > 1) return { kind: 'ambiguous' };
-
-  const locationMatches = records.filter((concert) => {
-    if (existingTicketmasterOnly && !isTicketmasterConcert(concert)) return false;
-    if (candidateEventId && ticketmasterEventId(concert)) return false;
-    return sameConcertLocation(concert, candidate);
-  });
-  if (locationMatches.length === 1) return { kind: 'match', concert: locationMatches[0], reason: 'same_show' };
-  return locationMatches.length > 1 ? { kind: 'ambiguous' } : { kind: 'none' };
+  const sameMatches = relationships.filter(({ relationship }) => relationship.kind === 'same');
+  const ambiguousMatches = relationships.filter(({ relationship }) => relationship.kind === 'ambiguous');
+  if (sameMatches.length === 1 && ambiguousMatches.length === 0) {
+    return { kind: 'match', concert: sameMatches[0].concert, reason: sameMatches[0].relationship.reason };
+  }
+  return sameMatches.length > 1 || ambiguousMatches.length ? { kind: 'ambiguous' } : { kind: 'none' };
 }
 
 function meaningfulTicketmasterValue(value) {
@@ -488,7 +529,17 @@ function upgradeExistingConcertWithTicketmaster(existing, candidate) {
 }
 
 function exactConcertDuplicate(records, candidate) {
-  return records.some((concert) => !hasDifferentTicketmasterEvent(concert, candidate) && sameConcertLocation(concert, candidate) && normalizeConcertLocation(concert.venue) === normalizeConcertLocation(candidate.venue));
+  return records.some((concert) => {
+    if (hasDifferentTicketmasterEvent(concert, candidate)) return false;
+    if (!isTicketmasterConcert(concert) && !isTicketmasterConcert(candidate)) {
+      return sameConcertLocation(concert, candidate) && normalizeConcertLocation(concert.venue) === normalizeConcertLocation(candidate.venue);
+    }
+    const relationship = isTicketmasterConcert(concert) && isTicketmasterConcert(candidate)
+      ? TicketmasterIntegrity.physicalPerformanceRelationship(concert, candidate)
+      : crossProviderPerformanceRelationship(concert, candidate);
+    return relationship.kind === 'same'
+      && normalizeConcertLocation(concert.venue) === normalizeConcertLocation(candidate.venue);
+  });
 }
 
 function reconcileConcertCandidate(existingConcerts, newConcerts, candidate) {
@@ -537,7 +588,7 @@ function reconcileConcertCandidate(existingConcerts, newConcerts, candidate) {
       return { action: 'hold_for_review', reason: samePerformances.length > 1 ? 'multiple_physical_performance_matches' : ambiguousPerformances[0].relationship.reason };
     }
 
-    const match = findTicketmasterConcertMatch(records, candidate);
+    const match = findTicketmasterConcertMatch(records.filter((concert) => !isTicketmasterConcert(concert)), candidate);
     if (match.kind === 'match') return { action: 'upgrade', ...match };
     if (match.kind === 'ambiguous') return { action: 'hold_for_review', reason: 'ambiguous_existing_concert_match' };
     if (exactConcertDuplicate(records, candidate)) return { action: 'skip_duplicate' };
@@ -545,6 +596,7 @@ function reconcileConcertCandidate(existingConcerts, newConcerts, candidate) {
   }
   const ticketmasterMatch = findTicketmasterConcertMatch(records, candidate, { existingTicketmasterOnly: true });
   if (ticketmasterMatch.kind === 'match') return { action: 'skip_ticketmaster_duplicate', ...ticketmasterMatch };
+  if (ticketmasterMatch.kind === 'ambiguous') return { action: 'hold_for_review', reason: 'ambiguous_existing_concert_match' };
   if (exactConcertDuplicate(records, candidate)) return { action: 'skip_duplicate' };
   return { action: 'add' };
 }
@@ -1308,4 +1360,4 @@ if (require.main === module) main().catch(async (e) => {
   process.exitCode = 1;
 });
 
-module.exports = { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities, processStructuredResearch, predictedSetlistEligible, predictionDue, spotifySocialArtistId, spotifyArtistIdentityForBand, spotifyEnrichmentDue, enrichPredictionWithSpotify, predictionDiagnostics, logPredictionDiagnostics, mergePredictedSetlistResults, normalizeConcertLocation, venueNamesMatchConservatively, isUnknownVenueName, trustedVenueRecoveryMatch, sameConcertLocation, findTicketmasterConcertMatch, ticketmasterConcertPatch, upgradeExistingConcertWithTicketmaster, reconcileConcertCandidate, mergeTicketmasterConcertUpgrades, finalConcertWritePayload, concertWriteRequired, processPredictedSetlists, setlistInsightsEligible, selectWeeklyInsightRetryIds, mergeSetlistInsightResults, processSetlistInsights, newsKey, fetchTourDatesViaTavily, fetchNewsForBand, promisingTavilyResults };
+module.exports = { TRUSTED_MUSICBRAINZ_STATUSES, confirmedMbid, musicbrainzEligible, mergeMusicbrainzResults, processMusicbrainzIdentities, processStructuredResearch, predictedSetlistEligible, predictionDue, spotifySocialArtistId, spotifyArtistIdentityForBand, spotifyEnrichmentDue, enrichPredictionWithSpotify, predictionDiagnostics, logPredictionDiagnostics, mergePredictedSetlistResults, normalizeConcertLocation, venueNamesMatchConservatively, isUnknownVenueName, trustedVenueRecoveryMatch, sameConcertLocation, crossProviderPerformanceRelationship, findTicketmasterConcertMatch, ticketmasterConcertPatch, upgradeExistingConcertWithTicketmaster, reconcileConcertCandidate, mergeTicketmasterConcertUpgrades, finalConcertWritePayload, concertWriteRequired, processPredictedSetlists, setlistInsightsEligible, selectWeeklyInsightRetryIds, mergeSetlistInsightResults, processSetlistInsights, newsKey, fetchTourDatesViaTavily, fetchNewsForBand, promisingTavilyResults };

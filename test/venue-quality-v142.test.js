@@ -137,6 +137,7 @@ test('v142 keeps GAU4 unknown-to-known trusted recovery intact', () => {
   });
   const candidate = providerCandidate({
     providerEventId: null,
+    time: '19:30:00',
     venue: 'Royal Arena',
     venueAddress: 'Hannemanns Allé 18-20, København S, Denmark',
     ticketUrl: 'https://tickets.example/different',

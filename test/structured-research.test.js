@@ -153,11 +153,11 @@ test('67 exact Ticketmaster event IDs require the same band and date before upgr
 });
 
 test('68 candidate reconciliation skips same-run Tavily duplicates and holds uncertain Ticketmaster matches', () => {
-  const tm = ticketmasterConcert(); const tavily = sourceConcert({ id: 'tavily-generated-id', venue: 'Royal Arena' });
+  const tm = ticketmasterConcert(); const tavily = sourceConcert({ id: 'tavily-generated-id', venue: 'Royal Arena', time: '20:00' });
   assert.equal(reconcileConcertCandidate([], [], tm).action, 'add');
   assert.equal(reconcileConcertCandidate([], [tm], tavily).action, 'skip_ticketmaster_duplicate');
   assert.equal(reconcileConcertCandidate([sourceConcert({ sourceProvider: 'ticketmaster', providerEventId: 'other-event' })], [], tm).action, 'hold_for_review');
-  const ambiguous = reconcileConcertCandidate([sourceConcert({ id: 'one' }), sourceConcert({ id: 'two' })], [], tm);
+  const ambiguous = reconcileConcertCandidate([sourceConcert({ id: 'one', time: null }), sourceConcert({ id: 'two', time: null })], [], tm);
   assert.equal(ambiguous.action, 'hold_for_review');
 });
 

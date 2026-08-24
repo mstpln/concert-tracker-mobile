@@ -86,7 +86,7 @@ This continuity file was compacted on 2026-08-24. Earlier durable decisions and 
 
 **Reason:** KATSEYE and Loreen production examples showed one real performance represented by multiple Ticketmaster listing IDs.
 
-**Consequence:** v163 preserves a canonical Ticketmaster event ID/URL plus alternate provider offer IDs/URLs as provenance, both within one fetch and across later runs. Provider venue ID is preferred for location identity; exact normalized address/venue evidence is fallback. Materially different same-day start times remain separate performances. Missing material evidence, multiple matches and uncertain same-performance listings hold for review and never authorize a salted ID. Different followed artists at a multi-act event are never cross-collapsed.
+**Consequence:** v163 preserves a canonical Ticketmaster event ID/URL plus alternate provider offer IDs/URLs as provenance, both within one fetch and across later runs. Repeated alternate-offer observations merge monotonically: null, empty or partial evidence cannot erase richer stored provider provenance. Provider venue ID is preferred for location identity; exact normalized address/venue evidence is fallback. Materially different same-day start times remain separate performances across Ticketmaster and cross-provider reconciliation, while compatible known times plus strong location evidence may enrich one stable record. Missing material evidence, multiple matches and uncertain same-performance listings hold for review and never authorize a salted ID. Different followed artists at a multi-act event are never cross-collapsed.
 
 ### Ticketmaster venue and lifecycle evidence fails closed
 
@@ -98,7 +98,7 @@ This continuity file was compacted on 2026-08-24. Earlier durable decisions and 
 
 **Decision:** Existing Ticketmaster concert cleanup starts with a local read-only audit using the same v163 identity/performance rules. Production mutation is a distinct action requiring explicit user authorization after the exact dry-run is reviewed.
 
-**Consequence:** Package duplicates retain one canonical stable BANDMARKR ID and alternate provider provenance. Provider-attraction conflicts and legacy name-fallback records are classified for cleanup/review. Any record carrying user-owned state or event relationships is held for manual review rather than automatically removed. Unknown future fields and ownership boundaries remain protected.
+**Consequence:** Package duplicates retain one canonical stable BANDMARKR ID and alternate provider provenance. Provider-attraction conflicts and legacy name-fallback records are classified for cleanup/review. Any removable record carrying meaningful user-owned state or event relationships—including a stored `support` role, checklist/link/playlist/concert-day state, tickets, attendance, ratings, notes, photos or setlist data—is held for manual review rather than automatically removed. A lone `headliner` value does not block an otherwise clean package candidate because legacy lazy initialization may have supplied it. Unknown future fields and ownership boundaries remain protected.
 
 ### Ticketmaster venue quality is monotonic
 

@@ -63,13 +63,7 @@ function chooseCanonical(group) {
 }
 
 function userOwnedFieldNames(record) {
-  return Integrity.USER_OWNED_FIELDS.filter((field) => {
-    const value = record?.[field];
-    if (value == null || value === false || value === '') return false;
-    if (Array.isArray(value)) return value.length > 0;
-    if (typeof value === 'object') return Object.keys(value).length > 0;
-    return true;
-  });
+  return Integrity.userOwnedFieldNames(record);
 }
 
 function unknownFieldNames(record) {

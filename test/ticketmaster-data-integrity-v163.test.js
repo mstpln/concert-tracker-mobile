@@ -31,6 +31,19 @@ function usage() {
   return { calls: 0, notes: [], canCallTicketmaster() { return true; }, async recordTicketmasterCall() { this.calls += 1; }, note(value) { this.notes.push(value); } };
 }
 
+function packageAudit(packageState = {}) {
+  const shared = {
+    bandId: 'artist', sourceProvider: 'ticketmaster', date: '2026-09-01', time: '20:00',
+    venue: 'Arena X', city: 'Stockholm', country: 'Sweden', providerVenueId: 'venue-x',
+    providerAttractionId: 'tm-artist', lineupRole: 'headliner',
+  };
+  const report = Audit.auditConcerts([
+    { ...shared, id: 'standard', providerEventId: 'standard', providerEventName: 'Artist', providerOfferType: 'standard' },
+    { ...shared, id: 'package', providerEventId: 'package', providerEventName: 'Artist VIP Package', providerOfferType: 'alternate_offer', ...packageState },
+  ]);
+  return report.issues.find((issue) => issue.type === 'package_duplicate_group');
+}
+
 test('KATSEYE standard plus two Vinyl Room package listings becomes one physical concert', async () => {
   const followed = band('KATSEYE', 'katseye', 'tm-katseye');
   const payload = {
@@ -114,6 +127,68 @@ test('genuine same-day shows at the same venue remain separate when times differ
   assert.equal(Integrity.physicalPerformanceMatch(first, second).match, false);
   assert.equal(Integrity.collapseTicketmasterOffers([first, second]).length, 2);
   assert.equal(research.reconcileConcertCandidate([{ ...first, sourceProvider: 'ticketmaster' }], [], { ...second, sourceProvider: 'ticketmaster' }).action, 'add');
+});
+
+test('cross-provider same-day performances with materially different times remain separate', () => {
+  const existing = {
+    id: 'artist-arena-x-1500', bandId: 'artist', bandName: 'Artist', date: '2026-09-01', time: '15:00',
+    venue: 'Arena X', city: 'Stockholm', country: 'Sweden', sourceProvider: 'tavily_groq',
+    notes: 'Earlier performance', futureField: { keep: true },
+  };
+  const incoming = {
+    id: 'artist-arena-x-2000', bandId: 'artist', bandName: 'Artist', date: '2026-09-01', time: '20:00',
+    venue: 'Arena X', city: 'Stockholm', country: 'Sweden', sourceProvider: 'ticketmaster',
+    providerEventId: 'tm-evening', providerAttractionId: 'tm-artist', providerEventName: 'Artist',
+  };
+  assert.deepEqual(research.crossProviderPerformanceRelationship(existing, incoming), { kind: 'distinct', reason: 'time_conflict' });
+  assert.equal(research.findTicketmasterConcertMatch([existing], incoming).kind, 'none');
+  assert.equal(research.reconcileConcertCandidate([existing], [], incoming).action, 'add');
+  assert.equal(existing.sourceProvider, 'tavily_groq');
+  assert.equal(existing.notes, 'Earlier performance');
+  assert.deepEqual(existing.futureField, { keep: true });
+});
+
+test('strong same-show cross-provider evidence enriches the existing stable record', () => {
+  const existing = {
+    id: 'stable-tavily-id', bandId: 'artist', bandName: 'Artist', date: '2026-09-01', time: '20:00',
+    venue: 'Arena X', city: 'Stockholm', country: 'Sweden', sourceProvider: 'tavily_groq',
+    providerEventId: 'tavily-event-in-a-different-namespace',
+    attending: true, lineupRole: 'support', notes: 'Keep', prepChecklist: { ticketReady: true },
+    futureField: { keep: true },
+  };
+  const incoming = {
+    id: 'generated-ticketmaster-id', bandId: 'artist', bandName: 'Artist', date: '2026-09-01', time: '20:04',
+    venue: 'Arena X', city: 'Stockholm', country: 'Sweden', sourceProvider: 'ticketmaster',
+    providerEventId: 'tm-show', providerAttractionId: 'tm-artist', providerVenueId: 'venue-x',
+    providerEventName: 'Artist', providerEventStatus: 'onsale', providerSource: 'ticketmaster',
+  };
+  const reconciliation = research.reconcileConcertCandidate([existing], [], incoming);
+  assert.equal(reconciliation.action, 'upgrade');
+  assert.equal(reconciliation.concert.id, 'stable-tavily-id');
+  const upgraded = research.upgradeExistingConcertWithTicketmaster(existing, incoming);
+  assert.equal(upgraded.id, 'stable-tavily-id');
+  assert.equal(upgraded.providerEventId, 'tm-show');
+  assert.equal(upgraded.sourceProvider, 'ticketmaster');
+  assert.equal(upgraded.attending, true);
+  assert.equal(upgraded.lineupRole, 'support');
+  assert.equal(upgraded.notes, 'Keep');
+  assert.deepEqual(upgraded.prepChecklist, { ticketReady: true });
+  assert.deepEqual(upgraded.futureField, { keep: true });
+});
+
+test('missing cross-provider timing holds rather than upgrading, skipping or creating a salted duplicate', () => {
+  const existing = {
+    id: 'stable', bandId: 'artist', date: '2026-09-01', time: null,
+    venue: 'Arena X', city: 'Stockholm', country: 'Sweden', sourceProvider: 'tavily_groq',
+  };
+  const incoming = {
+    id: 'generated', bandId: 'artist', date: '2026-09-01', time: '20:00',
+    venue: 'Arena X', city: 'Stockholm', country: 'Sweden', sourceProvider: 'ticketmaster',
+    providerEventId: 'tm-show', providerAttractionId: 'tm-artist',
+  };
+  assert.deepEqual(research.crossProviderPerformanceRelationship(existing, incoming), { kind: 'ambiguous', reason: 'time_missing' });
+  assert.equal(research.reconcileConcertCandidate([existing], [], incoming).action, 'hold_for_review');
+  assert.equal(research.reconcileConcertCandidate([incoming], [], { ...existing, id: 'tavily-generated' }).action, 'hold_for_review');
 });
 
 test('multi-act same event does not cross-collapse two followed artists', () => {
@@ -252,4 +327,82 @@ test('user-owned fields force cleanup to manual review', () => {
   assert.equal(Integrity.hasUserOwnedData({ ticketPrice: 0 }), true);
   assert.equal(Audit.cleanupSafety({ eventGroupId: 'event-1' }), 'manual_review_required');
   assert.equal(Audit.cleanupSafety({ futureField: { keep: true } }), 'manual_review_required');
+});
+
+test('cleanup protects support role, preparation, links, tickets and all meaningful user state', () => {
+  const protectedCases = [
+    ['lineupRole', { lineupRole: 'support' }],
+    ['prepChecklist', { prepChecklist: { ticketReady: true } }],
+    ['userLinks', { userLinks: [{ label: 'Official', url: 'https://example.test' }] }],
+    ['playlistUrl', { playlistUrl: 'https://example.test/playlist' }],
+    ['playlistProgress', { playlistProgress: { created: true } }],
+    ['concertDay', { concertDay: { directionsOpened: true } }],
+    ['ownedTickets', { ownedTickets: [{ id: 'ticket-1' }] }],
+    ['ticketPrice', { ticketPrice: 0 }],
+    ['ticketQuantity', { ticketQuantity: 1 }],
+    ['notes', { notes: 'Keep this' }],
+    ['attending', { attending: true }],
+    ['attended', { attended: true }],
+    ['rating', { rating: 5 }],
+    ['photos', { photos: ['https://example.test/photo'] }],
+    ['setlist', { setlist: { songs: [{ name: 'Song' }] } }],
+    ['eventGroupId', { eventGroupId: 'event-1' }],
+  ];
+  for (const [field, state] of protectedCases) {
+    const issue = packageAudit(state);
+    assert.equal(issue.safety, 'manual_review_required', field);
+    assert.equal(issue.automaticRemediationSafe, false, field);
+    assert.equal(issue.proposedMutation.action, 'manual_review', field);
+    assert.ok(issue.members.find((member) => member.concertId === 'package').userOwnedFields.includes(field), field);
+  }
+});
+
+test('cleanup retains automatic package consolidation only for records without meaningful or unknown state', () => {
+  const clean = packageAudit();
+  assert.equal(clean.safety, 'automatic_candidate');
+  assert.equal(clean.automaticRemediationSafe, true);
+  assert.equal(clean.proposedMutation.action, 'merge_alternate_offers');
+  assert.equal(Audit.cleanupSafety({ lineupRole: 'headliner' }), 'automatic_candidate');
+
+  const unknown = packageAudit({ futureField: { keep: true } });
+  assert.equal(unknown.safety, 'manual_review_required');
+  assert.deepEqual(unknown.members.find((member) => member.concertId === 'package').unknownFields, ['futureField']);
+});
+
+test('alternate provider provenance merge is monotonic for poorer and richer repeat observations', () => {
+  const rich = {
+    providerEventId: 'vip-1',
+    ticketUrl: 'https://ticketmaster.test/vip-1',
+    providerEventName: 'Artist VIP Package',
+    providerEventStatus: 'onsale',
+    providerSource: 'ticketmaster',
+    providerOfferType: 'alternate_offer',
+  };
+  const [preserved] = Integrity.mergeOfferLists([rich], [{
+    providerEventId: 'vip-1', ticketUrl: null, providerEventName: '', providerEventStatus: undefined,
+  }]);
+  assert.deepEqual(preserved, rich);
+  const [preservedThroughEvidenceNormalization] = Integrity.mergeOfferLists(
+    [rich],
+    [Integrity.providerOfferEvidence({ providerEventId: 'vip-1', ticketUrl: null, providerEventName: null })]
+  );
+  assert.deepEqual(preservedThroughEvidenceNormalization, rich);
+  const upgraded = research.upgradeExistingConcertWithTicketmaster(
+    { id: 'stable', sourceProvider: 'ticketmaster', providerEventId: 'standard', alternateProviderOffers: [rich] },
+    { sourceProvider: 'ticketmaster', providerEventId: 'standard', alternateProviderOffers: [{ providerEventId: 'vip-1', ticketUrl: null, providerEventName: null }] }
+  );
+  assert.deepEqual(upgraded.alternateProviderOffers, [rich]);
+
+  const [enriched] = Integrity.mergeOfferLists(
+    [{ providerEventId: 'vip-2', providerOfferType: 'alternate_offer' }],
+    [{ providerEventId: 'vip-2', ticketUrl: 'https://ticketmaster.test/vip-2', providerEventName: 'Artist Lounge Package', providerEventStatus: 'offsale', providerSource: 'ticketmaster' }]
+  );
+  assert.deepEqual(enriched, {
+    providerEventId: 'vip-2',
+    providerOfferType: 'alternate_offer',
+    ticketUrl: 'https://ticketmaster.test/vip-2',
+    providerEventName: 'Artist Lounge Package',
+    providerEventStatus: 'offsale',
+    providerSource: 'ticketmaster',
+  });
 });
