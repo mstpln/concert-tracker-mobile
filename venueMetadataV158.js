@@ -40,47 +40,90 @@
     return values[0] || '';
   }
 
+  function canonicalVenueIdentity(value) {
+    const rawVenue = String(value?.venue ?? value?.name ?? '').trim();
+    if (!rawVenue || model.isPlaceholderVenueName(rawVenue)) return null;
+
+    const record = metadataFor(value);
+    const venue = String(record?.name || rawVenue).trim();
+    const city = String(record?.city || value?.city || '').trim();
+    const country = String(record?.country || value?.country || '').trim();
+    if (!venue || !city) return null;
+
+    const fallbackIdentity = [
+      model.normalizeIdentityText(venue),
+      model.canonicalCityKey(city),
+      model.canonicalCountryKey(country),
+    ].join('|');
+    return {
+      key: record?.venueId ? `venue:${record.venueId}` : `fallback:${fallbackIdentity}`,
+      venue,
+      city,
+      country,
+      record: record || null,
+    };
+  }
+
   function canonicalVenueGroups(concertList) {
     const byKey = new Map();
     for (const concert of concertList || []) {
-      const rawVenue = String(concert?.venue || '').trim();
-      if (!rawVenue || model.isPlaceholderVenueName(rawVenue)) continue;
+      const identity = canonicalVenueIdentity(concert);
+      if (!identity) continue;
 
-      const record = metadataFor(concert);
-      const canonicalName = String(record?.name || rawVenue).trim();
-      const canonicalCity = String(record?.city || concert?.city || '').trim();
-      const canonicalCountry = String(record?.country || concert?.country || '').trim();
-      if (!canonicalName || !canonicalCity) continue;
-
-      const fallbackIdentity = [
-        model.normalizeIdentityText(canonicalName),
-        model.canonicalCityKey(canonicalCity),
-        model.canonicalCountryKey(canonicalCountry),
-      ].join('|');
-      const key = record?.venueId ? `venue:${record.venueId}` : `fallback:${fallbackIdentity}`;
-
-      let group = byKey.get(key);
+      let group = byKey.get(identity.key);
       if (!group) {
         group = {
-          key,
-          venue: canonicalName,
-          city: canonicalCity,
-          country: canonicalCountry,
+          key: identity.key,
+          venue: identity.venue,
+          city: identity.city,
+          country: identity.country,
           concerts: [],
-          record: record || null,
+          record: identity.record,
         };
-        byKey.set(key, group);
-      } else if (!group.record && record) {
-        group.record = record;
-        group.venue = String(record.name || group.venue).trim();
-        group.city = String(record.city || group.city).trim();
-        group.country = String(record.country || group.country).trim();
+        byKey.set(identity.key, group);
+      } else if (!group.record && identity.record) {
+        group.record = identity.record;
+        group.venue = identity.venue;
+        group.city = identity.city;
+        group.country = identity.country;
       }
 
       group.concerts.push(concert);
       if (!group.country && concert?.country) group.country = String(concert.country).trim();
     }
     return [...byKey.values()].sort((a, b) => a.venue.localeCompare(b.venue));
+  }
+
+  function canonicalizeVenueStats(stats, attendedPast) {
+    if (!stats || !Array.isArray(attendedPast)) return stats;
+
+    const uniqueVenueKeys = new Set();
+    for (const concert of attendedPast) {
+      const identity = canonicalVenueIdentity(concert);
+      if (identity) uniqueVenueKeys.add(identity.key);
+    }
+    stats.uniqueVenues = uniqueVenueKeys.size;
+
+    if (typeof dlVenueVisits !== 'function') return stats;
+    const venueVisitCounts = new Map();
+    for (const visit of dlVenueVisits(attendedPast)) {
+      const sample = visit?.concerts?.find((concert) => concert) || visit;
+      const identity = canonicalVenueIdentity(sample);
+      if (!identity) continue;
+      const existing = venueVisitCounts.get(identity.key) || {
+        venue: identity.venue,
+        city: identity.city,
+        count: 0,
+        lastDate: null,
+      };
+      existing.count += 1;
+      if (visit.lastDate && (!existing.lastDate || visit.lastDate > existing.lastDate)) existing.lastDate = visit.lastDate;
+      venueVisitCounts.set(identity.key, existing);
+    }
+    stats.topVenues = [...venueVisitCounts.values()]
+      .sort((a, b) => b.count - a.count || (b.lastDate || '').localeCompare(a.lastDate || ''))
+      .slice(0, 5);
+    return stats;
   }
 
   function detailAddressLines(record, group) {
@@ -231,6 +274,13 @@
     };
   }
 
+  if (typeof root.dlConcertStats === 'function') {
+    const priorConcertStats = root.dlConcertStats;
+    root.dlConcertStats = function dlConcertStatsV164(attendedPast, ...args) {
+      return canonicalizeVenueStats(priorConcertStats.call(this, attendedPast, ...args), attendedPast);
+    };
+  }
+
   if (typeof root.venuesSubTabHtml === 'function') root.venuesSubTabHtml = renderVenueRows;
   if (typeof root.renderVenueDetailScreen === 'function') root.renderVenueDetailScreen = renderVenueDetail;
 
@@ -247,7 +297,9 @@
     getRecords,
     setRecords,
     metadataFor,
+    canonicalVenueIdentity,
     canonicalVenueGroups,
+    canonicalizeVenueStats,
     detailAddressLines,
     venueMetadataPanelHtml,
     insertCapacityIntoConcertCard,
