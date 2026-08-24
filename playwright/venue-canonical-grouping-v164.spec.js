@@ -115,25 +115,52 @@ test('v164 venue directory uses canonical physical venue identity across the ful
   expect(errors).toEqual([]);
 });
 
-test('v164 placeholder venue resolution requires one unique stored physical venue', async ({ page }, testInfo) => {
+test('v164 placeholder recovery is canonical-only and requires one unique physical venue', async ({ page }, testInfo) => {
   await openApp(page, testInfo);
   await seedCanonicalVenueCases(page);
 
   const result = await page.evaluate(() => ({
-    resolved: VenueMetadataV158.metadataFor({
+    ordinaryMetadata: VenueMetadataV158.metadataFor({
       venue: 'Unknown venue', city: 'Sundsvall', country: 'Sweden', venueAddress: 'Nordichallen, Sundsvall, Sweden',
     })?.name || null,
-    ambiguous: VenueMetadataV158.metadataFor({
+    resolved: VenueMetadataV158.canonicalVenueIdentity({
+      venue: 'Unknown venue', city: 'Sundsvall', country: 'Sweden', venueAddress: 'Nordichallen, Sundsvall, Sweden',
+    })?.venue || null,
+    ambiguous: VenueMetadataV158.canonicalVenueIdentity({
       venue: 'Unknown venue', city: 'Merksem (Antwerpen)', country: 'Belgium', venueAddress: 'Schijnpoortweg 119, Merksem (Antwerpen), Belgium',
-    })?.name || null,
-    missingEvidence: VenueMetadataV158.metadataFor({
+    })?.venue || null,
+    missingEvidence: VenueMetadataV158.canonicalVenueIdentity({
       venue: 'Unknown venue', city: 'Bergen', country: 'Norway', venueAddress: null,
-    })?.name || null,
+    })?.venue || null,
   }));
 
+  expect(result.ordinaryMetadata).toBeNull();
   expect(result.resolved).toBe('Nordichallen');
   expect(result.ambiguous).toBeNull();
   expect(result.missingEvidence).toBeNull();
+});
+
+test('v164 canonical lookup does not bypass known address conflicts through address-less aliases', async ({ page }, testInfo) => {
+  await openApp(page, testInfo);
+
+  const result = await page.evaluate(() => {
+    VenueMetadataV158.setRecords([{
+      venueId: VenueMetadataModelV158.venueIdFor({ name: 'Example Hall', city: 'Copenhagen', country: 'Denmark' }),
+      name: 'Example Hall', city: 'Copenhagen', country: 'Denmark',
+      address: 'Correct Street 1, Copenhagen, Denmark',
+      identityAliases: [{ name: 'Example Hall', city: 'København', country: 'Denmark' }],
+      researchStatus: 'partial', schemaVersion: 1,
+    }]);
+    const conflicting = { venue: 'Example Hall', city: 'København', country: 'Denmark', venueAddress: 'Different Street 9, København, Denmark' };
+    return {
+      ordinary: VenueMetadataV158.metadataFor(conflicting)?.venueId || null,
+      canonical: VenueMetadataV158.canonicalVenueIdentity(conflicting),
+    };
+  });
+
+  expect(result.ordinary).toBeNull();
+  expect(result.canonical?.record || null).toBeNull();
+  expect(result.canonical).toMatchObject({ venue: 'Example Hall', city: 'København' });
 });
 
 test('v164 venue statistics use the same canonical venue identity without changing stored concerts', async ({ page }, testInfo) => {
