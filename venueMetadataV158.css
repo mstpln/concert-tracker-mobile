@@ -94,16 +94,36 @@
   border-radius: 3px;
 }
 
-.countdown-v139-info .venue-max-capacity-next {
-  margin-top: 5px;
-  color: #b8b8bc;
-  font-size: 17px;
-  line-height: 1.25;
-  font-weight: 600;
+/* Next Concert capacity is part of the left information flow, not a headline.
+   Match the established address treatment and keep it clear of the independently
+   positioned ticket-quantity pill without moving the ticket geometry. */
+.countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-info .venue-max-capacity-next {
+  margin: 0;
+  color: #9b9ba0;
+  font-size: 10.5px;
+  line-height: 1.22;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Grouped Next Concert uses the compact AUB3 address treatment at every width. */
+.countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v156-grouped-info .venue-max-capacity-next {
+  font-size: 9px !important;
+  line-height: 1.05 !important;
 }
 
 @media (max-width: 479px) {
   .venue-card-max-capacity { font-size: 11px; }
   .venue-detail-metadata { padding: 14px; }
-  .countdown-v139-info .venue-max-capacity-next { font-size: 15px; }
+  .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-info .venue-max-capacity-next {
+    margin-top: -2px;
+  }
+}
+
+@media (max-width: 390px) {
+  .countdown-v140-ticket.aub1-next-concert:not(.countdown-card-today) .countdown-v139-info .venue-max-capacity-next {
+    font-size: 9px !important;
+  }
 }
