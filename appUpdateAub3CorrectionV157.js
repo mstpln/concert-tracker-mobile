@@ -49,23 +49,22 @@
     removeEventGroupControls(container);
   }
 
-  function providerIdentityConfidenceText(value) {
-    if (value === 'user_confirmed') return 'User confirmed';
-    return value === null || value === undefined || value === '' ? null : `${value}%`;
-  }
-
-  function providerIdentityHtmlCorrections(html) {
-    return String(html || '')
-      .replaceAll('user_confirmed%', 'User confirmed')
-      .replaceAll('user approved exact id', 'User-approved exact ID');
+  function providerIdentityDataRows(rows) {
+    return (Array.isArray(rows) ? rows : []).map((row) => {
+      if (!Array.isArray(row)) return row;
+      const [label, value, ...rest] = row;
+      let nextValue = value;
+      if (label === 'Confidence' && value === 'user_confirmed%') nextValue = 'User confirmed';
+      if (label === 'Match method' && value === 'user approved exact id') nextValue = 'User-approved exact ID';
+      return nextValue === value ? row : [label, nextValue, ...rest];
+    });
   }
 
   const api = Object.freeze({
     yearOptionsHtml,
     applyAddConcertUi,
     removeEventGroupControls,
-    providerIdentityConfidenceText,
-    providerIdentityHtmlCorrections,
+    providerIdentityDataRows,
   });
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.AppUpdateAub3CorrectionV157 = api;
@@ -90,19 +89,13 @@
   }
 
   // v165 compatibility: manually approved provider identities store a
-  // semantic confidence marker rather than a numeric percentage. Keep the
-  // persisted value untouched and normalize only the Data-tab presentation.
-  if (typeof root?.providerMatchMethodLabel === 'function') {
-    const label = root.providerMatchMethodLabel;
-    root.providerMatchMethodLabel = function providerMatchMethodLabelV165(method) {
-      if (method === 'user_approved_exact_id') return 'User-approved exact ID';
-      return label(method);
-    };
-  }
-  if (typeof root?.profileDataHtml === 'function') {
-    const profileData = root.profileDataHtml;
-    root.profileDataHtml = function profileDataHtmlV165(...args) {
-      return providerIdentityHtmlCorrections(profileData.apply(this, args));
+  // semantic confidence marker rather than a numeric percentage. Normalize
+  // only the dedicated Data-tab rows so unrelated provider-owned text is
+  // never rewritten just because it contains the same words.
+  if (typeof root?.profileDataRows === 'function') {
+    const renderRows = root.profileDataRows;
+    root.profileDataRows = function profileDataRowsV165(rows) {
+      return renderRows(providerIdentityDataRows(rows));
     };
   }
 
