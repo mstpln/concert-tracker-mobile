@@ -89,7 +89,7 @@ test('manual confirmed provider identities are reused by Ticketmaster and Spotif
   try {
     global.fetch = async (url) => {
       assert.match(String(url), /attractionId=manual-tm/);
-      return { ok: true, json: async () => ({ _embedded: { events: [] } }) };
+      return { ok: true, json: async () => ({ _embedded: { events: [] }, page: { totalPages: 1 } }) };
     };
     const band = confirmedBand('manual', { musicbrainz: { mbid: 'mb-manual', status: 'confirmed', ticketmaster: { id: 'manual-tm', status: 'manual_confirmed' }, spotify: { id: 'manual-sp', status: 'manual_confirmed' } } });
     await ticketmaster.fetchUpcomingEvents(band, { canCallTicketmaster: () => true, recordTicketmasterCall: async () => {} });
@@ -122,16 +122,27 @@ test('provider backfill summary separates actual outcomes, future retries, prote
   assert.equal(summary.spotify.needsReview, 4);
 });
 
-test('Ticketmaster events retain stable provider provenance for attraction and fallback matches', async () => {
-  const originalFetch = global.fetch;
-  try {
-    global.fetch = async () => ({ ok: true, json: async () => ({ _embedded: { events: [{ id: 'event-1', name: 'Band a live', url: 'https://ticketmaster.test/event-1', dates: { start: { localDate: '2026-08-01', localTime: '20:00' } }, _embedded: { attractions: [{ id: 'tm-a', name: 'Band a' }], venues: [{ name: 'Venue', city: { name: 'City' }, country: { name: 'Sweden' } }] } }] } }) });
-    const usage = { canCallTicketmaster: () => true, recordTicketmasterCall: async () => {} };
-    const [byId] = await ticketmaster.fetchUpcomingEvents(confirmedBand('a', { musicbrainz: { mbid: 'mb-a', status: 'confirmed', ticketmaster: identity('tm-a', 'ticketmaster') } }), usage);
-    const [fallback] = await ticketmaster.fetchUpcomingEvents(confirmedBand('a'), usage);
-    assert.deepEqual({ sourceProvider: byId.sourceProvider, providerEventId: byId.providerEventId, providerAttractionId: byId.providerAttractionId, artistMatchMethod: byId.artistMatchMethod }, { sourceProvider: 'ticketmaster', providerEventId: 'event-1', providerAttractionId: 'tm-a', artistMatchMethod: 'confirmed_attraction_id' });
-    assert.equal(fallback.artistMatchMethod, 'validated_name_fallback');
-  } finally { global.fetch = originalFetch; }
+test('Ticketmaster events require trusted attraction identity and retain provider provenance', async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return { ok: true, json: async () => ({ _embedded: { events: [{ id: 'event-1', name: 'Band a live', url: 'https://ticketmaster.test/event-1', source: { name: 'ticketmaster' }, dates: { start: { localDate: '2026-08-01', localTime: '20:00' }, status: { code: 'onsale' } }, _embedded: { attractions: [{ id: 'tm-a', name: 'Band a' }], venues: [{ id: 'venue-a', name: 'Venue', city: { name: 'City' }, country: { name: 'Sweden' } }] } }] }, page: { totalPages: 1 } }) };
+  };
+  const usage = { canCallTicketmaster: () => true, recordTicketmasterCall: async () => {}, note() {} };
+  const [byId] = await ticketmaster.fetchUpcomingEvents(confirmedBand('a', { musicbrainz: { mbid: 'mb-a', status: 'confirmed', ticketmaster: identity('tm-a', 'ticketmaster') } }), usage, { fetchImpl, now: '2026-07-01T00:00:00.000Z' });
+  const fallback = await ticketmaster.fetchUpcomingEvents(confirmedBand('a'), usage, { fetchImpl, now: '2026-07-01T00:00:00.000Z' });
+  assert.equal(calls, 1);
+  assert.deepEqual(fallback, []);
+  assert.deepEqual({
+    sourceProvider: byId.sourceProvider,
+    providerEventId: byId.providerEventId,
+    providerAttractionId: byId.providerAttractionId,
+    providerVenueId: byId.providerVenueId,
+    providerEventStatus: byId.providerEventStatus,
+    artistMatchMethod: byId.artistMatchMethod,
+  }, {
+    sourceProvider: 'ticketmaster', providerEventId: 'event-1', providerAttractionId: 'tm-a', providerVenueId: 'venue-a', providerEventStatus: 'onsale', artistMatchMethod: 'confirmed_attraction_id',
+  });
 });
 
 test('provider backfill workflow is manual, main-only, and uses the shared write queue with only provider secrets', () => {

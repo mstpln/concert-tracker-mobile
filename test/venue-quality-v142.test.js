@@ -137,6 +137,7 @@ test('v142 keeps GAU4 unknown-to-known trusted recovery intact', () => {
   });
   const candidate = providerCandidate({
     providerEventId: null,
+    time: '19:30:00',
     venue: 'Royal Arena',
     venueAddress: 'Hannemanns Allé 18-20, København S, Denmark',
     ticketUrl: 'https://tickets.example/different',
@@ -149,7 +150,7 @@ test('v142 keeps GAU4 unknown-to-known trusted recovery intact', () => {
   assert.equal(upgraded.ticketQuantity, existing.ticketQuantity);
 });
 
-test('Ticketmaster missing venue.name still emits the honest Unknown venue sentinel', async () => {
+test('v163 Ticketmaster missing venue.name and providerVenueId is held instead of creating Unknown venue', async () => {
   const originalFetch = global.fetch;
   try {
     global.fetch = async () => ({
@@ -182,9 +183,8 @@ test('Ticketmaster missing venue.name still emits the honest Unknown venue senti
       musicbrainz: { ticketmaster: { id: 'tm-le-sserafim', status: 'confirmed' } },
     };
 
-    const [candidate] = await ticketmaster.fetchUpcomingEvents(band, usage);
-    assert.equal(candidate.venue, 'Unknown venue');
-    assert.equal(candidate.providerEventId, 'tm-synthetic-le-sserafim');
+    const candidates = await ticketmaster.fetchUpcomingEvents(band, usage);
+    assert.deepEqual(candidates, []);
   } finally {
     global.fetch = originalFetch;
   }

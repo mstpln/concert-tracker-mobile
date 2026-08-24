@@ -1,6 +1,7 @@
 'use strict';
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v162';
+const CACHE_NAME_LITERAL = 'v163';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v162'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v161'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v160'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v159'.

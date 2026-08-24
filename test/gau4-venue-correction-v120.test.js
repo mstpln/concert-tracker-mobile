@@ -123,7 +123,7 @@ test('GAU4 does not guess a venue from city/date alone', () => {
   const candidate = ticketmasterCandidate({ venueAddress: null, ticketUrl: 'https://www.ticketmaster.dk/event/other', providerEventId: null });
 
   assert.equal(research.trustedVenueRecoveryMatch(existing, candidate), false);
-  assert.equal(research.findTicketmasterConcertMatch([existing], candidate).kind, 'none');
+  assert.equal(research.findTicketmasterConcertMatch([existing], candidate).kind, 'ambiguous');
 });
 
 test('GAU4 rejects non-HTTPS ticket URLs as recovery evidence', () => {
@@ -131,7 +131,7 @@ test('GAU4 rejects non-HTTPS ticket URLs as recovery evidence', () => {
   const candidate = ticketmasterCandidate({ venueAddress: null, ticketUrl: 'http://tickets.example/same', providerEventId: null });
 
   assert.equal(research.trustedVenueRecoveryMatch(existing, candidate), false);
-  assert.equal(research.findTicketmasterConcertMatch([existing], candidate).kind, 'none');
+  assert.equal(research.findTicketmasterConcertMatch([existing], candidate).kind, 'ambiguous');
 });
 
 test('GAU4 rejects non-Ticketmaster venue candidates even with matching address evidence', () => {

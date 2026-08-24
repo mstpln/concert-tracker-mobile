@@ -19,7 +19,7 @@ test('1 direct Spotify artist URL extracted from MusicBrainz', () => assert.deep
 test('2 exact Spotify artist match accepted', async () => { const result = await spotify.resolveArtistIdentity({ band: band(), metadata: { artistName: 'The Example', aliases: [] }, usage: usage(), getToken: async () => 'x', fetchImpl: async () => ({ ok: true, json: async () => ({ artists: { items: [{ id: 's1', name: 'The Example', external_urls: {} }] } }) }) }); assert.equal(result.identity.id, 's1'); });
 test('3 ambiguous Spotify artist match requires review and retains compact candidates', async () => { const result = await spotify.resolveArtistIdentity({ band: band(), metadata: { artistName: 'The Example', aliases: [] }, usage: usage(), getToken: async () => 'x', fetchImpl: async () => ({ ok: true, json: async () => ({ artists: { items: [{ id: 'a', name: 'The Example' }, { id: 'b', name: 'The Example' }, { id: 'a', name: 'The Example' }] } }) }) }); assert.equal(result.identity.status, 'needs_review'); assert.deepEqual(result.identity.reviewCandidates.map((candidate) => candidate.id), ['a', 'b']); });
 test('4 confirmed Spotify ID reused', async () => { const result = await spotify.resolveArtistIdentity({ band: band({ musicbrainz: { spotify: { status: 'confirmed', id: 's1' } } }), metadata: {}, usage: usage() }); assert.equal(result.kind, 'reused'); });
-test('5 exact Ticketmaster attraction accepted', async () => { const result = await ticketmaster.resolveAttractionIdentity({ band: band(), metadata: { artistName: 'The Example', aliases: [] }, usage: usage(), fetchImpl: async () => ({ ok: true, json: async () => ({ _embedded: { attractions: [{ id: 't1', name: 'The Example', classifications: [{ segment: { name: 'Music' } }] }] } }) }) }); assert.equal(result.identity.id, 't1'); });
+test('5 exact Ticketmaster attraction accepted', async () => { const result = await ticketmaster.resolveAttractionIdentity({ band: band(), metadata: { artistName: 'The Example', aliases: [] }, usage: usage(), fetchImpl: async () => ({ ok: true, json: async () => ({ _embedded: { attractions: [{ id: 't1', name: 'The Example', classifications: [{ segment: { name: 'Music' } }] }] }, page: { totalElements: 1 } }) }) }); assert.equal(result.identity.id, 't1'); });
 test('6 tribute attraction rejected', () => assert.equal(ticketmaster.namesMatch('The Example', 'The Example Tribute', '', ''), false));
 test('7 ambiguous attraction requires review and retains compact candidates', async () => { const attractions = Array.from({ length: 7 }, (_, index) => ({ id: index === 6 ? 'a0' : `a${index}`, name: 'The Example', classifications: [{ segment: { name: 'Music' } }] })); const result = await ticketmaster.resolveAttractionIdentity({ band: band(), metadata: { artistName: 'The Example', aliases: [] }, usage: usage(), fetchImpl: async () => ({ ok: true, json: async () => ({ _embedded: { attractions } }) }) }); assert.equal(result.identity.status, 'needs_review'); assert.equal(result.identity.reviewCandidates.length, 5); assert.equal(new Set(result.identity.reviewCandidates.map((candidate) => candidate.id)).size, 5); });
 test('7b unresolved results clear stale candidates and manual decisions remain protected', async () => { const prior = { status: 'needs_review', reviewCandidates: [{ id: 'old' }] }; assert.deepEqual(ticketmaster.unresolvedAttraction(prior, 'no_match', new Date().toISOString()).reviewCandidates, []); assert.deepEqual(spotify.retryableIdentity(prior, 'unavailable', new Date().toISOString()).reviewCandidates, []); const protectedResult = await spotify.resolveArtistIdentity({ band: band({ musicbrainz: { spotify: { id: 'manual', status: 'manual_rejected', reviewCandidates: [{ id: 'old' }] } } }), metadata: {}, usage: usage() }); assert.equal(protectedResult.kind, 'skipped'); assert.equal(protectedResult.identity.reviewCandidates[0].id, 'old'); });
@@ -132,11 +132,11 @@ test('66 conservative Ticketmaster matching accepts clear venue variants and rej
   assert.equal(sameConcertLocation(existing, candidate), true);
   for (const changed of [{ city: 'Aarhus' }, { venue: 'Forum Copenhagen' }, { date: '2026-10-11' }, { bandId: 'other-band' }, { country: 'Sweden' }]) assert.equal(sameConcertLocation(existing, { ...candidate, ...changed }), false);
   assert.equal(findTicketmasterConcertMatch([sourceConcert({ sourceProvider: 'ticketmaster', providerEventId: 'other-event' })], candidate).kind, 'none');
-  assert.equal(findTicketmasterConcertMatch([sourceConcert({ providerEventId: 'tm-event-1' })], candidate).reason, 'provider_event_id');
+  assert.equal(findTicketmasterConcertMatch([sourceConcert({ sourceProvider: 'ticketmaster', providerEventId: 'tm-event-1' })], candidate).reason, 'provider_event_id');
 });
 
 test('67 exact Ticketmaster event IDs require the same band and date before upgrading', () => {
-  const existing = sourceConcert({ providerEventId: 'tm-event-1' }); const candidate = ticketmasterConcert();
+  const existing = sourceConcert({ sourceProvider: 'ticketmaster', providerEventId: 'tm-event-1' }); const candidate = ticketmasterConcert();
   const exact = findTicketmasterConcertMatch([existing], candidate);
   assert.deepEqual({ kind: exact.kind, reason: exact.reason, id: exact.concert.id }, { kind: 'match', reason: 'provider_event_id', id: existing.id });
   const reconciliation = reconcileConcertCandidate([existing], [], candidate);
@@ -152,13 +152,22 @@ test('67 exact Ticketmaster event IDs require the same band and date before upgr
   assert.equal(reconcileConcertCandidate([existing], [], differentBand).action, 'add');
 });
 
-test('68 candidate reconciliation skips same-run Tavily duplicates, retains different Ticketmaster events, and leaves ambiguity untouched', () => {
-  const tm = ticketmasterConcert(); const tavily = sourceConcert({ id: 'tavily-generated-id', venue: 'Royal Arena' });
+test('67b provider event IDs never cross provider namespaces', () => {
+  const tm = ticketmasterConcert({ time: null, venue: null, city: null, country: null });
+  const tavily = sourceConcert({ providerEventId: 'tm-event-1', time: null, venue: null, city: null, country: null });
+  assert.notEqual(findTicketmasterConcertMatch([tavily], tm).reason, 'provider_event_id');
+  assert.equal(reconcileConcertCandidate([tavily], [], tm).action, 'hold_for_review');
+  assert.notEqual(findTicketmasterConcertMatch([tm], tavily, { existingTicketmasterOnly: true }).reason, 'provider_event_id');
+  assert.equal(reconcileConcertCandidate([tm], [], tavily).action, 'hold_for_review');
+});
+
+test('68 candidate reconciliation skips same-run Tavily duplicates and holds uncertain Ticketmaster matches', () => {
+  const tm = ticketmasterConcert(); const tavily = sourceConcert({ id: 'tavily-generated-id', venue: 'Royal Arena', time: '20:00' });
   assert.equal(reconcileConcertCandidate([], [], tm).action, 'add');
   assert.equal(reconcileConcertCandidate([], [tm], tavily).action, 'skip_ticketmaster_duplicate');
-  assert.equal(reconcileConcertCandidate([sourceConcert({ sourceProvider: 'ticketmaster', providerEventId: 'other-event' })], [], tm).action, 'add');
-  const ambiguous = reconcileConcertCandidate([sourceConcert({ id: 'one' }), sourceConcert({ id: 'two' })], [], tm);
-  assert.deepEqual({ action: ambiguous.action, ambiguous: ambiguous.ambiguous }, { action: 'add', ambiguous: true });
+  assert.equal(reconcileConcertCandidate([sourceConcert({ sourceProvider: 'ticketmaster', providerEventId: 'other-event' })], [], tm).action, 'hold_for_review');
+  const ambiguous = reconcileConcertCandidate([sourceConcert({ id: 'one', time: null }), sourceConcert({ id: 'two', time: null })], [], tm);
+  assert.equal(ambiguous.action, 'hold_for_review');
 });
 
 test('69 upgrade-only concert writes merge provider fields into the latest record without restoring deleted data', () => {
