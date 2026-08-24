@@ -47,14 +47,14 @@ function minutesFromTime(value) {
 function compatibleTimes(first, second, toleranceMinutes = 5) {
   const a = minutesFromTime(first);
   const b = minutesFromTime(second);
-  if (a == null || b == null) return true;
+  if (a == null || b == null) return false;
   return Math.abs(a - b) <= toleranceMinutes;
 }
 
 function providerAttractionMatches(first, second) {
   const a = String(first?.providerAttractionId || '').trim();
   const b = String(second?.providerAttractionId || '').trim();
-  return !a || !b || a === b;
+  return Boolean(a && b && a === b);
 }
 
 function locationEvidence(first, second) {
@@ -80,11 +80,44 @@ function locationEvidence(first, second) {
 
 function physicalPerformanceMatch(first, second) {
   if (!first || !second || first.bandId !== second.bandId || first.date !== second.date) return { match: false, reason: 'band_or_date' };
+  const firstAttraction = String(first?.providerAttractionId || '').trim();
+  const secondAttraction = String(second?.providerAttractionId || '').trim();
+  if (!firstAttraction || !secondAttraction) return { match: false, reason: 'attraction_missing' };
   if (!providerAttractionMatches(first, second)) return { match: false, reason: 'attraction_conflict' };
   const locationReason = locationEvidence(first, second);
   if (!locationReason) return { match: false, reason: 'location' };
-  if (!compatibleTimes(first.time, second.time)) return { match: false, reason: 'time' };
+  if (minutesFromTime(first.time) == null || minutesFromTime(second.time) == null) return { match: false, reason: 'time_missing' };
+  if (!compatibleTimes(first.time, second.time)) return { match: false, reason: 'time_conflict' };
   return { match: true, reason: locationReason };
+}
+
+function physicalPerformanceRelationship(first, second) {
+  if (!first || !second || first.bandId !== second.bandId || first.date !== second.date) return { kind: 'distinct', reason: 'band_or_date' };
+
+  const firstAttraction = String(first?.providerAttractionId || '').trim();
+  const secondAttraction = String(second?.providerAttractionId || '').trim();
+  if (!firstAttraction || !secondAttraction) return { kind: 'ambiguous', reason: 'attraction_missing' };
+  if (firstAttraction !== secondAttraction) return { kind: 'ambiguous', reason: 'attraction_conflict' };
+
+  const locationReason = locationEvidence(first, second);
+  if (!locationReason) {
+    const venueIdA = String(first?.providerVenueId || '').trim();
+    const venueIdB = String(second?.providerVenueId || '').trim();
+    if (venueIdA && venueIdB && venueIdA !== venueIdB) return { kind: 'distinct', reason: 'provider_venue_conflict' };
+    const cityA = normalize(first?.city);
+    const cityB = normalize(second?.city);
+    if (cityA && cityB && cityA !== cityB) return { kind: 'distinct', reason: 'city_conflict' };
+    const countryA = normalize(first?.country);
+    const countryB = normalize(second?.country);
+    if (countryA && countryB && countryA !== countryB) return { kind: 'distinct', reason: 'country_conflict' };
+    return { kind: 'ambiguous', reason: 'location_incomplete' };
+  }
+
+  const firstTime = minutesFromTime(first?.time);
+  const secondTime = minutesFromTime(second?.time);
+  if (firstTime == null || secondTime == null) return { kind: 'ambiguous', reason: 'time_missing' };
+  if (Math.abs(firstTime - secondTime) > 5) return { kind: 'distinct', reason: 'time_conflict' };
+  return { kind: 'same', reason: locationReason };
 }
 
 function providerOfferEvidence(record) {
@@ -200,7 +233,10 @@ module.exports = {
   isUnknownVenueName,
   offerKind,
   compatibleTimes,
+  providerAttractionMatches,
+  locationEvidence,
   physicalPerformanceMatch,
+  physicalPerformanceRelationship,
   providerOfferEvidence,
   mergeOfferLists,
   mergeAlternateOffer,

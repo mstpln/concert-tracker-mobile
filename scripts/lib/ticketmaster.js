@@ -275,22 +275,26 @@ function candidateIsMusic(candidate) {
   return (candidate?.classifications || []).some((classification) => String(classification?.segment?.name || '').toLowerCase() === 'music');
 }
 
-function exactIdentityNames(band, metadata) {
-  return new Set([band?.name, metadata?.artistName, ...(metadata?.aliases || [])].map(identityNorm).filter(Boolean));
+function canonicalIdentityNames(band, metadata) {
+  return new Set([band?.name, metadata?.artistName].map(identityNorm).filter(Boolean));
+}
+
+function aliasIdentityNames(metadata) {
+  return new Set((metadata?.aliases || []).map(identityNorm).filter(Boolean));
 }
 
 function collisionRisk(candidate, candidates, canonicalNames, searchComplete) {
   const exact = identityNorm(candidate?.name);
   const tokenCount = exact.split(' ').filter(Boolean).length;
   const shortOrGeneric = tokenCount <= 1 || exact.length <= 6;
-  if (!shortOrGeneric) return false;
-  if (!searchComplete) return true;
-  return candidates.some((other) => {
+  const similarCandidateExists = candidates.some((other) => {
     if (!other?.id || other.id === candidate.id || !candidateIsMusic(other)) return false;
     const otherName = identityNorm(other.name);
     if (!otherName || canonicalNames.has(otherName)) return false;
     return containsWholeWords(otherName, exact) || containsWholeWords(exact, otherName);
   });
+  if (similarCandidateExists) return true;
+  return shortOrGeneric && !searchComplete;
 }
 
 async function resolveAttractionIdentity({ band, metadata, usage, fetchImpl = fetch, now = new Date().toISOString() }) {
@@ -312,21 +316,28 @@ async function resolveAttractionIdentity({ band, metadata, usage, fetchImpl = fe
     if (!response.ok) return { kind: 'error', identity: unresolvedAttraction(prior, 'error', now, `http_${response.status}`) };
     const data = await response.json();
     const candidates = data?._embedded?.attractions || [];
-    const names = exactIdentityNames(band, metadata);
-    const exactMatches = candidates.filter((candidate) => {
+    const canonicalNames = canonicalIdentityNames(band, metadata);
+    const aliasNames = aliasIdentityNames(metadata);
+    const musicCandidates = candidates.filter(candidateIsMusic);
+    const canonicalMatches = musicCandidates.filter((candidate) => {
       const candidateName = identityNorm(candidate.name);
-      return candidateIsMusic(candidate)
-        && names.has(candidateName)
+      return canonicalNames.has(candidateName)
+        && !TRIBUTE_ACT_PATTERN.test(`${candidate.name || ''} ${candidate.url || ''}`);
+    });
+    const aliasMatches = musicCandidates.filter((candidate) => {
+      const candidateName = identityNorm(candidate.name);
+      return aliasNames.has(candidateName)
+        && !canonicalNames.has(candidateName)
         && !TRIBUTE_ACT_PATTERN.test(`${candidate.name || ''} ${candidate.url || ''}`);
     });
     const totalElements = Number(data?.page?.totalElements);
-    const searchComplete = !Number.isFinite(totalElements) || totalElements <= candidates.length;
+    const searchComplete = Number.isFinite(totalElements) && totalElements <= candidates.length;
 
-    if (exactMatches.length === 1 && !collisionRisk(exactMatches[0], candidates, names, searchComplete)) {
-      return { kind: 'confirmed', identity: attractionIdentity(exactMatches[0], now) };
+    if (canonicalMatches.length === 1 && !collisionRisk(canonicalMatches[0], candidates, canonicalNames, searchComplete)) {
+      return { kind: 'confirmed', identity: attractionIdentity(canonicalMatches[0], now) };
     }
-    if (exactMatches.length) {
-      const reviewPool = [...exactMatches, ...candidates.filter((candidate) => candidateIsMusic(candidate) && namesMatch(band.name, candidate.name))];
+    if (canonicalMatches.length || aliasMatches.length) {
+      const reviewPool = [...canonicalMatches, ...aliasMatches, ...musicCandidates.filter((candidate) => namesMatch(band.name, candidate.name))];
       return { kind: 'needs_review', identity: unresolvedAttraction(prior, 'needs_review', now, null, reviewPool) };
     }
     return { kind: 'no_match', identity: unresolvedAttraction(prior, 'no_match', now) };
@@ -345,4 +356,6 @@ module.exports = {
   eventStatus,
   venueFields,
   collisionRisk,
+  canonicalIdentityNames,
+  aliasIdentityNames,
 };

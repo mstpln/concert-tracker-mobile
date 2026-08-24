@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const ticketmaster = require('../scripts/lib/ticketmaster');
 const Integrity = require('../scripts/lib/ticketmasterConcertIntegrityV163');
 const Audit = require('../scripts/ticketmasterConcertAuditV163');
+const research = require('../scripts/research');
 
 process.env.TICKETMASTER_API_KEY = 'test-ticketmaster-key';
 
@@ -55,17 +56,79 @@ test('Loreen standard plus VIP sound-check package becomes one physical concert'
   assert.equal(merged.alternateProviderOffers[0].providerEventId, 'vip');
 });
 
+test('cross-run package reconciliation preserves the canonical stable ID and all user/unknown fields', () => {
+  const existing = {
+    id: 'katseye-stable-id', bandId: 'katseye', bandName: 'KATSEYE', date: '2026-09-17', time: '20:30',
+    venue: 'Royal Arena', city: 'Copenhagen', country: 'Denmark', providerVenueId: 'venue-1',
+    sourceProvider: 'ticketmaster', providerAttractionId: 'tm-katseye', providerEventId: 'standard',
+    providerEventName: 'KATSEYE', providerOfferType: 'standard', ticketUrl: 'https://ticketmaster.test/standard',
+    attending: true, tickets: [{ id: 'ticket-1' }], ownedTickets: [{ id: 'owned-1' }], notes: 'Keep',
+    eventGroupId: 'event-1', lineupRole: 'support', futureField: { keep: true },
+  };
+  const packageOffer = {
+    ...existing, id: 'generated-package-id', providerEventId: 'vinyl-room',
+    providerEventName: 'KATSEYE - Vinyl Room Package', providerOfferType: 'alternate_offer',
+    ticketUrl: 'https://ticketmaster.test/vinyl-room', attending: undefined, tickets: undefined,
+    ownedTickets: undefined, notes: undefined, eventGroupId: undefined, futureField: undefined,
+  };
+  const reconciliation = research.reconcileConcertCandidate([existing], [], packageOffer);
+  assert.equal(reconciliation.action, 'merge_alternate_offer');
+  const merged = research.upgradeExistingConcertWithTicketmaster(existing, reconciliation.candidate);
+  assert.equal(merged.id, 'katseye-stable-id');
+  assert.equal(merged.providerEventId, 'standard');
+  assert.deepEqual(merged.alternateProviderOffers.map((offer) => offer.providerEventId), ['vinyl-room']);
+  assert.equal(merged.attending, true);
+  assert.deepEqual(merged.tickets, existing.tickets);
+  assert.deepEqual(merged.ownedTickets, existing.ownedTickets);
+  assert.equal(merged.notes, 'Keep');
+  assert.equal(merged.eventGroupId, 'event-1');
+  assert.equal(merged.lineupRole, 'support');
+  assert.deepEqual(merged.futureField, { keep: true });
+});
+
+test('a later standard listing replaces a package primary without changing the stable app ID', () => {
+  const packageRecord = { id: 'stable-id', bandId: 'loreen', date: '2026-10-02', time: '20:00', venue: 'Music Hall', city: 'Berlin', country: 'Germany', providerVenueId: 'venue-berlin', sourceProvider: 'ticketmaster', providerAttractionId: 'tm-loreen', providerEventId: 'vip', providerEventName: 'Loreen VIP Package', providerOfferType: 'alternate_offer', ticketUrl: 'https://ticketmaster.test/vip', notes: 'keep' };
+  const standard = { ...packageRecord, id: 'generated', providerEventId: 'standard', providerEventName: 'Loreen', providerOfferType: 'standard', ticketUrl: 'https://ticketmaster.test/standard', notes: undefined };
+  const reconciliation = research.reconcileConcertCandidate([packageRecord], [], standard);
+  assert.equal(reconciliation.action, 'merge_alternate_offer');
+  const merged = research.upgradeExistingConcertWithTicketmaster(packageRecord, reconciliation.candidate);
+  assert.equal(merged.id, 'stable-id');
+  assert.equal(merged.providerEventId, 'standard');
+  assert.equal(merged.ticketUrl, 'https://ticketmaster.test/standard');
+  assert.deepEqual(merged.alternateProviderOffers.map((offer) => offer.providerEventId), ['vip']);
+  assert.equal(merged.notes, 'keep');
+});
+
+test('a concurrent provider identity change blocks an in-flight package merge', () => {
+  const existing = { id: 'stable', bandId: 'artist', date: '2026-09-01', time: '20:00', venue: 'Arena', city: 'Stockholm', country: 'Sweden', providerVenueId: 'v1', sourceProvider: 'ticketmaster', providerAttractionId: 'a1', providerEventId: 'standard', providerEventName: 'Artist', providerOfferType: 'standard' };
+  const packageOffer = { ...existing, id: 'generated', providerEventId: 'vip', providerEventName: 'Artist VIP Package', providerOfferType: 'alternate_offer' };
+  const reconciliation = research.reconcileConcertCandidate([existing], [], packageOffer);
+  const latest = { ...existing, providerEventId: 'concurrently-reviewed-event', notes: 'newer' };
+  const merged = research.mergeTicketmasterConcertUpgrades([latest], [{ id: existing.id, candidate: reconciliation.candidate }]);
+  assert.deepEqual(merged, [latest]);
+});
+
 test('genuine same-day shows at the same venue remain separate when times differ materially', () => {
   const first = { bandId: 'artist', date: '2026-09-01', time: '15:00', providerVenueId: 'v1', providerAttractionId: 'a1', providerEventId: 'early', providerEventName: 'Artist', providerOfferType: 'standard' };
   const second = { ...first, time: '20:00', providerEventId: 'late' };
   assert.equal(Integrity.physicalPerformanceMatch(first, second).match, false);
   assert.equal(Integrity.collapseTicketmasterOffers([first, second]).length, 2);
+  assert.equal(research.reconcileConcertCandidate([{ ...first, sourceProvider: 'ticketmaster' }], [], { ...second, sourceProvider: 'ticketmaster' }).action, 'add');
 });
 
 test('multi-act same event does not cross-collapse two followed artists', () => {
   const a = { bandId: 'artist-a', date: '2026-09-01', time: '20:00', providerVenueId: 'v1', providerAttractionId: 'a1', providerEventId: 'event', providerEventName: 'Festival VIP Package', providerOfferType: 'alternate_offer' };
   const b = { ...a, bandId: 'artist-b', providerAttractionId: 'a2' };
   assert.equal(Integrity.physicalPerformanceMatch(a, b).match, false);
+  assert.equal(research.reconcileConcertCandidate([{ ...a, sourceProvider: 'ticketmaster' }], [], { ...b, sourceProvider: 'ticketmaster' }).action, 'add');
+});
+
+test('ambiguous same-performance listings are held and never authorized for salted-ID creation', () => {
+  const existing = { id: 'stable', bandId: 'artist', date: '2026-09-01', time: '20:00', venue: 'Arena', city: 'Stockholm', country: 'Sweden', providerVenueId: 'v1', sourceProvider: 'ticketmaster', providerAttractionId: 'a1', providerEventId: 'standard-a', providerEventName: 'Artist', providerOfferType: 'standard' };
+  const secondStandard = { ...existing, id: 'generated', providerEventId: 'standard-b' };
+  const missingTimePackage = { ...existing, id: 'generated-package', time: null, providerEventId: 'package', providerEventName: 'Artist VIP Package', providerOfferType: 'alternate_offer' };
+  assert.deepEqual(research.reconcileConcertCandidate([existing], [], secondStandard), { action: 'hold_for_review', reason: 'same_performance_distinct_standard_listings' });
+  assert.equal(research.reconcileConcertCandidate([existing], [], missingTimePackage).action, 'hold_for_review');
 });
 
 test('unsafe lifecycle events are held and not admitted as ordinary upcoming concerts', async () => {
@@ -114,6 +177,44 @@ test('collision-prone exact attraction names fail to needs_review when similarly
   assert.equal(result.identity.status, 'needs_review');
 });
 
+test('all confirmed wrong-artist collision examples fail to review instead of becoming trusted identities', async () => {
+  const scenarios = [
+    ['Queen', ['Josiah Queen', 'Velveteen Queen', 'Queen Nation', 'One Night of Queen']],
+    ['The Beatles', ['The Beatles Dub Club']],
+    ['Johnny Cash', ['Johnny Cash Roadshow', 'Johnny Cash - The Legacy Continues']],
+  ];
+  for (const [name, collisions] of scenarios) {
+    const tracker = usage();
+    const candidates = [name, ...collisions].map((candidateName, index) => ({
+      id: `${name}-${index}`, name: candidateName, classifications: [{ segment: { name: 'Music' } }],
+    }));
+    const result = await ticketmaster.resolveAttractionIdentity({
+      band: { id: name, name, musicbrainz: { status: 'confirmed' } },
+      metadata: { artistName: name, aliases: [] },
+      usage: tracker,
+      now: '2026-08-24T00:00:00.000Z',
+      fetchImpl: async () => ({ ok: true, json: async () => ({ _embedded: { attractions: candidates }, page: { totalElements: candidates.length } }) }),
+    });
+    assert.equal(result.kind, 'needs_review', name);
+    assert.equal(result.identity.status, 'needs_review', name);
+  }
+});
+
+test('alias-only Ticketmaster evidence remains needs_review', async () => {
+  const result = await ticketmaster.resolveAttractionIdentity({
+    band: { id: 'canonical', name: 'Canonical Artist', musicbrainz: { status: 'confirmed' } },
+    metadata: { artistName: 'Canonical Artist', aliases: ['Stage Alias'] },
+    usage: usage(),
+    now: '2026-08-24T00:00:00.000Z',
+    fetchImpl: async () => ({ ok: true, json: async () => ({
+      _embedded: { attractions: [{ id: 'alias-only', name: 'Stage Alias', classifications: [{ segment: { name: 'Music' } }] }] },
+      page: { totalElements: 1 },
+    }) }),
+  });
+  assert.equal(result.kind, 'needs_review');
+  assert.equal(result.identity.status, 'needs_review');
+});
+
 test('namesake and tribute examples are not accepted by the legacy name helper', () => {
   assert.equal(ticketmaster.namesMatch('Queen', 'Josiah Queen'), true); // documents why this helper cannot authorize writes
   assert.equal(ticketmaster.namesMatch('Queen', 'One Night of Queen'), true);
@@ -138,11 +239,17 @@ test('dry-run audit classifies identity, package, venue and lifecycle risks with
   assert.equal(report.counts.wrong_artist, 1);
   assert.equal(report.counts.recoverable_venue, 1);
   assert.equal(report.counts.lifecycle_review, 1);
-  assert.equal(report.issues.find((issue) => issue.type === 'package_duplicate_group').canonicalConcertId, 'standard');
+  const packagePlan = report.issues.find((issue) => issue.type === 'package_duplicate_group');
+  assert.equal(packagePlan.canonicalConcertId, 'standard');
+  assert.equal(packagePlan.proposedMutation.retainConcertId, 'standard');
+  assert.deepEqual(packagePlan.proposedMutation.removeConcertIds, ['package']);
+  assert.deepEqual(packagePlan.alternateProviderOffers.map((offer) => offer.providerEventId), ['package']);
+  assert.equal(packagePlan.proposedMutation.preservesCanonicalStableId, true);
 });
 
 test('user-owned fields force cleanup to manual review', () => {
   assert.equal(Integrity.hasUserOwnedData({ notes: 'keep this' }), true);
   assert.equal(Integrity.hasUserOwnedData({ ticketPrice: 0 }), true);
   assert.equal(Audit.cleanupSafety({ eventGroupId: 'event-1' }), 'manual_review_required');
+  assert.equal(Audit.cleanupSafety({ futureField: { keep: true } }), 'manual_review_required');
 });

@@ -39,6 +39,7 @@ const artistImageMaintenance = require('./lib/artistImageMaintenance');
 const { slugify, isValidFullDate, daysAgo, truncate, todayIso } = require('./lib/util');
 const config = require('./lib/config');
 const LineupRole = require('../lineupRoleV155');
+const TicketmasterIntegrity = require('./lib/ticketmasterConcertIntegrityV163');
 
 // How long to wait before re-checking a past-attended show that didn't have
 // a setlist logged last time — setlist.fm is crowd-sourced, so a fan may
@@ -342,6 +343,7 @@ async function processSetlistInsights({
 const TICKETMASTER_CONCERT_FIELD_ALLOWLIST = [
   'venue', 'city', 'country', 'time', 'distanceKm', 'venueAddress', 'ticketUrl',
   'ticketRetailerVerified', 'sourceProvider', 'providerEventId', 'providerAttractionId', 'artistMatchMethod',
+  'providerVenueId', 'providerEventName', 'providerEventStatus', 'providerSource', 'providerOfferType',
 ];
 const GENERIC_VENUE_WORDS = new Set(['arena', 'hall', 'club', 'stadium', 'festival', 'venue', 'theatre', 'theater', 'centre', 'center', 'music', 'live']);
 const UNKNOWN_VENUE_NAMES = new Set([
@@ -473,7 +475,16 @@ function upgradeExistingConcertWithTicketmaster(existing, candidate) {
     if (!trustedVenueRecoveryMatch(existing, candidate)) return existing;
     return { ...existing, venue: candidate.venue };
   }
-  return { ...existing, ...ticketmasterConcertPatch(candidate, existing) };
+  const latestProviderEventId = ticketmasterEventId(existing);
+  if (candidate?._expectedProviderEventId && latestProviderEventId && latestProviderEventId !== candidate._expectedProviderEventId) return existing;
+  if (Array.isArray(candidate?._allowedExistingProviderEventIds) && latestProviderEventId && !candidate._allowedExistingProviderEventIds.includes(latestProviderEventId)) return existing;
+  const upgraded = { ...existing, ...ticketmasterConcertPatch(candidate, existing) };
+  const alternateProviderOffers = TicketmasterIntegrity.mergeOfferLists(
+    existing?.alternateProviderOffers,
+    candidate?.alternateProviderOffers
+  ).filter((offer) => offer.providerEventId !== upgraded.providerEventId);
+  if (alternateProviderOffers.length) upgraded.alternateProviderOffers = alternateProviderOffers;
+  return upgraded;
 }
 
 function exactConcertDuplicate(records, candidate) {
@@ -483,9 +494,52 @@ function exactConcertDuplicate(records, candidate) {
 function reconcileConcertCandidate(existingConcerts, newConcerts, candidate) {
   const records = [...existingConcerts, ...newConcerts];
   if (isTicketmasterConcert(candidate)) {
+    const candidateEventId = ticketmasterEventId(candidate);
+    const exactProviderMatches = candidateEventId
+      ? records.filter((concert) => ticketmasterEventId(concert) === candidateEventId && concert.bandId === candidate.bandId && concert.date === candidate.date)
+      : [];
+    if (exactProviderMatches.length === 1) {
+      return {
+        action: 'upgrade',
+        concert: exactProviderMatches[0],
+        candidate: { ...candidate, _expectedProviderEventId: candidateEventId },
+        reason: 'provider_event_id',
+      };
+    }
+    if (exactProviderMatches.length > 1) return { action: 'hold_for_review', reason: 'ambiguous_provider_event_id' };
+
+    const samePerformances = [];
+    const ambiguousPerformances = [];
+    for (const concert of records.filter((value) => isTicketmasterConcert(value) && value.bandId === candidate.bandId && value.date === candidate.date)) {
+      const relationship = TicketmasterIntegrity.physicalPerformanceRelationship(concert, candidate);
+      if (relationship.kind === 'same') samePerformances.push({ concert, relationship });
+      else if (relationship.kind === 'ambiguous') ambiguousPerformances.push({ concert, relationship });
+    }
+    if (samePerformances.length === 1 && ambiguousPerformances.length === 0) {
+      const concert = samePerformances[0].concert;
+      const merged = TicketmasterIntegrity.mergeAlternateOffer(concert, candidate);
+      if (merged) {
+        const allowedExistingProviderEventIds = [
+          ticketmasterEventId(concert),
+          ticketmasterEventId(candidate),
+          ...(merged.alternateProviderOffers || []).map((offer) => offer.providerEventId),
+        ].filter(Boolean);
+        return {
+          action: 'merge_alternate_offer',
+          concert,
+          candidate: { ...merged, _allowedExistingProviderEventIds: [...new Set(allowedExistingProviderEventIds)] },
+          reason: samePerformances[0].relationship.reason,
+        };
+      }
+      return { action: 'hold_for_review', reason: 'same_performance_distinct_standard_listings' };
+    }
+    if (samePerformances.length > 1 || ambiguousPerformances.length > 0) {
+      return { action: 'hold_for_review', reason: samePerformances.length > 1 ? 'multiple_physical_performance_matches' : ambiguousPerformances[0].relationship.reason };
+    }
+
     const match = findTicketmasterConcertMatch(records, candidate);
     if (match.kind === 'match') return { action: 'upgrade', ...match };
-    if (match.kind === 'ambiguous') return { action: 'add', ambiguous: true };
+    if (match.kind === 'ambiguous') return { action: 'hold_for_review', reason: 'ambiguous_existing_concert_match' };
     if (exactConcertDuplicate(records, candidate)) return { action: 'skip_duplicate' };
     return { action: 'add' };
   }
@@ -990,10 +1044,10 @@ async function main() {
         continue;
       }
       const reconciliation = reconcileConcertCandidate(concerts, newConcerts, candidate);
-      if (reconciliation.action === 'upgrade') {
+      if (reconciliation.action === 'upgrade' || reconciliation.action === 'merge_alternate_offer') {
         const upgradeCandidate = reconciliation.reason === 'trusted_venue_evidence'
           ? { ...candidate, _venueRecoveryOnly: true }
-          : candidate;
+          : (reconciliation.candidate || candidate);
         const existingIndex = concerts.findIndex((concert) => concert.id === reconciliation.concert.id);
         if (existingIndex >= 0) {
           concerts[existingIndex] = upgradeExistingConcertWithTicketmaster(concerts[existingIndex], upgradeCandidate);
@@ -1010,9 +1064,10 @@ async function main() {
         continue;
       }
       if (reconciliation.action === 'skip_duplicate') continue;
-      if (reconciliation.ambiguous) {
+      if (reconciliation.action === 'hold_for_review') {
         ambiguousTicketmasterConcertMatches += 1;
-        usage.note(`Ambiguous Ticketmaster concert match left unchanged for "${candidate.bandName}" on ${candidate.date}`);
+        usage.note(`Ambiguous Ticketmaster concert match held for review for "${candidate.bandName}" on ${candidate.date}: ${reconciliation.reason}`);
+        continue;
       }
       newConcerts.push(uniqueConcertCandidate(candidate, [...concerts, ...newConcerts]));
     }

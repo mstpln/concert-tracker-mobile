@@ -46,18 +46,17 @@ async function fetchCandidate(venueName) {
   }
 }
 
-test('v142 Ticketmaster adapter normalizes malformed venue names to Unknown venue', async () => {
+test('v163 Ticketmaster admission holds malformed venue names without a recoverable provider venue ID', async () => {
   for (const venueName of [{}, [], true, false, 42]) {
     const candidate = await fetchCandidate(venueName);
-    assert.equal(candidate.venue, 'Unknown venue', `venue.name=${JSON.stringify(venueName)}`);
-    assert.equal(candidate.providerEventId, 'tm-synthetic-le-sserafim');
+    assert.equal(candidate, undefined, `venue.name=${JSON.stringify(venueName)}`);
   }
 });
 
-test('v142 Ticketmaster adapter normalizes missing and blank venue names to Unknown venue', async () => {
+test('v163 Ticketmaster admission holds missing and blank venue names without a recoverable provider venue ID', async () => {
   for (const venueName of [undefined, null, '', '   ']) {
     const candidate = await fetchCandidate(venueName);
-    assert.equal(candidate.venue, 'Unknown venue', `venue.name=${String(venueName)}`);
+    assert.equal(candidate, undefined, `venue.name=${String(venueName)}`);
   }
 });
 

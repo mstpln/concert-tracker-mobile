@@ -86,7 +86,7 @@ This continuity file was compacted on 2026-08-24. Earlier durable decisions and 
 
 **Reason:** KATSEYE and Loreen production examples showed one real performance represented by multiple Ticketmaster listing IDs.
 
-**Consequence:** v163 preserves a canonical Ticketmaster event ID/URL plus alternate provider offer IDs/URLs as provenance. Provider venue ID is preferred for location identity; exact normalized address/venue evidence is fallback. Materially different same-day start times remain separate performances. Different followed artists at a multi-act event are never cross-collapsed.
+**Consequence:** v163 preserves a canonical Ticketmaster event ID/URL plus alternate provider offer IDs/URLs as provenance, both within one fetch and across later runs. Provider venue ID is preferred for location identity; exact normalized address/venue evidence is fallback. Materially different same-day start times remain separate performances. Missing material evidence, multiple matches and uncertain same-performance listings hold for review and never authorize a salted ID. Different followed artists at a multi-act event are never cross-collapsed.
 
 ### Ticketmaster venue and lifecycle evidence fails closed
 
