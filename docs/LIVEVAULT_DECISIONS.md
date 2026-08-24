@@ -160,11 +160,11 @@ This continuity file was compacted on 2026-08-24. Earlier durable decisions and 
 
 ### Venue directory and venue statistics use canonical physical identity
 
-**Decision:** The Venues directory, Venue Detail histories and venue-related statistics interpret concert venue references through the canonical `venues.json` identity at read time. Raw spelling, diacritic, safe city/country aliases and reviewed identity aliases must not create duplicate venue cards or split one physical venue's visit counts.
+**Decision:** The Venues directory, Venue Detail histories and venue-related statistics interpret concert venue references as physical venue identity at read time. Raw spelling, diacritic, safe city/country aliases and reviewed identity aliases must not create duplicate venue cards or split one physical venue's visit counts.
 
-**Reason:** Production showed duplicate cards such as Royal Arena (`Copenhagen` / `København S`) and Pumpehuset (`Copenhagen` / `København V`), plus many additional normalized duplicates. Raw `concert.venue + concert.city` is presentation/source data, not sufficient physical-venue identity.
+**Reason:** Production showed duplicate cards such as Royal Arena (`Copenhagen` / `København S`) and Pumpehuset (`Copenhagen` / `København V`), plus broader locality variants. Raw `concert.venue + concert.city` is presentation/source data, not sufficient physical-venue identity.
 
-**Consequence:** A known canonical `venueId` is the grouping key. Records without canonical metadata may use conservative normalized fallback identity, but conflicting known physical evidence must stay separate. The interpretation is read-only and does not rewrite concert IDs, venue strings, `eventGroupId` or user-owned/unknown fields.
+**Consequence:** A matching canonical `venueId` is strongest evidence. Same normalized venue names also consolidate when canonical city/country identity agrees, or when compatible-country records use the same stored street evidence across locality labels. Different-name venues require canonical metadata/alias evidence; shared address alone never merges different names. Ambiguous or conflicting physical evidence stays separate. The interpretation is read-only and does not rewrite concert IDs, venue strings, `eventGroupId` or user-owned/unknown fields.
 
 ### Placeholder venues never become directory entities
 
