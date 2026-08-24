@@ -72,33 +72,31 @@ This continuity file was compacted on 2026-08-24. Earlier durable decisions and 
 
 **Consequence:** Missing metrics stay missing rather than invented zeroes, and raw provider bodies, stacks, secrets, private URLs, ticket data and listening-event details are never displayed.
 
+## Ticketmaster identity and performance ownership
+
 ### Ticketmaster concert admission requires trusted provider identity
 
-**Decision:** Automatic Ticketmaster concert fetching may only use a `confirmed` or `manual_confirmed` Ticketmaster attraction ID for the followed BANDMARKR artist. Keyword/name containment may discover or present an identity candidate for review but has no authority to create concert records.
+**Decision:** Automatic Ticketmaster concert fetching may only use a `confirmed` or `manual_confirmed` Ticketmaster attraction ID for the followed BANDMARKR artist. Keyword/name containment may discover an identity candidate but has no authority to create concert records.
 
-**Reason:** Production data demonstrated that whole-word containment could attach unrelated namesakes and derivative acts to followed artists, including Queen/other *Queen* names and The Beatles/The Beatles Dub Club.
-
-**Consequence:** Bands without a trusted Ticketmaster attraction identity skip automatic Ticketmaster event admission. Collision-prone exact-name identity searches fail to `needs_review` when the candidate set contains similarly named Music attractions or cannot be shown complete. Existing manual confirmations remain authoritative.
+**Consequence:** Bands without trusted Ticketmaster attraction identity skip automatic event admission. Collision-prone identity searches fail to review rather than guessing. Existing manual confirmations remain authoritative.
 
 ### Ticketmaster ticket offers are not physical-performance identity
 
 **Decision:** A Ticketmaster event/listing ID identifies a provider offer, not necessarily a unique real-world concert. Standard and VIP/package/premium/lounge/sound-check listings for the same followed artist, date, physical venue and compatible start time represent one BANDMARKR physical performance when evidence is strong.
 
-**Reason:** KATSEYE and Loreen production examples showed one real performance represented by multiple Ticketmaster listing IDs.
-
-**Consequence:** v163 preserves a canonical Ticketmaster event ID/URL plus alternate provider offer IDs/URLs as provenance, both within one fetch and across later runs. Repeated alternate-offer observations merge monotonically: null, empty or partial evidence cannot erase richer stored provider provenance. Within Ticketmaster records, automatic consolidation requires exact provider venue identity or complete matching address evidence; each alternate must directly match exactly one standard record, so transitive/alternate-only chains cannot collapse. Materially different same-day start times remain separate across Ticketmaster and cross-provider reconciliation, while compatible known times plus strong location evidence may enrich one stable record. Missing material evidence, multiple matches and uncertain same-performance listings hold for review and never authorize a salted ID. Exact event-ID matching is Ticketmaster-namespace-only. Generic package vocabulary requires offer context, and URL classification ignores hosts, queries and fragments. Different followed artists at a multi-act event are never cross-collapsed. Multi-page requests and venue lookups remain counted, capped and paced through `UsageTracker`; quotas, caps, pacing and schedules are unchanged.
+**Consequence:** Preserve one canonical provider event plus alternate offer IDs/URLs. Automatic consolidation requires direct evidence from every alternate to exactly one standard listing; transitive bridges do not collapse. Materially different same-day start times remain separate. Missing material evidence, multiple matches and uncertain listings hold for review. Provider calls remain counted, capped and paced.
 
 ### Ticketmaster venue and lifecycle evidence fails closed
 
-**Decision:** Preserve Ticketmaster venue ID, event title, provider source and lifecycle status as provider evidence. Missing embedded venue names may use one bounded/cached provider-venue lookup. Canceled, postponed and rescheduled candidates are not admitted as ordinary new upcoming concerts.
+**Decision:** Preserve Ticketmaster venue ID, event title, provider source and lifecycle status. Missing embedded venue names may use one bounded/cached provider-venue lookup. Canceled, postponed and rescheduled candidates are not admitted as ordinary new upcoming concerts.
 
-**Consequence:** Unresolved venue identity is held instead of manufacturing `Unknown venue`; offsale alone is not destructive evidence; provider lifecycle changes do not authorize deleting user-owned concert history.
+**Consequence:** Unresolved venue identity is held instead of manufacturing `Unknown venue`; offsale alone is not destructive evidence; lifecycle changes do not authorize deleting user-owned concert history.
 
 ### Ticketmaster cleanup is audit-first and separately authorized
 
-**Decision:** Existing Ticketmaster concert cleanup starts with a local read-only audit using the same v163 identity/performance rules. Production mutation is a distinct action requiring explicit user authorization after the exact dry-run is reviewed.
+**Decision:** Existing Ticketmaster cleanup starts with a local read-only audit using the same identity/performance rules. Production mutation is a distinct action requiring explicit user authorization after exact dry-run review.
 
-**Consequence:** Automatic package plans require current trusted band identity, one safe canonical, a direct same-performance check for every removal, complete alternate provenance, valid stable IDs and lineup roles, safe lifecycle state, and no user/unknown data loss. Transitive grouping never authorizes deletion. Positive package evidence with incomplete/conflicting time, attraction or venue facts is always reported for manual review, as are explicit offer-type conflicts and standard-vs-standard ambiguity. Legacy package classification requires positive event-name, decoded URL-path or band/date-scoped linkage evidence; absent v163 metadata stays unknown. Meaningful user state is safe only when the canonical already retains the exact value, while role conflicts, manually added state and unknown future fields remain protected. Wrong-artist automatic removal requires a clear trusted-attraction conflict and the same lossless safety conditions. Production mutation remains separately authorized.
+**Consequence:** Automatic cleanup requires current trusted identity, one safe canonical, direct same-performance proof for every removal, complete alternate provenance, valid stable IDs/roles, safe lifecycle state and no protected/unknown data loss. Ambiguity stays manual.
 
 ### Ticketmaster venue quality is monotonic
 
@@ -116,15 +114,15 @@ This continuity file was compacted on 2026-08-24. Earlier durable decisions and 
 
 ### Shared events are conservative and non-destructive
 
-**Decision:** Existing valid `eventGroupId` relationships remain authoritative. v157 also permits a read-time effective shared event only for attended records with exact date, conservative venue match and non-empty matching normalized city. Automatic grouping writes nothing.
+**Decision:** Existing valid `eventGroupId` relationships remain authoritative. Read-time effective shared events may be inferred only from conservative same-date, venue and non-empty city context. Automatic grouping writes nothing.
 
-**Consequence:** Same date/venue alone, band/provider similarity, blank city or partial context never establishes event identity. Unrelated records keep independent stable IDs.
+**Consequence:** Uncertain context never establishes persistent event identity. Unrelated records keep independent stable IDs.
 
 ### Ticket price is a performance contribution inside grouped events
 
-**Decision:** For a valid effective event, every non-negative numeric performance `ticketPrice` contributes to event unit price and spend. Different performance prices are not conflicts and are not reduced to a minimum.
+**Decision:** For a valid effective event, every non-negative numeric performance `ticketPrice` contributes to event unit price and spend. Different performance prices are not reduced to a minimum.
 
-**Consequence:** Support `0` plus headliner `643` contributes `643`; intentionally split contributions remain additive. Ticket-quantity and travel-distance conflicts retain their conservative handling.
+**Consequence:** Intentionally split contributions remain additive. Ticket-quantity and travel-distance conflicts retain conservative handling.
 
 ### Event-level and performance-level statistics remain separate
 
@@ -142,37 +140,51 @@ This continuity file was compacted on 2026-08-24. Earlier durable decisions and 
 
 ### Venue research evidence remains internal and conservative
 
-**Decision:** `maxCapacity` means the highest reliably documented maximum across normal concert/event configurations, not a single-event attendance figure or unsupported estimate. Official venue URLs must be genuine venue/operator sites; obvious ticket sellers, social profiles, tourism pages, directories, aggregators and event listings are rejected.
+**Decision:** `maxCapacity` means the highest reliably documented maximum across normal concert/event configurations. Official venue URLs must be genuine venue/operator sites; obvious ticket sellers, social profiles, tourism pages, directories, aggregators and event listings are rejected.
 
-**Consequence:** Research source URLs/timestamps are not rendered in the normal UI. Failed/evidence-less research does not create a successful `researchedAt` timestamp.
+**Consequence:** Research sources/timestamps are not rendered in normal UI. Failed/evidence-less research does not create a successful `researchedAt` timestamp.
 
 ### Scheduled venue enrichment is bounded, attended-only and fill-only
 
-**Decision:** Reuse the twice-monthly focused Tavily/Groq schedule for attended venues within BANDMARKR's Europe scope: EU27 plus Norway, Iceland, United Kingdom, Switzerland, Turkey and Serbia. Unknown/out-of-scope country values fail closed. Each run is capped at 10 unique venues.
+**Decision:** Reuse the twice-monthly focused Tavily/Groq schedule for attended venues within BANDMARKR's Europe scope, capped at 10 unique venues per run. Unknown/out-of-scope country values fail closed.
 
-**Consequence:** Existing display facts are not silently replaced. Conflicts preserve stored facts and move/keep the venue at `review_needed`. `concerts.json` is read-only for this lane; `venues.json` writes require the data-maintenance credential and strict conditional ETag behavior.
+**Consequence:** Existing display facts are not silently replaced. Conflicts preserve stored facts and move/keep records at `review_needed`. `concerts.json` is read-only for this lane; `venues.json` writes require the data-maintenance credential and conditional ETag behavior.
 
 ### Venue identity cleanup must fail closed
 
-**Decision:** Safe country/city aliases may canonicalize identity, but different physical venues must never be merged merely because they share an address, city or complex. Different-name consolidation requires pair-specific review evidence that explicitly identifies the counterpart venue. Generic confirmation language on one record cannot authorize a merge with another differently named venue; negated/uncertain/relocation language never authorizes consolidation.
+**Decision:** Safe country/city aliases may canonicalize identity, but different physical venues must never be merged merely because they share an address, city or complex. Different-name consolidation requires pair-specific review evidence that identifies the counterpart venue; negated/uncertain/relocation language never authorizes consolidation.
 
-**Reason:** The production dry-run exposed AFAS Dome and Lotto Arena Antwerpen as distinct arenas sharing the same address. A generic confirmation note could otherwise have collapsed them incorrectly.
+**Reason:** AFAS Dome and Lotto Arena Antwerpen are distinct arenas sharing an address.
 
-**Consequence:** `scripts/venueMetadataDedupeV161.js` normalizes records individually before pair evaluation so same-ID records cannot bypass pair-specific checks. Known address/country conflicts and conflicting shared unknown future fields still block automatic consolidation. Confirmed aliases preserve one stable primary ID plus legacy IDs/identity aliases.
+**Consequence:** Known address/country conflicts and conflicting shared unknown future fields block automatic consolidation. Confirmed aliases preserve one stable primary venue ID plus legacy IDs/identity aliases.
+
+### Venue directory and venue statistics use canonical physical identity
+
+**Decision:** The Venues directory, Venue Detail histories and venue-related statistics interpret concert venue references through the canonical `venues.json` identity at read time. Raw spelling, diacritic, safe city/country aliases and reviewed identity aliases must not create duplicate venue cards or split one physical venue's visit counts.
+
+**Reason:** Production showed duplicate cards such as Royal Arena (`Copenhagen` / `København S`) and Pumpehuset (`Copenhagen` / `København V`), plus many additional normalized duplicates. Raw `concert.venue + concert.city` is presentation/source data, not sufficient physical-venue identity.
+
+**Consequence:** A known canonical `venueId` is the grouping key. Records without canonical metadata may use conservative normalized fallback identity, but conflicting known physical evidence must stay separate. The interpretation is read-only and does not rewrite concert IDs, venue strings, `eventGroupId` or user-owned/unknown fields.
+
+### Placeholder venues never become directory entities
+
+**Decision:** `Unknown venue`, Unknown, TBA, TBD and equivalent placeholder names do not render as venue cards. A placeholder concert may be attributed to a real venue only when existing stored venue metadata plus location/address evidence identifies exactly one canonical physical venue.
+
+**Consequence:** Exact/strong address evidence can recover previously researched placeholders such as Nordichallen, but a tie between multiple legitimate venues fails closed and the placeholder remains omitted rather than guessed. Shared-address complexes therefore cannot be collapsed through placeholder recovery.
 
 ### Production venue cleanup baseline
 
 **Decision:** The 2026-08-24 production cleanup replaced the previous 1,208-record venue dataset with the audited 530-record candidate after explicit authorization.
 
-**Consequence:** The cleaned baseline contains no duplicate `venueId` values, placeholder venues, blocked/non-official display URLs, unresolved/no-evidence research timestamps or structurally invalid records in the audited candidate. The user confirmed the cleaned file was uploaded as top-level production `venues.json`; this upload confirmation is the operational source of truth because the private R2 object is not independently readable from the current ChatGPT tool environment.
+**Consequence:** The cleaned baseline has no duplicate `venueId` values, placeholder venue records, blocked/non-official display URLs, unresolved/no-evidence research timestamps or structural validation failures in the audited candidate. Production upload confirmation remains the operational source of truth.
 
 ## Active UI contracts
 
 ### Next Concert ticket contract
 
-**Decision:** Preserve the established v147/v148 normal-day ticket geometry/chrome and v140 concert-day `Get directions` / `Open tickets` behavior. v162 adds only the corrected muted address-sized capacity treatment and responsive spacing so capacity cannot overlap the ticket-quantity CTA.
+**Decision:** Preserve the established v147/v148 normal-day ticket geometry/chrome and v140 concert-day `Get directions` / `Open tickets` behavior. v162 adds only corrected capacity treatment and responsive spacing.
 
-**Consequence:** Future unrelated work must not move right-stub geometry, countdown/date layout, ticket ownership or concert-day action paths without an explicit redesign.
+**Consequence:** Unrelated work must not move ticket geometry, countdown/date layout, ticket ownership or concert-day action paths without explicit redesign.
 
 ### Start/Stats navigation identities
 
@@ -194,4 +206,4 @@ This continuity file was compacted on 2026-08-24. Earlier durable decisions and 
 
 ## Deferred maintenance
 
-PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from unrelated feature builds.
+PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance. Ticketmaster offer-label hardening remains separate from v164.
