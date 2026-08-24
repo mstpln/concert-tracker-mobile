@@ -36,7 +36,7 @@ function reviewNoteConfirmsCounterpart(record, counterpart) {
   const counterpartName = VenueMetadata.normalizeIdentityText(counterpart?.name);
   if (!note || !counterpartName || counterpartName.length < 4) return false;
   if (!/(confirmed duplicate|confirmed same|same physical address|same physical venue|same venue name variant|same building|same stadium|same real square)/.test(note)) return false;
-  if (/possibly|likely|relocat|moved|addresses differ|could not fully confirm/.test(note)) return false;
+  if (/not confirmed|unconfirmed|possibly|likely|relocat|moved|addresses differ|could not fully confirm/.test(note)) return false;
   return note.includes(counterpartName);
 }
 
@@ -48,7 +48,9 @@ function pairIsExplicitlyConfirmed(a, b) {
 }
 
 function normalizedForCleanup(records) {
-  return VenueMetadata.normalizeDocument(records)
+  return records
+    .map((record) => VenueMetadata.normalizeRecord(record))
+    .filter(Boolean)
     .filter((record) => !VenueMetadata.isPlaceholderVenueName(record.name))
     .map((record) => {
       const copy = { ...record };
