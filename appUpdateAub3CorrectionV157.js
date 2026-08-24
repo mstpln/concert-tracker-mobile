@@ -49,7 +49,24 @@
     removeEventGroupControls(container);
   }
 
-  const api = Object.freeze({ yearOptionsHtml, applyAddConcertUi, removeEventGroupControls });
+  function providerIdentityConfidenceText(value) {
+    if (value === 'user_confirmed') return 'User confirmed';
+    return value === null || value === undefined || value === '' ? null : `${value}%`;
+  }
+
+  function providerIdentityHtmlCorrections(html) {
+    return String(html || '')
+      .replaceAll('user_confirmed%', 'User confirmed')
+      .replaceAll('user approved exact id', 'User-approved exact ID');
+  }
+
+  const api = Object.freeze({
+    yearOptionsHtml,
+    applyAddConcertUi,
+    removeEventGroupControls,
+    providerIdentityConfidenceText,
+    providerIdentityHtmlCorrections,
+  });
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.AppUpdateAub3CorrectionV157 = api;
 
@@ -69,6 +86,23 @@
       const result = render.apply(this, args);
       applyCurrentScreenCorrections();
       return result;
+    };
+  }
+
+  // v165 compatibility: manually approved provider identities store a
+  // semantic confidence marker rather than a numeric percentage. Keep the
+  // persisted value untouched and normalize only the Data-tab presentation.
+  if (typeof root?.providerMatchMethodLabel === 'function') {
+    const label = root.providerMatchMethodLabel;
+    root.providerMatchMethodLabel = function providerMatchMethodLabelV165(method) {
+      if (method === 'user_approved_exact_id') return 'User-approved exact ID';
+      return label(method);
+    };
+  }
+  if (typeof root?.profileDataHtml === 'function') {
+    const profileData = root.profileDataHtml;
+    root.profileDataHtml = function profileDataHtmlV165(...args) {
+      return providerIdentityHtmlCorrections(profileData.apply(this, args));
     };
   }
 
