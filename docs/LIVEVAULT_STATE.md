@@ -6,11 +6,11 @@ This continuity file was compacted on 2026-08-24. Earlier detailed state remains
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged application baseline is **v163**. PR #177 merged the Ticketmaster data-integrity build to `main` at `f42763104a38a4bc8827d406c762efada50faa31`; `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v163`. The build changes the Ticketmaster research/data-maintenance path, not the normal app UI.
+The current merged application baseline is **v163** at `a79a114c0e7927349c542197b2dcb2d9396987d6`. The active unmerged venue-directory correction is **v164** on `fix/venue-directory-canonical-grouping-v164`; `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v164` on that branch. PR #179 is the active review surface.
 
-PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool and merged to `main` at `c9af931190599828e66c27b583f87932c5f23b9e`. PR #176 compacted continuity to the v162 merged baseline. PR #177 then merged the v163 Ticketmaster data-integrity remediation.
+PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool and merged to `main` at `c9af931190599828e66c27b583f87932c5f23b9e`. PR #176 compacted continuity to the v162 merged baseline. PR #177 merged the v163 Ticketmaster data-integrity remediation. PR #178 then recorded the completed v163 production cleanup state.
 
-No deployment, production provider call, production research workflow or production smoke was triggered as part of the v163 merge or the subsequent authorized `concerts.json` cleanup.
+No deployment, production provider call, production research workflow or production smoke is authorized by the v164 implementation branch.
 
 ## v163 Ticketmaster concert data integrity
 
@@ -103,11 +103,23 @@ No broad production research workflow, provider run, Worker deployment or produc
 
 v162 preserves the venue metadata content contract but corrects its Next Concert presentation. Capacity uses the muted address-sized treatment and no longer collides with the ticket-quantity CTA at supported mobile/desktop widths. Synthetic browser assertions cover 375px, 480px and 1280px layouts with no capacity/CTA overlap or horizontal overflow.
 
+## v164 canonical venue directory identity
+
+v164 corrects the Venues directory so cards represent canonical physical venue identity instead of raw `concert.venue + concert.city` strings. Known `venues.json` aliases, canonical city/country spelling and stable `venueId` identity collapse matching concert references into one venue card and one Venue Detail history across the full collection rather than through hard-coded Royal Arena/Pumpehuset exceptions.
+
+Placeholder names such as `Unknown venue`, Unknown, TBA and TBD never render as standalone venue cards. Placeholder concerts may join a known venue only when existing stored location/address evidence identifies exactly one canonical venue; ties and missing evidence remain omitted rather than guessed. Shared-address complexes such as AFAS Dome and Lotto Arena Antwerpen remain distinct.
+
+The canonical fallback is intentionally scoped to the venue directory and venue-specific statistics. Ordinary concert-card and Next Concert metadata lookup keeps the established `findVenueRecord` behavior. Known address conflicts fail closed, including when a matching alias lacks its own address and therefore cannot override a conflicting primary venue address.
+
+`uniqueVenues` and `topVenues` use the same canonical venue interpretation, but the existing event/statistics engine receives the original records unchanged. Therefore v164 does not change automatic concert-night grouping, spend, travel, ticket averages, event relationships or other non-venue metrics. It does not rewrite `concerts.json`, stable IDs, `eventGroupId`, attendance, tickets, notes, ratings or unknown/user-owned fields.
+
+The verified post-v163 production concert snapshot audit found 1,364 raw venue/city combinations, including 25 placeholder cards covering 64 records and 15 definite non-placeholder same-venue/canonical-city duplicate groups. Synthetic regression coverage includes Royal Arena, Pumpehuset, Nordichallen placeholder recovery, Filmstudion, Roxy, Ippodromo SNAI San Siro, Hollywood Bowl, distinct Greek Theatre venues, unresolved/ambiguous placeholders, AFAS Dome/Lotto Arena shared-address safety, alias address-conflict safety, and preservation of non-venue event statistics.
+
 ## Event/performance statistics contract
 
 Concert performance records remain independent. `lineupRole` is a user-owned `headliner`/`support` field. Existing explicit `eventGroupId` relationships remain authoritative, while v157 also derives an effective shared event at read time only when attended records have exactly matching date plus conservative venue and non-empty normalized city context. Automatic grouping writes no relationship field.
 
-Concert nights, spend, travel, venue/city visits, event milestones and ticket extremes are event-level. Artist appearances, ratings, setlists, genres and lineup roles are performance-level. v160 sums user-entered `ticketPrice` contributions across valid event members; it does not deduplicate different performance prices. Ticket-quantity and travel conflict handling remain conservative.
+Concert nights, spend, travel, venue/city visits, event milestones and ticket extremes are event-level. Artist appearances, ratings, setlists, genres and lineup roles are performance-level. v160 sums user-entered `ticketPrice` contributions across valid event members; it does not deduplicate different performance prices. Ticket-quantity and travel conflict handling remain conservative. v164 changes only venue-directory/venue-stat identity interpretation and leaves the underlying event grouping inputs untouched.
 
 ## Active safety and ownership boundaries
 
@@ -128,8 +140,8 @@ ConcertDates/Band Detail geographic filters retain Nearby -> SE -> EU semantics,
 
 ## Backlog hygiene
 
-Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds.
+Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening remains separate from v164.
 
 ## Next operational steps
 
-The v163 preventive Ticketmaster integrity build and the authorized production `concerts.json` cleanup are complete. The next Ticketmaster-specific maintenance candidate is the focused offer-label hardening noted above; it should be isolated from unrelated builds. The normal venue-maintenance milestone remains the first real scheduled venue-research run under its existing twice-monthly schedule; do not manually dispatch the broad workflow merely to test it.
+Finish exact-head review and CI for PR #179. Do not merge without explicit `Merge it`, and do not deploy, mutate production data, manually run venue research or run production smoke as part of v164 validation.

@@ -14,8 +14,116 @@
     try { return Array.isArray(bands) ? bands : []; } catch (_) { return []; }
   }
 
+  function recordVariants(record) {
+    return [record, ...(Array.isArray(record?.identityAliases) ? record.identityAliases : [])]
+      .filter((variant) => variant && typeof variant === 'object' && !Array.isArray(variant));
+  }
+
+  function addressText(value) {
+    const venueAddress = model.addressLines(value?.venueAddress).join(' ');
+    if (venueAddress) return venueAddress;
+    return model.addressLines(value?.address).join(' ');
+  }
+
+  function normalizedAddress(value) {
+    return model.normalizeIdentityText(model.addressLines(value).join(' '));
+  }
+
+  function addressHead(value) {
+    const raw = typeof value === 'string' ? value : model.addressLines(value).join(', ');
+    return model.normalizeIdentityText(String(raw || '').split(',')[0]);
+  }
+
+  function canonicalCountry(value) {
+    const key = model.canonicalCountryKey(value);
+    if (['usa', 'us', 'u s', 'united states of america'].includes(key)) return 'united states';
+    return key;
+  }
+
+  function countriesCompatible(left, right) {
+    const a = canonicalCountry(left);
+    const b = canonicalCountry(right);
+    return !a || !b || a === b;
+  }
+
+  function uniqueBestRecord(scored) {
+    const usable = scored.filter((entry) => entry.score > 0 && entry.record?.venueId);
+    if (!usable.length) return null;
+    const maxScore = Math.max(...usable.map((entry) => entry.score));
+    const best = usable.filter((entry) => entry.score === maxScore);
+    const ids = [...new Set(best.map((entry) => entry.record.venueId))];
+    return ids.length === 1 ? best.find((entry) => entry.record.venueId === ids[0]).record : null;
+  }
+
+  function namedVenueEvidenceScore(value, record) {
+    const targetName = model.normalizeIdentityText(value?.venue ?? value?.name);
+    if (!targetName) return 0;
+    const sourceAddress = addressText(value);
+    const sourceFull = normalizedAddress(sourceAddress);
+    const sourceHead = addressHead(sourceAddress);
+    const primaryAddress = model.addressLines(record?.address).join(' ');
+    const primaryFull = normalizedAddress(primaryAddress);
+    let best = 0;
+
+    for (const variant of recordVariants(record)) {
+      if (!countriesCompatible(value?.country, variant?.country)) continue;
+      if (model.normalizeIdentityText(variant?.name) !== targetName) continue;
+
+      const sourceCity = model.canonicalCityKey(value?.city);
+      const sameCity = !!sourceCity && sourceCity === model.canonicalCityKey(variant?.city);
+      const variantAddress = model.addressLines(variant?.address).join(' ');
+      const variantFull = normalizedAddress(variantAddress);
+      const variantHead = addressHead(variantAddress);
+
+      if (sourceFull && variantFull && sourceFull === variantFull) best = Math.max(best, 5);
+      else if (sourceHead && variantHead && sourceHead === variantHead) best = Math.max(best, 4);
+      else if (sameCity && (!sourceAddress || !variantAddress)) {
+        // Match the base model's conflict safeguard: an address-less alias
+        // cannot bypass a known conflicting primary address.
+        if (sourceFull && primaryFull && sourceFull !== primaryFull && !variantFull) continue;
+        best = Math.max(best, 2);
+      }
+    }
+    return best;
+  }
+
+  function placeholderVenueEvidenceScore(value, record) {
+    const sourceAddress = addressText(value);
+    if (!sourceAddress) return 0;
+    const sourceFull = normalizedAddress(sourceAddress);
+    const sourceHead = addressHead(sourceAddress);
+    let best = 0;
+    for (const variant of recordVariants(record)) {
+      if (!countriesCompatible(value?.country, variant?.country)) continue;
+      const sameCity = !value?.city || !variant?.city || model.canonicalCityKey(value.city) === model.canonicalCityKey(variant.city);
+      const targetAddress = model.addressLines(variant?.address).join(' ');
+      const targetFull = normalizedAddress(targetAddress);
+      const targetHead = addressHead(targetAddress);
+      if (sameCity && sourceFull && targetFull && sourceFull === targetFull) best = Math.max(best, 6);
+      else if (sameCity && sourceHead && targetHead && sourceHead === targetHead) best = Math.max(best, 5);
+
+      const venueName = model.normalizeIdentityText(variant?.name || record?.name);
+      if (sameCity && venueName && sourceFull && (sourceFull === venueName || sourceFull.startsWith(`${venueName} `))) {
+        best = Math.max(best, 4);
+      }
+    }
+    return best;
+  }
+
   function metadataFor(value) {
     return model.findVenueRecord(value, venueRecords);
+  }
+
+  function canonicalMetadataFor(value) {
+    const direct = metadataFor(value);
+    if (direct) return direct;
+
+    const rawVenue = String(value?.venue ?? value?.name ?? '').trim();
+    if (!rawVenue) return null;
+    if (model.isPlaceholderVenueName(rawVenue)) {
+      return uniqueBestRecord(venueRecords.map((record) => ({ record, score: placeholderVenueEvidenceScore(value, record) })));
+    }
+    return uniqueBestRecord(venueRecords.map((record) => ({ record, score: namedVenueEvidenceScore(value, record) })));
   }
 
   function capacityHtml(value, className = '') {
@@ -38,6 +146,125 @@
       .filter(Boolean)
       .sort((a, b) => b.length - a.length);
     return values[0] || '';
+  }
+
+  function recordPreferenceScore(record) {
+    if (!record) return 0;
+    const status = { complete: 50, partial: 40, review_needed: 30, unresolved: 20, temporary_error: 10 }[record.researchStatus] || 0;
+    return status
+      + (Array.isArray(record.identityAliases) ? Math.min(record.identityAliases.length, 8) : 0)
+      + (Array.isArray(record.legacyVenueIds) ? Math.min(record.legacyVenueIds.length, 8) : 0)
+      + (model.validCapacity(record.maxCapacity) ? 4 : 0)
+      + (model.addressLines(record.address).length ? 3 : 0)
+      + (model.safeOfficialUrl(record.officialUrl) ? 2 : 0);
+  }
+
+  function canonicalVenueIdentity(value) {
+    const rawVenue = String(value?.venue ?? value?.name ?? '').trim();
+    if (!rawVenue) return null;
+
+    const record = canonicalMetadataFor(value);
+    if (model.isPlaceholderVenueName(rawVenue) && !record) return null;
+
+    const venue = String(record?.name || rawVenue).trim();
+    const city = String(record?.city || value?.city || '').trim();
+    const country = String(record?.country || value?.country || '').trim();
+    if (!venue || !city || model.isPlaceholderVenueName(venue)) return null;
+
+    const nameKey = model.normalizeIdentityText(venue);
+    const cityKey = model.canonicalCityKey(city);
+    const countryKey = canonicalCountry(country);
+    const sourceAddressHead = addressHead(value?.venueAddress) || addressHead(value?.address);
+    const recordAddressHead = addressHead(record?.address);
+    return {
+      key: `physical:${nameKey}|${cityKey}`,
+      venue,
+      city,
+      country,
+      nameKey,
+      cityKey,
+      countryKey,
+      addressHead: sourceAddressHead || recordAddressHead,
+      record: record || null,
+    };
+  }
+
+  function identitiesMatch(left, right) {
+    if (!left || !right) return false;
+    if (left.record?.venueId && right.record?.venueId && left.record.venueId === right.record.venueId) return true;
+    if (!left.nameKey || left.nameKey !== right.nameKey) return false;
+    if (left.countryKey && right.countryKey && left.countryKey !== right.countryKey) return false;
+    if (left.cityKey && right.cityKey && left.cityKey === right.cityKey) {
+      if (left.addressHead && right.addressHead && left.addressHead !== right.addressHead) return false;
+      return true;
+    }
+    return !!(left.addressHead && right.addressHead && left.addressHead === right.addressHead);
+  }
+
+  function canonicalVenueGroups(concertList) {
+    const groups = [];
+    const byName = new Map();
+    for (const concert of concertList || []) {
+      const identity = canonicalVenueIdentity(concert);
+      if (!identity) continue;
+
+      const candidates = byName.get(identity.nameKey) || [];
+      let group = candidates.find((candidate) => identitiesMatch(candidate.identity, identity));
+      if (!group) {
+        group = {
+          key: `${identity.key}:${groups.length}`,
+          venue: identity.venue,
+          city: identity.city,
+          country: identity.country,
+          concerts: [],
+          record: identity.record,
+          identity,
+        };
+        groups.push(group);
+        candidates.push(group);
+        byName.set(identity.nameKey, candidates);
+      } else if (recordPreferenceScore(identity.record) > recordPreferenceScore(group.record)) {
+        group.record = identity.record;
+        group.venue = identity.venue;
+        group.city = identity.city;
+        group.country = identity.country;
+        group.identity = { ...identity, addressHead: group.identity.addressHead || identity.addressHead };
+      } else if (!group.identity.addressHead && identity.addressHead) {
+        group.identity.addressHead = identity.addressHead;
+      }
+
+      group.concerts.push(concert);
+      if (!group.country && concert?.country) group.country = String(concert.country).trim();
+    }
+    return groups.sort((a, b) => a.venue.localeCompare(b.venue));
+  }
+
+  function canonicalTopVenueVisits(concertList) {
+    if (typeof dlVenueVisits !== 'function') return null;
+    const visits = dlVenueVisits(concertList || []);
+    const visitRecords = visits.map((visit) => {
+      const records = Array.isArray(visit?.concerts) ? visit.concerts : [];
+      const representative = (typeof EventModelV156 !== 'undefined' && typeof EventModelV156.representativeRecord === 'function')
+        ? EventModelV156.representativeRecord(records)
+        : records[0];
+      return {
+        ...(representative || {}),
+        venue: String(visit?.venue || representative?.venue || '').trim(),
+        city: String(visit?.city || representative?.city || '').trim(),
+        date: visit?.lastDate || representative?.date || null,
+      };
+    });
+    return canonicalVenueGroups(visitRecords)
+      .map((group) => ({
+        venue: group.venue,
+        city: group.city,
+        count: group.concerts.length,
+        lastDate: group.concerts.reduce((latest, concert) => (
+          concert?.date && (!latest || concert.date > latest) ? concert.date : latest
+        ), null),
+      }))
+      .sort((a, b) => b.count - a.count || (b.lastDate || '').localeCompare(a.lastDate || ''))
+      .slice(0, 5);
   }
 
   function detailAddressLines(record, group) {
@@ -72,7 +299,7 @@
 
   function renderVenueRows() {
     const liveConcerts = currentConcerts().filter((concert) => currentBands().some((band) => band.id === concert.bandId));
-    const allGroups = dlVenueGroups(liveConcerts);
+    const allGroups = canonicalVenueGroups(liveConcerts);
     const totalVenueCount = allGroups.length;
     let groups = allGroups;
 
@@ -91,7 +318,7 @@
     if (!groups.length) return totalHeader + filterRow + '<p class="screen-empty">No venues match these filters yet.</p>';
 
     const rows = groups.map((group) => {
-      const record = metadataFor({ venue: group.venue, city: group.city, country: group.country, venueAddress: bestConcertAddress(group) });
+      const record = group.record || metadataFor({ venue: group.venue, city: group.city, country: group.country, venueAddress: bestConcertAddress(group) });
       const capacity = model.capacityLabel(record?.maxCapacity);
       return `
         <div class="row-card clickable venue-metadata-list-card${capacity ? ' has-venue-capacity' : ''}" data-venue-key="${escapeAttr(group.key)}">
@@ -110,12 +337,12 @@
   function renderVenueDetail(key) {
     const container = document.getElementById('screen-venue-detail');
     const liveConcerts = currentConcerts().filter((concert) => currentBands().some((band) => band.id === concert.bandId));
-    const group = dlVenueGroups(liveConcerts).find((candidate) => candidate.key === key);
+    const group = canonicalVenueGroups(liveConcerts).find((candidate) => candidate.key === key);
     if (!group) {
       container.innerHTML = '<p class="screen-empty">Venue not found.</p>';
       return;
     }
-    const record = metadataFor({ venue: group.venue, city: group.city, country: group.country, venueAddress: bestConcertAddress(group) });
+    const record = group.record || metadataFor({ venue: group.venue, city: group.city, country: group.country, venueAddress: bestConcertAddress(group) });
     const sorted = [...group.concerts].sort((a, b) => new Date(b.date) - new Date(a.date));
     container.innerHTML = `
       <p class="venue-detail-location">${escapeHtml(group.city)}${group.country ? ', ' + escapeHtml(group.country) : ''}</p>
@@ -188,6 +415,22 @@
     };
   }
 
+  if (typeof root.dlConcertStats === 'function') {
+    const priorConcertStats = root.dlConcertStats;
+    root.dlConcertStats = function dlConcertStatsCanonicalVenues(attendedPast, bandsArg = [], upcomingGoing = [], ...args) {
+      const result = priorConcertStats.call(this, attendedPast, bandsArg, upcomingGoing, ...args);
+      if (!result || typeof result !== 'object') return result;
+      const topVenues = canonicalTopVenueVisits(attendedPast || []);
+      return {
+        ...result,
+        uniqueVenues: canonicalVenueGroups(attendedPast || []).length,
+        topVenues: Array.isArray(topVenues)
+          ? topVenues
+          : (Array.isArray(result.topVenues) ? result.topVenues.filter((entry) => !model.isPlaceholderVenueName(entry?.venue)) : result.topVenues),
+      };
+    };
+  }
+
   if (typeof root.venuesSubTabHtml === 'function') root.venuesSubTabHtml = renderVenueRows;
   if (typeof root.renderVenueDetailScreen === 'function') root.renderVenueDetailScreen = renderVenueDetail;
 
@@ -204,6 +447,8 @@
     getRecords,
     setRecords,
     metadataFor,
+    canonicalVenueIdentity,
+    canonicalVenueGroups,
     detailAddressLines,
     venueMetadataPanelHtml,
     insertCapacityIntoConcertCard,

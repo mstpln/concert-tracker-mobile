@@ -160,6 +160,20 @@ This continuity file was compacted on 2026-08-24. Earlier durable decisions and 
 
 **Consequence:** `scripts/venueMetadataDedupeV161.js` normalizes records individually before pair evaluation so same-ID records cannot bypass pair-specific checks. Known address/country conflicts and conflicting shared unknown future fields still block automatic consolidation. Confirmed aliases preserve one stable primary ID plus legacy IDs/identity aliases.
 
+### Venue directory and venue statistics use canonical physical identity
+
+**Decision:** The Venues directory, Venue Detail histories and venue-specific statistics interpret concert venue references as physical venue identity at read time. Raw spelling, diacritic, safe city/country aliases and reviewed identity aliases must not create duplicate venue cards or split one physical venue's visit counts.
+
+**Reason:** Production showed duplicate cards such as Royal Arena (`Copenhagen` / `København S`) and Pumpehuset (`Copenhagen` / `København V`), plus broader locality variants. Raw `concert.venue + concert.city` is presentation/source data, not sufficient physical-venue identity.
+
+**Consequence:** A matching canonical `venueId` is strongest evidence. Same normalized venue names also consolidate when canonical city/country identity agrees, or when compatible-country records use the same stored street evidence across locality labels. Different-name venues require canonical metadata/alias evidence; shared address alone never merges different names. Known conflicting addresses fail closed, including through aliases without their own address evidence. The interpretation is read-only and scoped to the Venues directory, Venue Detail, `uniqueVenues` and `topVenues`; it does not alter ordinary concert-card metadata matching, event grouping, concert IDs, venue strings, `eventGroupId` or user-owned/unknown fields.
+
+### Placeholder venues never become directory entities
+
+**Decision:** `Unknown venue`, Unknown, TBA, TBD and equivalent placeholder names do not render as venue cards. A placeholder concert may be attributed to a real venue only when existing stored venue metadata plus location/address evidence identifies exactly one canonical physical venue.
+
+**Consequence:** Exact/strong address evidence can recover previously researched placeholders such as Nordichallen for the canonical venue directory/statistics interpretation, but a tie between multiple legitimate venues fails closed and the placeholder remains omitted rather than guessed. Placeholder recovery does not broaden ordinary concert-card or Next Concert metadata lookup.
+
 ### Production venue cleanup baseline
 
 **Decision:** The 2026-08-24 production cleanup replaced the previous 1,208-record venue dataset with the audited 530-record candidate after explicit authorization.
@@ -194,4 +208,4 @@ This continuity file was compacted on 2026-08-24. Earlier durable decisions and 
 
 ## Deferred maintenance
 
-PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from unrelated feature builds.
+PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from unrelated feature builds. Ticketmaster offer-label hardening remains separate from v164.
