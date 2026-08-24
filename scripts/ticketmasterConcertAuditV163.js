@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { isDeepStrictEqual } = require('node:util');
 const Integrity = require('./lib/ticketmasterConcertIntegrityV163');
 
 const KNOWN_CONCERT_FIELDS = new Set([
@@ -32,34 +33,76 @@ function ticketmasterRecords(concerts) {
   return (Array.isArray(concerts) ? concerts : []).filter((concert) => concert?.sourceProvider === 'ticketmaster');
 }
 
-function duplicateGroups(concerts) {
+function referencedAlternateEventIds(records) {
+  const referenced = new Set();
+  for (const record of records) {
+    for (const offer of Array.isArray(record?.alternateProviderOffers) ? record.alternateProviderOffers : []) {
+      const providerEventId = String(offer?.providerEventId || '').trim();
+      if (providerEventId) referenced.add(providerEventId);
+    }
+  }
+  return referenced;
+}
+
+// Pre-v163 records did not store providerEventName/providerOfferType. The
+// audit therefore requires positive stored evidence before calling a legacy
+// record an alternate offer; absence of package evidence is not "standard".
+function offerClassification(record, referencedEventIds = new Set()) {
+  const explicit = record?.providerOfferType;
+  const eventNameAlternate = Integrity.alternateOfferVocabularyMatch(record?.providerEventName);
+  const ticketUrlAlternate = Integrity.alternateOfferVocabularyMatch(record?.ticketUrl);
+  const referencedAsAlternate = referencedEventIds.has(String(record?.providerEventId || '').trim());
+  const positiveReasons = [
+    eventNameAlternate && 'provider_event_name_package_pattern',
+    ticketUrlAlternate && 'legacy_ticket_url_package_pattern',
+    referencedAsAlternate && 'referenced_by_alternate_provider_offers',
+  ].filter(Boolean);
+
+  if (explicit === 'alternate_offer') {
+    return { kind: 'alternate_offer', reason: 'explicit_provider_offer_type' };
+  }
+  if (explicit === 'standard' && positiveReasons.length) {
+    return { kind: 'ambiguous', reason: 'conflicting_provider_offer_evidence', positiveReasons };
+  }
+  if (explicit === 'standard') return { kind: 'standard', reason: 'explicit_provider_offer_type' };
+  if (positiveReasons.length) return { kind: 'alternate_offer', reason: positiveReasons[0], positiveReasons };
+  return { kind: 'unknown', reason: 'no_positive_alternate_offer_evidence' };
+}
+
+function physicalPerformanceGroups(concerts) {
   const records = ticketmasterRecords(concerts);
   const used = new Set();
   const groups = [];
   for (let i = 0; i < records.length; i += 1) {
-    if (used.has(records[i].id)) continue;
-    const group = [records[i]];
-    for (let j = i + 1; j < records.length; j += 1) {
-      if (used.has(records[j].id)) continue;
-      const match = Integrity.physicalPerformanceMatch(records[i], records[j]);
-      if (!match.match) continue;
-      const firstKind = records[i].providerOfferType || Integrity.offerKind(records[i].providerEventName);
-      const secondKind = records[j].providerOfferType || Integrity.offerKind(records[j].providerEventName);
-      if (firstKind !== 'alternate_offer' && secondKind !== 'alternate_offer') continue;
-      group.push(records[j]);
-      used.add(records[j].id);
+    if (used.has(i)) continue;
+    const indexes = [i];
+    used.add(i);
+    for (let cursor = 0; cursor < indexes.length; cursor += 1) {
+      for (let j = 0; j < records.length; j += 1) {
+        if (used.has(j)) continue;
+        if (!Integrity.physicalPerformanceMatch(records[indexes[cursor]], records[j]).match) continue;
+        indexes.push(j);
+        used.add(j);
+      }
     }
-    if (group.length > 1) {
-      used.add(records[i].id);
-      groups.push(group);
-    }
+    if (indexes.length > 1) groups.push(indexes.map((index) => records[index]));
   }
   return groups;
 }
 
-function chooseCanonical(group) {
-  const standard = group.find((record) => (record.providerOfferType || Integrity.offerKind(record.providerEventName)) !== 'alternate_offer');
-  return standard || group[0];
+function duplicateGroups(concerts) {
+  const records = ticketmasterRecords(concerts);
+  const referenced = referencedAlternateEventIds(records);
+  return physicalPerformanceGroups(records).filter((group) => (
+    group.some((record) => offerClassification(record, referenced).kind === 'alternate_offer')
+  ));
+}
+
+function chooseCanonical(group, referencedEventIds = new Set()) {
+  const explicitStandard = group.find((record) => offerClassification(record, referencedEventIds).kind === 'standard');
+  if (explicitStandard) return explicitStandard;
+  const nonAlternate = group.find((record) => offerClassification(record, referencedEventIds).kind === 'unknown');
+  return nonAlternate || group[0];
 }
 
 function userOwnedFieldNames(record) {
@@ -76,7 +119,48 @@ function cleanupSafety(record) {
     : 'automatic_candidate';
 }
 
-function providerEvidence(record) {
+function groupCleanupSafety(canonical, removed) {
+  const reasons = [];
+  const protectedFields = new Set();
+  const unknownFields = new Set();
+  const canonicalRole = ['headliner', 'support'].includes(canonical?.lineupRole) ? canonical.lineupRole : null;
+
+  for (const record of removed) {
+    if (!String(record?.providerEventId || '').trim()) {
+      reasons.push('alternate_offer_provenance_incomplete');
+    }
+    const removedRole = ['headliner', 'support'].includes(record?.lineupRole) ? record.lineupRole : null;
+    const roleConflict = canonicalRole && removedRole && canonicalRole !== removedRole;
+    if (roleConflict) {
+      reasons.push('conflicting_lineup_role');
+      protectedFields.add('lineupRole');
+    }
+
+    for (const field of userOwnedFieldNames(record)) {
+      if (field === 'lineupRole' && roleConflict) continue;
+      if (Integrity.meaningfulUserOwnedValue(field, canonical?.[field])
+        && isDeepStrictEqual(canonical[field], record[field])) continue;
+      reasons.push('user_owned_state_not_preserved');
+      protectedFields.add(field);
+    }
+    for (const field of unknownFieldNames(record)) {
+      // Unknown future state has no established merge contract, even when an
+      // identical value happens to be present on the canonical record.
+      reasons.push('unknown_future_state_requires_review');
+      unknownFields.add(field);
+    }
+  }
+
+  return {
+    safety: reasons.length ? 'manual_review_required' : 'automatic_candidate',
+    reasons: [...new Set(reasons)],
+    protectedFields: [...protectedFields].sort(),
+    unknownFields: [...unknownFields].sort(),
+  };
+}
+
+function providerEvidence(record, classification = null) {
+  const classified = classification || offerClassification(record);
   return {
     sourceProvider: record?.sourceProvider || null,
     providerEventId: record?.providerEventId || null,
@@ -85,7 +169,10 @@ function providerEvidence(record) {
     providerEventName: record?.providerEventName || null,
     providerEventStatus: record?.providerEventStatus || null,
     providerSource: record?.providerSource || null,
-    providerOfferType: record?.providerOfferType || Integrity.offerKind(record?.providerEventName),
+    providerOfferType: ['standard', 'alternate_offer'].includes(record?.providerOfferType)
+      ? record.providerOfferType
+      : (classified.kind === 'alternate_offer' ? 'alternate_offer' : null),
+    offerClassificationReason: classified.reason,
     ticketUrl: record?.ticketUrl || null,
   };
 }
@@ -95,8 +182,11 @@ function auditConcerts(concerts, bands = []) {
   if (!Array.isArray(bands)) throw new Error('bands input must be a JSON array');
   const bandsById = bandMap(bands);
   const issues = [];
+  const records = ticketmasterRecords(concerts);
+  const referenced = referencedAlternateEventIds(records);
 
-  for (const record of ticketmasterRecords(concerts)) {
+  for (const record of records) {
+    const classification = offerClassification(record, referenced);
     const band = bandsById.get(record.bandId);
     const wrongArtist = Integrity.wrongArtistReason(record, band);
     if (wrongArtist) {
@@ -106,7 +196,7 @@ function auditConcerts(concerts, bands = []) {
         concertId: record.id,
         bandId: record.bandId,
         reason: wrongArtist,
-        evidence: providerEvidence(record),
+        evidence: providerEvidence(record, classification),
         userOwnedFields: userOwnedFieldNames(record),
         unknownFields: unknownFieldNames(record),
         safety,
@@ -122,7 +212,7 @@ function auditConcerts(concerts, bands = []) {
         concertId: record.id,
         bandId: record.bandId,
         reason: record.providerVenueId ? 'unknown_venue_with_provider_id' : 'unknown_venue_without_provider_id',
-        evidence: providerEvidence(record),
+        evidence: providerEvidence(record, classification),
         safety: 'manual_review_required',
         automaticRemediationSafe: false,
         proposedMutation: { action: record.providerVenueId ? 'recover_venue_from_trusted_evidence' : 'manual_review', retainConcertId: record.id },
@@ -134,7 +224,7 @@ function auditConcerts(concerts, bands = []) {
         concertId: record.id,
         bandId: record.bandId,
         reason: `provider_status_${record.providerEventStatus}`,
-        evidence: providerEvidence(record),
+        evidence: providerEvidence(record, classification),
         safety: 'manual_review_required',
         automaticRemediationSafe: false,
         proposedMutation: { action: 'manual_lifecycle_review', retainConcertId: record.id },
@@ -145,17 +235,53 @@ function auditConcerts(concerts, bands = []) {
     }
   }
 
-  for (const group of duplicateGroups(concerts)) {
-    const canonical = chooseCanonical(group);
+  for (const group of physicalPerformanceGroups(records)) {
+    const classifications = new Map(group.map((record) => [record, offerClassification(record, referenced)]));
+    const alternateCount = group.filter((record) => classifications.get(record).kind === 'alternate_offer').length;
+    if (!alternateCount) {
+      issues.push({
+        type: 'ticketmaster_listing_ambiguity',
+        bandId: group[0].bandId,
+        date: group[0].date,
+        memberConcertIds: group.map((record) => record.id),
+        members: group.map((record) => ({
+          concertId: record.id,
+          evidence: providerEvidence(record, classifications.get(record)),
+          offerClassification: classifications.get(record),
+          userOwnedFields: userOwnedFieldNames(record),
+          unknownFields: unknownFieldNames(record),
+        })),
+        reason: 'same_physical_performance_without_positive_package_evidence',
+        safety: 'manual_review_required',
+        automaticRemediationSafe: false,
+        proposedMutation: { action: 'manual_review', retainConcertIds: group.map((record) => record.id) },
+      });
+      continue;
+    }
+
+    const canonical = chooseCanonical(group, referenced);
     const removed = group.filter((record) => record !== canonical);
-    const standardCount = group.filter((record) => (record.providerOfferType || Integrity.offerKind(record.providerEventName)) !== 'alternate_offer').length;
-    const automaticRemediationSafe = standardCount === 1 && removed.every((record) => cleanupSafety(record) === 'automatic_candidate');
+    const canonicalCandidates = group.filter((record) => classifications.get(record).kind !== 'alternate_offer');
+    const cleanup = groupCleanupSafety(canonical, removed);
+    const automaticRemediationSafe = canonicalCandidates.length === 1
+      && classifications.get(canonical).kind !== 'ambiguous'
+      && cleanup.safety === 'automatic_candidate';
     const alternateProviderOffers = Integrity.mergeOfferLists(
-      ...group.map((record) => [Integrity.providerOfferEvidence(record), ...(record.alternateProviderOffers || [])])
+      ...group.map((record) => {
+        const evidence = Integrity.providerOfferEvidence(record);
+        const classification = classifications.get(record);
+        const classifiedEvidence = evidence ? {
+          ...evidence,
+          providerOfferType: classification.kind === 'alternate_offer' ? 'alternate_offer' : evidence.providerOfferType,
+          offerClassificationReason: classification.reason,
+        } : null;
+        return [classifiedEvidence, ...(record.alternateProviderOffers || [])];
+      })
     ).filter((offer) => offer && offer.providerEventId !== canonical.providerEventId);
     const members = group.map((record) => ({
       concertId: record.id,
-      evidence: providerEvidence(record),
+      evidence: providerEvidence(record, classifications.get(record)),
+      offerClassification: classifications.get(record),
       userOwnedFields: userOwnedFieldNames(record),
       unknownFields: unknownFieldNames(record),
     }));
@@ -167,8 +293,9 @@ function auditConcerts(concerts, bands = []) {
       memberConcertIds: group.map((record) => record.id),
       members,
       reason: 'same_physical_performance_with_alternate_ticket_offer',
-      retainedEvidence: providerEvidence(canonical),
+      retainedEvidence: providerEvidence(canonical, classifications.get(canonical)),
       alternateProviderOffers,
+      cleanupAssessment: cleanup,
       safety: automaticRemediationSafe ? 'automatic_candidate' : 'manual_review_required',
       automaticRemediationSafe,
       proposedMutation: {
@@ -218,8 +345,12 @@ if (require.main === module) {
 module.exports = {
   auditConcerts,
   duplicateGroups,
+  physicalPerformanceGroups,
   chooseCanonical,
   cleanupSafety,
+  groupCleanupSafety,
+  offerClassification,
+  referencedAlternateEventIds,
   providerEvidence,
   userOwnedFieldNames,
   unknownFieldNames,

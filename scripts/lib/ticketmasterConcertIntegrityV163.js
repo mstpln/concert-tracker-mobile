@@ -37,6 +37,16 @@ function offerKind(value) {
   return ALTERNATE_OFFER_PATTERN.test(String(value || '')) ? 'alternate_offer' : 'standard';
 }
 
+function alternateOfferVocabularyMatch(value) {
+  let text = String(value || '');
+  try {
+    text = decodeURIComponent(text);
+  } catch {
+    // A malformed legacy URL is still safe to inspect as stored text.
+  }
+  return ALTERNATE_OFFER_PATTERN.test(text.replace(/[-_+./?=&%]+/g, ' '));
+}
+
 function minutesFromTime(value) {
   const match = /^(\d{1,2}):(\d{2})/.exec(String(value || '').trim());
   if (!match) return null;
@@ -261,6 +271,7 @@ module.exports = {
   isUnsafeEventStatus,
   isUnknownVenueName,
   offerKind,
+  alternateOfferVocabularyMatch,
   minutesFromTime,
   compatibleTimes,
   performanceTimeRelationship,

@@ -44,6 +44,18 @@ function packageAudit(packageState = {}) {
   return report.issues.find((issue) => issue.type === 'package_duplicate_group');
 }
 
+function legacyAudit({ standard = {}, alternate = {} } = {}) {
+  const shared = {
+    bandId: 'legacy-artist', sourceProvider: 'ticketmaster', date: '2026-09-01', time: '20:00',
+    venue: 'Arena X', city: 'Stockholm', country: 'Sweden', providerVenueId: 'venue-x',
+    providerAttractionId: 'tm-legacy-artist', lineupRole: 'headliner',
+  };
+  return Audit.auditConcerts([
+    { ...shared, id: 'legacy-standard', providerEventId: 'legacy-standard-event', ticketUrl: 'https://www.ticketmaster.test/event/legacy-standard', ...standard },
+    { ...shared, id: 'legacy-alternate', providerEventId: 'legacy-alternate-event', ...alternate },
+  ]);
+}
+
 test('KATSEYE standard plus two Vinyl Room package listings becomes one physical concert', async () => {
   const followed = band('KATSEYE', 'katseye', 'tm-katseye');
   const payload = {
@@ -322,6 +334,66 @@ test('dry-run audit classifies identity, package, venue and lifecycle risks with
   assert.equal(packagePlan.proposedMutation.preservesCanonicalStableId, true);
 });
 
+test('legacy KATSEYE Vinyl Room package is recognized from URL-only stored evidence', () => {
+  const report = legacyAudit({
+    alternate: { ticketUrl: 'https://www.ticketmaster.dk/event/katseye-vinyl-room-upgrade-tickets/123' },
+  });
+  const issue = report.issues.find((candidate) => candidate.type === 'package_duplicate_group');
+  assert.ok(issue);
+  assert.equal(issue.canonicalConcertId, 'legacy-standard');
+  assert.equal(issue.automaticRemediationSafe, true);
+  const member = issue.members.find((candidate) => candidate.concertId === 'legacy-alternate');
+  assert.equal(member.offerClassification.kind, 'alternate_offer');
+  assert.equal(member.offerClassification.reason, 'legacy_ticket_url_package_pattern');
+  assert.equal(issue.alternateProviderOffers[0].providerEventId, 'legacy-alternate-event');
+  assert.equal(issue.alternateProviderOffers[0].ticketUrl, 'https://www.ticketmaster.dk/event/katseye-vinyl-room-upgrade-tickets/123');
+  assert.equal(issue.alternateProviderOffers[0].offerClassificationReason, 'legacy_ticket_url_package_pattern');
+});
+
+test('legacy Loreen VIP sound-check package is recognized from its stored URL', () => {
+  const report = legacyAudit({
+    alternate: { ticketUrl: 'https://www.ticketmaster.de/event/loreen-vip-sound-check-party-ticket/456' },
+  });
+  const issue = report.issues.find((candidate) => candidate.type === 'package_duplicate_group');
+  assert.ok(issue);
+  assert.equal(issue.members.find((candidate) => candidate.concertId === 'legacy-alternate').offerClassification.reason, 'legacy_ticket_url_package_pattern');
+});
+
+test('stored provider event-name package evidence has an auditable classification reason', () => {
+  const report = legacyAudit({
+    alternate: {
+      providerEventName: 'Artist VIP Sound Check Package',
+      ticketUrl: 'https://www.ticketmaster.test/event/opaque-id',
+    },
+  });
+  const issue = report.issues.find((candidate) => candidate.type === 'package_duplicate_group');
+  assert.ok(issue);
+  assert.equal(issue.members.find((candidate) => candidate.concertId === 'legacy-alternate').offerClassification.reason, 'provider_event_name_package_pattern');
+});
+
+test('two legacy standard listings without positive package evidence remain manual ambiguity', () => {
+  const report = legacyAudit({
+    alternate: { ticketUrl: 'https://www.ticketmaster.test/event/legacy-second-standard' },
+  });
+  assert.equal(report.issues.some((issue) => issue.type === 'package_duplicate_group'), false);
+  const ambiguity = report.issues.find((issue) => issue.type === 'ticketmaster_listing_ambiguity');
+  assert.ok(ambiguity);
+  assert.equal(ambiguity.automaticRemediationSafe, false);
+  assert.equal(ambiguity.proposedMutation.action, 'manual_review');
+  assert.ok(ambiguity.members.every((member) => member.offerClassification.reason === 'no_positive_alternate_offer_evidence'));
+});
+
+test('legacy alternateProviderOffers linkage is deterministic package evidence', () => {
+  const report = legacyAudit({
+    standard: { alternateProviderOffers: [{ providerEventId: 'legacy-alternate-event', ticketUrl: 'https://www.ticketmaster.test/event/linked-offer' }] },
+    alternate: { ticketUrl: 'https://www.ticketmaster.test/event/linked-offer' },
+  });
+  const issue = report.issues.find((candidate) => candidate.type === 'package_duplicate_group');
+  assert.ok(issue);
+  assert.equal(issue.members.find((candidate) => candidate.concertId === 'legacy-alternate').offerClassification.reason, 'referenced_by_alternate_provider_offers');
+  assert.equal(issue.alternateProviderOffers[0].providerEventId, 'legacy-alternate-event');
+});
+
 test('user-owned fields force cleanup to manual review', () => {
   assert.equal(Integrity.hasUserOwnedData({ notes: 'keep this' }), true);
   assert.equal(Integrity.hasUserOwnedData({ ticketPrice: 0 }), true);
@@ -367,6 +439,69 @@ test('cleanup retains automatic package consolidation only for records without m
   const unknown = packageAudit({ futureField: { keep: true } });
   assert.equal(unknown.safety, 'manual_review_required');
   assert.deepEqual(unknown.members.find((member) => member.concertId === 'package').unknownFields, ['futureField']);
+});
+
+test('cleanup requires manual review for headliner/support conflicts in either direction', () => {
+  const canonicalHeadliner = packageAudit({ lineupRole: 'support' });
+  assert.equal(canonicalHeadliner.automaticRemediationSafe, false);
+  assert.deepEqual(canonicalHeadliner.cleanupAssessment.reasons, ['conflicting_lineup_role']);
+
+  const shared = {
+    bandId: 'artist', sourceProvider: 'ticketmaster', date: '2026-09-01', time: '20:00',
+    venue: 'Arena X', city: 'Stockholm', country: 'Sweden', providerVenueId: 'venue-x',
+    providerAttractionId: 'tm-artist',
+  };
+  const report = Audit.auditConcerts([
+    { ...shared, id: 'standard', providerEventId: 'standard', providerEventName: 'Artist', providerOfferType: 'standard', lineupRole: 'support' },
+    { ...shared, id: 'package', providerEventId: 'package', providerEventName: 'Artist VIP Package', providerOfferType: 'alternate_offer', lineupRole: 'headliner' },
+  ]);
+  const canonicalSupport = report.issues.find((issue) => issue.type === 'package_duplicate_group');
+  assert.equal(canonicalSupport.automaticRemediationSafe, false);
+  assert.deepEqual(canonicalSupport.cleanupAssessment.reasons, ['conflicting_lineup_role']);
+});
+
+test('cleanup allows clean matching headliners and matching support state already retained by canonical', () => {
+  const headliners = packageAudit();
+  assert.equal(headliners.automaticRemediationSafe, true);
+
+  const sharedState = {
+    lineupRole: 'support', notes: 'same note', tickets: [{ id: 'ticket-1' }], ticketPrice: 0,
+  };
+  const shared = {
+    bandId: 'artist', sourceProvider: 'ticketmaster', date: '2026-09-01', time: '20:00',
+    venue: 'Arena X', city: 'Stockholm', country: 'Sweden', providerVenueId: 'venue-x',
+    providerAttractionId: 'tm-artist', ...sharedState,
+  };
+  const report = Audit.auditConcerts([
+    { ...shared, id: 'standard', providerEventId: 'standard', providerEventName: 'Artist', providerOfferType: 'standard' },
+    { ...shared, id: 'package', providerEventId: 'package', providerEventName: 'Artist VIP Package', providerOfferType: 'alternate_offer' },
+  ]);
+  const supports = report.issues.find((issue) => issue.type === 'package_duplicate_group');
+  assert.equal(supports.automaticRemediationSafe, true);
+  assert.deepEqual(supports.cleanupAssessment, {
+    safety: 'automatic_candidate', reasons: [], protectedFields: [], unknownFields: [],
+  });
+});
+
+test('cleanup compares user-owned values across the group and remains conservative for unknown fields', () => {
+  const unpreserved = packageAudit({ notes: 'same note' });
+  assert.equal(unpreserved.automaticRemediationSafe, false);
+  assert.deepEqual(unpreserved.cleanupAssessment.protectedFields, ['notes']);
+
+  const shared = {
+    bandId: 'artist', sourceProvider: 'ticketmaster', date: '2026-09-01', time: '20:00',
+    venue: 'Arena X', city: 'Stockholm', country: 'Sweden', providerVenueId: 'venue-x',
+    providerAttractionId: 'tm-artist', lineupRole: 'headliner', notes: 'same note', futureField: { same: true },
+  };
+  const report = Audit.auditConcerts([
+    { ...shared, id: 'standard', providerEventId: 'standard', providerEventName: 'Artist', providerOfferType: 'standard' },
+    { ...shared, id: 'package', providerEventId: 'package', providerEventName: 'Artist VIP Package', providerOfferType: 'alternate_offer' },
+  ]);
+  const issue = report.issues.find((candidate) => candidate.type === 'package_duplicate_group');
+  assert.equal(issue.automaticRemediationSafe, false);
+  assert.deepEqual(issue.cleanupAssessment.protectedFields, []);
+  assert.deepEqual(issue.cleanupAssessment.unknownFields, ['futureField']);
+  assert.deepEqual(issue.cleanupAssessment.reasons, ['unknown_future_state_requires_review']);
 });
 
 test('alternate provider provenance merge is monotonic for poorer and richer repeat observations', () => {
