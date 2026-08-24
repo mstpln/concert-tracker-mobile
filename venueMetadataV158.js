@@ -69,7 +69,6 @@
       if (sourceFull && variantFull && sourceFull === variantFull) best = Math.max(best, 5);
       else if (sourceHead && variantHead && sourceHead === variantHead) best = Math.max(best, 4);
       else if (sameCity && (!sourceAddress || !variantAddress)) best = Math.max(best, 2);
-      else if (sameCity && sourceAddress && variantAddress) best = Math.max(best, 1);
     }
     return best;
   }
@@ -177,7 +176,10 @@
     if (left.record?.venueId && right.record?.venueId && left.record.venueId === right.record.venueId) return true;
     if (!left.nameKey || left.nameKey !== right.nameKey) return false;
     if (left.countryKey && right.countryKey && left.countryKey !== right.countryKey) return false;
-    if (left.cityKey && right.cityKey && left.cityKey === right.cityKey) return true;
+    if (left.cityKey && right.cityKey && left.cityKey === right.cityKey) {
+      if (left.addressHead && right.addressHead && left.addressHead !== right.addressHead) return false;
+      return true;
+    }
     return !!(left.addressHead && right.addressHead && left.addressHead === right.addressHead);
   }
 
