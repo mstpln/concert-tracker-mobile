@@ -18,6 +18,16 @@
   let index = null;
   let indexBuilds = 0;
 
+  function invalidateCaches() {
+    index = null;
+    if (typeof root.LiveVaultVenueNavigationPerformanceV166?.invalidate === 'function') {
+      root.LiveVaultVenueNavigationPerformanceV166.invalidate();
+    }
+    if (typeof root.LiveVaultVenueNavigationRenderPerformanceV166?.invalidate === 'function') {
+      root.LiveVaultVenueNavigationRenderPerformanceV166.invalidate();
+    }
+  }
+
   function ensureIndex() {
     if (index) return index;
     const records = prior.getRecords();
@@ -48,7 +58,7 @@
 
   function setRecords(records) {
     const result = prior.setRecords(records);
-    index = null;
+    invalidateCaches();
     return result;
   }
 
@@ -58,9 +68,22 @@
     setRecords,
   });
 
+  // v158's refresh wrapper closes over its original local setRecords function,
+  // so replacing VenueMetadataV158.setRecords alone cannot observe a normal app
+  // Refresh. Clear the v166 indexes before delegating so the v158 loader can
+  // replace venueRecords and any rendering during that load rebuilds from the
+  // freshly loaded document rather than an earlier indexed snapshot.
+  const previousLoadDataAndShowApp = root.loadDataAndShowApp;
+  if (typeof previousLoadDataAndShowApp === 'function') {
+    root.loadDataAndShowApp = async function loadDataAndShowAppVenueMetadataLookupV166(...args) {
+      invalidateCaches();
+      return previousLoadDataAndShowApp.apply(this, args);
+    };
+  }
+
   root.LiveVaultVenueMetadataLookupPerformanceV166 = Object.freeze({
     metadataFor,
     getMetrics: () => ({ indexBuilds }),
-    invalidate() { index = null; },
+    invalidate: invalidateCaches,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);
