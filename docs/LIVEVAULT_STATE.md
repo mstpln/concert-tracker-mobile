@@ -6,11 +6,13 @@ This continuity file was compacted on 2026-08-24. Earlier detailed state remains
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged application baseline is **v165** at `56a377542bb21faf98d54fd5676752ef3b4d134a`, which merged PR #180. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v165` on `main`. There is no active unmerged application build.
+The current merged application baseline is **v165** at `56a377542bb21faf98d54fd5676752ef3b4d134a`, which merged PR #180. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v165` on `main`.
 
-PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool. PR #176 compacted continuity to the v162 merged baseline. PR #177 merged the v163 Ticketmaster data-integrity remediation. PR #178 recorded the completed v163 production cleanup state. PR #179 merged the v164 canonical venue-directory correction. PR #180 merged the v165 reviewed provider-decision safety correction.
+The active unmerged application build is **v166** in PR #182, `Restore instant Dates and venue navigation (v166)`, on branch `fix/venue-navigation-performance-v166`. The branch keeps `APP_VERSION` and `CACHE_NAME_LITERAL` synchronized at `v166`. v166 is a focused performance correction for the v164 canonical venue-directory path; it does not authorize merge, deployment, production provider execution, production workflows, production smoke or production-data changes.
 
-No deployment, production provider call, production research workflow or production smoke was performed as part of the v165 merge.
+PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool. PR #176 compacted continuity to the v162 merged baseline. PR #177 merged the v163 Ticketmaster data-integrity remediation. PR #178 recorded the completed v163 production cleanup state. PR #179 merged the v164 canonical venue-directory correction. PR #180 merged the v165 reviewed provider-decision safety correction. PR #182 is the active v166 venue-navigation performance correction.
+
+No deployment, production provider call, production research workflow or production smoke was performed as part of the v165 merge or the v166 build work to date.
 
 ## v163 Ticketmaster concert data integrity
 
@@ -129,6 +131,16 @@ The canonical fallback is intentionally scoped to the venue directory and venue-
 
 The verified post-v163 production concert snapshot audit found 1,364 raw venue/city combinations, including 25 placeholder cards covering 64 records and 15 definite non-placeholder same-venue/canonical-city duplicate groups. Synthetic regression coverage includes Royal Arena, Pumpehuset, Nordichallen placeholder recovery, Filmstudion, Roxy, Ippodromo SNAI San Siro, Hollywood Bowl, distinct Greek Theatre venues, unresolved/ambiguous placeholders, AFAS Dome/Lotto Arena shared-address safety, alias address-conflict safety, and preservation of non-venue event statistics.
 
+## v166 venue navigation performance correction
+
+v166 preserves the v164 physical-venue identity contract while removing the repeated full-dataset scans that made Dates/Venues navigation regress to minute-scale waits on the current collection. Venue metadata lookup now indexes normalized primary/reviewed-alias names before calling the existing conservative `findVenueRecord` matcher. Canonical venue grouping indexes the same name/address evidence once, caches the current in-memory canonical directory, and reuses the existing group for Venue Detail and unchanged return navigation.
+
+The ordinary Dates concert list is kept outside canonical venue-group construction entirely. Dates DOM is reused when its relevant data/view state is unchanged, and venue directory/detail clicks use delegated handlers rather than repeatedly attaching hundreds of row listeners. Cache invalidation remains tied to the current in-memory concert/band/venue-record state; no cache is persisted as source data.
+
+The optimization does not broaden venue identity. Known address/country conflicts still fail closed, unresolved or ambiguous placeholders remain omitted, reviewed aliases/canonical city variants may resolve one known physical venue, and distinct same-address venues such as AFAS Dome and Lotto Arena Antwerpen remain separate. Ordinary concert-card and Next Concert metadata behavior is not broadened. No concert, band or venue record, stable ID, event relationship, user-owned field, provider-owned field or unknown future field is rewritten by v166.
+
+Synthetic browser coverage adds a production-scale fixture of **3,260 concerts, 520 venue records and 320 tracked bands**. It asserts that ordinary Dates builds zero canonical venue groups, the Venues directory builds once and is reused by detail/return navigation, indexed metadata lookup builds once, all 520 venue cards render, and broad timing ceilings prevent recurrence of multi-second/minute synchronous navigation. The existing v164 canonical venue correctness suite remains authoritative and continues to run on both desktop and mobile Chromium.
+
 ## v165 reviewed provider-decision safety
 
 v165 closes a browser-side ownership gap exposed by the manual Ticketmaster identity enrichment. The Settings MusicBrainz review actions (`Use this artist`, `None of these`, and `Try again`) rebuild the root `musicbrainz` identity, but now carry forward every direct nested provider object whose status is `manual_confirmed` or `manual_rejected`. This includes Ticketmaster, Spotify and unknown future providers, and preserves each reviewed provider object wholesale including unknown future fields.
@@ -164,8 +176,8 @@ ConcertDates/Band Detail geographic filters retain Nearby -> SE -> EU semantics,
 
 ## Backlog hygiene
 
-Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening remains separate from v165.
+Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening remains separate from v166.
 
 ## Next operational steps
 
-v165 is merged and there is no active application PR. The next implementation should start from current `main` and remain isolated to its approved scope. Do not run production providers, production research workflows, production smoke, deployments or production-data mutations without separate explicit authorization.
+PR #182 is the active v166 application build. Continue the exact-head fix -> validate -> review cycle until unit/safety, desktop Chromium and mobile Chromium are green and the final head is merge-ready. Do not merge without the user's explicit `Merge it` authorization, and do not run production providers, production research workflows, production smoke, deployments or production-data mutations without separate explicit authorization.
