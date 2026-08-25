@@ -11,19 +11,30 @@ test('v166 refresh invalidates the indexed venue metadata snapshot', async ({ pa
   await openApp(page, testInfo);
 
   const result = await page.evaluate(async () => {
-    const record = VenueMetadataV158.getRecords()[0];
-    if (!record) throw new Error('QA fixture must contain venue metadata');
+    const record = {
+      venueId: VenueMetadataModelV158.venueIdFor({ name: 'Refresh Hall', city: 'Malmö', country: 'Sweden' }),
+      name: 'Refresh Hall',
+      city: 'Malmö',
+      country: 'Sweden',
+      address: 'Refreshgatan 1, Malmö, Sweden',
+      researchStatus: 'partial',
+      schemaVersion: 1,
+    };
+    VenueMetadataV158.setRecords([record]);
     const value = {
       venue: record.name,
       city: record.city,
       country: record.country,
-      venueAddress: Array.isArray(record.address) ? record.address.join(', ') : record.address,
+      venueAddress: record.address,
     };
 
     LiveVaultVenueMetadataLookupPerformanceV166.invalidate();
     VenueMetadataV158.metadataFor(value);
     const afterInitialLookup = LiveVaultVenueMetadataLookupPerformanceV166.getMetrics().indexBuilds;
 
+    // The QA backend deliberately has no venues.json fixture. The normal v158
+    // Refresh path therefore replaces the synthetic record above with [], which
+    // still exercises the real closed-over loader boundary without production data.
     await loadDataAndShowApp();
     VenueMetadataV158.metadataFor(value);
     const afterRefreshLookup = LiveVaultVenueMetadataLookupPerformanceV166.getMetrics().indexBuilds;
