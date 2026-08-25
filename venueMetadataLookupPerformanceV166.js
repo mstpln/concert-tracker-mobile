@@ -16,22 +16,11 @@
   if (!model || !prior || typeof prior.getRecords !== 'function' || typeof prior.metadataFor !== 'function') return;
 
   let index = null;
-  let indexedSignature = null;
   let indexBuilds = 0;
 
-  function signature(records) {
-    return JSON.stringify((records || []).map((record) => [
-      record?.venueId || '',
-      record?.name || '',
-      (record?.identityAliases || []).map((alias) => alias?.name || ''),
-    ]));
-  }
-
   function ensureIndex() {
+    if (index) return index;
     const records = prior.getRecords();
-    const nextSignature = signature(records);
-    if (index && indexedSignature === nextSignature) return index;
-
     const byName = new Map();
     for (const record of records) {
       const names = new Set([
@@ -46,7 +35,6 @@
       }
     }
     index = byName;
-    indexedSignature = nextSignature;
     indexBuilds += 1;
     return index;
   }
@@ -61,7 +49,6 @@
   function setRecords(records) {
     const result = prior.setRecords(records);
     index = null;
-    indexedSignature = null;
     return result;
   }
 
@@ -74,9 +61,6 @@
   root.LiveVaultVenueMetadataLookupPerformanceV166 = Object.freeze({
     metadataFor,
     getMetrics: () => ({ indexBuilds }),
-    invalidate() {
-      index = null;
-      indexedSignature = null;
-    },
+    invalidate() { index = null; },
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);
