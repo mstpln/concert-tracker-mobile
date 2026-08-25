@@ -95,6 +95,7 @@
       record?.researchStatus || '',
       record?.maxCapacity || 0,
       record?.officialUrl || '',
+      record?.description || '',
       (record?.identityAliases || []).map((alias) => [
         alias?.name || '', alias?.city || '', alias?.country || '', model.addressLines(alias?.address).join('|'),
       ]),
@@ -227,11 +228,19 @@
     for (const entry of index.byFullAddress.get(full) || []) candidates.add(entry);
     for (const entry of index.byAddressHead.get(head) || []) candidates.add(entry);
 
-    // v164 also permits addresses that begin with the venue name (for example
-    // "Nordichallen, Sundsvall..."). Those cannot be keyed by source venue
-    // name because the source is a placeholder, so retain a bounded fallback
-    // over the small venue record set when exact address indexes found nothing.
-    if (!candidates.size) return index.prepared;
+    // v164 also accepts a placeholder address whose normalized value begins
+    // with a canonical/reviewed-alias venue name (for example
+    // "Nordichallen, Sundsvall..."). Include every name-prefix candidate even
+    // when some unrelated address candidate already exists, otherwise that
+    // unrelated candidate can hide the real v164 score-4 match.
+    if (full) {
+      const tokens = full.split(' ').filter(Boolean);
+      let prefix = '';
+      for (const token of tokens) {
+        prefix = prefix ? `${prefix} ${token}` : token;
+        for (const entry of index.byName.get(prefix) || []) candidates.add(entry);
+      }
+    }
     return [...candidates];
   }
 
@@ -374,7 +383,7 @@
 
   function directoryHtml() {
     const cache = canonicalVenueGroupsFast();
-    const filterKey = `${cache.key}|${venuesNearbyOnly ? 1 : 0}|${venuesEuropeOnly ? 1 : 0}|${venuesPastOnly ? 1 : 0}`;
+    const filterKey = `${cache.key}|${venuesNearbyOnly ? 1 : 0}|${venuesEuropeOnly ? 1 : 0}|${venuesPastOnly ? 1 : 0}|${dlCurrentDate().toDateString()}`;
     const existing = directoryHtmlCache.get(filterKey);
     if (existing != null) return existing;
 
@@ -419,7 +428,7 @@
 
   function detailHtml(key) {
     const cache = canonicalVenueGroupsFast();
-    const cacheKey = `${cache.key}|${key}`;
+    const cacheKey = `${cache.key}|${key}|${dlCurrentDate().toDateString()}`;
     if (detailHtmlCache.has(cacheKey)) {
       metrics.detailCacheHits += 1;
       return detailHtmlCache.get(cacheKey);
