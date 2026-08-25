@@ -26,7 +26,7 @@
     for (const concert of (Array.isArray(concerts) ? concerts : [])) {
       if (!concert?.bandId || !bandState.has(concert.bandId)) continue;
       parts.push([
-        concert.id || '', concert.bandId, bandState.get(concert.bandId), concert.date || '', concert.time || '',
+        concert.id || '', concert.bandId, concert.bandName || '', bandState.get(concert.bandId), concert.date || '', concert.time || '',
         concert.venue || '', concert.city || '', concert.country || '', concert.attending === true ? 1 : 0,
         Number.isFinite(concert.distanceKm) ? concert.distanceKm : null,
       ]);
