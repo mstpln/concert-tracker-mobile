@@ -49,7 +49,23 @@
     removeEventGroupControls(container);
   }
 
-  const api = Object.freeze({ yearOptionsHtml, applyAddConcertUi, removeEventGroupControls });
+  function providerIdentityDataRows(rows) {
+    return (Array.isArray(rows) ? rows : []).map((row) => {
+      if (!Array.isArray(row)) return row;
+      const [label, value, ...rest] = row;
+      let nextValue = value;
+      if (label === 'Confidence' && value === 'user_confirmed%') nextValue = 'User confirmed';
+      if (label === 'Match method' && value === 'user approved exact id') nextValue = 'User-approved exact ID';
+      return nextValue === value ? row : [label, nextValue, ...rest];
+    });
+  }
+
+  const api = Object.freeze({
+    yearOptionsHtml,
+    applyAddConcertUi,
+    removeEventGroupControls,
+    providerIdentityDataRows,
+  });
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.AppUpdateAub3CorrectionV157 = api;
 
@@ -69,6 +85,17 @@
       const result = render.apply(this, args);
       applyCurrentScreenCorrections();
       return result;
+    };
+  }
+
+  // v165 compatibility: manually approved provider identities store a
+  // semantic confidence marker rather than a numeric percentage. Normalize
+  // only the dedicated Data-tab rows so unrelated provider-owned text is
+  // never rewritten just because it contains the same words.
+  if (typeof root?.profileDataRows === 'function') {
+    const renderRows = root.profileDataRows;
+    root.profileDataRows = function profileDataRowsV165(rows) {
+      return renderRows(providerIdentityDataRows(rows));
     };
   }
 
