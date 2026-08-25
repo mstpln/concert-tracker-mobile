@@ -6,11 +6,11 @@ This continuity file was compacted on 2026-08-24. Earlier detailed state remains
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged application baseline is **v164** at `374f5421d149695ceabdf6b7eef3553603f24a2c`, which merged PR #179. The active unmerged provider-decision safety correction is **v165** on `fix/manual-provider-decision-safety-v165`; `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v165` on that branch.
+The current merged application baseline is **v165** at `56a377542bb21faf98d54fd5676752ef3b4d134a`, which merged PR #180. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v165` on `main`. There is no active unmerged application build.
 
-PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool. PR #176 compacted continuity to the v162 merged baseline. PR #177 merged the v163 Ticketmaster data-integrity remediation. PR #178 recorded the completed v163 production cleanup state. PR #179 merged the v164 canonical venue-directory correction.
+PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool. PR #176 compacted continuity to the v162 merged baseline. PR #177 merged the v163 Ticketmaster data-integrity remediation. PR #178 recorded the completed v163 production cleanup state. PR #179 merged the v164 canonical venue-directory correction. PR #180 merged the v165 reviewed provider-decision safety correction.
 
-No deployment, production provider call, production research workflow, production smoke or production-data mutation is authorized by the v165 implementation branch.
+No deployment, production provider call, production research workflow or production smoke was performed as part of the v165 merge.
 
 ## v163 Ticketmaster concert data integrity
 
@@ -51,6 +51,20 @@ The downloaded post-upload production object is byte-for-byte identical to the a
 Known Queen/Beatles/Johnny Cash legacy pollution patterns targeted by the remediation are absent from the verified production replacement. No live Ticketmaster/Tavily/Groq call, production research workflow, deployment or production smoke was used for this cleanup.
 
 Three legacy offer labels observed during the cleanup are not explicit v163 vocabulary cases and remain a focused future-ingestion hardening candidate: `Premium Experience`, `Logen Seat`, and plain `Box Seat`. The cleanup handled the reviewed existing records conservatively; any code change for these labels should remain a separate focused correction.
+
+## Production Ticketmaster identity enrichment completed
+
+On 2026-08-24 the remaining Ticketmaster attraction identities in production `bands.json` were reviewed offline. The source snapshot contained **370 bands**, with **258** already carrying trusted Ticketmaster attraction IDs and **112** without a trusted Ticketmaster ID.
+
+Of those 112 unresolved bands, **76** were manually confirmed with exact Ticketmaster attraction IDs and **36** remained unresolved. The resulting production baseline therefore contains **334 / 370 bands (90.3%)** with trusted Ticketmaster IDs. All **334** trusted Ticketmaster IDs are unique.
+
+The enrichment preserved every stable BANDMARKR band ID and all non-target band records. Only the nested `musicbrainz` container changed on the 76 reviewed targets. Existing provider-owned fields and unknown future fields were preserved; a missing `musicbrainz` container was created only where required. Manual Ticketmaster decisions use `status: "manual_confirmed"`, `matchMethod: "user_approved_exact_id"`, `confidence: "user_confirmed"`, `reviewedBy: "user"`, and the exact reviewed attraction ID. Provider artist name/URL were reused only when the source record already contained exact matching provider evidence; otherwise those fields remained null rather than being synthesized.
+
+Four identities were deliberately left unresolved despite relevant provider evidence because the match was not sufficiently deterministic: Phoenix, The Animals, Dollface and Thåström. The remaining 32 unresolved bands had no reliable original-artist Ticketmaster Discovery K8 attraction ID in the reviewed evidence.
+
+The user uploaded the reviewed candidate as the production top-level `bands.json`, then downloaded the production object again for verification. The downloaded production object is byte-for-byte identical to the authorized reviewed candidate, with SHA-256 `9744a107b22586d3446a1560514378511b262a3ea12c740224a1edab536e0774`. Verification confirmed **370 records**, **370 unique stable band IDs**, **334 trusted Ticketmaster IDs**, **334 unique trusted IDs**, **76 manual-confirmed Ticketmaster records**, **36 unresolved bands**, and no unexpected changed band IDs.
+
+This production identity enrichment was a reviewed data-maintenance action only. No live Ticketmaster/Tavily/Groq provider call, automated production workflow, deployment or production smoke was used to perform or verify it.
 
 ## Venue metadata implementation
 
@@ -121,9 +135,9 @@ v165 closes a browser-side ownership gap exposed by the manual Ticketmaster iden
 
 The preservation is intentionally narrow: ordinary automated nested provider state and stale MusicBrainz metadata are not carried into a new root MusicBrainz decision. Node-side automation and conflict merges retain their existing reviewed-decision protections.
 
-The Band Data view now presents the existing manual provider markers naturally: stored `confidence: "user_confirmed"` renders as `User confirmed`, and `matchMethod: "user_approved_exact_id"` renders as `User-approved exact ID`. The persisted schema and provider trust semantics are unchanged; this is display-only normalization.
+The Band Data view now presents the existing manual provider markers naturally: stored `confidence: "user_confirmed"` renders as `User confirmed`, and `matchMethod: "user_approved_exact_id"` renders as `User-approved exact ID`. The final implementation normalizes only the dedicated Data-tab `Confidence` and `Match method` rows, so unrelated provider-owned text containing the same words is not rewritten. The persisted schema and provider trust semantics are unchanged; this is display-only normalization.
 
-v165 changes no provider selection rules, Ticketmaster admission rules, quotas, pacing, schedules or production data. The version/cache bump exists because the browser safety/UI correction is user-visible and must invalidate the PWA shell cache.
+v165 changes no provider selection rules, Ticketmaster admission rules, quotas, pacing, schedules or production data. The version/cache bump exists because the browser safety/UI correction is user-visible and must invalidate the PWA shell cache. The exact final PR head `37aa018e0951eded9703638c5e6dcb28c3ea0441` passed PR QA run #1820, including unit/safety, syntax, version/cache, workflow/build-state/fixture checks, Desktop Chromium and Mobile Chromium synthetic QA, before PR #180 merged.
 
 ## Event/performance statistics contract
 
@@ -154,4 +168,4 @@ Completed/superseded historical work must not be treated as current debt. PR #13
 
 ## Next operational steps
 
-Finish exact-head review and CI for the v165 provider-decision safety PR. Do not merge without explicit `Merge it`, and do not deploy, mutate production data, manually run production research or run production smoke as part of v165 validation.
+v165 is merged and there is no active application PR. The next implementation should start from current `main` and remain isolated to its approved scope. Do not run production providers, production research workflows, production smoke, deployments or production-data mutations without separate explicit authorization.
