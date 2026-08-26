@@ -119,8 +119,23 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
   const banner = card.locator('.next-concert-banner-v167');
   await expect(banner).toContainText('DAYS LEFT');
   await expect(banner).toContainText('59 km away');
-  await expect(banner.locator('.next-concert-live-v167')).toContainText(/\d{2}h \d{2}m \d{2}s/);
+  await expect(banner.locator('.next-concert-live-v167')).toContainText(/\d+d \d{2}h \d{2}m \d{2}s/);
   await expect(card.locator('.row-km')).toBeHidden();
+
+  const presentation = await banner.evaluate((node) => {
+    const headline = node.querySelector('strong');
+    const headlineDays = node.querySelector('.next-concert-days-v167')?.textContent?.trim();
+    const liveDays = node.querySelector('[data-v167-live-days]')?.textContent?.trim();
+    return {
+      height: node.getBoundingClientRect().height,
+      headlineFontSize: parseFloat(getComputedStyle(headline).fontSize),
+      headlineDays,
+      liveDays,
+    };
+  });
+  expect(presentation.height).toBeGreaterThanOrEqual(44);
+  expect(presentation.headlineFontSize).toBeGreaterThanOrEqual(12);
+  expect(presentation.liveDays).toBe(presentation.headlineDays);
 
   const ordering = await screen.evaluate((node) => {
     const children = [...node.children];
@@ -133,6 +148,19 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
   expect(ordering.first).toBeGreaterThan(ordering.next);
   expect(ordering.upcoming).toBeGreaterThan(ordering.first);
   await expect(screen.locator('.year-divider-v167-upcoming .year-divider-count')).toHaveText('1 show');
+
+  const spacing = await screen.evaluate((node) => {
+    const summary = node.querySelector(':scope > .myconcerts-summary');
+    const next = node.querySelector(':scope > .section-label-v167-next');
+    const first = node.querySelector(':scope > .next-concert-merged-v167');
+    const upcoming = node.querySelector(':scope > .section-label-v143-upcoming');
+    return {
+      statsToNext: next.getBoundingClientRect().top - summary.getBoundingClientRect().bottom,
+      nextToUpcoming: upcoming.getBoundingClientRect().top - first.getBoundingClientRect().bottom,
+    };
+  });
+  expect(Math.abs(spacing.statsToNext - spacing.nextToUpcoming)).toBeLessThanOrEqual(1);
+  expect(spacing.nextToUpcoming).toBeGreaterThanOrEqual(27);
 
   const weights = await banner.evaluate((node) => ({
     headline: getComputedStyle(node.querySelector('strong')).fontWeight,
