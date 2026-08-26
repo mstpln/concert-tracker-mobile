@@ -182,12 +182,69 @@ test('v167 concert day uses neon banner, primary tickets and ghost directions', 
       bannerBackground: getComputedStyle(banner).backgroundColor,
       ticketBackground: getComputedStyle(tickets).backgroundColor,
       directionsBackground: getComputedStyle(directions).backgroundColor,
+      directionsIconWidth: getComputedStyle(directions.querySelector('svg')).width,
     };
   });
   expect(styles.bannerBackground).toBe('rgb(94, 216, 255)');
   expect(styles.ticketBackground).toBe('rgb(94, 216, 255)');
   expect(styles.directionsBackground).toBe('rgba(0, 0, 0, 0)');
+  expect(styles.directionsIconWidth).toBe('16px');
   await page.locator('#screen-myconcerts').screenshot({ path: testInfo.outputPath('v167-start-concert-day-375px.png') });
+});
+
+test('v167 moved multiple PDF tickets keep their menu chrome and delegated identities', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 1100 });
+  await openStart(page);
+  await setMergedNextFixture(page, { today: true });
+  await page.evaluate(() => {
+    const next = concerts.find((record) => record.id === 'qa-v167-next');
+    next.ownedTickets = [
+      { id: 'qa-v167-pdf-a', type: 'pdf', sizeBytes: 128, addedAt: '2027-01-01T00:00:00.000Z' },
+      { id: 'qa-v167-pdf-b', type: 'pdf', sizeBytes: 129, addedAt: '2027-01-02T00:00:00.000Z' },
+    ];
+    renderMyConcertsScreen();
+  });
+
+  const card = page.locator('#screen-myconcerts .next-concert-merged-v167');
+  const actions = card.locator('.next-concert-actions-v167');
+  const picker = actions.locator('.countdown-v139-ticket-picker');
+  const summary = picker.locator('.countdown-v139-open-ticket');
+  await expect(summary).toContainText('Open tickets');
+  await summary.click();
+  await expect(picker).toHaveAttribute('open', '');
+
+  const choices = picker.locator('.countdown-v139-ticket-choice');
+  await expect(choices).toHaveCount(2);
+  await expect(choices.nth(0)).toHaveAttribute('data-concert-id', 'qa-v167-next');
+  await expect(choices.nth(0)).toHaveAttribute('data-ticket-id', 'qa-v167-pdf-a');
+  await expect(choices.nth(1)).toHaveAttribute('data-ticket-id', 'qa-v167-pdf-b');
+
+  const styles = await picker.evaluate((node) => {
+    const menu = node.querySelector('.countdown-v139-ticket-menu');
+    const choice = node.querySelector('.countdown-v139-ticket-choice');
+    const symbol = choice.querySelector('.countdown-v139-ticket-symbol');
+    return {
+      menuPosition: getComputedStyle(menu).position,
+      menuDisplay: getComputedStyle(menu).display,
+      menuBackground: getComputedStyle(menu).backgroundColor,
+      menuZIndex: getComputedStyle(menu).zIndex,
+      choiceDisplay: getComputedStyle(choice).display,
+      choiceBackground: getComputedStyle(choice).backgroundColor,
+      choiceMinHeight: getComputedStyle(choice).minHeight,
+      symbolWidth: getComputedStyle(symbol).width,
+    };
+  });
+  expect(styles).toEqual({
+    menuPosition: 'absolute',
+    menuDisplay: 'grid',
+    menuBackground: 'rgb(28, 29, 31)',
+    menuZIndex: '2',
+    choiceDisplay: 'flex',
+    choiceBackground: 'rgb(35, 36, 39)',
+    choiceMinHeight: '34px',
+    symbolWidth: '25px',
+  });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
 test('v167 removes the Upcoming separator when there are no later concerts', async ({ page }) => {
