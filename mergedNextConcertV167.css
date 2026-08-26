@@ -125,6 +125,10 @@
   display: block;
 }
 
+#screen-myconcerts .next-concert-actions-v167 .countdown-v139-ticket-picker {
+  position: relative;
+}
+
 #screen-myconcerts .next-concert-actions-v167 .countdown-v139-ticket-menu {
   right: 0;
   bottom: auto;
