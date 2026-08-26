@@ -27,7 +27,7 @@ async function makeSharedFixtureAutomatic(page, { past = false, cityMode = 'same
   await page.reload();
 }
 
-test('v157 automatically groups strong context, removes Link CTA, orders Support first and preserves grouped Next Concert', async ({ page }, testInfo) => {
+test('v157 automatically groups strong context, removes Link CTA, orders Support first and preserves v167 Next Concert promotion', async ({ page }, testInfo) => {
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await openApp(page, testInfo);
   await makeSharedFixtureAutomatic(page);
@@ -42,15 +42,15 @@ test('v157 automatically groups strong context, removes Link CTA, orders Support
   expect(stored.every((record) => !record.eventGroupId)).toBe(true);
   expect(stored.map((record) => record.id)).toHaveLength(3);
 
-  const ticket = page.locator('#countdown-card');
-  await expect(ticket.locator('.countdown-v156-headliner')).toHaveText('QA Artist One');
-  await expect(ticket.locator('.countdown-v156-supports p')).toHaveText([
-    'QA Artist Four With An Intentionally Very Long Artist Name For Responsive Testing', 'QA Artist Two',
-  ]);
-  await expect(ticket.locator('.countdown-v139-venue')).toHaveText('Shared Event Arena');
-  await expect(ticket.locator('.countdown-v139-address')).toHaveText('Sample City');
-  await expect(ticket.locator('.countdown-v140-ticket-count strong')).toHaveText('4 TICKETS');
-  await expect(ticket.locator('.countdown-ticket-outline')).toBeVisible();
+  // v167 intentionally retires the grouped standalone ticket. The first
+  // existing upcoming card is promoted without changing v157's ordered
+  // performance records or automatic event interpretation.
+  const promoted = page.locator('#screen-myconcerts .next-concert-merged-v167');
+  await expect(promoted).toHaveCount(1);
+  await expect(promoted.locator('.remove-going-btn')).toHaveAttribute('data-concert-id', 'qa-group-support-a');
+  await expect(promoted).toContainText('QA Artist Four With An Intentionally Very Long Artist Name For Responsive Testing');
+  await expect(promoted).toContainText('Shared Event Arena');
+  await expect(page.locator('#screen-myconcerts #countdown-card')).toHaveCount(0);
 
   for (const width of [375, 480]) {
     await page.setViewportSize({ width, height: 920 });
@@ -63,9 +63,15 @@ test('v157 automatic event semantics count one night, keep performances separate
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await openApp(page, testInfo);
   await makeSharedFixtureAutomatic(page, { ticketConflict: true });
-  await expect(page.locator('#countdown-card .countdown-v140-ticket-count strong')).toHaveText('2 TICKETS');
-  await expect(page.locator('#countdown-card .countdown-v156-ticket-conflict small')).toHaveText('CHECK COUNT');
-  await expect(page.locator('#countdown-card')).not.toContainText('6 TICKETS');
+
+  // The v167 Start redesign no longer renders the old event-level ticket-count
+  // stub. Confirm the underlying performance quantities remain separate and
+  // unchanged instead of being combined into an invented six-ticket total.
+  const quantities = await page.evaluate(() => JSON.parse(localStorage.getItem('livevault-qa:data')).concerts
+    .filter((record) => record.id.startsWith('qa-group-'))
+    .map((record) => record.ticketQuantity));
+  expect(quantities).toEqual([4, 2, 4]);
+  await expect(page.locator('#screen-myconcerts #countdown-card')).toHaveCount(0);
 
   await makeSharedFixtureAutomatic(page, { past: true });
   await page.locator('#tabbar [data-tab="stats"]').click();
@@ -82,7 +88,6 @@ test('v157 automatic event semantics count one night, keep performances separate
 test('v157 missing-city and different-city pairs fail closed', async ({ page }, testInfo) => {
   await openApp(page, testInfo);
   await makeSharedFixtureAutomatic(page, { cityMode: 'blank' });
-  await expect(page.locator('#countdown-card .countdown-v156-supports')).toHaveCount(0);
   let grouped = await page.evaluate(() => EventModelV156.groupConcertPerformances(JSON.parse(localStorage.getItem('livevault-qa:data')).concerts.filter((record) => record.id.startsWith('qa-group-'))).filter((event) => event.records.length > 1).length);
   expect(grouped).toBe(0);
 

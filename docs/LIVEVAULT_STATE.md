@@ -6,13 +6,13 @@ This continuity file was compacted on 2026-08-24. Earlier detailed state remains
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged application baseline is **v165** at `56a377542bb21faf98d54fd5676752ef3b4d134a`, which merged PR #180. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v165` on `main`.
+The current merged application baseline is **v166** at `f98bcf7456c818dc03f9cbe5c040141e73b6a537`, which merged PR #182. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v166` on `main`.
 
-The active unmerged application build is **v166** in PR #182, `Restore instant Dates and venue navigation (v166)`, on branch `fix/venue-navigation-performance-v166`. The branch keeps `APP_VERSION` and `CACHE_NAME_LITERAL` synchronized at `v166`. v166 is a focused performance correction for the v164 canonical venue-directory path; it does not authorize merge, deployment, production provider execution, production workflows, production smoke or production-data changes.
+The active unmerged application build is **v167** in PR #183, `Merge Next Concert into the upcoming card (v167)`, on branch `feature/merged-next-concert-v167`. The branch keeps `APP_VERSION` and `CACHE_NAME_LITERAL` synchronized at `v167`. v167 is a focused Start-screen presentation redesign; it does not authorize merge, deployment, production provider execution, production workflows, production smoke or production-data changes.
 
-PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool. PR #176 compacted continuity to the v162 merged baseline. PR #177 merged the v163 Ticketmaster data-integrity remediation. PR #178 recorded the completed v163 production cleanup state. PR #179 merged the v164 canonical venue-directory correction. PR #180 merged the v165 reviewed provider-decision safety correction. PR #182 is the active v166 venue-navigation performance correction.
+PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool. PR #176 compacted continuity to the v162 merged baseline. PR #177 merged the v163 Ticketmaster data-integrity remediation. PR #178 recorded the completed v163 production cleanup state. PR #179 merged the v164 canonical venue-directory correction. PR #180 merged the v165 reviewed provider-decision safety correction. PR #182 merged the v166 venue-navigation performance correction. PR #183 is the active v167 merged Next Concert presentation build.
 
-No deployment, production provider call, production research workflow or production smoke was performed as part of the v165 merge or the v166 build work to date.
+No deployment, production provider call, production research workflow or production smoke was performed as part of the v166 merge or the v167 build work to date.
 
 ## v163 Ticketmaster concert data integrity
 
@@ -74,7 +74,7 @@ This production identity enrichment was a reviewed data-maintenance action only.
 
 Venue facts live in a separate durable `venues.json` document rather than being copied onto concert records. Venue records use stable `venueId` identity and may contain canonical name/city/country context, address, positive-integer `maxCapacity`, official HTTPS URL, short factual description, research state/timestamp, sources, aliases, legacy IDs and unknown future fields.
 
-The UI reuses venue metadata on attended cards, the Next Concert ticket, Dates > Venues and Venue Detail. Missing capacity is hidden rather than replaced by a placeholder. Research sources and timestamps are internal and are not rendered in the normal UI.
+The UI reuses venue metadata on attended cards, the Next Concert presentation, Dates > Venues and Venue Detail. Missing capacity is hidden rather than replaced by a placeholder. Research sources and timestamps are internal and are not rendered in the normal UI.
 
 `worker.js` owns `venues.json` through the explicit allowlist and protected JSON write path. Venue writes remain data-maintenance-only and preserve the established conditional ETag semantics.
 
@@ -141,6 +141,16 @@ The optimization does not broaden venue identity. Known address/country conflict
 
 Synthetic browser coverage adds a production-scale fixture of **3,260 concerts, 520 venue records and 320 tracked bands**. It asserts that ordinary Dates builds zero canonical venue groups, the Venues directory builds once and is reused by detail/return navigation, indexed metadata lookup builds once, all 520 venue cards render, and broad timing ceilings prevent recurrence of multi-second/minute synchronous navigation. The existing v164 canonical venue correctness suite remains authoritative and continues to run on both desktop and mobile Chromium.
 
+## v167 merged Next Concert Start presentation
+
+v167 removes the duplicate standalone Next Concert ticket and promotes the first existing upcoming concert card into the Next Concert card. The existing card remains the source of artist/band navigation, date/venue/address, listening, Ticket, Playlist, Weather forecast, Predicted setlist, Checklist, delete behavior and venue metadata.
+
+The Start hierarchy becomes `NEXT CONCERT` -> promoted first card -> `UPCOMING CONCERTS` -> later upcoming cards. When no later upcoming concert exists, the second separator is omitted rather than leaving an empty section.
+
+On ordinary days the promoted card has one app-blue strip: only `N DAYS LEFT` is bold, while the live hours/minutes/seconds countdown and distance are lighter. The existing inline distance/countdown row is removed from the promoted card to avoid repeated information. On the concert date the strip switches to the established turquoise/neon `#5ed8ff` and reads `CONCERT DAY`; `Open tickets` is the turquoise primary CTA and `Get directions` is the ghost secondary CTA. Existing OwnedTickets URL/PDF/multiple-ticket handling and the existing Maps URL builder remain authoritative.
+
+`Max Capacity` uses the same muted grey as the venue-address line on the promoted card in both states so those lines read as one venue-information group. v167 is presentation-only: no concert/ticket/venue schema, stable ID, user-owned field, provider evidence, quota, schedule, Worker/R2 behavior or production data is changed.
+
 ## v165 reviewed provider-decision safety
 
 v165 closes a browser-side ownership gap exposed by the manual Ticketmaster identity enrichment. The Settings MusicBrainz review actions (`Use this artist`, `None of these`, and `Try again`) rebuild the root `musicbrainz` identity, but now carry forward every direct nested provider object whose status is `manual_confirmed` or `manual_rejected`. This includes Ticketmaster, Spotify and unknown future providers, and preserves each reviewed provider object wholesale including unknown future fields.
@@ -170,14 +180,14 @@ Concert nights, spend, travel, venue/city visits, event milestones and ticket ex
 
 ## Active UI contracts to preserve
 
-The current Start root is visibly `MYMUSIC`; the first bottom-nav item is Music with the approved five-bar equalizer. Stats uses the approved angular rising-line glyph. The Next Concert normal-day ticket remains the v147/v148 geometry/chrome contract, with v162 capacity layout correction layered on top; concert-day Maps/OwnedTickets behavior remains unchanged.
+The current Start root is visibly `MYMUSIC`; the first bottom-nav item is Music with the approved five-bar equalizer. Stats uses the approved angular rising-line glyph. v167 makes the first existing upcoming concert card the Next Concert card, with the approved normal-day blue countdown strip and concert-day turquoise `CONCERT DAY`/primary `Open tickets` treatment; the separate duplicate Next Concert ticket is retired. The promoted card keeps its band chevron and preparation content, and the established Maps/OwnedTickets behavior remains unchanged.
 
 ConcertDates/Band Detail geographic filters retain Nearby -> SE -> EU semantics, with SE meaning exact canonical Sweden. My Bands search remains transient. Listening yearly Overview mode changes density only and keeps all underlying yearly data.
 
 ## Backlog hygiene
 
-Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening remains separate from v166.
+Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening remains separate from v167.
 
 ## Next operational steps
 
-PR #182 is the active v166 application build. Continue the exact-head fix -> validate -> review cycle until unit/safety, desktop Chromium and mobile Chromium are green and the final head is merge-ready. Do not merge without the user's explicit `Merge it` authorization, and do not run production providers, production research workflows, production smoke, deployments or production-data mutations without separate explicit authorization.
+PR #183 is the active v167 application build. Continue the exact-head fix -> validate -> review cycle until unit/safety, desktop Chromium and mobile Chromium are green and the final head is merge-ready. Do not merge without the user's explicit `Merge it` authorization, and do not run production providers, production research workflows, production smoke, deployments or production-data mutations without separate explicit authorization.

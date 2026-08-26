@@ -8,9 +8,12 @@ function viewportFor(testInfo) {
 
 async function expectDividerStylesMatch(page) {
   const result = await page.evaluate(() => {
-    const next = document.querySelector('#screen-myconcerts .section-label-v152-next');
-    const upcoming = [...document.querySelectorAll('#screen-myconcerts .section-label-v143-upcoming')]
+    const screen = document.querySelector('#screen-myconcerts');
+    const next = screen?.querySelector('.section-label-v152-next');
+    const upcoming = [...(screen?.querySelectorAll('.section-label-v143-upcoming') || [])]
       .find((node) => /upcoming concerts/i.test(node.textContent));
+    const promoted = screen?.querySelector('.next-concert-merged-v167');
+    const children = [...(screen?.children || [])];
     const read = (node) => ({
       display: getComputedStyle(node).display,
       gap: getComputedStyle(node).gap,
@@ -24,10 +27,20 @@ async function expectDividerStylesMatch(page) {
       afterColor: getComputedStyle(node, '::after').backgroundColor,
       afterOpacity: getComputedStyle(node, '::after').opacity,
     });
-    return { next: read(next), upcoming: read(upcoming), immediatelyBeforeCountdown: next?.nextElementSibling?.id === 'countdown-card' };
+    return {
+      next: read(next),
+      upcoming: read(upcoming),
+      nextIndex: children.indexOf(next),
+      promotedIndex: children.indexOf(promoted),
+      upcomingIndex: children.indexOf(upcoming),
+      retiredCountdownCount: screen?.querySelectorAll('#countdown-card').length || 0,
+    };
   });
   expect(result.next).toEqual(result.upcoming);
-  expect(result.immediatelyBeforeCountdown).toBe(true);
+  expect(result.nextIndex).toBeGreaterThanOrEqual(0);
+  expect(result.promotedIndex).toBeGreaterThan(result.nextIndex);
+  expect(result.upcomingIndex).toBeGreaterThan(result.promotedIndex);
+  expect(result.retiredCountdownCount).toBe(0);
 }
 
 for (const colorScheme of ['dark', 'light']) {

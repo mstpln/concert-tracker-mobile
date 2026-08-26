@@ -182,11 +182,13 @@ This continuity file was compacted on 2026-08-24. Earlier durable decisions and 
 
 ## Active UI contracts
 
-### Next Concert ticket contract
+### Next Concert is the first upcoming concert card
 
-**Decision:** Preserve the established v147/v148 normal-day ticket geometry/chrome and v140 concert-day `Get directions` / `Open tickets` behavior. v162 adds only the corrected muted address-sized capacity treatment and responsive spacing so capacity cannot overlap the ticket-quantity CTA.
+**Decision:** v167 supersedes the standalone v147/v148 Next Concert ticket presentation. The first existing upcoming concert card on Start is itself the Next Concert card, preserving the established card content and interactions: artist image/name, band-profile chevron, date/venue/address, venue metadata, listening, Ticket, Playlist, Weather forecast, Predicted setlist, Checklist and delete behavior. The `NEXT CONCERT` separator sits immediately before that promoted card; `UPCOMING CONCERTS` sits immediately after it before any later upcoming cards, so the same concert is never duplicated on Start.
 
-**Consequence:** Future unrelated work must not move right-stub geometry, countdown/date layout, ticket ownership or concert-day action paths without an explicit redesign.
+On an ordinary day, the promoted card has one compact app-blue urgency strip: only the `N DAYS LEFT` headline is bold, while the live `hh mm ss` countdown and distance remain lighter. The old inline distance/countdown row is removed from that promoted card to avoid repeating the same information. On the concert date, the strip becomes the established turquoise/neon `#5ed8ff` and reads `CONCERT DAY`; the card gains two day-of actions directly below its venue information. `Open tickets` is the turquoise primary CTA, while `Get directions` is the ghost secondary CTA. Existing OwnedTickets behavior remains authoritative for URL/PDF/multiple-ticket opening, and the existing Google Maps URL builder remains authoritative for directions. `Max Capacity` uses the same muted grey as the venue address on this promoted card so the two lines read as one venue-information group.
+
+**Consequence:** Future unrelated work must not restore a duplicate standalone Next Concert card, remove preparation content from the promoted card, remove the band-profile chevron, reintroduce repeated countdown/distance copy, or change the safe ticket/directions behavior without an explicit redesign. This is a presentation contract only and does not change concert records, ticket ownership, venue metadata ownership, provider data or stored schemas.
 
 ### Start/Stats navigation identities
 
