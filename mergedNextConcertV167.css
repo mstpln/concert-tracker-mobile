@@ -1,0 +1,164 @@
+/* v167 approved Start-screen merged Next Concert presentation. */
+#screen-myconcerts .next-concert-merged-v167 {
+  overflow: hidden;
+}
+
+#screen-myconcerts .section-label-v167-next {
+  margin-top: 18px;
+}
+
+#screen-myconcerts .next-concert-banner-v167 {
+  min-height: 34px;
+  margin: -12px -12px 12px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+#screen-myconcerts .next-concert-banner-v167 strong {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .035em;
+  white-space: nowrap;
+}
+
+#screen-myconcerts .next-concert-live-v167,
+#screen-myconcerts .next-concert-distance-v167 {
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+#screen-myconcerts .next-concert-live-v167 {
+  color: rgba(255, 255, 255, .92);
+}
+
+#screen-myconcerts .next-concert-distance-v167 {
+  margin-left: auto;
+  color: rgba(255, 255, 255, .88);
+  text-align: right;
+}
+
+#screen-myconcerts .next-concert-banner-v167.is-concert-day {
+  background: #5ed8ff;
+  color: #00131b;
+}
+
+#screen-myconcerts .next-concert-banner-v167.is-concert-day strong {
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: .055em;
+}
+
+#screen-myconcerts .next-concert-banner-v167.is-concert-day span {
+  margin-left: auto;
+  color: #16323b;
+  font-weight: 400;
+}
+
+#screen-myconcerts .next-concert-actions-v167 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+
+#screen-myconcerts .next-concert-actions-v167 > * {
+  min-width: 0;
+}
+
+#screen-myconcerts .next-concert-actions-v167 .next-concert-directions-v167,
+#screen-myconcerts .next-concert-actions-v167 .countdown-v139-open-ticket {
+  width: 100%;
+  min-height: 42px;
+  margin: 0;
+  padding: 0 9px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  text-decoration: none;
+  text-align: center;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.1;
+  aspect-ratio: auto;
+  box-shadow: none;
+}
+
+#screen-myconcerts .next-concert-actions-v167 .next-concert-directions-v167 {
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+}
+
+#screen-myconcerts .next-concert-actions-v167 .countdown-v139-open-ticket {
+  border: 1px solid #5ed8ff;
+  background: #5ed8ff;
+  color: #00131b;
+  list-style: none;
+}
+
+#screen-myconcerts .next-concert-actions-v167 .countdown-v139-open-ticket::-webkit-details-marker {
+  display: none;
+}
+
+#screen-myconcerts .next-concert-actions-v167 .countdown-v139-ticket-symbol {
+  width: 18px;
+  min-width: 18px;
+  max-width: 18px;
+  height: auto;
+}
+
+#screen-myconcerts .next-concert-actions-v167 .next-concert-ticket-v167,
+#screen-myconcerts .next-concert-actions-v167 .countdown-v139-ticket-actions,
+#screen-myconcerts .next-concert-actions-v167 .countdown-v139-ticket-picker {
+  width: 100%;
+  margin: 0;
+  display: block;
+}
+
+#screen-myconcerts .next-concert-actions-v167 .countdown-v139-ticket-menu {
+  right: 0;
+  bottom: auto;
+  top: calc(100% + 6px);
+  width: 100%;
+}
+
+/* The approved card hierarchy gives venue address and maximum capacity the
+   same muted visual weight so they read as one venue-information group. */
+#screen-myconcerts .next-concert-merged-v167 .venue-max-capacity-next-v167 {
+  color: #85868a;
+}
+
+@media (max-width: 390px) {
+  #screen-myconcerts .next-concert-banner-v167 {
+    padding-left: 10px;
+    padding-right: 10px;
+    gap: 6px;
+    font-size: 9px;
+  }
+
+  #screen-myconcerts .next-concert-banner-v167 strong {
+    font-size: 10px;
+  }
+
+  #screen-myconcerts .next-concert-banner-v167.is-concert-day strong {
+    font-size: 10.5px;
+  }
+
+  #screen-myconcerts .next-concert-actions-v167 .next-concert-directions-v167,
+  #screen-myconcerts .next-concert-actions-v167 .countdown-v139-open-ticket {
+    min-height: 40px;
+    padding-left: 6px;
+    padding-right: 6px;
+    font-size: 10.5px;
+  }
+}
