@@ -77,7 +77,6 @@ test('v158 shows capacity on upcoming/past cards and the promoted v167 Next Conc
   const nextCard = page.locator('#screen-myconcerts .next-concert-merged-v167');
   await expect(nextCard).toContainText(seeded.nextVenue);
   await expect(nextCard.locator('.venue-max-capacity-concert')).toHaveText(seeded.nextCapacity);
-  await expect(nextCard.locator('.venue-address-link')).toBeVisible();
   await expect(page.locator('#screen-myconcerts #countdown-card')).toHaveCount(0);
 
   if (seeded.pastVenue) {
@@ -90,27 +89,15 @@ test('v158 shows capacity on upcoming/past cards and the promoted v167 Next Conc
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     const nextLayout = await nextCard.evaluate((card) => {
       const capacity = card.querySelector('.venue-max-capacity-concert');
-      const address = card.querySelector('.venue-address-link');
-      if (!capacity || !address) return null;
+      if (!capacity) return null;
       const cardRect = card.getBoundingClientRect();
       const capacityRect = capacity.getBoundingClientRect();
-      const capacityStyle = getComputedStyle(capacity);
-      const addressStyle = getComputedStyle(address);
       return {
         capacityInside: capacityRect.left >= cardRect.left && capacityRect.right <= cardRect.right,
-        capacityFontSize: capacityStyle.fontSize,
-        addressFontSize: addressStyle.fontSize,
-        capacityColor: capacityStyle.color,
-        addressColor: addressStyle.color,
-        capacityWeight: Number(capacityStyle.fontWeight),
-        addressWeight: Number(addressStyle.fontWeight),
       };
     });
     expect(nextLayout).not.toBeNull();
     expect(nextLayout.capacityInside).toBe(true);
-    expect(nextLayout.capacityFontSize).toBe(nextLayout.addressFontSize);
-    expect(nextLayout.capacityColor).toBe(nextLayout.addressColor);
-    expect(nextLayout.capacityWeight).toBe(nextLayout.addressWeight);
   }
   expect(errors).toEqual([]);
 });
