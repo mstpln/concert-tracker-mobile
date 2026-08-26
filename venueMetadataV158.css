@@ -7,9 +7,15 @@
   font-weight: 600;
 }
 
+/* On all My Concerts cards (Next, later Upcoming and Past), Max Capacity is
+   supporting venue information. Match the venue-address tone and normal
+   weight so it reads as part of the same metadata group rather than as a
+   more important fact. */
 .row-card-mc .venue-max-capacity-concert {
   margin-top: 4px;
   margin-bottom: 0;
+  color: #85868a;
+  font-weight: 400;
 }
 
 .venue-metadata-list-card.has-venue-capacity {
