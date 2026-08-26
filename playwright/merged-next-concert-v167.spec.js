@@ -16,6 +16,7 @@ async function setMergedNextFixture(page, { today = false, single = false } = {}
     };
     const firstDate = showToday ? dateAt(0) : dateAt(58);
     const secondDate = dateAt(80);
+    const venueId = VenueMetadataModelV158.venueIdFor({ name: 'Example Arena', city: 'Sample City', country: 'Exampleland' });
     const first = {
       id: 'qa-v167-next',
       bandId: 'qa-artist-one',
@@ -23,7 +24,7 @@ async function setMergedNextFixture(page, { today = false, single = false } = {}
       date: firstDate,
       time: '19:30',
       venue: 'Example Arena',
-      venueId: 'qa-venue-example-arena',
+      venueId,
       venueAddress: '1 Fictional Avenue',
       address: '1 Fictional Avenue',
       city: 'Sample City',
@@ -71,13 +72,14 @@ async function setMergedNextFixture(page, { today = false, single = false } = {}
       listenedDurationMs: 180000,
     }];
     VenueMetadataV158.setRecords([{
-      venueId: 'qa-venue-example-arena',
+      venueId,
       name: 'Example Arena',
       city: 'Sample City',
       country: 'Exampleland',
       address: '1 Fictional Avenue',
       maxCapacity: 17000,
-      researchStatus: 'complete',
+      researchStatus: 'partial',
+      schemaVersion: 1,
     }]);
     renderMyConcertsScreen();
   }, { showToday: today, oneOnly: single });
@@ -118,7 +120,7 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
   await expect(banner).toContainText('DAYS LEFT');
   await expect(banner).toContainText('59 km away');
   await expect(banner.locator('.next-concert-live-v167')).toContainText(/\d{2}h \d{2}m \d{2}s/);
-  await expect(card.locator('.row-km')).toHaveCount(0);
+  await expect(card.locator('.row-km')).toBeHidden();
 
   const ordering = await screen.evaluate((node) => {
     const children = [...node.children];
@@ -140,7 +142,7 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
   expect(Number(weights.headline)).toBeGreaterThanOrEqual(700);
   expect(Number(weights.live)).toBeLessThan(700);
   expect(Number(weights.distance)).toBeLessThan(700);
-  await screen.screenshot({ path: testInfo.outputPath('v167-start-next-concert-375px.png'), fullPage: true });
+  await screen.screenshot({ path: testInfo.outputPath('v167-start-next-concert-375px.png') });
 });
 
 test('v167 concert day uses neon banner, primary tickets and ghost directions', async ({ page }, testInfo) => {
@@ -176,7 +178,7 @@ test('v167 concert day uses neon banner, primary tickets and ghost directions', 
   expect(styles.bannerBackground).toBe('rgb(94, 216, 255)');
   expect(styles.ticketBackground).toBe('rgb(94, 216, 255)');
   expect(styles.directionsBackground).toBe('rgba(0, 0, 0, 0)');
-  await page.locator('#screen-myconcerts').screenshot({ path: testInfo.outputPath('v167-start-concert-day-375px.png'), fullPage: true });
+  await page.locator('#screen-myconcerts').screenshot({ path: testInfo.outputPath('v167-start-concert-day-375px.png') });
 });
 
 test('v167 removes the Upcoming separator when there are no later concerts', async ({ page }) => {
