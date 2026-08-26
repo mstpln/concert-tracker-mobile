@@ -147,7 +147,7 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
   // navigation; the chevron remains a functional affordance, not decoration.
   await card.locator('.row-chevron').click();
   await expect(page.locator('#screen-profile')).toBeVisible();
-  await expect(page.locator('#profile-title')).toContainText('QA Artist One');
+  await expect(page.locator('#screen-profile')).toContainText('QA Artist One');
   await page.getByTestId('back-button').click();
   await expect(page.locator('#screen-myconcerts .next-concert-merged-v167')).toBeVisible();
   await screen.screenshot({ path: testInfo.outputPath('v167-start-next-concert-375px.png') });
