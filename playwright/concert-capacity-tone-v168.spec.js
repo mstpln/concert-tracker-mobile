@@ -53,8 +53,9 @@ test('v168 renders Max Capacity like venue address on next, upcoming and past ca
 
   const cards = page.locator('#screen-myconcerts .row-card-mc');
   await expect(cards).toHaveCount(3);
-  for (const id of ['qa-v168-next', 'qa-v168-upcoming', 'qa-v168-past']) {
-    const card = page.locator(`#screen-myconcerts .row-card-mc[data-concert-id="${id}"]`);
+  for (const venue of ['V168 Next Arena', 'V168 Later Hall', 'V168 Past Club']) {
+    const card = cards.filter({ hasText: venue }).first();
+    await expect(card).toBeVisible();
     await expect(card.locator('.venue-address-link')).toBeVisible();
     await expect(card.locator('.venue-max-capacity-concert')).toBeVisible();
     const style = await card.evaluate((node) => {
