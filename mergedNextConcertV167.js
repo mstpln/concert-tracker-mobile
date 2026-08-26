@@ -20,15 +20,16 @@
   function distanceText(card) {
     const row = card?.querySelector('.row-km');
     if (!row) return '';
-    return String(row.textContent || '').split('·')[0].trim();
+    const firstPart = String(row.textContent || '').split('·')[0].trim();
+    return /\bkm\b/i.test(firstPart) ? firstPart : '';
   }
 
-  function bannerHtml({ today, target, distance }) {
+  function bannerHtml({ today, target, dateKey, distance }) {
     if (today) {
       return `<div class="next-concert-banner-v167 is-concert-day"><strong>CONCERT DAY</strong>${distance ? `<span>${escapeHtml(distance)}</span>` : ''}</div>`;
     }
     const parts = countdownParts(target, typeof dlCurrentDate === 'function' ? dlCurrentDate() : new Date());
-    return `<div class="next-concert-banner-v167" data-next-concert-target="${escapeAttr(target.toISOString())}"><strong><span class="next-concert-days-v167">${parts.days}</span> DAYS LEFT</strong><span class="next-concert-live-v167"><span data-v167-hours>${String(parts.hours).padStart(2, '0')}</span>h <span data-v167-minutes>${String(parts.minutes).padStart(2, '0')}</span>m <span data-v167-seconds>${String(parts.seconds).padStart(2, '0')}</span>s</span>${distance ? `<span class="next-concert-distance-v167">${escapeHtml(distance)}</span>` : ''}</div>`;
+    return `<div class="next-concert-banner-v167" data-next-concert-target="${escapeAttr(target.toISOString())}" data-next-concert-date="${escapeAttr(dateKey)}"><strong><span class="next-concert-days-v167">${parts.days}</span> DAYS LEFT</strong><span class="next-concert-live-v167"><span data-v167-hours>${String(parts.hours).padStart(2, '0')}</span>h <span data-v167-minutes>${String(parts.minutes).padStart(2, '0')}</span>m <span data-v167-seconds>${String(parts.seconds).padStart(2, '0')}</span>s</span>${distance ? `<span class="next-concert-distance-v167">${escapeHtml(distance)}</span>` : ''}</div>`;
   }
 
   function updateCountdownBanner() {
@@ -37,6 +38,10 @@
     const target = new Date(banner.dataset.nextConcertTarget || '');
     if (!Number.isFinite(target.getTime())) return;
     const now = typeof dlCurrentDate === 'function' ? dlCurrentDate() : new Date();
+    if (banner.dataset.nextConcertDate && banner.dataset.nextConcertDate === localDateKey(now)) {
+      if (typeof root.renderMyConcertsScreen === 'function') root.renderMyConcertsScreen();
+      return;
+    }
     const parts = countdownParts(target, now);
     const days = banner.querySelector('.next-concert-days-v167');
     const hours = banner.querySelector('[data-v167-hours]');
@@ -76,7 +81,7 @@
     return null;
   }
 
-  function remainingSameYearDivider(sourceDivider, firstCard, upcomingLabel) {
+  function remainingSameYearDivider(sourceDivider, upcomingLabel) {
     const next = upcomingLabel?.nextElementSibling;
     if (!sourceDivider || !next?.classList?.contains('row-card-mc')) return null;
     const clone = sourceDivider.cloneNode(true);
@@ -136,7 +141,7 @@
     (yearDivider || nextLabel).after(card);
     card.after(upcomingLabel);
 
-    const remainingDivider = remainingSameYearDivider(yearDivider, card, upcomingLabel);
+    const remainingDivider = remainingSameYearDivider(yearDivider, upcomingLabel);
     if (remainingDivider) upcomingLabel.after(remainingDivider);
     else {
       const following = upcomingLabel.nextElementSibling;
@@ -152,7 +157,7 @@
     const now = typeof dlCurrentDate === 'function' ? dlCurrentDate() : new Date();
     const datePart = rawTarget.slice(0, 10);
     const today = countdown.dataset.today === 'true' || (datePart && datePart === localDateKey(now));
-    if (Number.isFinite(target.getTime())) card.insertAdjacentHTML('afterbegin', bannerHtml({ today, target, distance }));
+    if (Number.isFinite(target.getTime())) card.insertAdjacentHTML('afterbegin', bannerHtml({ today, target, dateKey: datePart, distance }));
     if (today) moveConcertDayActions(countdown, card);
     applyCapacityTone(card);
     countdown.remove();
@@ -161,7 +166,7 @@
     return true;
   }
 
-  const api = Object.freeze({ countdownParts, applyMergedPresentation, updateCountdownBanner });
+  const api = Object.freeze({ countdownParts, distanceText, applyMergedPresentation, updateCountdownBanner });
   root.MergedNextConcertV167 = api;
 
   if (typeof root.renderMyConcertsScreen === 'function') {
