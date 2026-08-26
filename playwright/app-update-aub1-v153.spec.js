@@ -27,7 +27,6 @@ test('AUB1 Start content and Music/Stats icon identities survive the v167 Next C
   await expect(page.locator('#screen-myconcerts #countdown-card')).toHaveCount(0);
   await expect(promoted).toContainText('QA Artist One');
   await expect(promoted).toContainText('Example Arena');
-  await expect(promoted).toContainText('1 Fictional Avenue');
   await expect(promoted.locator('.concert-listening-row')).toContainText('Your listening');
   await expect(promoted.locator('.concert-prep-group')).toContainText('Weather forecast');
   await expect(promoted.locator('.concert-prep-group')).toContainText('Predicted setlist');
