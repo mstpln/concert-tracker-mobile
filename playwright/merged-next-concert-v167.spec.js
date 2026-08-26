@@ -142,6 +142,14 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
   expect(Number(weights.headline)).toBeGreaterThanOrEqual(700);
   expect(Number(weights.live)).toBeLessThan(700);
   expect(Number(weights.distance)).toBeLessThan(700);
+
+  // Moving the existing card must preserve its established band-profile
+  // navigation; the chevron remains a functional affordance, not decoration.
+  await card.locator('.row-chevron').click();
+  await expect(page.locator('#screen-profile')).toBeVisible();
+  await expect(page.locator('#profile-title')).toContainText('QA Artist One');
+  await page.getByTestId('back-button').click();
+  await expect(page.locator('#screen-myconcerts .next-concert-merged-v167')).toBeVisible();
   await screen.screenshot({ path: testInfo.outputPath('v167-start-next-concert-375px.png') });
 });
 
@@ -162,6 +170,7 @@ test('v167 concert day uses neon banner, primary tickets and ghost directions', 
   const directions = actions.locator('.next-concert-directions-v167');
   const tickets = actions.locator('.countdown-v139-open-ticket');
   await expect(directions).toContainText('Get directions');
+  await expect(directions).toHaveAttribute('href', /google\.com\/maps/);
   await expect(tickets).toContainText('Open tickets');
   await expect(tickets).toHaveAttribute('href', 'https://qa.invalid/tickets/v167');
 
