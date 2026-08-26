@@ -9,9 +9,9 @@ async function openApp(page, testInfo) {
 
 async function seedVenueMetadata(page) {
   return page.evaluate(() => {
-    // This regression is specifically for the normal future-event ticket with
-    // a visible quantity pill. Keep the synthetic show-day fixture out of the
-    // Next Concert slot so the four-ticket grouped event exercises the overlap.
+    // This regression is specifically for the normal future-event card with
+    // visible venue metadata. Keep the synthetic show-day fixture out of the
+    // Next Concert slot so the four-ticket grouped event exercises the layout.
     const showDay = concerts.find((concert) => concert.id === 'qa-show-day');
     if (showDay) showDay.attending = false;
     const live = concerts.filter((concert) => bands.some((band) => band.id === concert.bandId));
@@ -69,58 +69,45 @@ async function makeGroupedLongVenueFixture(page) {
   return longVenue;
 }
 
-test('v158 shows capacity on upcoming/past cards and Next Concert without changing the ticket shell', async ({ page }, testInfo) => {
+test('v158 shows capacity on upcoming/past cards and the promoted v167 Next Concert card', async ({ page }, testInfo) => {
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await openApp(page, testInfo);
   const seeded = await seedVenueMetadata(page);
 
-  const upcomingCard = page.locator('.row-card-mc').filter({ hasText: seeded.nextVenue }).first();
-  await expect(upcomingCard.locator('.venue-max-capacity-concert')).toHaveText(seeded.nextCapacity);
-  const ordering = await upcomingCard.evaluate((card) => {
-    const cap = card.querySelector('.venue-max-capacity-concert');
-    const distance = card.querySelector('.row-km');
-    return !!cap && !!distance && !!(cap.compareDocumentPosition(distance) & Node.DOCUMENT_POSITION_FOLLOWING);
-  });
-  expect(ordering).toBe(true);
+  const nextCard = page.locator('#screen-myconcerts .next-concert-merged-v167');
+  await expect(nextCard).toContainText(seeded.nextVenue);
+  await expect(nextCard.locator('.venue-max-capacity-concert')).toHaveText(seeded.nextCapacity);
+  await expect(nextCard.locator('.venue-address-link')).toBeVisible();
+  await expect(page.locator('#screen-myconcerts #countdown-card')).toHaveCount(0);
 
   if (seeded.pastVenue) {
     const pastCard = page.locator('.row-card-mc.is-past').filter({ hasText: seeded.pastVenue }).first();
     await expect(pastCard.locator('.venue-max-capacity-concert')).toHaveText(seeded.pastCapacity);
   }
 
-  const nextCapacity = page.locator('#countdown-card .venue-max-capacity-next');
-  await expect(nextCapacity).toHaveText(seeded.nextCapacity);
-  await expect(page.locator('#countdown-card .countdown-ticket-outline')).toBeVisible();
-  await expect(page.locator('#countdown-card .countdown-v140-ticket-count strong')).toHaveText('4 TICKETS');
-
   for (const width of [375, 480, 1280]) {
     await page.setViewportSize({ width, height: 920 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-    const nextLayout = await page.evaluate(() => {
-      const card = document.querySelector('#countdown-card');
-      const capacity = card?.querySelector('.venue-max-capacity-next');
-      const address = card?.querySelector('.countdown-v139-address');
-      const ticketCount = card?.querySelector('.countdown-v140-ticket-count strong');
-      if (!capacity || !address || !ticketCount) return null;
-      const capRect = capacity.getBoundingClientRect();
-      const countRect = ticketCount.getBoundingClientRect();
-      const pillStyle = getComputedStyle(ticketCount, '::before');
-      const pillHeight = Number.parseFloat(pillStyle.height) || countRect.height;
-      const capStyle = getComputedStyle(capacity);
+    const nextLayout = await nextCard.evaluate((card) => {
+      const capacity = card.querySelector('.venue-max-capacity-concert');
+      const address = card.querySelector('.venue-address-link');
+      if (!capacity || !address) return null;
+      const cardRect = card.getBoundingClientRect();
+      const capacityRect = capacity.getBoundingClientRect();
+      const capacityStyle = getComputedStyle(capacity);
       const addressStyle = getComputedStyle(address);
       return {
-        capacityBottom: capRect.bottom,
-        ticketCountTop: countRect.top + (countRect.height / 2) - (pillHeight / 2),
-        capacityFontSize: capStyle.fontSize,
+        capacityInside: capacityRect.left >= cardRect.left && capacityRect.right <= cardRect.right,
+        capacityFontSize: capacityStyle.fontSize,
         addressFontSize: addressStyle.fontSize,
-        capacityColor: capStyle.color,
+        capacityColor: capacityStyle.color,
         addressColor: addressStyle.color,
-        capacityWeight: Number(capStyle.fontWeight),
+        capacityWeight: Number(capacityStyle.fontWeight),
         addressWeight: Number(addressStyle.fontWeight),
       };
     });
     expect(nextLayout).not.toBeNull();
-    expect(nextLayout.capacityBottom).toBeLessThan(nextLayout.ticketCountTop);
+    expect(nextLayout.capacityInside).toBe(true);
     expect(nextLayout.capacityFontSize).toBe(nextLayout.addressFontSize);
     expect(nextLayout.capacityColor).toBe(nextLayout.addressColor);
     expect(nextLayout.capacityWeight).toBe(nextLayout.addressWeight);
@@ -170,15 +157,17 @@ test('v158 hides unknown capacity without reserving a placeholder', async ({ pag
   await expect(page.locator('body')).not.toContainText('Max Capacity: N/A');
 });
 
-test('v158 grouped Next Concert and long venue cards remain safe in mobile dark and desktop light', async ({ page }, testInfo) => {
+test('v158 grouped promoted Next Concert and long venue cards remain safe in mobile dark and desktop light', async ({ page }, testInfo) => {
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await openApp(page, testInfo);
   const longVenue = await makeGroupedLongVenueFixture(page);
   const seeded = await seedVenueMetadata(page);
 
-  await expect(page.locator('#countdown-card .countdown-v156-supports')).toBeVisible();
-  await expect(page.locator('#countdown-card .venue-max-capacity-next')).toHaveText(seeded.nextCapacity);
-  await expect(page.locator('#countdown-card .countdown-ticket-outline')).toBeVisible();
+  const promoted = page.locator('#screen-myconcerts .next-concert-merged-v167');
+  await expect(promoted).toBeVisible();
+  await expect(promoted).toContainText(longVenue);
+  await expect(promoted.locator('.venue-max-capacity-concert')).toHaveText(seeded.nextCapacity);
+  await expect(promoted.locator('.row-chevron')).toBeVisible();
 
   await page.locator('#tabbar [data-tab="concerts"]').click();
   await page.getByRole('button', { name: 'Venues' }).click();
