@@ -29,7 +29,7 @@
       return `<div class="next-concert-banner-v167 is-concert-day"><strong>CONCERT DAY</strong>${distance ? `<span>${escapeHtml(distance)}</span>` : ''}</div>`;
     }
     const parts = countdownParts(target, typeof dlCurrentDate === 'function' ? dlCurrentDate() : new Date());
-    return `<div class="next-concert-banner-v167" data-next-concert-target="${escapeAttr(target.toISOString())}" data-next-concert-date="${escapeAttr(dateKey)}"><strong><span class="next-concert-days-v167">${parts.days}</span> DAYS LEFT</strong><span class="next-concert-live-v167"><span data-v167-hours>${String(parts.hours).padStart(2, '0')}</span>h <span data-v167-minutes>${String(parts.minutes).padStart(2, '0')}</span>m <span data-v167-seconds>${String(parts.seconds).padStart(2, '0')}</span>s</span>${distance ? `<span class="next-concert-distance-v167">${escapeHtml(distance)}</span>` : ''}</div>`;
+    return `<div class="next-concert-banner-v167" data-next-concert-target="${escapeAttr(target.toISOString())}" data-next-concert-date="${escapeAttr(dateKey)}"><strong><span class="next-concert-days-v167">${parts.days}</span> DAYS LEFT</strong><span class="next-concert-live-v167"><span data-v167-live-days>${parts.days}</span>d <span data-v167-hours>${String(parts.hours).padStart(2, '0')}</span>h <span data-v167-minutes>${String(parts.minutes).padStart(2, '0')}</span>m <span data-v167-seconds>${String(parts.seconds).padStart(2, '0')}</span>s</span>${distance ? `<span class="next-concert-distance-v167">${escapeHtml(distance)}</span>` : ''}</div>`;
   }
 
   function updateCountdownBanner() {
@@ -44,10 +44,12 @@
     }
     const parts = countdownParts(target, now);
     const days = banner.querySelector('.next-concert-days-v167');
+    const liveDays = banner.querySelector('[data-v167-live-days]');
     const hours = banner.querySelector('[data-v167-hours]');
     const minutes = banner.querySelector('[data-v167-minutes]');
     const seconds = banner.querySelector('[data-v167-seconds]');
     if (days) days.textContent = String(parts.days);
+    if (liveDays) liveDays.textContent = String(parts.days);
     if (hours) hours.textContent = String(parts.hours).padStart(2, '0');
     if (minutes) minutes.textContent = String(parts.minutes).padStart(2, '0');
     if (seconds) seconds.textContent = String(parts.seconds).padStart(2, '0');

@@ -6,13 +6,13 @@ This continuity file was compacted on 2026-08-24. Earlier detailed state remains
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged application baseline is **v166** at `f98bcf7456c818dc03f9cbe5c040141e73b6a537`, which merged PR #182. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v166` on `main`.
+The current merged application baseline is **v167** at `f99ad2059f661015f4f56e67c52f324ae60153d2`, which merged PR #183. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v167` on `main`.
 
-The active unmerged application build is **v167** in PR #183, `Merge Next Concert into the upcoming card (v167)`, on branch `feature/merged-next-concert-v167`. The branch keeps `APP_VERSION` and `CACHE_NAME_LITERAL` synchronized at `v167`. v167 is a focused Start-screen presentation redesign; it does not authorize merge, deployment, production provider execution, production workflows, production smoke or production-data changes.
+The active unmerged application build is **v168** in PR #184, `Refine Next Concert countdown and spacing (v168)`, on branch `fix/next-concert-countdown-spacing-v168`. The branch keeps `APP_VERSION` and `CACHE_NAME_LITERAL` synchronized at `v168`. v168 is a focused Start/My Concerts presentation correction: it enlarges the normal-day countdown headline/strip, restores days to the rolling countdown, matches the Next-card-to-Upcoming separator gap to the established 28px stats-to-Next gap, and makes Max Capacity match the venue-address tone/weight across Next, remaining Upcoming and Past cards.
 
-PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool. PR #176 compacted continuity to the v162 merged baseline. PR #177 merged the v163 Ticketmaster data-integrity remediation. PR #178 recorded the completed v163 production cleanup state. PR #179 merged the v164 canonical venue-directory correction. PR #180 merged the v165 reviewed provider-decision safety correction. PR #182 merged the v166 venue-navigation performance correction. PR #183 is the active v167 merged Next Concert presentation build.
+PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool. PR #176 compacted continuity to the v162 merged baseline. PR #177 merged the v163 Ticketmaster data-integrity remediation. PR #178 recorded the completed v163 production cleanup state. PR #179 merged the v164 canonical venue-directory correction. PR #180 merged the v165 reviewed provider-decision safety correction. PR #182 merged the v166 venue-navigation performance correction. PR #183 merged the v167 merged Next Concert presentation. PR #184 is the active v168 presentation correction.
 
-No deployment, production provider call, production research workflow or production smoke was performed as part of the v166 merge or the v167 build work to date.
+No deployment, production provider call, production research workflow, production smoke or production-data mutation was performed as part of the v167 merge or the v168 build work to date.
 
 ## v163 Ticketmaster concert data integrity
 
@@ -151,6 +151,14 @@ On ordinary days the promoted card has one app-blue strip: only `N DAYS LEFT` is
 
 `Max Capacity` uses the same muted grey as the venue-address line on the promoted card in both states so those lines read as one venue-information group. v167 is presentation-only: no concert/ticket/venue schema, stable ID, user-owned field, provider evidence, quota, schedule, Worker/R2 behavior or production data is changed.
 
+## v168 Next Concert presentation correction
+
+v168 keeps the v167 merged-card design and corrects the post-merge visual details identified on the real mobile layout. The normal app-blue strip is **44px minimum height** with a **13px bold `N DAYS LEFT` headline at supported phone widths**, while the lighter live ticker includes the complete remaining duration as `Nd HHh MMm SSs` and distance stays at the right. The old inline distance/countdown row remains hidden, so days are intentionally present in the rolling meter without restoring the old duplicate summary row.
+
+The promoted Next Concert card now has a **28px** bottom gap before `UPCOMING CONCERTS`, matching the established Concert Stats area -> `NEXT CONCERT` outer spacing. The approved concert-day turquoise `CONCERT DAY`, primary `Open tickets`, ghost `Get directions`, ticket handling and Maps behavior are unchanged.
+
+On all My Concerts cards—promoted Next, remaining Upcoming and Past—`Max Capacity` now uses the same muted grey and normal font weight as the venue-address line directly above it. Venue directory cards and Venue Detail retain their own established capacity treatment. v168 remains presentation-only and changes no stored concert/ticket/venue data, IDs, user-owned fields, provider evidence, quota, schedule, Worker/R2 behavior or production data.
+
 ## v165 reviewed provider-decision safety
 
 v165 closes a browser-side ownership gap exposed by the manual Ticketmaster identity enrichment. The Settings MusicBrainz review actions (`Use this artist`, `None of these`, and `Try again`) rebuild the root `musicbrainz` identity, but now carry forward every direct nested provider object whose status is `manual_confirmed` or `manual_rejected`. This includes Ticketmaster, Spotify and unknown future providers, and preserves each reviewed provider object wholesale including unknown future fields.
@@ -180,14 +188,14 @@ Concert nights, spend, travel, venue/city visits, event milestones and ticket ex
 
 ## Active UI contracts to preserve
 
-The current Start root is visibly `MYMUSIC`; the first bottom-nav item is Music with the approved five-bar equalizer. Stats uses the approved angular rising-line glyph. v167 makes the first existing upcoming concert card the Next Concert card, with the approved normal-day blue countdown strip and concert-day turquoise `CONCERT DAY`/primary `Open tickets` treatment; the separate duplicate Next Concert ticket is retired. The promoted card keeps its band chevron and preparation content, and the established Maps/OwnedTickets behavior remains unchanged.
+The current Start root is visibly `MYMUSIC`; the first bottom-nav item is Music with the approved five-bar equalizer. Stats uses the approved angular rising-line glyph. v167 makes the first existing upcoming concert card the Next Concert card and v168 refines its normal-day blue strip to the larger full `days + hours + minutes + seconds` countdown plus the matched 28px section spacing. The concert-day turquoise `CONCERT DAY`/primary `Open tickets` treatment remains unchanged; the separate duplicate Next Concert ticket is retired. The promoted card keeps its band chevron and preparation content, and the established Maps/OwnedTickets behavior remains unchanged. Across My Concerts cards, Max Capacity matches the venue-address muted tone and normal weight.
 
 ConcertDates/Band Detail geographic filters retain Nearby -> SE -> EU semantics, with SE meaning exact canonical Sweden. My Bands search remains transient. Listening yearly Overview mode changes density only and keeps all underlying yearly data.
 
 ## Backlog hygiene
 
-Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening remains separate from v167.
+Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening remains separate from v168.
 
 ## Next operational steps
 
-PR #183 is the active v167 application build. Continue the exact-head fix -> validate -> review cycle until unit/safety, desktop Chromium and mobile Chromium are green and the final head is merge-ready. Do not merge without the user's explicit `Merge it` authorization, and do not run production providers, production research workflows, production smoke, deployments or production-data mutations without separate explicit authorization.
+PR #184 is the active v168 application correction. Continue the exact-head fix -> validate -> review cycle until unit/safety, desktop Chromium and mobile Chromium are green and the final head is merge-ready. Do not merge without the user's explicit `Merge it` authorization, and do not run production providers, production research workflows, production smoke, deployments or production-data mutations without separate explicit authorization.

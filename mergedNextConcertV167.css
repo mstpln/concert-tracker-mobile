@@ -1,6 +1,10 @@
-/* v167 approved Start-screen merged Next Concert presentation. */
+/* v167 approved Start-screen merged Next Concert presentation.
+   v168 refines normal-day countdown scale/full ticker and section spacing. */
 #screen-myconcerts .next-concert-merged-v167 {
   overflow: hidden;
+  /* Match the established stats-summary -> NEXT CONCERT outer gap so the
+     NEXT card -> UPCOMING CONCERTS transition has the same breathing room. */
+  margin-bottom: 28px;
 }
 
 /* Keep the established shared separator geometry for both labels. */
@@ -15,7 +19,7 @@
 }
 
 #screen-myconcerts .next-concert-banner-v167 {
-  min-height: 34px;
+  min-height: 44px;
   margin: -12px -12px 12px;
   padding: 0 12px;
   display: flex;
@@ -28,7 +32,7 @@
 }
 
 #screen-myconcerts .next-concert-banner-v167 strong {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 800;
   letter-spacing: .035em;
   white-space: nowrap;
@@ -50,7 +54,9 @@
   text-align: right;
 }
 
+/* Concert-day visuals remain the approved v167 treatment. */
 #screen-myconcerts .next-concert-banner-v167.is-concert-day {
+  min-height: 34px;
   background: #5ed8ff;
   color: #00131b;
 }
@@ -200,14 +206,19 @@
 
 @media (max-width: 390px) {
   #screen-myconcerts .next-concert-banner-v167 {
+    min-height: 44px;
     padding-left: 10px;
     padding-right: 10px;
     gap: 6px;
-    font-size: 9px;
+    font-size: 9.5px;
   }
 
   #screen-myconcerts .next-concert-banner-v167 strong {
-    font-size: 10px;
+    font-size: 13px;
+  }
+
+  #screen-myconcerts .next-concert-banner-v167.is-concert-day {
+    min-height: 34px;
   }
 
   #screen-myconcerts .next-concert-banner-v167.is-concert-day strong {
