@@ -3,8 +3,15 @@
   overflow: hidden;
 }
 
+/* Keep the established shared separator geometry for both labels. */
 #screen-myconcerts .section-label-v167-next {
-  margin-top: 18px;
+  margin-top: 0;
+}
+
+/* Retain the historical row-km DOM for compatibility, but hide it visually on
+   the promoted card because countdown and distance now live in the top strip. */
+#screen-myconcerts .next-concert-merged-v167 .next-concert-inline-meta-v167-hidden {
+  display: none;
 }
 
 #screen-myconcerts .next-concert-banner-v167 {
@@ -69,6 +76,10 @@
 
 #screen-myconcerts .next-concert-actions-v167 > * {
   min-width: 0;
+}
+
+#screen-myconcerts .next-concert-actions-v167 > :only-child {
+  grid-column: 1 / -1;
 }
 
 #screen-myconcerts .next-concert-actions-v167 .next-concert-directions-v167,
