@@ -110,6 +110,12 @@
   color: var(--text);
 }
 
+#screen-myconcerts .next-concert-actions-v167 .next-concert-directions-v167 svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
 #screen-myconcerts .next-concert-actions-v167 .countdown-v139-open-ticket {
   border: 1px solid #5ed8ff;
   background: #5ed8ff;
@@ -140,11 +146,50 @@
   position: relative;
 }
 
+/* The v140 ticket menu was scoped to the retired standalone ticket. Reapply
+   that established menu/choice chrome after moving the control into the
+   promoted card so multiple URL/PDF tickets remain usable and recognizable. */
 #screen-myconcerts .next-concert-actions-v167 .countdown-v139-ticket-menu {
+  position: absolute;
+  z-index: 2;
   right: 0;
   bottom: auto;
   top: calc(100% + 6px);
   width: 100%;
+  padding: 6px;
+  border: 1px solid #343537;
+  border-radius: 9px;
+  background: #1c1d1f;
+  display: grid;
+  gap: 5px;
+}
+
+#screen-myconcerts .next-concert-actions-v167 .countdown-v139-ticket-choice {
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid #343537;
+  border-radius: 7px;
+  background: #232427;
+  color: #f5f6f7;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  text-decoration: none;
+  font: inherit;
+  font-size: 11px;
+}
+
+#screen-myconcerts .next-concert-actions-v167 .countdown-v139-ticket-choice .countdown-v139-ticket-symbol {
+  width: 25px;
+  min-width: 25px;
+  max-width: 25px;
+}
+
+#screen-myconcerts .next-concert-actions-v167 a:focus-visible,
+#screen-myconcerts .next-concert-actions-v167 button:focus-visible,
+#screen-myconcerts .next-concert-actions-v167 summary:focus-visible {
+  outline: 2px solid #4d8dff;
+  outline-offset: 2px;
 }
 
 /* The approved card hierarchy gives venue address and maximum capacity the
