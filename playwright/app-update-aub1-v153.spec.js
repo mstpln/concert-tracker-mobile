@@ -12,51 +12,39 @@ async function noHorizontalOverflow(page) {
   return page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 }
 
-test('AUB1 Start ticket spacing/content and Music/Stats icon identities match the approved design', async ({ page }, testInfo) => {
+test('AUB1 Start content and Music/Stats icon identities survive the v167 Next Concert redesign', async ({ page }, testInfo) => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await openApp(page, testInfo);
 
-  // Move the synthetic clock before the show-day fixture so the normal-day
-  // AUB1 ticket is exercised without changing fixture or production data.
   await page.evaluate(() => {
     window.__LIVEVAULT_QA_NOW__ = '2027-07-10T12:00:00.000Z';
     renderMyConcertsScreen();
   });
 
-  const ticket = page.locator('#screen-myconcerts #countdown-card');
-  await expect(ticket).toHaveAttribute('data-today', 'false');
-  await expect(ticket).toHaveClass(/aub1-next-concert/);
-  await expect(ticket.locator('.countdown-v139-label')).toHaveCount(0);
-  await expect(ticket.locator('.countdown-v139-band')).toHaveText('QA Artist One');
-  await expect(ticket.locator('.countdown-v139-venue')).toHaveText('Example Arena');
-  await expect(ticket.locator('.countdown-v139-address')).toContainText(['1 Fictional Avenue', 'Sample City, Exampleland']);
+  const promoted = page.locator('#screen-myconcerts .next-concert-merged-v167');
+  await expect(promoted).toHaveCount(1);
+  await expect(page.locator('#screen-myconcerts #countdown-card')).toHaveCount(0);
+  await expect(promoted).toContainText('QA Artist One');
+  await expect(promoted).toContainText('Example Arena');
+  await expect(promoted).toContainText('1 Fictional Avenue');
+  await expect(promoted.locator('.concert-listening-row')).toContainText('Your listening');
+  await expect(promoted.locator('.concert-prep-group')).toContainText('Weather forecast');
+  await expect(promoted.locator('.concert-prep-group')).toContainText('Predicted setlist');
+  await expect(promoted.locator('.row-chevron')).toBeVisible();
 
-  const textStyles = await ticket.evaluate((node) => ({
-    venueWhiteSpace: getComputedStyle(node.querySelector('.countdown-v139-venue')).whiteSpace,
-    addressWhiteSpace: getComputedStyle(node.querySelector('.countdown-v139-address')).whiteSpace,
-    venueOverflow: getComputedStyle(node.querySelector('.countdown-v139-venue')).textOverflow,
-    addressOverflow: getComputedStyle(node.querySelector('.countdown-v139-address')).textOverflow,
-  }));
-  expect(textStyles).toEqual({
-    venueWhiteSpace: 'normal',
-    addressWhiteSpace: 'normal',
-    venueOverflow: 'clip',
-    addressOverflow: 'clip',
-  });
-
-  const gaps = await page.evaluate(() => {
-    const next = document.querySelector('#screen-myconcerts .section-label-v152-next').getBoundingClientRect();
-    const card = document.querySelector('#screen-myconcerts #countdown-card').getBoundingClientRect();
-    const upcoming = document.querySelector('#screen-myconcerts .section-label-v143-upcoming').getBoundingClientRect();
+  const separatorOrder = await page.evaluate(() => {
+    const screen = document.querySelector('#screen-myconcerts');
+    const children = [...screen.children];
     return {
-      top: card.top - next.bottom,
-      bottom: upcoming.top - card.bottom,
+      next: children.findIndex((node) => node.classList.contains('section-label-v167-next')),
+      card: children.findIndex((node) => node.classList.contains('next-concert-merged-v167')),
+      upcoming: children.findIndex((node) => node.classList.contains('section-label-v143-upcoming')),
     };
   });
-  expect(Math.abs(gaps.top - gaps.bottom)).toBeLessThanOrEqual(1.5);
-  expect(gaps.top).toBeGreaterThanOrEqual(27);
-  expect(gaps.top).toBeLessThanOrEqual(29);
+  expect(separatorOrder.next).toBeGreaterThanOrEqual(0);
+  expect(separatorOrder.card).toBeGreaterThan(separatorOrder.next);
+  expect(separatorOrder.upcoming).toBeGreaterThan(separatorOrder.card);
 
   const musicPaths = await page.evaluate(() => ({
     nav: document.querySelector('#tabbar [data-tab="myconcerts"] .tab-icon path')?.getAttribute('d'),
@@ -88,7 +76,7 @@ test('AUB1 Start ticket spacing/content and Music/Stats icon identities match th
   expect(errors).toEqual([]);
 
   await page.locator('#tabbar [data-tab="myconcerts"]').click();
-  await page.screenshot({ path: testInfo.outputPath('aub1-v153-start.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('aub1-v167-start.png'), fullPage: true });
 });
 
 test('AUB1 listening activity metrics and both Overview modes retain all yearly data', async ({ page }, testInfo) => {
