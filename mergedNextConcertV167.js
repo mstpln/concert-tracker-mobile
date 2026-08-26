@@ -150,7 +150,7 @@
 
     card.classList.add('next-concert-merged-v167');
     const distance = distanceText(card);
-    card.querySelector('.row-km')?.remove();
+    card.querySelector('.row-km')?.classList.add('next-concert-inline-meta-v167-hidden');
 
     const rawTarget = countdown.dataset.target || '';
     const target = new Date(rawTarget);
