@@ -132,3 +132,30 @@ test('v169 keeps a single next concert on the same spacer and more-shows contrac
   await expect(screen.locator('.year-divider-v169-upcoming .year-divider-count')).toHaveText('2 more shows');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
+
+test('v169 removes Upcoming when the grouped next event is the only future event even if past concerts follow', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 1100 });
+  await openStart(page);
+  await setGroupedNextFixture(page);
+  await page.evaluate(() => {
+    const now = typeof dlCurrentDate === 'function' ? dlCurrentDate() : new Date();
+    const past = new Date(now);
+    past.setDate(past.getDate() - 30);
+    const pastDate = `${past.getFullYear()}-${String(past.getMonth() + 1).padStart(2, '0')}-${String(past.getDate()).padStart(2, '0')}`;
+    const owner = bands[2];
+    concerts = concerts.filter((concert) => ['qa-v169-support', 'qa-v169-headliner'].includes(concert.id));
+    concerts.push({
+      id: 'qa-v169-past', bandId: owner.id, bandName: owner.name,
+      date: pastDate, time: '20:00', venue: 'V169 Past Hall', city: 'Sample City', country: 'Denmark',
+      venueAddress: '4 Past Street', address: '4 Past Street', distanceKm: 40,
+      attending: true, lineupRole: 'headliner', ownedTickets: [], prepChecklist: {},
+    });
+    renderMyConcertsScreen();
+  });
+
+  const screen = page.locator('#screen-myconcerts');
+  await expect(screen.locator('.next-concert-event-card-v169')).toHaveCount(2);
+  await expect(screen.locator('.section-label-v143-upcoming')).toHaveCount(0);
+  await expect(screen.getByText('Past concerts', { exact: true })).toBeVisible();
+  await expect(cardById(screen, 'qa-v169-past')).toBeVisible();
+});
