@@ -52,14 +52,8 @@
     return clone;
   }
 
-  function hasRemainingUpcoming(upcomingLabel) {
-    let node = upcomingLabel?.nextElementSibling || null;
-    while (node) {
-      if (node.classList?.contains('row-card-mc') || node.classList?.contains('year-divider')) return true;
-      if (node.classList?.contains('section-label') && !node.classList.contains('year-divider')) return false;
-      node = node.nextElementSibling;
-    }
-    return false;
+  function hasRemainingUpcoming(removedIds) {
+    return upcomingAttendingRecords().some((record) => !removedIds.has(String(record?.id)));
   }
 
   function applyEventGroupPresentation() {
@@ -100,7 +94,7 @@
 
     const divider = remainingYearDivider(sourceDivider, upcomingLabel, removedIds);
     if (divider) upcomingLabel.after(divider);
-    if (!hasRemainingUpcoming(upcomingLabel)) upcomingLabel.remove();
+    if (!hasRemainingUpcoming(removedIds)) upcomingLabel.remove();
     return true;
   }
 
