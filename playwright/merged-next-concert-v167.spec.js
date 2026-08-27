@@ -147,7 +147,7 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
   expect(ordering.next).toBeGreaterThanOrEqual(0);
   expect(ordering.first).toBeGreaterThan(ordering.next);
   expect(ordering.upcoming).toBeGreaterThan(ordering.first);
-  await expect(screen.locator('.year-divider-v167-upcoming .year-divider-count')).toHaveText('1 show');
+  await expect(screen.locator('.year-divider-v167-upcoming .year-divider-count')).toHaveText('1 more show');
 
   const spacing = await screen.evaluate((node) => {
     const summary = node.querySelector(':scope > .myconcerts-summary');

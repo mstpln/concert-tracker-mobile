@@ -1,0 +1,18 @@
+/* v169 Start/My Concerts next-event grouping refinement. */
+
+/* Keep the year/count row's full geometry below NEXT CONCERT, but remove its
+   visible content so the vertical rhythm stays exactly where v168 placed it. */
+#screen-myconcerts .year-divider-v169-spacer > * {
+  visibility: hidden;
+}
+
+/* A grouped next event can contain support + headliner cards. Between those
+   cards use the same standard 8px card gap as Upcoming/Past. Only the final
+   card in the next event gets the larger section break before UPCOMING. */
+#screen-myconcerts .next-concert-event-card-v169 {
+  margin-bottom: 8px;
+}
+
+#screen-myconcerts .next-concert-event-card-v169.next-concert-event-last-v169 {
+  margin-bottom: 28px;
+}
