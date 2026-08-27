@@ -6,13 +6,13 @@ This continuity file was compacted on 2026-08-24. Earlier detailed state remains
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged application baseline is **v167** at `f99ad2059f661015f4f56e67c52f324ae60153d2`, which merged PR #183. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v167` on `main`.
+The current merged application baseline is **v168** at `8bef5a11ba9c462c334813b558c602da696c55cc`, which merged PR #184. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v168` on `main`.
 
-The active unmerged application build is **v168** in PR #184, `Refine Next Concert countdown and spacing (v168)`, on branch `fix/next-concert-countdown-spacing-v168`. The branch keeps `APP_VERSION` and `CACHE_NAME_LITERAL` synchronized at `v168`. v168 is a focused Start/My Concerts presentation correction: it enlarges the normal-day countdown headline/strip, restores days to the rolling countdown, matches the Next-card-to-Upcoming separator gap to the established 28px stats-to-Next gap, and makes Max Capacity match the venue-address tone/weight across Next, remaining Upcoming and Past cards.
+The active unmerged application build is **v169** in PR #185, `Group the full next event on Start (v169)`, on branch `fix/next-concert-event-group-v169`. The branch keeps `APP_VERSION` and `CACHE_NAME_LITERAL` synchronized at `v169`. v169 is a focused Start/My Concerts presentation correction: `NEXT CONCERT` now represents the complete next valid event group, the year/count row under it keeps its geometry while its visible content is hidden, grouped support/headliner cards retain the standard card gap, and `UPCOMING CONCERTS` reports only remaining event-level shows as `X more shows`.
 
-PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool. PR #176 compacted continuity to the v162 merged baseline. PR #177 merged the v163 Ticketmaster data-integrity remediation. PR #178 recorded the completed v163 production cleanup state. PR #179 merged the v164 canonical venue-directory correction. PR #180 merged the v165 reviewed provider-decision safety correction. PR #182 merged the v166 venue-navigation performance correction. PR #183 merged the v167 merged Next Concert presentation. PR #184 is the active v168 presentation correction.
+PR #174 fixed the Next Concert capacity layout. PR #175 hardened the offline venue-cleanup tool. PR #176 compacted continuity to the v162 merged baseline. PR #177 merged the v163 Ticketmaster data-integrity remediation. PR #178 recorded the completed v163 production cleanup state. PR #179 merged the v164 canonical venue-directory correction. PR #180 merged the v165 reviewed provider-decision safety correction. PR #182 merged the v166 venue-navigation performance correction. PR #183 merged the v167 merged Next Concert presentation. PR #184 merged the v168 countdown/spacing/capacity correction. PR #185 is the active v169 next-event grouping presentation build.
 
-No deployment, production provider call, production research workflow, production smoke or production-data mutation was performed as part of the v167 merge or the v168 build work to date.
+No deployment, production provider call, production research workflow, production smoke or production-data mutation was performed as part of the v168 merge or the v169 build work to date.
 
 ## v163 Ticketmaster concert data integrity
 
@@ -159,6 +159,14 @@ The promoted Next Concert card now has a **28px** bottom gap before `UPCOMING CO
 
 On all My Concerts cards—promoted Next, remaining Upcoming and Past—`Max Capacity` now uses the same muted grey and normal font weight as the venue-address line directly above it. Venue directory cards and Venue Detail retain their own established capacity treatment. v168 remains presentation-only and changes no stored concert/ticket/venue data, IDs, user-owned fields, provider evidence, quota, schedule, Worker/R2 behavior or production data.
 
+## v169 Next Concert event-group presentation
+
+v169 keeps the complete v168 countdown/concert-day card treatment but makes `NEXT CONCERT` represent the next valid event rather than only its first performance card. If the first upcoming attended performance belongs to a valid multi-performance event according to the existing `EventModelV156` explicit or conservative automatic grouping rules, every card in that event is moved together under `NEXT CONCERT` in stable support-first order. Invalid/ambiguous grouping fails closed to the first card and v169 writes no `eventGroupId` or other relationship data.
+
+The existing year/count divider row directly under `NEXT CONCERT` is retained at full height for spacing but its visible content is hidden. When the next event contains support + headliner cards, those cards keep the ordinary **8px** Upcoming/Past card-to-card gap. The larger **28px** section gap applies only after the final card in the Next Concert event before `UPCOMING CONCERTS`.
+
+The visible divider under `UPCOMING CONCERTS` reports the remaining same-year event count as `X more show` / `X more shows`. A valid grouped support+headliner event counts once rather than once per performance card. All existing card content, navigation, countdown, concert-day tickets/directions, ticket ownership behavior, venue metadata and storage/provider safety remain unchanged.
+
 ## v165 reviewed provider-decision safety
 
 v165 closes a browser-side ownership gap exposed by the manual Ticketmaster identity enrichment. The Settings MusicBrainz review actions (`Use this artist`, `None of these`, and `Try again`) rebuild the root `musicbrainz` identity, but now carry forward every direct nested provider object whose status is `manual_confirmed` or `manual_rejected`. This includes Ticketmaster, Spotify and unknown future providers, and preserves each reviewed provider object wholesale including unknown future fields.
@@ -188,14 +196,14 @@ Concert nights, spend, travel, venue/city visits, event milestones and ticket ex
 
 ## Active UI contracts to preserve
 
-The current Start root is visibly `MYMUSIC`; the first bottom-nav item is Music with the approved five-bar equalizer. Stats uses the approved angular rising-line glyph. v167 makes the first existing upcoming concert card the Next Concert card and v168 refines its normal-day blue strip to the larger full `days + hours + minutes + seconds` countdown plus the matched 28px section spacing. The concert-day turquoise `CONCERT DAY`/primary `Open tickets` treatment remains unchanged; the separate duplicate Next Concert ticket is retired. The promoted card keeps its band chevron and preparation content, and the established Maps/OwnedTickets behavior remains unchanged. Across My Concerts cards, Max Capacity matches the venue-address muted tone and normal weight.
+The current Start root is visibly `MYMUSIC`; the first bottom-nav item is Music with the approved five-bar equalizer. Stats uses the approved angular rising-line glyph. v167 makes the first upcoming performance card the promoted Next Concert card, v168 supplies the larger full `days + hours + minutes + seconds` countdown and matched section spacing, and v169 keeps the entire next valid event group together under `NEXT CONCERT`. The year/count row under Next retains its geometry without visible content; support/headliner cards use the standard 8px gap; the final Next-event card keeps the 28px break before Upcoming; and the remaining same-year count reads `X more shows` at event level. The concert-day turquoise `CONCERT DAY`/primary `Open tickets` treatment remains unchanged; the separate duplicate Next Concert ticket is retired. The promoted card keeps its band chevron and preparation content, and established Maps/OwnedTickets behavior remains unchanged. Across My Concerts cards, Max Capacity matches the venue-address muted tone and normal weight.
 
 ConcertDates/Band Detail geographic filters retain Nearby -> SE -> EU semantics, with SE meaning exact canonical Sweden. My Bands search remains transient. Listening yearly Overview mode changes density only and keeps all underlying yearly data.
 
 ## Backlog hygiene
 
-Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening remains separate from v168.
+Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening remains separate from v169.
 
 ## Next operational steps
 
-PR #184 is the active v168 application correction. Continue the exact-head fix -> validate -> review cycle until unit/safety, desktop Chromium and mobile Chromium are green and the final head is merge-ready. Do not merge without the user's explicit `Merge it` authorization, and do not run production providers, production research workflows, production smoke, deployments or production-data mutations without separate explicit authorization.
+PR #185 is the active v169 application correction. Continue the exact-head fix -> validate -> review cycle until unit/safety, desktop Chromium and mobile Chromium are green and the final head is merge-ready. Do not merge without the user's explicit `Merge it` authorization, and do not run production providers, production research workflows, production smoke, deployments or production-data mutations without separate explicit authorization.
