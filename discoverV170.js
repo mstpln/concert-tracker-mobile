@@ -15,7 +15,6 @@
   let lastRenderedSubTab = null;
   let headerObserver = null;
   const baseRenderConcertsScreen = typeof renderConcertsScreen === 'function' ? renderConcertsScreen : null;
-  const successMbids = new Set();
   const errorByMbid = new Map();
 
   function esc(value) {
@@ -102,14 +101,13 @@
   }
   function cardHtml(candidate) {
     const mbid = esc(candidate.artistMbid);
-    const added = successMbids.has(candidate.artistMbid);
     const error = errorByMbid.get(candidate.artistMbid);
     return `<article class="discover-card" data-discover-mbid="${mbid}">
       <div class="discover-card-copy"><div class="discover-artist-name">${esc(candidate.name)}</div>${metadataHtml(candidate)}${error ? `<div class="discover-error" role="status">${esc(error)}</div>` : ''}</div>
       <div class="discover-actions">
         <a class="discover-spotify" href="${esc(Model.spotifySearchUrl(candidate.name))}" target="_blank" rel="noopener noreferrer" aria-label="Listen to ${esc(candidate.name)} on Spotify">${typeof icon === 'function' ? icon('spotify') : ''}<span>Spotify</span></a>
-        ${added ? '' : `<button type="button" class="discover-dismiss" data-discover-dismiss="${mbid}">Dismiss</button>`}
-        <button type="button" class="discover-add${added ? ' is-added' : ''}" data-discover-add="${mbid}"${added ? ' disabled' : ''}>${added ? 'Added ✓' : 'Add band'}</button>
+        <button type="button" class="discover-dismiss" data-discover-dismiss="${mbid}">Dismiss</button>
+        <button type="button" class="discover-add" data-discover-add="${mbid}">Add band</button>
       </div>
     </article>`;
   }
@@ -167,10 +165,84 @@
     if (root.crypto?.randomUUID) return `band-${root.crypto.randomUUID()}`;
     return `band-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   }
-  function bandByTrustedIdentity(candidate) {
-    const mbid = Model.normalizeMbid(candidate?.artistMbid);
-    const name = String(candidate?.name || '').trim().toLocaleLowerCase('en');
-    return currentBands().find((band) => Model.trustedBandMbid(band) === mbid) || currentBands().find((band) => String(band?.name || '').trim().toLocaleLowerCase('en') === name) || null;
+  function trustedBandByMbid(rows, mbid) {
+    const normalized = Model.normalizeMbid(mbid);
+    return (rows || []).find((band) => Model.trustedBandMbid(band) === normalized) || null;
+  }
+  function newBandFromCandidate(candidate, id, createdAt) {
+    const band = {
+      id,
+      name: candidate.name,
+      officialUrl: null,
+      photoUrl: null,
+      genre: null,
+      origin: null,
+      formedYear: null,
+      bio: null,
+      socials: {},
+      addedAt: createdAt,
+      enrichedAt: null,
+      musicbrainz: {
+        mbid: candidate.artistMbid,
+        artistName: candidate.name,
+        area: candidate.area || null,
+        country: null,
+        artistType: null,
+        disambiguation: null,
+        confidence: 'user_confirmed',
+        status: 'manual_confirmed',
+        matchMethod: 'discover_user_add',
+        source: 'MusicBrainz',
+        matchedAt: createdAt,
+        reviewedAt: createdAt,
+      },
+      discoverRecommendation: {
+        source: 'listenbrainz_similar_artists',
+        artistMbid: candidate.artistMbid,
+        discoveredAt: candidate.discoveredAt || createdAt,
+      },
+      _enriching: true,
+    };
+    root.LiveVaultSecurity?.preparePendingArtistEnrichment?.(band, createdAt);
+    return band;
+  }
+  function reconcileBands(rows) {
+    const list = currentBands();
+    if (!Array.isArray(list)) return;
+    list.splice(0, list.length, ...JSON.parse(JSON.stringify(rows)));
+  }
+  async function persistAddedBand(candidate, attempts = 3) {
+    const connection = currentRemote();
+    if (!connection) throw new Error('Connect BANDMARKR storage first.');
+    const createdAt = nowIso();
+    const created = newBandFromCandidate(candidate, safeBandId(), createdAt);
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const latest = await dlReadJsonFile(connection, 'bands.json', []);
+      if (!Array.isArray(latest)) throw new Error('Stored bands data is invalid.');
+      const existing = trustedBandByMbid(latest, candidate.artistMbid);
+      if (existing) {
+        reconcileBands(latest);
+        return existing;
+      }
+      const intended = [...latest, created];
+      const persisted = typeof stripTransient === 'function' ? stripTransient(intended) : intended;
+      try {
+        await dlWriteJsonFileIfCurrent(connection, 'bands.json', persisted);
+        reconcileBands(persisted);
+        return persisted.find((band) => band.id === created.id) || created;
+      } catch (error) {
+        if (!/changed/i.test(String(error?.message || '')) || attempt === attempts - 1) throw error;
+      }
+    }
+    throw new Error('Band update could not be saved.');
+  }
+  function showAddedState(button) {
+    const card = button?.closest?.('.discover-card');
+    if (!card) return;
+    card.querySelector('[data-discover-dismiss]')?.remove();
+    button.disabled = true;
+    button.classList.add('is-added');
+    button.textContent = 'Added ✓';
   }
   async function addBand(mbid, button) {
     const candidate = findCandidate(mbid);
@@ -180,31 +252,10 @@
     const feedback = root.LiveVaultInteractionFeedbackV129;
     const handle = feedback?.begin?.({ key: `discover-add:${mbid}` });
     try {
-      let band = bandByTrustedIdentity(candidate);
-      if (!band) {
-        const createdAt = nowIso();
-        band = {
-          id: safeBandId(), name: candidate.name, officialUrl: null,
-          photoUrl: null, genre: null, origin: null, formedYear: null, bio: null,
-          socials: {}, addedAt: createdAt, enrichedAt: null,
-          musicbrainz: {
-            mbid: candidate.artistMbid, artistName: candidate.name,
-            area: candidate.area || null, country: null, artistType: null, disambiguation: null,
-            confidence: 'user_confirmed', status: 'manual_confirmed', matchMethod: 'discover_listenbrainz',
-            source: 'MusicBrainz', matchedAt: createdAt, reviewedAt: createdAt,
-            discoverProvenance: { source: 'ListenBrainz similar artists', discoveredAt: candidate.discoveredAt || createdAt },
-          },
-          _enriching: true,
-        };
-        const list = currentBands();
-        list.push(band);
-        try { await dlWriteJsonFile(currentRemote(), 'bands.json', typeof stripTransient === 'function' ? stripTransient(list) : list); }
-        catch (error) { list.splice(list.indexOf(band), 1); throw error; }
-      }
+      const band = await persistAddedBand(candidate);
       await persistOperation((latest) => Model.resolveCandidate(latest, mbid, 'added', { now: nowIso(), addedBandId: band.id }));
-      successMbids.add(mbid);
-      renderBands();
-      root.setTimeout(() => { successMbids.delete(mbid); if (concertsSubTab === 'bands' && currentTab === 'concerts') renderBands(); }, 700);
+      showAddedState(button);
+      root.setTimeout(() => { if (concertsSubTab === 'bands' && currentTab === 'concerts') renderBands(); }, 700);
     } catch (error) {
       errorByMbid.set(mbid, 'Could not add this band. Try again.');
       renderBands();
@@ -275,5 +326,5 @@
   });
   root.setTimeout(() => void bootstrap(), 0);
 
-  root.LiveVaultDiscoverV170 = Object.freeze({ FILE, readState, refreshIfDue, renderBands, persistOperation, setDiscoverHeader, getState: () => state });
+  root.LiveVaultDiscoverV170 = Object.freeze({ FILE, readState, refreshIfDue, renderBands, persistOperation, persistAddedBand, setDiscoverHeader, getState: () => state });
 })(typeof globalThis !== 'undefined' ? globalThis : this);
