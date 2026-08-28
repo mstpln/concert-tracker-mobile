@@ -45,6 +45,7 @@
     const normalized = String(title.textContent || '').replace(/\s+/g, '').toUpperCase();
     if (currentTab === 'concerts' && currentScreen === 'main') return setDiscoverHeader();
     if (normalized === 'LISTENINGSTATS') replaceHtml(title, `LISTENING<span class="brand-blue">STATS</span>`);
+    else if (normalized === 'CONCERTSTATS') replaceHtml(title, `CONCERT<span class="brand-blue">STATS</span>`);
     else if (normalized === 'MYBANDS') replaceHtml(title, `MY<span class="brand-blue">BANDS</span>`);
   }
   function installHeaderRules() {
