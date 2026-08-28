@@ -34,6 +34,26 @@
     return (rows || []).filter((band) => normalizeName(band?.name) === key);
   }
 
+  function classifyExistingNameMatch(rows, candidate) {
+    const matches = exactNameBands(rows, candidate?.name);
+    if (!matches.length) return { kind: 'none', matches };
+    const candidateMbid = Model?.normalizeMbid?.(candidate?.artistMbid);
+    if (candidateMbid && matches.some((band) => trustedMbid(band) === candidateMbid)) {
+      return { kind: 'same-trusted', matches };
+    }
+    if (matches.length !== 1) {
+      return { kind: 'blocked', matches, message: 'More than one existing band has this name. Review the existing bands first.' };
+    }
+    const existing = matches[0];
+    if (trustedMbid(existing)) {
+      return { kind: 'blocked', matches, message: 'The existing band has a different confirmed MusicBrainz identity.' };
+    }
+    if (hasStoredMbid(existing)) {
+      return { kind: 'blocked', matches, message: 'Review the existing MusicBrainz identity before adding this recommendation.' };
+    }
+    return { kind: 'linkable', matches, band: existing };
+  }
+
   function currentBands() {
     try { if (typeof bands !== 'undefined' && Array.isArray(bands)) return bands; } catch (_) {}
     return [];
@@ -180,23 +200,15 @@
     if (!button) return;
     const candidate = findCandidate(button.dataset.discoverAdd);
     if (!candidate) return;
-    const matches = exactNameBands(currentBands(), candidate.name);
-    if (!matches.length) return;
-    if (matches.some((band) => trustedMbid(band) === Model.normalizeMbid(candidate.artistMbid))) return;
-    const unidentified = matches.filter((band) => !trustedMbid(band));
-    if (matches.length === 1 && unidentified.length === 1 && !hasStoredMbid(unidentified[0])) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
+    const match = classifyExistingNameMatch(currentBands(), candidate);
+    if (match.kind === 'none' || match.kind === 'same-trusted') return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (match.kind === 'linkable') {
       void addExistingBand(candidate, button);
       return;
     }
-    if (unidentified.length) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      showInlineError(button, matches.length > 1
-        ? 'More than one existing band has this name. Review the existing bands first.'
-        : 'Review the existing MusicBrainz identity before adding this recommendation.');
-    }
+    showInlineError(button, match.message || 'Review the existing band before adding this recommendation.');
   }
 
   function standardizeHeader() {
@@ -328,5 +340,5 @@
     root.setTimeout(syncUi, 0);
   }
 
-  return Object.freeze({ normalizeName, trustedMbid, hasStoredMbid, exactNameBands, buildLinkedBand, linkExistingBand, correctSetlistfmIdentityCopy, syncGeoFilters, standardizeHeader, install });
+  return Object.freeze({ normalizeName, trustedMbid, hasStoredMbid, exactNameBands, classifyExistingNameMatch, buildLinkedBand, linkExistingBand, correctSetlistfmIdentityCopy, syncGeoFilters, standardizeHeader, install });
 });
