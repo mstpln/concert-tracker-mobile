@@ -19,6 +19,13 @@ test('v171 exact-name matching is normalized but remains exact', () => {
   assert.deepEqual(V171.exactNameBands(rows, 'Klaxon').map((band) => band.id), []);
 });
 
+test('v171 treats any stored MusicBrainz ID evidence as review-required', () => {
+  assert.equal(V171.hasStoredMbid({ musicbrainz: {} }), false);
+  assert.equal(V171.hasStoredMbid({ musicbrainz: { mbid: '   ' } }), false);
+  assert.equal(V171.hasStoredMbid({ musicbrainz: { mbid: 'not-a-valid-mbid-yet' } }), true);
+  assert.equal(V171.hasStoredMbid({ musicbrainz: { mbid: '11111111-1111-4111-8111-111111111111' } }), true);
+});
+
 test('v171 linking an existing band preserves stable/user/provider fields and adds the confirmed MBID', () => {
   const existing = {
     id: 'band-klaxons',
@@ -60,6 +67,7 @@ test('v171 visual contract keeps filter pills at the primary Discover tab height
   const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   assert.match(js, /TAB_BRAND_HTML\.myconcerts = 'MY<span class="brand-blue">MUSIC<\/span>'/);
   assert.match(js, /TAB_BRAND_HTML\.news = 'CONCERT<span class="brand-blue">ALERTS<\/span>'/);
+  assert.match(js, /if \(expected && title\.innerHTML !== expected\) title\.innerHTML = expected/);
   assert.match(css, /height:\s*44px/);
   assert.match(index, /discoverCorrectionsV171\.css/);
   assert.match(index, /discoverCorrectionsV171\.js/);
