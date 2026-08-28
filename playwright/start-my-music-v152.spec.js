@@ -53,7 +53,7 @@ for (const colorScheme of ['dark', 'light']) {
     const datesTab = page.locator('#tabbar [data-tab="concerts"]');
 
     await expect(page.locator('#header-title')).toHaveText('MYMUSIC');
-    await expect(page.locator('#header-title .brand-blue')).toHaveText('MY');
+    await expect(page.locator('#header-title .brand-blue')).toHaveText('MUSIC');
     await expect(musicTab).toHaveText('Music');
     await expect(musicTab.locator('.tab-icon path')).toHaveAttribute('d', 'M5 16v-4M9 18V8M13 16V5M17 18v-8M21 15v-5');
     await expect(musicTab).toHaveClass(/active/);
@@ -77,6 +77,7 @@ for (const colorScheme of ['dark', 'light']) {
     await expect(musicTab).toHaveAttribute('aria-current', 'page');
     await expect(datesTab).not.toHaveClass(/active/);
     await expect(page.locator('#header-title')).toHaveText('MYMUSIC');
+    await expect(page.locator('#header-title .brand-blue')).toHaveText('MUSIC');
 
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   });
