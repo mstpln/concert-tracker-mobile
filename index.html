@@ -41,13 +41,159 @@
 <link rel="stylesheet" href="discoverV170.css" />
 </head>
 <body>
-<div id="onboarding" class="screen"><div class="onboarding-inner"><div class="onboarding-icon"></div><h1>Concert tracker</h1><p>Connect this app to your Cloudflare Worker so it can read and write your band list and concert data. See SETUP.md for how to get the URL and token below.</p><label for="connect-endpoint">Worker URL</label><input type="text" id="connect-endpoint" placeholder="https://concert-tracker-api.yoursubdomain.workers.dev" /><label for="connect-token">Access token</label><input type="password" id="connect-token" placeholder="Paste the token from your Worker setup" /><button id="connect-submit" class="btn-primary btn-block">Connect</button><p id="onboarding-error" class="error hidden"></p></div></div>
+
+<div id="onboarding" class="screen">
+  <div class="onboarding-inner">
+    <div class="onboarding-icon"></div>
+    <h1>Concert tracker</h1>
+    <p>
+      Connect this app to your Cloudflare Worker so it can read and write your
+      band list and concert data. See SETUP.md for how to get the URL and
+      token below.
+    </p>
+    <label for="connect-endpoint">Worker URL</label>
+    <input type="text" id="connect-endpoint" placeholder="https://concert-tracker-api.yoursubdomain.workers.dev" />
+    <label for="connect-token">Access token</label>
+    <input type="password" id="connect-token" placeholder="Paste the token from your Worker setup" />
+    <button id="connect-submit" class="btn-primary btn-block">Connect</button>
+    <p id="onboarding-error" class="error hidden"></p>
+  </div>
+</div>
+
 <div id="app" class="hidden">
   <div id="brand-banner" class="brand-banner"><img class="brand-wordmark" src="icons/bandmarkr-wordmark.svg" alt="BANDMARKR" /></div>
-  <header id="app-header"><button id="back-btn" class="icon-btn hidden" aria-label="Back" data-testid="back-button"></button><div class="header-brand"><span id="header-icon" class="header-icon"></span><span id="header-title" class="header-title"><span class="brand-blue">DISCOVER</span>CONCERTS</span></div><button id="nearby-toggle-btn" class="icon-btn" aria-label="Show nearby only" title="Show nearby only"></button><button id="sweden-toggle-btn" class="icon-btn" aria-label="Show Sweden only" title="Show Sweden only">SE</button><button id="europe-toggle-btn" class="icon-btn" aria-label="Show Europe only" title="Show Europe only"></button><button id="settings-btn" class="icon-btn" aria-label="Settings" data-testid="settings-button"></button></header>
-  <main id="content"><section id="screen-concerts" class="screen hidden"></section><section id="screen-myconcerts" class="screen"></section><section id="screen-mybands" class="screen hidden"></section><section id="screen-news" class="screen hidden"></section><section id="screen-profile" class="screen hidden"></section><section id="screen-venue-detail" class="screen hidden"></section><section id="screen-settings" class="screen hidden"></section><section id="screen-stats" class="screen hidden"></section><section id="screen-top-bands" class="screen hidden"></section><section id="screen-connection-error" class="screen hidden"><div class="screen-empty"><p>Couldn't reach your data. Check your connection and try again.</p><button id="retry-connect-btn" class="btn-primary" style="margin-top:12px">Retry</button></div></section></main>
+  <header id="app-header">
+    <button id="back-btn" class="icon-btn hidden" aria-label="Back" data-testid="back-button"></button>
+    <div class="header-brand">
+      <span id="header-icon" class="header-icon"></span>
+      <span id="header-title" class="header-title"><span class="brand-blue">DISCOVER</span>CONCERTS</span>
+    </div>
+    <button id="nearby-toggle-btn" class="icon-btn" aria-label="Show nearby only" title="Show nearby only"></button>
+    <button id="sweden-toggle-btn" class="icon-btn" aria-label="Show Sweden only" title="Show Sweden only">SE</button>
+    <button id="europe-toggle-btn" class="icon-btn" aria-label="Show Europe only" title="Show Europe only"></button>
+    <button id="settings-btn" class="icon-btn" aria-label="Settings" data-testid="settings-button"></button>
+  </header>
+
+  <main id="content">
+    <section id="screen-concerts" class="screen hidden"></section>
+    <section id="screen-myconcerts" class="screen"></section>
+    <section id="screen-mybands" class="screen hidden"></section>
+    <section id="screen-news" class="screen hidden"></section>
+    <section id="screen-profile" class="screen hidden"></section>
+    <section id="screen-venue-detail" class="screen hidden"></section>
+    <section id="screen-settings" class="screen hidden"></section>
+    <section id="screen-stats" class="screen hidden"></section>
+    <section id="screen-top-bands" class="screen hidden"></section>
+    <section id="screen-connection-error" class="screen hidden">
+      <div class="screen-empty">
+        <p>Couldn't reach your data. Check your connection and try again.</p>
+        <button id="retry-connect-btn" class="btn-primary" style="margin-top:12px">Retry</button>
+      </div>
+    </section>
+  </main>
+
   <div id="interaction-progress" class="interaction-progress" role="progressbar" aria-label="Processing" aria-hidden="true"><span></span></div>
-  <nav id="tabbar" data-testid="bottom-navigation"><button class="tabitem active" data-tab="myconcerts"><span class="tab-icon"></span>Concerts</button><button class="tabitem" data-tab="concerts"><span class="tab-icon"></span>Discover</button><button class="tabitem" data-tab="mybands"><span class="tab-icon"></span>Bands</button><button class="tabitem" data-tab="stats"><span class="tab-icon"></span>Stats</button><button class="tabitem" data-tab="news"><span class="tab-icon-wrap"><span class="tab-icon"></span><span id="news-unread-dot" class="tab-unread-dot hidden"></span></span>Alerts</button></nav>
+  <nav id="tabbar" data-testid="bottom-navigation">
+    <button class="tabitem active" data-tab="myconcerts"><span class="tab-icon"></span>Concerts</button>
+    <button class="tabitem" data-tab="concerts"><span class="tab-icon"></span>Discover</button>
+    <button class="tabitem" data-tab="mybands"><span class="tab-icon"></span>Bands</button>
+    <button class="tabitem" data-tab="stats"><span class="tab-icon"></span>Stats</button>
+    <button class="tabitem" data-tab="news"><span class="tab-icon-wrap"><span class="tab-icon"></span><span id="news-unread-dot" class="tab-unread-dot hidden"></span></span>Alerts</button>
+  </nav>
 </div>
-<script src="version.js"></script><script src="browserFetchPolicy.js"></script><script src="icons.js"></script><script src="lineupRoleV155.js"></script><script src="eventModelV156.js"></script><script src="venueMetadataModelV158.js"></script><script src="dataLib.js"></script><script src="europeScopeV160.js"></script><script src="listeningStats.js"></script><script src="listeningStatsV81.js"></script><script src="listeningFixtures.js"></script><script src="listeningFixturesV99.js"></script><script src="conflictMerge.js"></script><script src="remoteStore.js"></script><script src="ownedTickets.js"></script><script src="geoFilterPreloadV143.js"></script><script src="musicbrainzState.js"></script><script src="providerIdentityState.js"></script><script src="weather.js"></script><script src="spotifyUser.js"></script><script src="spotifyUserV100.js"></script><script src="listeningIdentityContracts.js"></script><script src="listeningDerivedStorage.js"></script><script src="listeningDerivedMigration.js"></script><script src="listeningPreparationV121.js"></script><script src="listeningBandActivity.js"></script><script src="discoverModelV170.js"></script><script src="discoverProviderV170.js"></script><script src="spotifyHistoryImport.js"></script><script src="listeningVaultBridge.js"></script><script src="listeningVault.js"></script><script src="listeningHistoryV2.js"></script><script src="listeningIncrementalVault.js"></script><script src="listenbrainzSync.js"></script><script src="listenbrainzReportingV145.js"></script><script src="spotifyHistoryBootstrap.js"></script><script src="listeningSpotifyIdentityReview.js"></script><script src="interactionFeedbackV129.js"></script><script src="app.js"></script><script src="alignedUiV143.js"></script><script src="nextConcertV138.js"></script><script src="nextConcertV140.js"></script><script src="nextConcertV146.js"></script><script src="nextConcertV148.js"></script><script src="listeningReviewRollout.js"></script><script src="listeningReviewReconcile.js"></script><script src="listeningCanonicalActivation.js"></script><script src="listeningPreparationRecovery.js"></script><script src="gau5PreparationIntegrationV121.js"></script><script src="listeningIdentityPacingV105.js"></script><script src="listeningIdentityCompletionV104.js"></script><script src="listeningIdentityRecordingV106.js"></script><script src="listeningSpotifyIdentityReviewUi.js"></script><script src="devicePrivacy.js"></script><script src="v72Corrections.js"></script><script src="v72FinalAdjustments.js"></script><script src="providerReleaseCleanupV135.js"></script><script src="securityHardening.js"></script><script src="listeningInsightsV81.js"></script><script src="listeningV81BootFix.js"></script><script src="listeningV81ReviewFix.js"></script><script src="listeningV82Corrections.js"></script><script src="listeningV82GenreFix.js"></script><script src="listeningV82FailSafe.js"></script><script src="listeningV83ChartFix.js"></script><script src="listeningV83WindowFix.js"></script><script src="listeningV84ChartRenderFix.js"></script><script src="listeningV85RankingAndStatsUnits.js"></script><script src="listeningIdentityGroupingV104.js"></script><script src="toplistStatsV96.js"></script><script src="toplistV96.js"></script><script src="spotifyListeningMetadataV99.js"></script><script src="spotifyListeningAlbumArtworkV113.js"></script><script src="spotifyListeningMetadataV101.js"></script><script src="trustedListeningV99.js"></script><script src="gau2SettingsV118.js"></script><script src="settingsV123.js"></script><script src="settingsAutomationReportingV145.js"></script><script src="uiPerformanceV126.js"></script><script src="uiPerformanceV127.js"></script><script src="stateFeedbackIntegrationV129.js"></script><script src="alignedListeningBandsV144.js"></script><script src="startStatsV149.js"></script><script src="appUpdateAub1V153.js"></script><script src="appUpdateAub1V153Corrections.js"></script><script src="appUpdateAub3CorrectionV157.js"></script><script src="venueMetadataV158.js"></script><script src="venueMetadataLookupPerformanceV166.js"></script><script src="venueNavigationPerformanceV166.js"></script><script src="venueNavigationRenderPerformanceV166.js"></script><script src="mergedNextConcertV167.js"></script><script src="nextConcertEventGroupV169.js"></script><script src="discoverV170.js"></script>
-</body></html>
+
+<script src="version.js"></script>
+<script src="browserFetchPolicy.js"></script>
+<script src="icons.js"></script>
+<script src="lineupRoleV155.js"></script>
+<script src="eventModelV156.js"></script>
+<script src="venueMetadataModelV158.js"></script>
+<script src="dataLib.js"></script>
+<script src="europeScopeV160.js"></script>
+<script src="listeningStats.js"></script>
+<script src="listeningStatsV81.js"></script>
+<script src="listeningFixtures.js"></script>
+<script src="listeningFixturesV99.js"></script>
+<script src="conflictMerge.js"></script>
+<script src="remoteStore.js"></script>
+<script src="ownedTickets.js"></script>
+<script src="geoFilterPreloadV143.js"></script>
+<script src="musicbrainzState.js"></script>
+<script src="providerIdentityState.js"></script>
+<script src="weather.js"></script>
+<script src="spotifyUser.js"></script>
+<script src="spotifyUserV100.js"></script>
+<script src="listeningIdentityContracts.js"></script>
+<script src="listeningDerivedStorage.js"></script>
+<script src="listeningDerivedMigration.js"></script>
+<script src="listeningPreparationV121.js"></script>
+<script src="listeningBandActivity.js"></script>
+<script src="discoverModelV170.js"></script>
+<script src="discoverProviderV170.js"></script>
+<script src="spotifyHistoryImport.js"></script>
+<script src="listeningVaultBridge.js"></script>
+<script src="listeningVault.js"></script>
+<script src="listeningHistoryV2.js"></script>
+<script src="listeningIncrementalVault.js"></script>
+<script src="listenbrainzSync.js"></script>
+<script src="listenbrainzReportingV145.js"></script>
+<script src="spotifyHistoryBootstrap.js"></script>
+<script src="listeningSpotifyIdentityReview.js"></script>
+<script src="interactionFeedbackV129.js"></script>
+<script src="app.js"></script>
+<script src="alignedUiV143.js"></script>
+<script src="nextConcertV138.js"></script>
+<script src="nextConcertV140.js"></script>
+<script src="nextConcertV146.js"></script>
+<script src="nextConcertV148.js"></script>
+<script src="listeningReviewRollout.js"></script>
+<script src="listeningReviewReconcile.js"></script>
+<script src="listeningCanonicalActivation.js"></script>
+<script src="listeningPreparationRecovery.js"></script>
+<script src="gau5PreparationIntegrationV121.js"></script>
+<script src="listeningIdentityPacingV105.js"></script>
+<script src="listeningIdentityCompletionV104.js"></script>
+<script src="listeningIdentityRecordingV106.js"></script>
+<script src="listeningSpotifyIdentityReviewUi.js"></script>
+<script src="devicePrivacy.js"></script>
+<script src="v72Corrections.js"></script>
+<script src="v72FinalAdjustments.js"></script>
+<script src="providerReleaseCleanupV135.js"></script>
+<script src="securityHardening.js"></script>
+<script src="listeningInsightsV81.js"></script>
+<script src="listeningV81BootFix.js"></script>
+<script src="listeningV81ReviewFix.js"></script>
+<script src="listeningV82Corrections.js"></script>
+<script src="listeningV82GenreFix.js"></script>
+<script src="listeningV82FailSafe.js"></script>
+<script src="listeningV83ChartFix.js"></script>
+<script src="listeningV83WindowFix.js"></script>
+<script src="listeningV84ChartRenderFix.js"></script>
+<script src="listeningV85RankingAndStatsUnits.js"></script>
+<script src="listeningIdentityGroupingV104.js"></script>
+<script src="toplistStatsV96.js"></script>
+<script src="toplistV96.js"></script>
+<script src="spotifyListeningMetadataV99.js"></script>
+<script src="spotifyListeningAlbumArtworkV113.js"></script>
+<script src="spotifyListeningMetadataV101.js"></script>
+<script src="trustedListeningV99.js"></script>
+<script src="gau2SettingsV118.js"></script>
+<script src="settingsV123.js"></script>
+<script src="settingsAutomationReportingV145.js"></script>
+<script src="uiPerformanceV126.js"></script>
+<script src="uiPerformanceV127.js"></script>
+<script src="stateFeedbackIntegrationV129.js"></script>
+<script src="alignedListeningBandsV144.js"></script>
+<script src="startStatsV149.js"></script>
+<script src="appUpdateAub1V153.js"></script>
+<script src="appUpdateAub1V153Corrections.js"></script>
+<script src="appUpdateAub3CorrectionV157.js"></script>
+<script src="venueMetadataV158.js"></script>
+<script src="venueMetadataLookupPerformanceV166.js"></script>
+<script src="venueNavigationPerformanceV166.js"></script>
+<script src="venueNavigationRenderPerformanceV166.js"></script>
+<script src="mergedNextConcertV167.js"></script>
+<script src="nextConcertEventGroupV169.js"></script>
+<script src="discoverV170.js"></script>
+</body>
+</html>
