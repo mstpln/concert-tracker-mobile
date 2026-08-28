@@ -102,13 +102,14 @@ test('v170 Dismiss persists its decision and the recommendation stays gone after
   await seedDiscover(page);
   await openDiscoverBands(page);
 
-  const first = page.locator('.discover-card').first();
+  const target = `.discover-card[data-discover-mbid="${candidateMbid(1)}"]`;
+  const first = page.locator(target);
   await first.locator('[data-discover-dismiss]').click();
-  await expect(page.locator('.discover-card').filter({ hasText: 'Recommended Artist 1' })).toHaveCount(0);
+  await expect(page.locator(target)).toHaveCount(0);
   const decision = await page.evaluate((mbid) => JSON.parse(localStorage.getItem('livevault-qa:data')).discoverRecommendations.decisions[mbid], candidateMbid(1));
   expect(decision.status).toBe('dismissed');
 
   await page.reload();
   await openDiscoverBands(page);
-  await expect(page.locator('.discover-card').filter({ hasText: 'Recommended Artist 1' })).toHaveCount(0);
+  await expect(page.locator(target)).toHaveCount(0);
 });
