@@ -26,6 +26,7 @@ jobs:
         run: |
           node --check scripts/listenbrainz-discovery-audit.js
           node scripts/listenbrainz-discovery-audit.js --self-test
+          node --check scripts/listenbrainz-metadata-relation-diagnostic.js
 
       - name: Run authorized read-only coverage audit
         env:
@@ -35,10 +36,15 @@ jobs:
           mkdir -p .audit
           node scripts/listenbrainz-discovery-audit.js --output .audit/listenbrainz-discovery-audit.json
 
-      - name: Upload anonymized audit result
+      - name: Verify ListenBrainz relationship representation
+        run: node scripts/listenbrainz-metadata-relation-diagnostic.js
+
+      - name: Upload anonymized audit results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: listenbrainz-discovery-audit
-          path: .audit/listenbrainz-discovery-audit.json
+          path: |
+            .audit/listenbrainz-discovery-audit.json
+            .audit/listenbrainz-metadata-relation-diagnostic.json
           if-no-files-found: error
           retention-days: 7
