@@ -61,14 +61,14 @@ test('v171 linking an existing band preserves stable/user/provider fields and ad
   assert.equal(linked.discoverRecommendation.artistMbid, candidate.artistMbid);
 });
 
-test('v171 visual contract keeps filter pills at the primary Discover tab height and corrects header emphasis', () => {
+test('v171 visual contract keeps filter pills at the actual primary Discover tab height and corrects header emphasis', () => {
   const js = fs.readFileSync(path.join(root, 'discoverCorrectionsV171.js'), 'utf8');
   const css = fs.readFileSync(path.join(root, 'discoverCorrectionsV171.css'), 'utf8');
   const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   assert.match(js, /TAB_BRAND_HTML\.myconcerts = 'MY<span class="brand-blue">MUSIC<\/span>'/);
   assert.match(js, /TAB_BRAND_HTML\.news = 'CONCERT<span class="brand-blue">ALERTS<\/span>'/);
   assert.match(js, /if \(expected && title\.innerHTML !== expected\) title\.innerHTML = expected/);
-  assert.match(css, /height:\s*44px/);
+  assert.match(css, /height:\s*32px/);
   assert.match(index, /discoverCorrectionsV171\.css/);
   assert.match(index, /discoverCorrectionsV171\.js/);
 });
