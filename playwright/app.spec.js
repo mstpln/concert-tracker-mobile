@@ -77,7 +77,7 @@ test('primary screens, settings, and v135 band profile tabs remain navigable', a
   const assertQaGuards = await installQaGuards(page);
   await page.goto('/');
   await expect(page.locator('#screen-myconcerts')).toBeVisible();
-  await page.getByRole('button', { name: 'Dates' }).click();
+  await page.getByRole('button', { name: 'Discover' }).click();
   await expect(page.locator('#screen-concerts')).toBeVisible();
   await page.getByRole('button', { name: 'Alerts' }).click();
   await expect(page.locator('#screen-news')).toBeVisible();
@@ -110,7 +110,7 @@ test('listening stats navigation, rankings, timeframes, and band drill-down use 
   await page.setViewportSize(testInfo.project.name === 'mobile-chromium' ? { width: 375, height: 820 } : { width: 480, height: 900 });
   await page.goto('/');
   const navLabels = await page.getByTestId('bottom-navigation').locator('.tabitem').allTextContents();
-  expect(navLabels.map((label) => label.trim())).toEqual(['Music', 'Dates', 'Bands', 'Stats', 'Alerts']);
+  expect(navLabels.map((label) => label.trim())).toEqual(['Music', 'Discover', 'Bands', 'Stats', 'Alerts']);
   await expect(page.locator('.start-top-bands-card .top-band-row')).toHaveCount(3);
   await expect(page.locator('.start-top-bands-card')).toContainText('YOUR TOP BANDS · 2 WEEKS');
   await settleVisual(page);
