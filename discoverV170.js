@@ -73,7 +73,7 @@
   }
 
   function tabsHtml() {
-    return `<div class="stats-subtabs discover-subtabs" role="tablist" aria-label="Discover sections">
+    return `<div class="stats-subtabs discover-subtabs news-subtab-switch" role="tablist" aria-label="Discover sections">
       ${[['concerts', 'Concerts'], ['venues', 'Venues'], ['bands', 'Bands']].map(([key, label]) => `<button type="button" class="stats-subtab-btn${concertsSubTab === key ? ' active' : ''}" data-discover-tab="${key}" role="tab" aria-selected="${concertsSubTab === key}">${label}</button>`).join('')}
     </div>`;
   }
