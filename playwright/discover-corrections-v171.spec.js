@@ -134,7 +134,7 @@ test('v171 Band Data does not claim Setlist.fm MBID linkage before MusicBrainz i
   await installKlaxonsScenario(page);
   await page.evaluate(() => openProfile('qa-v171-klaxons'));
   await page.locator('[data-profile-tab="data"]').click();
-  await expect(page.locator('#screen-profile')).toContainText('MUSICBRAINZ');
+  await expect(page.locator('#screen-profile')).toContainText('MusicBrainz');
   await expect(page.locator('#screen-profile')).toContainText('Not yet checked');
   await expect(page.locator('#screen-profile')).toContainText('Waiting for MusicBrainz identity');
   await expect(page.locator('#screen-profile')).not.toContainText('Linked through the confirmed MusicBrainz MBID');
