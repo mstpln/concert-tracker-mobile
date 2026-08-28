@@ -1,0 +1,31 @@
+/* v171: keep Discover header actions uncluttered and place geographic filters below the primary Discover selector. */
+#app-header .discover-v171-source-filter-hidden { display: none !important; }
+
+.discover-geo-filters-v171 {
+  display: flex;
+  overflow: hidden;
+  margin: -4px 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+}
+
+.discover-geo-filter-btn-v171 {
+  min-height: 0;
+  height: 44px;
+  padding: 8px;
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.discover-geo-filter-btn-v171:first-child { border-left: 0; }
+.discover-geo-filter-btn-v171.active { background: var(--accent); color: var(--on-accent); }
+.discover-geo-filter-btn-v171:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+@media (max-width: 360px) {
+  .discover-geo-filter-btn-v171 { font-size: 12px; }
+}
