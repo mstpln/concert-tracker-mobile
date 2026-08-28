@@ -32,7 +32,7 @@ This continuity file was compacted again on 2026-08-28. Earlier durable decision
 
 ### Discover geographic filters belong with Discover content navigation
 
-**Decision:** On Discover > Concerts, Nearby / SE / EU render immediately below the Concerts / Venues / Bands segmented selector instead of competing for space in the app header. The secondary filter buttons use the same 44px height as the primary Discover selector while remaining visually subordinate through typography.
+**Decision:** On Discover > Concerts, Nearby / SE / EU render immediately below the Concerts / Venues / Bands segmented selector instead of competing for space in the app header. The secondary filter buttons use the same rendered height as the primary Discover selector while remaining visually subordinate through typography.
 
 **Consequence:** The globe/header identity and Settings action remain in the app header. The existing Nearby/SE/EU state, persistence, mutual exclusivity and filtering functions remain authoritative; v171 presents proxy controls that invoke those existing owners rather than creating a second geographic-filter model. The secondary row is not shown in Venues or Bands.
 
