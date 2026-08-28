@@ -107,11 +107,16 @@ test('provider parser and metadata adapter fail closed around malformed rows', (
 test('static shell uses Discover globe, Stats-compatible classes, local Spotify and no Spotify API', () => {
   const ui = fs.readFileSync('discoverV170.js', 'utf8');
   const html = fs.readFileSync('index.html', 'utf8');
+  const css = fs.readFileSync('discoverV170.css', 'utf8');
   assert.match(ui, /TAB_NAV_ICONS\.concerts = 'globe'/);
   assert.match(ui, /class=\"stats-subtabs discover-subtabs news-subtab-switch\"/);
   assert.match(ui, /icon\('spotify'\)/);
   assert.match(ui, /DISCOVER<\/span>\$\{suffix\}/);
   assert.doesNotMatch(ui, /api\.spotify\.com/i);
+  assert.match(css, /var\(--surface\)/);
+  assert.match(css, /var\(--text-muted\)/);
+  assert.match(css, /var\(--accent\)/);
+  assert.doesNotMatch(css, /var\(--(?:card|muted|blue)\)/);
   assert.match(html, />Discover<\/button>/);
   assert.match(html, /discoverV170\.js/);
 });
