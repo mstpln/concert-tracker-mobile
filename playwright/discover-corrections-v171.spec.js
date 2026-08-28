@@ -127,12 +127,15 @@ test('v172 keeps Discover geographic filters below the primary tabs but restores
   expect(geometry.sourceDisplays).toEqual(['none', 'none', 'none']);
   expect(geometry.overflow).toBe(false);
 
-  await europe.click();
+  // QA defaults to the persisted Europe filter being active. Switch to Sweden,
+  // then back to Europe, to verify the compact proxies preserve mutual exclusion.
   await expect(europe).toHaveClass(/active/);
-  await expect(sweden).not.toHaveClass(/active/);
   await sweden.click();
   await expect(sweden).toHaveClass(/active/);
   await expect(europe).not.toHaveClass(/active/);
+  await europe.click();
+  await expect(europe).toHaveClass(/active/);
+  await expect(sweden).not.toHaveClass(/active/);
 
   await page.locator('[data-discover-tab="venues"]').click();
   await expect(page.locator('.discover-geo-filters-v171')).toHaveCount(0);
