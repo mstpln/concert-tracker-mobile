@@ -87,29 +87,28 @@ async function expectDividerParity(page) {
   expect(dividerStyles.upcoming).toEqual(dividerStyles.past);
 }
 
-async function expectMainFilterGeometry(page) {
-  const order = await page.locator('#app-header > button').evaluateAll((buttons) =>
-    buttons.filter((button) => !button.classList.contains('hidden')).map((button) => button.id));
-  const nearbyIndex = order.indexOf('nearby-toggle-btn');
-  const swedenIndex = order.indexOf('sweden-toggle-btn');
-  const europeIndex = order.indexOf('europe-toggle-btn');
-  expect(nearbyIndex).toBeGreaterThanOrEqual(0);
-  expect(swedenIndex).toBe(nearbyIndex + 1);
-  expect(europeIndex).toBe(swedenIndex + 1);
+function rootGeo(page, key) {
+  return page.locator(`.discover-geo-filters-v171 [data-discover-geo="${key}"]`);
+}
 
-  const mainSizes = await page.evaluate(() => {
-    const se = document.querySelector('#sweden-toggle-btn').getBoundingClientRect();
-    const eu = document.querySelector('#europe-toggle-btn').getBoundingClientRect();
-    return { se: { width: se.width, height: se.height }, eu: { width: eu.width, height: eu.height } };
+async function expectMainFilterGeometry(page) {
+  const row = page.locator('.discover-geo-filters-v171');
+  await expect(row).toBeVisible();
+  const order = await row.locator('button').evaluateAll((buttons) => buttons.map((button) => button.dataset.discoverGeo));
+  expect(order).toEqual(['nearby', 'sweden', 'europe']);
+  const sizes = await page.evaluate(() => {
+    const primary = document.querySelector('.discover-subtabs .stats-subtab-btn').getBoundingClientRect();
+    const se = document.querySelector('[data-discover-geo="sweden"]').getBoundingClientRect();
+    const eu = document.querySelector('[data-discover-geo="europe"]').getBoundingClientRect();
+    return { primary: primary.height, se: { width: se.width, height: se.height }, eu: { width: eu.width, height: eu.height } };
   });
-  expect(Math.abs(mainSizes.se.width - mainSizes.eu.width)).toBeLessThanOrEqual(0.5);
-  expect(Math.abs(mainSizes.se.height - mainSizes.eu.height)).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(sizes.se.height - sizes.eu.height)).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(sizes.se.height - sizes.primary)).toBeLessThanOrEqual(0.5);
 }
 
 async function expectProfileFilterGeometry(page) {
   const profileOrder = await page.locator('#screen-profile .section-label-filters > button').evaluateAll((buttons) => buttons.map((button) => button.id));
   expect(profileOrder).toEqual(['profile-nearby-toggle-btn', 'profile-sweden-toggle-btn', 'profile-europe-toggle-btn']);
-
   const profileSizes = await page.evaluate(() => {
     const se = document.querySelector('#profile-sweden-toggle-btn').getBoundingClientRect();
     const eu = document.querySelector('#profile-europe-toggle-btn').getBoundingClientRect();
@@ -130,7 +129,7 @@ for (const colorScheme of ['dark', 'light']) {
 
     await page.locator('#tabbar [data-tab="news"]').click();
     await expect(page.locator('#header-title')).toHaveText('CONCERTALERTS');
-    await expect(page.locator('#header-title .brand-blue')).toHaveText('CONCERT');
+    await expect(page.locator('#header-title .brand-blue')).toHaveText('ALERTS');
     await expectNoHorizontalOverflow(page);
 
     await page.locator('#tabbar [data-tab="concerts"]').click();
@@ -156,11 +155,10 @@ test('v143 Sweden filters are exact and mutually exclusive in both concert views
   await page.setViewportSize(viewportFor(testInfo));
   await installV143SyntheticState(page);
 
-  let rootSweden = page.locator('#sweden-toggle-btn');
-  let rootEurope = page.locator('#europe-toggle-btn');
-  let rootNearby = page.locator('#nearby-toggle-btn');
-
   await page.locator('#tabbar [data-tab="concerts"]').click();
+  let rootSweden = rootGeo(page, 'sweden');
+  let rootEurope = rootGeo(page, 'europe');
+  let rootNearby = rootGeo(page, 'nearby');
   await rootSweden.click();
   await expect(rootSweden).toHaveClass(/active/);
   await expect(rootEurope).not.toHaveClass(/active/);
@@ -168,19 +166,16 @@ test('v143 Sweden filters are exact and mutually exclusive in both concert views
   await expect(page.locator('#screen-concerts')).toContainText('QA V143 Mixed Band');
   await expect(page.locator('#screen-concerts')).not.toContainText('QA V143 Denmark Only');
 
-  // Direct SE -> EU transition.
   await rootEurope.click();
   await expect(rootEurope).toHaveClass(/active/);
   await expect(rootSweden).not.toHaveClass(/active/);
   await expect(rootNearby).not.toHaveClass(/active/);
 
-  // Fresh neutral root state proves the independent direct SE -> Nearby transition
-  // without reusing one globally feedback-armed control inside a synthetic burst.
   await installV143SyntheticState(page);
-  rootSweden = page.locator('#sweden-toggle-btn');
-  rootEurope = page.locator('#europe-toggle-btn');
-  rootNearby = page.locator('#nearby-toggle-btn');
   await page.locator('#tabbar [data-tab="concerts"]').click();
+  rootSweden = rootGeo(page, 'sweden');
+  rootEurope = rootGeo(page, 'europe');
+  rootNearby = rootGeo(page, 'nearby');
   await rootSweden.click();
   await expect(rootSweden).toHaveClass(/active/);
   await rootNearby.click();
@@ -195,7 +190,6 @@ test('v143 Sweden filters are exact and mutually exclusive in both concert views
   let profileSweden = page.locator('#profile-sweden-toggle-btn');
   let profileEurope = page.locator('#profile-europe-toggle-btn');
   let profileNearby = page.locator('#profile-nearby-toggle-btn');
-
   await profileSweden.click();
   await expect(profileSweden).toHaveClass(/active/);
   await expect(profileEurope).not.toHaveClass(/active/);
@@ -203,14 +197,11 @@ test('v143 Sweden filters are exact and mutually exclusive in both concert views
   await expect(page.locator('#screen-profile')).toContainText('QA Stockholm Hall');
   await expect(page.locator('#screen-profile')).not.toContainText('QA Copenhagen Hall');
 
-  // Direct profile SE -> EU transition.
   await profileEurope.click();
   await expect(profileEurope).toHaveClass(/active/);
   await expect(profileSweden).not.toHaveClass(/active/);
   await expect(profileNearby).not.toHaveClass(/active/);
 
-  // Reopening the profile resets transient filters; from that neutral state,
-  // independently prove the direct profile SE -> Nearby transition.
   await page.evaluate(() => openProfile('qa-v143-mixed-band'));
   profileSweden = page.locator('#profile-sweden-toggle-btn');
   profileEurope = page.locator('#profile-europe-toggle-btn');
@@ -230,13 +221,11 @@ test('v143 Sweden filters are exact and mutually exclusive in both concert views
 test('v143 root Sweden filtering preserves representative-show semantics', async ({ page }, testInfo) => {
   await page.setViewportSize(viewportFor(testInfo));
   await installV143SyntheticState(page);
-
   await page.locator('#tabbar [data-tab="concerts"]').click();
   await expect(page.locator('#screen-concerts')).toContainText('QA V143 Representative Band');
   await expect(page.locator('#screen-concerts')).toContainText('QA Odense Hall');
   await expect(page.locator('#screen-concerts')).not.toContainText('QA Gothenburg Hall');
-
-  await page.locator('#sweden-toggle-btn').click();
+  await rootGeo(page, 'sweden').click();
   await expect(page.locator('#screen-concerts')).not.toContainText('QA V143 Representative Band');
   await expect(page.locator('#screen-concerts')).not.toContainText('QA Gothenburg Hall');
 });
@@ -244,20 +233,19 @@ test('v143 root Sweden filtering preserves representative-show semantics', async
 test('v143 Band Detail Sweden filter resets when a band page is opened', async ({ page }, testInfo) => {
   await page.setViewportSize(viewportFor(testInfo));
   await installV143SyntheticState(page);
-
   await page.evaluate(() => openProfile('qa-v143-mixed-band'));
   await page.locator('#profile-sweden-toggle-btn').click();
   await expect(page.locator('#profile-sweden-toggle-btn')).toHaveClass(/active/);
   await expect(page.locator('#screen-profile')).not.toContainText('QA Copenhagen Hall');
-
   await page.evaluate(() => openProfile('qa-v143-denmark-only'));
   await expect(page.locator('#profile-sweden-toggle-btn')).not.toHaveClass(/active/);
   await expect(page.locator('#profile-europe-toggle-btn')).not.toHaveClass(/active/);
   await expect(page.locator('#profile-nearby-toggle-btn')).not.toHaveClass(/active/);
   await expect(page.locator('#screen-profile')).toContainText('QA Aarhus Hall');
-
   await page.evaluate(() => openProfile('qa-v143-mixed-band'));
   await expect(page.locator('#profile-sweden-toggle-btn')).not.toHaveClass(/active/);
+  await expect(page.locator('#profile-europe-toggle-btn')).not.toHaveClass(/active/);
+  await expect(page.locator('#profile-nearby-toggle-btn')).not.toHaveClass(/active/);
   await expect(page.locator('#screen-profile')).toContainText('QA Stockholm Hall');
   await expect(page.locator('#screen-profile')).toContainText('QA Copenhagen Hall');
 });
@@ -266,16 +254,14 @@ test('v143 resolves a persisted Sweden filter as the only active root geographic
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await page.setViewportSize(viewportFor(testInfo));
   await installV143SyntheticState(page);
-
   await page.evaluate(async () => {
     await chrome.storage.local.set({ swedenOnly: true, europeOnly: true, nearbyOnly: true });
   });
   await page.reload();
   await page.locator('#tabbar [data-tab="concerts"]').click();
-
-  await expect(page.locator('#sweden-toggle-btn')).toHaveClass(/active/);
-  await expect(page.locator('#europe-toggle-btn')).not.toHaveClass(/active/);
-  await expect(page.locator('#nearby-toggle-btn')).not.toHaveClass(/active/);
+  await expect(rootGeo(page, 'sweden')).toHaveClass(/active/);
+  await expect(rootGeo(page, 'europe')).not.toHaveClass(/active/);
+  await expect(rootGeo(page, 'nearby')).not.toHaveClass(/active/);
   const persisted = await page.evaluate(async () => chrome.storage.local.get(['swedenOnly', 'europeOnly', 'nearbyOnly']));
   expect(persisted.swedenOnly).toBe(true);
   expect(persisted.europeOnly).toBe(false);
@@ -285,10 +271,9 @@ test('v143 resolves a persisted Sweden filter as the only active root geographic
 test('v143 keeps the root Sweden filter off the connection-error header', async ({ page }, testInfo) => {
   await page.setViewportSize(viewportFor(testInfo));
   await installV143SyntheticState(page);
-
   await page.locator('#tabbar [data-tab="concerts"]').click();
-  await expect(page.locator('#sweden-toggle-btn')).toBeVisible();
+  await expect(rootGeo(page, 'sweden')).toBeVisible();
   await page.evaluate(() => showConnectionError());
   await expect(page.locator('#screen-connection-error')).toBeVisible();
-  await expect(page.locator('#sweden-toggle-btn')).toBeHidden();
+  await expect(rootGeo(page, 'sweden')).toBeHidden();
 });
