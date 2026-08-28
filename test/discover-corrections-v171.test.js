@@ -9,6 +9,11 @@ const root = path.join(__dirname, '..');
 global.LiveVaultDiscoverModelV170 = require('../discoverModelV170');
 const V171 = require('../discoverCorrectionsV171');
 
+const CANDIDATE = {
+  artistMbid: '11111111-1111-4111-8111-111111111111',
+  name: 'Klaxons',
+};
+
 test('v171 exact-name matching is normalized but remains exact', () => {
   const rows = [
     { id: 'a', name: 'Klaxons' },
@@ -24,6 +29,44 @@ test('v171 treats any stored MusicBrainz ID evidence as review-required', () => 
   assert.equal(V171.hasStoredMbid({ musicbrainz: { mbid: '   ' } }), false);
   assert.equal(V171.hasStoredMbid({ musicbrainz: { mbid: 'not-a-valid-mbid-yet' } }), true);
   assert.equal(V171.hasStoredMbid({ musicbrainz: { mbid: '11111111-1111-4111-8111-111111111111' } }), true);
+});
+
+test('v171 same-name collision classification fails closed unless linking is safe', () => {
+  assert.equal(V171.classifyExistingNameMatch([], CANDIDATE).kind, 'none');
+
+  const linkable = V171.classifyExistingNameMatch([{ id: 'a', name: 'Klaxons', musicbrainz: {} }], CANDIDATE);
+  assert.equal(linkable.kind, 'linkable');
+  assert.equal(linkable.band.id, 'a');
+
+  const sameTrusted = V171.classifyExistingNameMatch([{
+    id: 'a',
+    name: 'Klaxons',
+    musicbrainz: { mbid: CANDIDATE.artistMbid, status: 'manual_confirmed' },
+  }], CANDIDATE);
+  assert.equal(sameTrusted.kind, 'same-trusted');
+
+  const differentTrusted = V171.classifyExistingNameMatch([{
+    id: 'a',
+    name: 'Klaxons',
+    musicbrainz: { mbid: '22222222-2222-4222-8222-222222222222', status: 'manual_confirmed' },
+  }], CANDIDATE);
+  assert.equal(differentTrusted.kind, 'blocked');
+  assert.match(differentTrusted.message, /different confirmed MusicBrainz identity/);
+
+  const storedUntrusted = V171.classifyExistingNameMatch([{
+    id: 'a',
+    name: 'Klaxons',
+    musicbrainz: { mbid: 'not-yet-reviewed', status: 'review' },
+  }], CANDIDATE);
+  assert.equal(storedUntrusted.kind, 'blocked');
+  assert.match(storedUntrusted.message, /Review the existing MusicBrainz identity/);
+
+  const ambiguous = V171.classifyExistingNameMatch([
+    { id: 'a', name: 'Klaxons', musicbrainz: {} },
+    { id: 'b', name: 'KLAXONS', musicbrainz: {} },
+  ], CANDIDATE);
+  assert.equal(ambiguous.kind, 'blocked');
+  assert.match(ambiguous.message, /More than one existing band/);
 });
 
 test('v171 linking an existing band preserves stable/user/provider fields and adds the confirmed MBID', () => {
