@@ -127,14 +127,14 @@ test('v149 Stats header follows the selected Listening or Concerts view', async 
 
   const title = page.locator('#header-title');
   await expect(title).toHaveText('LISTENINGSTATS');
-  await expect(title.locator('.brand-blue')).toHaveText('LISTENING');
+  await expect(title.locator('.brand-blue')).toHaveText('STATS');
   await page.locator('#screen-stats [data-stats-tab="concerts"]').click();
   await expect(title).toHaveText('CONCERTSTATS');
-  await expect(title.locator('.brand-blue')).toHaveText('CONCERT');
+  await expect(title.locator('.brand-blue')).toHaveText('STATS');
   await page.screenshot({ path: testInfo.outputPath('v149-stats-concert-header.png'), fullPage: true });
 
   await page.locator('#screen-stats [data-stats-tab="listening"]').click();
   await expect(title).toHaveText('LISTENINGSTATS');
-  await expect(title.locator('.brand-blue')).toHaveText('LISTENING');
+  await expect(title.locator('.brand-blue')).toHaveText('STATS');
   await page.screenshot({ path: testInfo.outputPath('v149-stats-listening-header.png'), fullPage: true });
 });

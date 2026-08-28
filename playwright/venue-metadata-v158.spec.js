@@ -108,7 +108,7 @@ test('v158 places capacity lower-right on Venues cards and shows clean venue det
   const seeded = await seedVenueMetadata(page);
 
   await page.locator('#tabbar [data-tab="concerts"]').click();
-  await page.getByRole('button', { name: 'Venues' }).click();
+  await page.locator('[data-discover-tab="venues"]').click();
   const venueCard = page.locator('.venue-metadata-list-card').filter({ hasText: seeded.nextVenue }).first();
   await expect(venueCard.locator('.venue-card-max-capacity')).toHaveText(seeded.nextCapacity);
   const positions = await venueCard.evaluate((card) => {
@@ -157,7 +157,7 @@ test('v158 grouped promoted Next Concert and long venue cards remain safe in mob
   await expect(promoted.locator('.row-chevron')).toBeVisible();
 
   await page.locator('#tabbar [data-tab="concerts"]').click();
-  await page.getByRole('button', { name: 'Venues' }).click();
+  await page.locator('[data-discover-tab="venues"]').click();
   const venueCard = page.locator('.venue-metadata-list-card').filter({ hasText: longVenue }).first();
   await expect(venueCard).toBeVisible();
   await expect(venueCard.locator('.venue-card-max-capacity')).toHaveText(seeded.nextCapacity);

@@ -74,7 +74,7 @@ test('v164 venue directory uses canonical physical venue identity across the ful
   await seedCanonicalVenueCases(page);
 
   await page.locator('#tabbar [data-tab="concerts"]').click();
-  await page.getByRole('button', { name: 'Venues' }).click();
+  await page.locator('[data-discover-tab="venues"]').click();
 
   const cards = page.locator('.venue-metadata-list-card');
   await expect(cards).toHaveCount(11);

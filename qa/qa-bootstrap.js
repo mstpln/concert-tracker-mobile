@@ -9,7 +9,7 @@
   const QA_TICKET_DB = 'live-vault-qa-owned-tickets';
   const PRODUCTION_TICKET_DB = 'live-vault-owned-tickets';
   const QA_NOW = '2027-07-16T12:00:00.000Z';
-  const JSON_FILES = new Set(['bands.json', 'concerts.json', 'news.json', 'apiUsage.json']);
+  const JSON_FILES = new Set(['bands.json', 'concerts.json', 'news.json', 'apiUsage.json', 'discoverRecommendations.json']);
   const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
   const MAX_PDF_BYTES = 10 * 1024 * 1024;
   const DEFAULT_PDF_BYTES = Uint8Array.from([37, 80, 68, 70, 45, 49, 46, 52, 10, 37, 226, 227, 207, 211, 10]);
@@ -61,6 +61,7 @@
 
   window.__LIVEVAULT_QA_NOW__ = QA_NOW;
   window.__LIVEVAULT_QA_SYNTHETIC_LISTENING__ = true;
+  window.__LIVEVAULT_QA_FAKE_BACKEND__ = true;
   window.rsGetConnection = () => ({ endpoint: 'https://qa.invalid', token: 'qa-synthetic-token' });
   window.rsSaveConnection = () => {};
   window.rsClearConnection = () => resetQaData();
@@ -142,7 +143,9 @@
       if (failures.read === path) return response('Synthetic read failure', { status: 503 });
       if (failures.malformed === path) return response('{malformed', { status: 200, headers: { 'Content-Type': 'application/json' } });
       const key = path.slice(0, -5);
-      return response(JSON.stringify(clone(loadData()[key])), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      const value = loadData()[key];
+      if (value === undefined) return response('Not found', { status: 404 });
+      return response(JSON.stringify(clone(value)), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (method === 'PUT') {
       if (failures.write === path) return response('Synthetic write failure', { status: 503 });

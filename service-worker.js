@@ -1,6 +1,7 @@
 'use strict';
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v169';
+const CACHE_NAME_LITERAL = 'v170';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v169'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v168'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v167'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v166'.
@@ -130,6 +131,7 @@ const SHELL_FILES = [
   './venueMetadataV158.css',
   './mergedNextConcertV167.css',
   './nextConcertEventGroupV169.css',
+  './discoverV170.css',
   './geoFilterPreloadV143.js',
   './app.js',
   './alignedUiV143.js',
@@ -203,6 +205,9 @@ const SHELL_FILES = [
   './listeningDerivedMigration.js',
   './spotifyHistoryImport.js',
   './listeningBandActivity.js',
+  './discoverModelV170.js',
+  './discoverProviderV170.js',
+  './discoverV170.js',
   './listeningVaultBridge.js',
   './listeningVault.js',
   './listeningHistoryV2.js',

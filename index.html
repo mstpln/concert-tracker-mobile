@@ -38,6 +38,7 @@
 <link rel="stylesheet" href="venueMetadataV158.css" />
 <link rel="stylesheet" href="mergedNextConcertV167.css" />
 <link rel="stylesheet" href="nextConcertEventGroupV169.css" />
+<link rel="stylesheet" href="discoverV170.css" />
 </head>
 <body>
 
@@ -65,7 +66,7 @@
     <button id="back-btn" class="icon-btn hidden" aria-label="Back" data-testid="back-button"></button>
     <div class="header-brand">
       <span id="header-icon" class="header-icon"></span>
-      <span id="header-title" class="header-title"><span class="brand-blue">CONCERT</span>DATES</span>
+      <span id="header-title" class="header-title"><span class="brand-blue">DISCOVER</span>CONCERTS</span>
     </div>
     <button id="nearby-toggle-btn" class="icon-btn" aria-label="Show nearby only" title="Show nearby only"></button>
     <button id="sweden-toggle-btn" class="icon-btn" aria-label="Show Sweden only" title="Show Sweden only">SE</button>
@@ -94,7 +95,7 @@
   <div id="interaction-progress" class="interaction-progress" role="progressbar" aria-label="Processing" aria-hidden="true"><span></span></div>
   <nav id="tabbar" data-testid="bottom-navigation">
     <button class="tabitem active" data-tab="myconcerts"><span class="tab-icon"></span>Concerts</button>
-    <button class="tabitem" data-tab="concerts"><span class="tab-icon"></span>Dates</button>
+    <button class="tabitem" data-tab="concerts"><span class="tab-icon"></span>Discover</button>
     <button class="tabitem" data-tab="mybands"><span class="tab-icon"></span>Bands</button>
     <button class="tabitem" data-tab="stats"><span class="tab-icon"></span>Stats</button>
     <button class="tabitem" data-tab="news"><span class="tab-icon-wrap"><span class="tab-icon"></span><span id="news-unread-dot" class="tab-unread-dot hidden"></span></span>Alerts</button>
@@ -127,6 +128,8 @@
 <script src="listeningDerivedMigration.js"></script>
 <script src="listeningPreparationV121.js"></script>
 <script src="listeningBandActivity.js"></script>
+<script src="discoverModelV170.js"></script>
+<script src="discoverProviderV170.js"></script>
 <script src="spotifyHistoryImport.js"></script>
 <script src="listeningVaultBridge.js"></script>
 <script src="listeningVault.js"></script>
@@ -191,5 +194,6 @@
 <script src="venueNavigationRenderPerformanceV166.js"></script>
 <script src="mergedNextConcertV167.js"></script>
 <script src="nextConcertEventGroupV169.js"></script>
+<script src="discoverV170.js"></script>
 </body>
 </html>
