@@ -28,6 +28,32 @@ This continuity file was compacted again on 2026-08-28. Earlier durable decision
 
 **Consequence:** Ordinary automation cannot gain maintenance privileges or raw private-listening access merely because another workflow or trusted-local process has them.
 
+## Discover v171 corrections
+
+### Discover geographic filters belong with Discover content navigation
+
+**Decision:** On Discover > Concerts, Nearby / SE / EU render immediately below the Concerts / Venues / Bands segmented selector instead of competing for space in the app header. The secondary filter buttons use the same 44px height as the primary Discover selector while remaining visually subordinate through typography.
+
+**Consequence:** The globe/header identity and Settings action remain in the app header. The existing Nearby/SE/EU state, persistence, mutual exclusivity and filtering functions remain authoritative; v171 presents proxy controls that invoke those existing owners rather than creating a second geographic-filter model. The secondary row is not shown in Venues or Bands.
+
+### Compound headers emphasize the destination noun
+
+**Decision:** `MYMUSIC` renders `MY` white + `MUSIC` blue, and `CONCERTALERTS` renders `CONCERT` white + `ALERTS` blue. Existing Discover and Stats compound-header treatments remain unchanged.
+
+**Consequence:** Future header-standardization layers must not restore the earlier blue `MY` or blue `CONCERT` treatment for these two roots.
+
+### Discover may link one unique existing exact-name band that lacks MusicBrainz identity
+
+**Decision:** Discover still resolves followed artists by trusted MusicBrainz MBID first. When Add Band encounters exactly one existing followed band whose normalized name exactly equals the recommendation name and that existing band has no trusted or stored MBID, the user action is allowed to attach the recommendation's MBID to that existing band rather than append a duplicate.
+
+**Consequence:** The existing stable band ID, user-owned fields, nested confirmed/rejected provider state, unknown future fields and unrelated provenance must be preserved wholesale. The new MusicBrainz identity is `manual_confirmed` / user-confirmed and Discover provenance stays provider-neutral. The normal pending artist-enrichment checkpoint is prepared. Multiple exact-name matches, an existing different trusted MBID, or an existing unresolved/stored MBID fail closed and require review rather than guessing.
+
+### Setlist.fm linked copy is conditional on actual trusted MusicBrainz identity
+
+**Decision:** A Band Data screen may say Setlist.fm is linked through the confirmed MusicBrainz MBID only when that specific band actually has a trusted MusicBrainz identity.
+
+**Consequence:** Bands that are still unchecked/unresolved in MusicBrainz show a waiting/not-linked state instead. This is a presentation correction only and does not create or rewrite Setlist.fm provider identity data.
+
 ## Discover v170
 
 ### Discover replaces the visible Dates identity, not its stable route
@@ -198,4 +224,4 @@ This continuity file was compacted again on 2026-08-28. Earlier durable decision
 
 ## Backlog hygiene
 
-Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance. Focused Ticketmaster legacy offer-label hardening remains separate from v170.
+Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance. Focused Ticketmaster legacy offer-label hardening remains separate from v171.
