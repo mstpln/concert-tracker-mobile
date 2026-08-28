@@ -1,6 +1,6 @@
 /* v172: keep the v171 Discover filter placement while restoring the compact pre-v171 controls. */
 .discover-geo-filters-v171.discover-geo-filters-v172 {
-  display: flex;
+  display: inline-flex;
   width: auto;
   overflow: visible;
   justify-content: flex-start;
