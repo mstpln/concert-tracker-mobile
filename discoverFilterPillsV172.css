@@ -1,0 +1,64 @@
+/* v172: keep the v171 Discover filter placement while restoring the compact pre-v171 controls. */
+.discover-geo-filters-v171.discover-geo-filters-v172 {
+  display: flex;
+  width: auto;
+  overflow: visible;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 14px;
+  border: 0;
+  border-radius: 0;
+}
+
+.discover-geo-filters-v172 .discover-geo-filter-btn-v171 {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  font: inherit;
+}
+
+.discover-geo-filters-v172 .discover-geo-filter-btn-v171[data-discover-geo="sweden"],
+.discover-geo-filters-v172 .discover-geo-filter-btn-v171[data-discover-geo="europe"] {
+  width: auto;
+  min-width: 34px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+.discover-geo-filters-v172 .discover-geo-filter-btn-v171[data-discover-geo="nearby"] svg {
+  width: 18px;
+  height: 18px;
+}
+
+.discover-geo-filters-v172 .discover-geo-filter-btn-v171:hover {
+  background: rgba(255,255,255,0.12);
+}
+
+.discover-geo-filters-v172 .discover-geo-filter-btn-v171.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.discover-geo-filters-v172 .discover-geo-filter-btn-v171.active:hover {
+  background: var(--accent);
+  opacity: .9;
+}
+
+.discover-geo-filters-v172 .discover-geo-filter-btn-v171:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
