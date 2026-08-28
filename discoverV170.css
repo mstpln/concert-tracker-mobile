@@ -1,0 +1,32 @@
+/* v170 Discover: inherits the exact Stats segmented-control geometry. */
+.discover-subtabs { margin-bottom: 14px; }
+.discover-groups { display: grid; gap: 14px; min-width: 0; }
+.discover-group { min-width: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--card); overflow: hidden; }
+.discover-group > h2 { margin: 0; padding: 12px 14px 10px; font-size: 11px; line-height: 1.2; font-weight: 700; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.discover-cards { display: grid; min-width: 0; }
+.discover-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 11px; padding: 14px; min-width: 0; }
+.discover-card + .discover-card { border-top: 1px solid var(--border); }
+.discover-card-copy { min-width: 0; }
+.discover-artist-name { color: var(--text); font-size: 15px; line-height: 1.25; font-weight: 700; overflow-wrap: anywhere; }
+.discover-meta { margin-top: 5px; color: var(--muted); font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.discover-meta > span { padding: 0 2px; }
+.discover-error { margin-top: 6px; color: var(--danger); font-size: 11px; line-height: 1.35; }
+.discover-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; min-width: 0; }
+.discover-actions a,
+.discover-actions button { min-width: 0; min-height: 34px; border-radius: 8px; padding: 7px 8px; font: inherit; font-size: 11.5px; font-weight: 650; line-height: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.discover-actions svg { width: 13px; height: 13px; flex: 0 0 auto; }
+.discover-spotify { border: 1px solid #1DB954; background: #1DB954; color: #fff; }
+.discover-dismiss { border: 1px solid var(--border); background: var(--surface-2, #25272b); color: var(--muted); }
+.discover-add { border: 1px solid var(--blue); background: var(--blue); color: #fff; }
+.discover-add.is-added { opacity: .9; }
+.discover-actions button:disabled { cursor: default; }
+.discover-actions a:focus-visible,
+.discover-actions button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+@media (min-width: 560px) {
+  .discover-card { grid-template-columns: minmax(0, 1fr) minmax(240px, .55fr); align-items: center; }
+}
+@media (max-width: 360px) {
+  .discover-actions { gap: 5px; }
+  .discover-actions a,
+  .discover-actions button { padding-left: 5px; padding-right: 5px; font-size: 10.5px; }
+}
