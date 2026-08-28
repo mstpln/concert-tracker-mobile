@@ -25,6 +25,10 @@
     return Model?.trustedBandMbid?.(band) || null;
   }
 
+  function hasStoredMbid(band) {
+    return typeof band?.musicbrainz?.mbid === 'string' && band.musicbrainz.mbid.trim().length > 0;
+  }
+
   function exactNameBands(rows, name) {
     const key = normalizeName(name);
     return (rows || []).filter((band) => normalizeName(band?.name) === key);
@@ -105,7 +109,7 @@
       if (matches.length !== 1) throw new Error(matches.length ? 'More than one existing band has this exact name.' : 'Existing band is no longer available.');
       const existing = matches[0];
       if (trustedMbid(existing)) throw new Error('The existing band has a different confirmed MusicBrainz identity.');
-      if (Model?.normalizeMbid?.(existing?.musicbrainz?.mbid)) throw new Error('Review the existing MusicBrainz identity before linking this recommendation.');
+      if (hasStoredMbid(existing)) throw new Error('Review the existing MusicBrainz identity before linking this recommendation.');
       const now = new Date().toISOString();
       const linked = buildLinkedBand(existing, candidate, now);
       const intended = latest.map((band) => band?.id === existing.id ? linked : band);
@@ -180,7 +184,7 @@
     if (!matches.length) return;
     if (matches.some((band) => trustedMbid(band) === Model.normalizeMbid(candidate.artistMbid))) return;
     const unidentified = matches.filter((band) => !trustedMbid(band));
-    if (matches.length === 1 && unidentified.length === 1 && !Model.normalizeMbid(unidentified[0]?.musicbrainz?.mbid)) {
+    if (matches.length === 1 && unidentified.length === 1 && !hasStoredMbid(unidentified[0])) {
       event.preventDefault();
       event.stopImmediatePropagation();
       void addExistingBand(candidate, button);
@@ -199,8 +203,12 @@
     const title = root.document?.getElementById('header-title');
     if (!title) return;
     const normalized = String(title.textContent || '').replace(/\s+/g, '').toUpperCase();
-    if (normalized === 'MYMUSIC') title.innerHTML = `MY<span class="brand-blue">MUSIC</span>`;
-    else if (normalized === 'CONCERTALERTS') title.innerHTML = `CONCERT<span class="brand-blue">ALERTS</span>`;
+    const expected = normalized === 'MYMUSIC'
+      ? 'MY<span class="brand-blue">MUSIC</span>'
+      : normalized === 'CONCERTALERTS'
+        ? 'CONCERT<span class="brand-blue">ALERTS</span>'
+        : null;
+    if (expected && title.innerHTML !== expected) title.innerHTML = expected;
   }
 
   function syncGeoProxyState(row) {
@@ -320,5 +328,5 @@
     root.setTimeout(syncUi, 0);
   }
 
-  return Object.freeze({ normalizeName, exactNameBands, buildLinkedBand, linkExistingBand, correctSetlistfmIdentityCopy, syncGeoFilters, standardizeHeader, install });
+  return Object.freeze({ normalizeName, trustedMbid, hasStoredMbid, exactNameBands, buildLinkedBand, linkExistingBand, correctSetlistfmIdentityCopy, syncGeoFilters, standardizeHeader, install });
 });
