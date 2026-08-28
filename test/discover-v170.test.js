@@ -104,11 +104,11 @@ test('provider parser and metadata adapter fail closed around malformed rows', (
   assert.equal(Provider.metadataCandidate({ artist_mbid: C, name: 'C', area: 'Sweden', begin_year: 2001, tag: { artist: [{ tag: 'indie', count: 2 }] } }).beginYear, 2001);
 });
 
-test('static shell uses Discover globe, exact Stats classes, local Spotify and no Spotify API', () => {
+test('static shell uses Discover globe, Stats-compatible classes, local Spotify and no Spotify API', () => {
   const ui = fs.readFileSync('discoverV170.js', 'utf8');
   const html = fs.readFileSync('index.html', 'utf8');
   assert.match(ui, /TAB_NAV_ICONS\.concerts = 'globe'/);
-  assert.match(ui, /class=\"stats-subtabs discover-subtabs\"/);
+  assert.match(ui, /class=\"stats-subtabs discover-subtabs news-subtab-switch\"/);
   assert.match(ui, /icon\('spotify'\)/);
   assert.match(ui, /DISCOVER<\/span>\$\{suffix\}/);
   assert.doesNotMatch(ui, /api\.spotify\.com/i);
