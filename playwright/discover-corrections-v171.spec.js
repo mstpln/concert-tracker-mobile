@@ -76,31 +76,63 @@ test('v171 highlights MUSIC and ALERTS in their compound headers', async ({ page
   await expect(page.locator('#header-title .brand-blue')).toHaveText('ALERTS');
 });
 
-test('v171 moves Discover geographic filters below the primary tabs with matching height', async ({ page }, testInfo) => {
+test('v172 keeps Discover geographic filters below the primary tabs but restores compact old-style pills', async ({ page }, testInfo) => {
   await openApp(page, testInfo);
   await page.locator('#tabbar [data-tab="concerts"]').click();
   const tabs = page.locator('.discover-subtabs');
   const filters = page.locator('.discover-geo-filters-v171');
+  const nearby = filters.locator('[data-discover-geo="nearby"]');
+  const sweden = filters.locator('[data-discover-geo="sweden"]');
+  const europe = filters.locator('[data-discover-geo="europe"]');
+
   await expect(tabs).toBeVisible();
   await expect(filters).toBeVisible();
+  await expect(filters).toHaveClass(/discover-geo-filters-v172/);
   await expect(filters.locator('[data-discover-geo]')).toHaveCount(3);
-  await expect(filters.locator('[data-discover-geo="nearby"]')).toHaveText('Nearby');
-  await expect(filters.locator('[data-discover-geo="sweden"]')).toHaveText('SE');
-  await expect(filters.locator('[data-discover-geo="europe"]')).toHaveText('EU');
+  await expect(nearby.locator('svg')).toHaveCount(1);
+  await expect(nearby).not.toHaveText('Nearby');
+  await expect(sweden).toHaveText('SE');
+  await expect(europe).toHaveText('EU');
+  await expect(europe.locator('svg')).toHaveCount(0);
 
-  const geometry = await page.evaluate(() => ({
-    primary: document.querySelector('.discover-subtabs .stats-subtab-btn').getBoundingClientRect().height,
-    secondary: document.querySelector('.discover-geo-filter-btn-v171').getBoundingClientRect().height,
-    sourceDisplays: ['nearby-toggle-btn', 'sweden-toggle-btn', 'europe-toggle-btn'].map((id) => getComputedStyle(document.getElementById(id)).display),
-    overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-  }));
-  expect(Math.abs(geometry.primary - geometry.secondary)).toBeLessThanOrEqual(0.5);
+  const geometry = await page.evaluate(() => {
+    const row = document.querySelector('.discover-geo-filters-v172');
+    const nearbyButton = row.querySelector('[data-discover-geo="nearby"]');
+    const seButton = row.querySelector('[data-discover-geo="sweden"]');
+    const euButton = row.querySelector('[data-discover-geo="europe"]');
+    const tab = document.querySelector('.discover-subtabs .stats-subtab-btn');
+    const rowRect = row.getBoundingClientRect();
+    const nearbyRect = nearbyButton.getBoundingClientRect();
+    const seRect = seButton.getBoundingClientRect();
+    const euRect = euButton.getBoundingClientRect();
+    const tabRect = tab.getBoundingClientRect();
+    return {
+      rowWidth: rowRect.width,
+      contentWidth: document.getElementById('screen-concerts').getBoundingClientRect().width,
+      leftDelta: Math.abs(rowRect.left - tabRect.left),
+      nearbyWidth: nearbyRect.width,
+      nearbyHeight: nearbyRect.height,
+      seWidth: seRect.width,
+      euWidth: euRect.width,
+      sourceDisplays: ['nearby-toggle-btn', 'sweden-toggle-btn', 'europe-toggle-btn'].map((id) => getComputedStyle(document.getElementById(id)).display),
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    };
+  });
+  expect(geometry.leftDelta).toBeLessThanOrEqual(1);
+  expect(geometry.nearbyWidth).toBeCloseTo(32, 0);
+  expect(geometry.nearbyHeight).toBeCloseTo(32, 0);
+  expect(geometry.seWidth).toBeLessThan(70);
+  expect(geometry.euWidth).toBeLessThan(70);
+  expect(geometry.rowWidth).toBeLessThan(geometry.contentWidth * 0.6);
   expect(geometry.sourceDisplays).toEqual(['none', 'none', 'none']);
   expect(geometry.overflow).toBe(false);
 
-  await filters.locator('[data-discover-geo="sweden"]').click();
-  await expect(filters.locator('[data-discover-geo="sweden"]')).toHaveClass(/active/);
-  await expect(filters.locator('[data-discover-geo="europe"]')).not.toHaveClass(/active/);
+  await europe.click();
+  await expect(europe).toHaveClass(/active/);
+  await expect(sweden).not.toHaveClass(/active/);
+  await sweden.click();
+  await expect(sweden).toHaveClass(/active/);
+  await expect(europe).not.toHaveClass(/active/);
 
   await page.locator('[data-discover-tab="venues"]').click();
   await expect(page.locator('.discover-geo-filters-v171')).toHaveCount(0);
