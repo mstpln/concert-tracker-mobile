@@ -37,9 +37,7 @@
   function setDiscoverHeader() {
     const suffix = concertsSubTab === 'venues' ? 'VENUES' : concertsSubTab === 'bands' ? 'BANDS' : 'CONCERTS';
     const title = root.document?.getElementById('header-title');
-    const headerIcon = root.document?.getElementById('header-icon');
     if (title && currentTab === 'concerts' && currentScreen === 'main') replaceHtml(title, `<span class="brand-blue">DISCOVER</span>${suffix}`);
-    if (headerIcon && currentTab === 'concerts' && currentScreen === 'main' && typeof icon === 'function') replaceHtml(headerIcon, icon('globe'));
   }
   function standardizeHeader() {
     const title = root.document?.getElementById('header-title');
