@@ -46,7 +46,6 @@
     if (currentTab === 'concerts' && currentScreen === 'main') return setDiscoverHeader();
     if (normalized === 'LISTENINGSTATS') replaceHtml(title, `LISTENING<span class="brand-blue">STATS</span>`);
     else if (normalized === 'MYBANDS') replaceHtml(title, `MY<span class="brand-blue">BANDS</span>`);
-    else if (normalized === 'MYMUSIC') replaceHtml(title, `MY<span class="brand-blue">MUSIC</span>`);
   }
   function installHeaderRules() {
     try {
