@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
 const KLAXONS_MBID = '12345678-1234-4123-8123-1234567890ab';
+const DIFFERENT_MBID = '22345678-1234-4123-8123-1234567890ab';
 const SEED_MBID = '87654321-4321-4321-8321-ba0987654321';
 
 function viewportFor(testInfo) {
@@ -127,6 +128,33 @@ test('v171 Add links one exact-name existing band in place without losing Ticket
   expect(matches[0].musicbrainz.mbid).toBe(KLAXONS_MBID);
   expect(matches[0].musicbrainz.status).toBe('manual_confirmed');
   expect(stored.discoverRecommendations.decisions[KLAXONS_MBID].addedBandId).toBe('qa-v171-klaxons');
+});
+
+test('v171 Add fails closed when the exact-name band has a different trusted MBID', async ({ page }, testInfo) => {
+  await openApp(page, testInfo);
+  await installKlaxonsScenario(page);
+  await page.evaluate(({ differentMbid }) => {
+    const data = JSON.parse(localStorage.getItem('livevault-qa:data'));
+    const existing = data.bands.find((band) => band.id === 'qa-v171-klaxons');
+    existing.musicbrainz.mbid = differentMbid;
+    existing.musicbrainz.status = 'manual_confirmed';
+    existing.musicbrainz.confidence = 'user_confirmed';
+    localStorage.setItem('livevault-qa:data', JSON.stringify(data));
+  }, { differentMbid: DIFFERENT_MBID });
+  await page.reload();
+  await page.locator('#tabbar [data-tab="concerts"]').click();
+  await page.locator('[data-discover-tab="bands"]').click();
+
+  const card = page.locator(`.discover-card[data-discover-mbid="${KLAXONS_MBID}"]`);
+  await card.locator('[data-discover-add]').click();
+  await expect(card.locator('.discover-error')).toContainText('different confirmed MusicBrainz identity');
+
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('livevault-qa:data')));
+  const matches = stored.bands.filter((band) => band.name === 'Klaxons');
+  expect(matches).toHaveLength(1);
+  expect(matches[0].id).toBe('qa-v171-klaxons');
+  expect(matches[0].musicbrainz.mbid).toBe(DIFFERENT_MBID);
+  expect(stored.discoverRecommendations.decisions[KLAXONS_MBID]).toBeUndefined();
 });
 
 test('v171 Band Data does not claim Setlist.fm MBID linkage before MusicBrainz is confirmed', async ({ page }, testInfo) => {
