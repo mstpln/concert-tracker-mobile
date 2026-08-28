@@ -6,17 +6,25 @@ This continuity file was compacted again on 2026-08-28. Earlier detailed state r
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged application baseline is **v170** at `bb548eb51be02ed7dfeccd3de633331f96b57f46`, which merged PR #186. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v170` on `main`.
+The current merged application baseline is **v171** at `4a1b923ea1c1eb1b1a08e3ea0ad681934a5da628`, which merged PR #187. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v171` on `main`.
 
-The active unmerged application build is **v171** in draft PR #187, `Polish Discover headers and safe existing-band linking (v171)`, on branch `fix/header-filter-visual-v171`. The branch keeps `APP_VERSION` and `CACHE_NAME_LITERAL` synchronized at `v171`.
+The active unmerged application build is **v172** on branch `fix/discover-filter-pills-v172`. It is a focused visual correction to the merged v171 Discover filter placement. The branch keeps `APP_VERSION` and `CACHE_NAME_LITERAL` synchronized at `v172`.
 
-No deployment, production provider call, production research workflow, production smoke or production-data mutation has been performed for v171.
+No production provider call, production research workflow, production smoke or production-data mutation has been performed for v172.
+
+## v172 Discover compact-filter correction
+
+The current Discover visual baseline remains exactly the merged v171 app: BANDMARKR blue brand bar, Discover header, Concerts / Venues / Bands segmented selector, concert cards, typography, colors, icons, spacing and bottom navigation are unchanged.
+
+Only the geographic filter presentation changes. The v171 placement is retained directly below Concerts / Venues / Bands and remains limited to Discover > Concerts, but the full-width secondary segmented row is replaced with the compact pre-v171 control treatment, left-aligned in one row. Nearby is the existing compact location-pin control; SE and EU are compact text pills with identical geometry. EU is text-only and must not contain a globe or other icon. Active/inactive state continues to mirror the existing hidden header-owned controls, so persistence, mutual exclusion and filtering behavior remain unchanged.
+
+v172 is presentation-only for the geographic filters. It does not alter Discover recommendation identity behavior, concert filtering rules, provider ownership, stored data, navigation IDs or venue-render performance.
 
 ## v171 Discover/header correction build
 
-v171 is a focused follow-up to merged v170. Compound header emphasis is corrected so **MYMUSIC** renders `MY` white + `MUSIC` blue and **CONCERTALERTS** renders `CONCERT` white + `ALERTS` blue. Discover keeps its existing globe/header identity and Settings action.
+v171 merged in PR #187. Compound header emphasis is corrected so **MYMUSIC** renders `MY` white + `MUSIC` blue and **CONCERTALERTS** renders `CONCERT` white + `ALERTS` blue. Discover keeps its existing globe/header identity and Settings action.
 
-On Discover > Concerts, the Nearby / SE / EU geographic controls are moved out of the crowded app header and rendered immediately below the existing Concerts / Venues / Bands segmented selector. The controls reuse the existing geographic-filter owners and persisted state rather than introducing a second filter model. Their rendered height matches the primary Discover segmented-control button height. The secondary geographic row is only shown for Discover > Concerts; Venues and Bands keep it hidden.
+On Discover > Concerts, the Nearby / SE / EU geographic controls were moved out of the crowded app header and rendered immediately below the existing Concerts / Venues / Bands segmented selector. The controls reuse the existing geographic-filter owners and persisted state rather than introducing a second filter model. The secondary geographic row is only shown for Discover > Concerts; Venues and Bands keep it hidden.
 
 v171 also closes a Discover duplicate-risk exposed by an existing followed artist such as Klaxons that has a confirmed Ticketmaster identity but no trusted MusicBrainz identity. Discover still prefers trusted MBID matching first. If Add Band finds exactly one existing followed band with the same exact normalized name and that band has no trusted or stored MBID, the recommendation is linked into that existing record instead of appending a duplicate. The stable band ID, user-owned fields, nested Ticketmaster/provider decisions, unknown future fields and existing provenance are preserved. The Discover MBID becomes a user-confirmed MusicBrainz identity, Discover provenance is added provider-neutrally, and normal pending artist-enrichment state is prepared. Multiple same-name records, a different trusted MBID, or any existing nonblank stored MBID fail closed rather than guessing.
 
@@ -54,6 +62,7 @@ Production venue cleanup completed with **530** reviewed `venues.json` records a
 - v166: venue navigation uses indexed/cached canonical grouping; ordinary concert dates do not build the canonical venue directory.
 - v167-v169: Start uses the existing upcoming card as Next Concert and keeps the complete next valid event group together; countdown/concert-day/ticket/directions behavior and event-level Upcoming count remain established.
 - v170: Discover replaces the visible Dates identity while retaining the internal `concerts` route and adds bounded cache-first ListenBrainz/MusicBrainz recommendations with durable Add/Dismiss decisions.
+- v171: Discover filters move below the primary Discover selector; header emphasis, safe exact-name recommendation linking and per-band Setlist.fm identity copy are corrected.
 
 Concert performance records remain independent. `lineupRole` is user-owned. Existing explicit `eventGroupId` relationships remain authoritative; conservative automatic grouping is read-time only. Concert nights/spend/travel/venue/city/event milestones are event-level, while artist appearances/ratings/setlists/genres/lineup roles are performance-level.
 
@@ -70,8 +79,8 @@ Concert performance records remain independent. `lineupRole` is user-owned. Exis
 
 ## Backlog hygiene
 
-Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening (`Premium Experience`, `Logen Seat`, plain `Box Seat`) remains separate from v171.
+Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening (`Premium Experience`, `Logen Seat`, plain `Box Seat`) remains separate from v172.
 
 ## Next operational steps
 
-Continue PR #187 on the exact-head fix -> validate -> review cycle until unit/safety, desktop Chromium and mobile Chromium are green and the final head is merge-ready. Keep PR #187 draft during correction work. Do not merge without the user's explicit `Merge it` authorization, and do not run production providers, production research workflows, production smoke, deployments or production-data mutations without separate explicit authorization.
+Validate v172 on the exact branch head with unit/safety, version/cache sync, deterministic build-state, desktop Chromium and mobile Chromium QA. Keep the change isolated to the compact geographic filter presentation and required build/continuity files. Do not merge without the user's explicit `Merge it` authorization, and do not run production providers, production research workflows, production smoke, deployments or production-data mutations without separate explicit authorization.
