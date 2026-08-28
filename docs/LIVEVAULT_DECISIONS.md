@@ -28,13 +28,21 @@ This continuity file was compacted again on 2026-08-28. Earlier durable decision
 
 **Consequence:** Ordinary automation cannot gain maintenance privileges or raw private-listening access merely because another workflow or trusted-local process has them.
 
+## Discover v172 visual correction
+
+### Discover geographic filters use the new placement with the old compact control treatment
+
+**Decision:** On Discover > Concerts, the geographic filters remain directly below the Concerts / Venues / Bands selector, but the full-width v171 secondary segmented row is replaced by the compact pre-v171 controls, left-aligned in one row.
+
+**Consequence:** Nearby uses the existing compact location-pin presentation. SE and EU are compact text pills with the same geometry; EU is text-only and must not contain a globe or any other icon. The current BANDMARKR header, Discover header, primary segmented selector, concert cards, colors, typography, spacing, bottom navigation and all unrelated UI remain unchanged.
+
+### Existing geographic-filter ownership remains authoritative
+
+**Decision:** v172 changes presentation only. The hidden original Nearby / SE / EU controls remain the state owners and the visible compact row continues to proxy those controls.
+
+**Consequence:** Existing persistence, mutual exclusion, filtering behavior and ARIA pressed state remain authoritative. The compact row is shown only on Discover > Concerts and remains absent from Venues and Bands.
+
 ## Discover v171 corrections
-
-### Discover geographic filters belong with Discover content navigation
-
-**Decision:** On Discover > Concerts, Nearby / SE / EU render immediately below the Concerts / Venues / Bands segmented selector instead of competing for space in the app header. The secondary filter buttons use the same rendered height as the primary Discover selector while remaining visually subordinate through typography.
-
-**Consequence:** The globe/header identity and Settings action remain in the app header. The existing Nearby/SE/EU state, persistence, mutual exclusivity and filtering functions remain authoritative; v171 presents proxy controls that invoke those existing owners rather than creating a second geographic-filter model. The secondary row is not shown in Venues or Bands.
 
 ### Compound headers emphasize the destination noun
 
@@ -66,7 +74,7 @@ This continuity file was compacted again on 2026-08-28. Earlier durable decision
 
 **Decision:** Discover has exactly three subviews — Concerts, Venues and Bands — using the existing Stats segmented-control classes/dimensions rather than a new bespoke control.
 
-**Consequence:** Concerts remains the default. Concerts and Venues continue to use the existing v166 render/caching path; Bands is the only new recommendation surface.
+**Consequence:** Concerts remains the default. Concerts and Venues continue to use the existing v166 render/caching path; Bands is the only recommendation surface.
 
 ### Recommendation seeds are trusted recent listening identities
 
@@ -224,4 +232,4 @@ This continuity file was compacted again on 2026-08-28. Earlier durable decision
 
 ## Backlog hygiene
 
-Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance. Focused Ticketmaster legacy offer-label hardening remains separate from v171.
+Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance. Focused Ticketmaster legacy offer-label hardening remains separate from v172.
