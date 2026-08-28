@@ -20,6 +20,9 @@
   function esc(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   }
+  function replaceHtml(node, html) {
+    if (node && node.innerHTML !== html) node.innerHTML = html;
+  }
   function currentRemote() {
     try { if (typeof remote !== 'undefined' && remote) return remote; } catch (_) {}
     return typeof rsGetConnection === 'function' ? rsGetConnection() : null;
@@ -35,17 +38,17 @@
     const suffix = concertsSubTab === 'venues' ? 'VENUES' : concertsSubTab === 'bands' ? 'BANDS' : 'CONCERTS';
     const title = root.document?.getElementById('header-title');
     const headerIcon = root.document?.getElementById('header-icon');
-    if (title && currentTab === 'concerts' && currentScreen === 'main') title.innerHTML = `<span class="brand-blue">DISCOVER</span>${suffix}`;
-    if (headerIcon && currentTab === 'concerts' && currentScreen === 'main' && typeof icon === 'function') headerIcon.innerHTML = icon('globe');
+    if (title && currentTab === 'concerts' && currentScreen === 'main') replaceHtml(title, `<span class="brand-blue">DISCOVER</span>${suffix}`);
+    if (headerIcon && currentTab === 'concerts' && currentScreen === 'main' && typeof icon === 'function') replaceHtml(headerIcon, icon('globe'));
   }
   function standardizeHeader() {
     const title = root.document?.getElementById('header-title');
     if (!title) return;
     const normalized = String(title.textContent || '').replace(/\s+/g, '').toUpperCase();
     if (currentTab === 'concerts' && currentScreen === 'main') return setDiscoverHeader();
-    if (normalized === 'LISTENINGSTATS') title.innerHTML = `LISTENING<span class="brand-blue">STATS</span>`;
-    else if (normalized === 'MYBANDS') title.innerHTML = `MY<span class="brand-blue">BANDS</span>`;
-    else if (normalized === 'MYMUSIC') title.innerHTML = `MY<span class="brand-blue">MUSIC</span>`;
+    if (normalized === 'LISTENINGSTATS') replaceHtml(title, `LISTENING<span class="brand-blue">STATS</span>`);
+    else if (normalized === 'MYBANDS') replaceHtml(title, `MY<span class="brand-blue">BANDS</span>`);
+    else if (normalized === 'MYMUSIC') replaceHtml(title, `MY<span class="brand-blue">MUSIC</span>`);
   }
   function installHeaderRules() {
     try {
@@ -58,9 +61,9 @@
     const tab = root.document?.querySelector('#tabbar [data-tab="concerts"]');
     if (tab) {
       const iconNode = tab.querySelector('.tab-icon');
-      if (iconNode && typeof icon === 'function') iconNode.innerHTML = icon('globe');
+      if (iconNode && typeof icon === 'function') replaceHtml(iconNode, icon('globe'));
       const textNode = [...tab.childNodes].find((node) => node.nodeType === 3);
-      if (textNode) textNode.nodeValue = 'Discover';
+      if (textNode && textNode.nodeValue !== 'Discover') textNode.nodeValue = 'Discover';
     }
     standardizeHeader();
     if (!headerObserver && root.MutationObserver) {
