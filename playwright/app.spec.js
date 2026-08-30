@@ -110,7 +110,7 @@ test('listening stats navigation, rankings, timeframes, and band drill-down use 
   await page.setViewportSize(testInfo.project.name === 'mobile-chromium' ? { width: 375, height: 820 } : { width: 480, height: 900 });
   await page.goto('/');
   const navLabels = await page.getByTestId('bottom-navigation').locator('.tabitem').allTextContents();
-  expect(navLabels.map((label) => label.trim())).toEqual(['Music', 'Discover', 'Bands', 'Stats', 'Alerts']);
+  expect(navLabels.map((label) => label.trim())).toEqual(['Music', 'Bands', 'Discover', 'Stats', 'Alerts']);
   await expect(page.locator('.start-top-bands-card .top-band-row')).toHaveCount(3);
   await expect(page.locator('.start-top-bands-card')).toContainText('YOUR TOP BANDS · 2 WEEKS');
   await settleVisual(page);
