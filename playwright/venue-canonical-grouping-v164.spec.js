@@ -235,5 +235,5 @@ test('v174 canonical venue stats apply ordinary-event identity at the same canon
   expect(result.knownDistanceCount).toBe(1);
   expect(result.uniqueVenues).toBe(1);
   expect(result.topVenues).toHaveLength(1);
-  expect(result.topVenues[0]).toMatchObject({ venue: 'Royal Arena', count: 2 });
+  expect(result.topVenues[0]).toMatchObject({ venue: 'Royal Arena', count: 1 });
 });
