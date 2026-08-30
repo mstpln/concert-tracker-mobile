@@ -52,19 +52,23 @@
   }
 
   function metadataFor(value) {
-    // Build the v166 name index once so its performance instrumentation and
-    // invalidation contract remain intact. v174's runtime resolver then uses
-    // its own cached multi-key index for canonical IDs, legacy IDs, provider
-    // IDs, historical names/locations and sub-locations.
+    // Keep the indexed v166 lookup on the hot path. Calling the v174 runtime
+    // first would delegate to v158's original full-record scan for every
+    // concert, recreating the concert x venue regression that v166 removed.
+    // Only fall through to v174 when established indexed name/alias evidence
+    // has no answer, so richer historical/provider/sub-location evidence stays
+    // additive without penalizing ordinary current-venue reads.
     const byName = ensureIndex();
-    if (typeof root.CanonicalIdentityRuntimeV174?.metadataFor === 'function') {
-      const canonical = root.CanonicalIdentityRuntimeV174.metadataFor(value);
-      if (canonical) return canonical;
-    }
     const targetName = model.normalizeIdentityText(value?.venue ?? value?.name);
-    if (!targetName) return null;
-    const candidates = byName.get(targetName) || [];
-    return model.findVenueRecord(value, candidates);
+    if (targetName) {
+      const candidates = byName.get(targetName) || [];
+      const established = model.findVenueRecord(value, candidates);
+      if (established) return established;
+    }
+    if (typeof root.CanonicalIdentityRuntimeV174?.metadataFor === 'function') {
+      return root.CanonicalIdentityRuntimeV174.metadataFor(value);
+    }
+    return null;
   }
 
   function setRecords(records) {
