@@ -28,6 +28,14 @@ This continuity file was compacted again on 2026-08-28. Earlier durable decision
 
 **Consequence:** Ordinary automation cannot gain maintenance privileges or raw private-listening access merely because another workflow or trusted-local process has them.
 
+## Bottom navigation v173
+
+### Bands and Discover swap visual positions without changing navigation identity
+
+**Decision:** The root bottom-navigation order is `Music · Bands · Discover · Stats · Alerts`. This is an order-only change to the existing navigation elements.
+
+**Consequence:** Each item keeps its established `data-tab`, icon, label, click handling, active-state behavior and badge ownership. Bands remains `mybands`; Discover remains the stable internal `concerts` route. No route migration, screen reassignment, styling change or unrelated navigation change is implied by the visual reorder.
+
 ## Discover v172 visual correction
 
 ### Discover geographic filters use the new placement with the old compact control treatment
@@ -232,4 +240,4 @@ This continuity file was compacted again on 2026-08-28. Earlier durable decision
 
 ## Backlog hygiene
 
-Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance. Focused Ticketmaster legacy offer-label hardening remains separate from v172.
+Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance. Focused Ticketmaster legacy offer-label hardening remains separate from v173.
