@@ -13,6 +13,7 @@
 
   function invalidate() {
     venueIndex = null;
+    indexBuilds = 0;
     if (typeof root.LiveVaultVenueNavigationPerformanceV166?.invalidate === 'function') root.LiveVaultVenueNavigationPerformanceV166.invalidate();
     if (typeof root.LiveVaultVenueNavigationRenderPerformanceV166?.invalidate === 'function') root.LiveVaultVenueNavigationRenderPerformanceV166.invalidate();
   }
@@ -26,18 +27,29 @@
 
   function metadataFor(value) {
     const resolution = core.resolveCanonicalVenue(value, getVenueIndex());
-    if (resolution.kind !== 'same' || !resolution.record) return null;
-    return {
-      ...resolution.record,
-      name: resolution.venue,
-      city: resolution.city,
-      country: resolution.country,
-      address: resolution.address,
-    };
+    if (resolution.kind === 'same' && resolution.record) {
+      return {
+        ...resolution.record,
+        name: resolution.venue,
+        city: resolution.city,
+        country: resolution.country,
+        address: resolution.address,
+      };
+    }
+    // v174 adds richer identity evidence, but must not remove the established
+    // v164/v158 fail-closed recovery semantics for legacy records. In
+    // particular, placeholder address recovery and raw fallback identities are
+    // still authoritative when the richer resolver deliberately returns no
+    // canonical record.
+    return typeof priorVenueApi.metadataFor === 'function' ? priorVenueApi.metadataFor(value) : null;
   }
 
   function canonicalVenueIdentity(value) {
-    return core.canonicalVenueIdentity(value, getVenueIndex());
+    const identity = core.canonicalVenueIdentity(value, getVenueIndex());
+    if (identity) return identity;
+    return typeof priorVenueApi.canonicalVenueIdentity === 'function'
+      ? priorVenueApi.canonicalVenueIdentity(value)
+      : null;
   }
 
   function canonicalVenueGroups(concertList) {
@@ -112,34 +124,6 @@
     };
   }
 
-  function canonicalTopVenueVisits(concertList) {
-    if (typeof root.dlVenueVisits !== 'function') return null;
-    const visits = root.dlVenueVisits(concertList || []);
-    const visitRecords = visits.map((visit) => {
-      const records = Array.isArray(visit?.concerts) ? visit.concerts : [];
-      const representative = typeof root.EventModelV156?.representativeRecord === 'function'
-        ? root.EventModelV156.representativeRecord(records)
-        : records[0];
-      return {
-        venue: String(visit?.venue || representative?.venue || '').trim(),
-        city: String(visit?.city || representative?.city || '').trim(),
-        country: String(representative?.country || '').trim(),
-        venueAddress: representative?.venueAddress || null,
-        canonicalVenueId: representative?.canonicalVenueId || null,
-        date: visit?.lastDate || representative?.date || null,
-      };
-    });
-    return canonicalVenueGroups(visitRecords)
-      .map((group) => ({
-        venue: group.venue,
-        city: group.city,
-        count: group.concerts.length,
-        lastDate: group.concerts.reduce((latest, concert) => (concert?.date && (!latest || concert.date > latest) ? concert.date : latest), null),
-      }))
-      .sort((a, b) => b.count - a.count || (b.lastDate || '').localeCompare(a.lastDate || ''))
-      .slice(0, 5);
-  }
-
   const priorConcertStats = root.dlConcertStats;
   if (typeof priorConcertStats === 'function') {
     root.dlConcertStats = function dlConcertStatsCanonicalV174(attendedPast, bands, upcomingGoing, ...args) {
@@ -147,11 +131,12 @@
       const upcomingView = canonicalReadRecords(upcomingGoing || []);
       const result = priorConcertStats.call(this, pastView.records, bands, upcomingView.records, ...args);
       if (!result || typeof result !== 'object') return result;
-      const topVenues = canonicalTopVenueVisits(pastView.records);
       return {
         ...result,
+        // The pre-v174 stats path already owns canonical venue visit counting.
+        // Keep its top-venue multiplicities intact while using the richer v174
+        // identity only for the unique-venue count and concert de-duplication.
         uniqueVenues: canonicalVenueGroups(pastView.records).length,
-        topVenues: Array.isArray(topVenues) ? topVenues : result.topVenues,
         canonicalConcertConflictCount: pastView.conflicts.length + upcomingView.conflicts.length,
         canonicalConcertDuplicateRowsExcluded: pastView.collapsedCount + upcomingView.collapsedCount,
       };
