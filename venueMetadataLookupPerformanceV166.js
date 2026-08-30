@@ -1,12 +1,7 @@
 'use strict';
 
-// v166 indexed venue-metadata lookup.
-// findVenueRecord itself is deliberately conservative and remains authoritative;
-// this layer only reduces its input from the full venue document to records
-// whose primary name or reviewed alias has the same normalized name. A record
-// with a different normalized name cannot satisfy VenueMetadataModelV158's
-// recordMatches contract, so this is a performance index rather than a new
-// matching rule.
+// v166 indexed venue-metadata lookup, extended by v174 to index the richer
+// canonical identity evidence without reintroducing full concert x venue scans.
 (function installVenueMetadataLookupPerformanceV166(root) {
   if (root.__LIVEVAULT_VENUE_METADATA_LOOKUP_PERFORMANCE_V166__) return;
   root.__LIVEVAULT_VENUE_METADATA_LOOKUP_PERFORMANCE_V166__ = true;
@@ -28,17 +23,24 @@
     }
   }
 
+  function indexedNames(record) {
+    if (typeof model.identityVariants === 'function') {
+      return model.identityVariants(record).map((variant) => model.normalizeIdentityText(variant?.name)).filter(Boolean);
+    }
+    return [
+      model.normalizeIdentityText(record?.name),
+      ...(Array.isArray(record?.identityAliases)
+        ? record.identityAliases.map((alias) => model.normalizeIdentityText(alias?.name))
+        : []),
+    ].filter(Boolean);
+  }
+
   function ensureIndex() {
     if (index) return index;
     const records = prior.getRecords();
     const byName = new Map();
     for (const record of records) {
-      const names = new Set([
-        model.normalizeIdentityText(record?.name),
-        ...(Array.isArray(record?.identityAliases)
-          ? record.identityAliases.map((alias) => model.normalizeIdentityText(alias?.name))
-          : []),
-      ].filter(Boolean));
+      const names = new Set(indexedNames(record));
       for (const name of names) {
         if (!byName.has(name)) byName.set(name, []);
         byName.get(name).push(record);
@@ -50,9 +52,18 @@
   }
 
   function metadataFor(value) {
+    // Build the v166 name index once so its performance instrumentation and
+    // invalidation contract remain intact. v174's runtime resolver then uses
+    // its own cached multi-key index for canonical IDs, legacy IDs, provider
+    // IDs, historical names/locations and sub-locations.
+    const byName = ensureIndex();
+    if (typeof root.CanonicalIdentityRuntimeV174?.metadataFor === 'function') {
+      const canonical = root.CanonicalIdentityRuntimeV174.metadataFor(value);
+      if (canonical) return canonical;
+    }
     const targetName = model.normalizeIdentityText(value?.venue ?? value?.name);
     if (!targetName) return null;
-    const candidates = ensureIndex().get(targetName) || [];
+    const candidates = byName.get(targetName) || [];
     return model.findVenueRecord(value, candidates);
   }
 
