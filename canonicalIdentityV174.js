@@ -364,7 +364,11 @@
     if (!rawVenue) return { kind: 'ambiguous', reason: 'venue_name_missing', record: null };
 
     const nameKey = normalizedText(rawVenue);
-    const nameCandidates = index.byName.get(nameKey) || [];
+    // One venue record can contribute several variants with the same name
+    // (for example a current address plus a reviewed historical address).
+    // Treat those as one candidate venue so a location conflict is not
+    // mislabeled as ambiguity between different venues.
+    const nameCandidates = [...new Set(index.byName.get(nameKey) || [])];
     const best = uniqueBestEntry(value, nameCandidates);
     if (best) {
       const reason = best.variant?.kind === 'sub_location' ? 'sub_location_parent'

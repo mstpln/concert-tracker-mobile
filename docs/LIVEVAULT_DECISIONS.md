@@ -24,6 +24,12 @@ This continuity file was compacted on 2026-08-30 for the canonical identity proj
 
 ## Canonical venue identity — v174 foundation
 
+### Rich v174 identity remains additive over established v164 semantics
+
+**Decision:** Established v164 venue resolution and physical-venue grouping remain the base. Richer v174 identity may add fail-closed fallback resolution or merge established groups when every member resolves unambiguously to the same canonical venue, but it must never split a physical-venue group already established by v164.
+
+**Consequence:** Placeholder and unresolved venues remain fail-closed. Historical names, locations, provider identities and sub-locations can add evidence without replacing mature v164 matching/grouping behavior.
+
 ### Venue identity follows meaningful venue continuity, not every room/building/address
 
 **Decision:** A BANDMARKR venue is the meaningful named venue identity a person would say they visited. A rename, relocation, demolition/rebuild or substantial renovation remains one venue when continuity is explicitly established.
