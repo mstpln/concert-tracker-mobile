@@ -25,31 +25,41 @@
     return venueIndex;
   }
 
+  function isPlaceholder(value) {
+    const raw = String(value?.venue ?? value?.name ?? '').trim();
+    return typeof root.VenueMetadataModelV158?.isPlaceholderVenueName === 'function'
+      ? root.VenueMetadataModelV158.isPlaceholderVenueName(raw)
+      : ['unknown venue', 'unknown', 'tba', 'tbd'].includes(raw.toLowerCase());
+  }
+
   function metadataFor(value) {
+    // Existing v158/v164 lookup semantics stay first. v174 only adds evidence
+    // when the established lookup has no answer. Placeholder recovery remains
+    // canonical-only and therefore must never turn ordinary metadataFor() into
+    // a successful lookup.
+    const prior = typeof priorVenueApi.metadataFor === 'function' ? priorVenueApi.metadataFor(value) : null;
+    if (prior || isPlaceholder(value)) return prior || null;
+
     const resolution = core.resolveCanonicalVenue(value, getVenueIndex());
-    if (resolution.kind === 'same' && resolution.record) {
-      return {
-        ...resolution.record,
-        name: resolution.venue,
-        city: resolution.city,
-        country: resolution.country,
-        address: resolution.address,
-      };
-    }
-    // v174 adds richer identity evidence, but must not remove the established
-    // v164/v158 fail-closed recovery semantics for legacy records. In
-    // particular, placeholder address recovery and raw fallback identities are
-    // still authoritative when the richer resolver deliberately returns no
-    // canonical record.
-    return typeof priorVenueApi.metadataFor === 'function' ? priorVenueApi.metadataFor(value) : null;
+    if (resolution.kind !== 'same' || !resolution.record) return null;
+    return {
+      ...resolution.record,
+      name: resolution.venue,
+      city: resolution.city,
+      country: resolution.country,
+      address: resolution.address,
+    };
   }
 
   function canonicalVenueIdentity(value) {
-    const identity = core.canonicalVenueIdentity(value, getVenueIndex());
-    if (identity) return identity;
-    return typeof priorVenueApi.canonicalVenueIdentity === 'function'
+    // Preserve every established v164 canonical decision exactly. The richer
+    // v174 resolver is an additive fallback for historical names/locations,
+    // sub-locations, provider IDs and other new evidence classes.
+    const prior = typeof priorVenueApi.canonicalVenueIdentity === 'function'
       ? priorVenueApi.canonicalVenueIdentity(value)
       : null;
+    if (prior) return prior;
+    return core.canonicalVenueIdentity(value, getVenueIndex());
   }
 
   function canonicalVenueGroups(concertList) {
@@ -133,9 +143,6 @@
       if (!result || typeof result !== 'object') return result;
       return {
         ...result,
-        // The pre-v174 stats path already owns canonical venue visit counting.
-        // Keep its top-venue multiplicities intact while using the richer v174
-        // identity only for the unique-venue count and concert de-duplication.
         uniqueVenues: canonicalVenueGroups(pastView.records).length,
         canonicalConcertConflictCount: pastView.conflicts.length + upcomingView.conflicts.length,
         canonicalConcertDuplicateRowsExcluded: pastView.collapsedCount + upcomingView.collapsedCount,
