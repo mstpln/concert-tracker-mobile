@@ -6,17 +6,23 @@ This continuity file was compacted again on 2026-08-28. Earlier detailed state r
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged application baseline is **v171** at `4a1b923ea1c1eb1b1a08e3ea0ad681934a5da628`, which merged PR #187. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v171` on `main`.
+The current merged application baseline is **v172** at `16e7918c7c77824fa38274756b3934d5ab8ea289`, which merged PR #188. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v172` on `main`.
 
-The active unmerged application build is **v172** on branch `fix/discover-filter-pills-v172`. It is a focused visual correction to the merged v171 Discover filter placement. The branch keeps `APP_VERSION` and `CACHE_NAME_LITERAL` synchronized at `v172`.
+The active unmerged application build is **v173** on branch `fix/bottom-nav-order-v173`. It is a tightly scoped bottom-navigation order change. The branch keeps `APP_VERSION` and `CACHE_NAME_LITERAL` synchronized at `v173`.
 
-No production provider call, production research workflow, production smoke or production-data mutation has been performed for v172.
+No production provider call, production research workflow, production smoke or production-data mutation has been performed for v173.
+
+## v173 bottom-navigation order
+
+The bottom navigation order changes only from `Music · Discover · Bands · Stats · Alerts` to `Music · Bands · Discover · Stats · Alerts`.
+
+This is an order-only change to the existing navigation elements. Their stable `data-tab` identities, icons, labels, click behavior, active-state logic and Alerts unread badge ownership stay attached to the same destinations. Bands still opens the existing Bands page through `mybands`; Discover still opens the existing Discover page through the stable internal `concerts` route. No other navigation, screen, styling, iconography or app behavior changes.
 
 ## v172 Discover compact-filter correction
 
-The current Discover visual baseline remains exactly the merged v171 app: BANDMARKR blue brand bar, Discover header, Concerts / Venues / Bands segmented selector, concert cards, typography, colors, icons, spacing and bottom navigation are unchanged.
+v172 merged in PR #188. The Discover visual baseline remains the v171 app: BANDMARKR blue brand bar, Discover header, Concerts / Venues / Bands segmented selector, concert cards, typography, colors, icons, spacing and bottom navigation are otherwise unchanged.
 
-Only the geographic filter presentation changes. The v171 placement is retained directly below Concerts / Venues / Bands and remains limited to Discover > Concerts, but the full-width secondary segmented row is replaced with the compact pre-v171 control treatment, left-aligned in one row. Nearby is the existing compact location-pin control; SE and EU are compact text pills with identical geometry. EU is text-only and must not contain a globe or other icon. Active/inactive state continues to mirror the existing hidden header-owned controls, so persistence, mutual exclusion and filtering behavior remain unchanged.
+Only the geographic filter presentation changed. The v171 placement is retained directly below Concerts / Venues / Bands and remains limited to Discover > Concerts, but the full-width secondary segmented row was replaced with the compact pre-v171 control treatment, left-aligned in one row. Nearby is the existing compact location-pin control; SE and EU are compact text pills with identical geometry. EU is text-only and contains no globe or other icon. Active/inactive state continues to mirror the existing hidden header-owned controls, so persistence, mutual exclusion and filtering behavior remain unchanged.
 
 v172 is presentation-only for the geographic filters. It does not alter Discover recommendation identity behavior, concert filtering rules, provider ownership, stored data, navigation IDs or venue-render performance.
 
@@ -63,6 +69,7 @@ Production venue cleanup completed with **530** reviewed `venues.json` records a
 - v167-v169: Start uses the existing upcoming card as Next Concert and keeps the complete next valid event group together; countdown/concert-day/ticket/directions behavior and event-level Upcoming count remain established.
 - v170: Discover replaces the visible Dates identity while retaining the internal `concerts` route and adds bounded cache-first ListenBrainz/MusicBrainz recommendations with durable Add/Dismiss decisions.
 - v171: Discover filters move below the primary Discover selector; header emphasis, safe exact-name recommendation linking and per-band Setlist.fm identity copy are corrected.
+- v172: Discover keeps that placement while restoring the compact old-style Nearby / SE / EU controls.
 
 Concert performance records remain independent. `lineupRole` is user-owned. Existing explicit `eventGroupId` relationships remain authoritative; conservative automatic grouping is read-time only. Concert nights/spend/travel/venue/city/event milestones are event-level, while artist appearances/ratings/setlists/genres/lineup roles are performance-level.
 
@@ -79,8 +86,8 @@ Concert performance records remain independent. `lineupRole` is user-owned. Exis
 
 ## Backlog hygiene
 
-Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening (`Premium Experience`, `Logen Seat`, plain `Box Seat`) remains separate from v172.
+Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening (`Premium Experience`, `Logen Seat`, plain `Box Seat`) remains separate from v173.
 
 ## Next operational steps
 
-Validate v172 on the exact branch head with unit/safety, version/cache sync, deterministic build-state, desktop Chromium and mobile Chromium QA. Keep the change isolated to the compact geographic filter presentation and required build/continuity files. Do not merge without the user's explicit `Merge it` authorization, and do not run production providers, production research workflows, production smoke, deployments or production-data mutations without separate explicit authorization.
+Validate v173 on the exact branch head with unit/safety, version/cache sync, deterministic build-state, desktop Chromium and mobile Chromium QA. Verify the bottom navigation order and that every destination still opens through its existing stable route. Keep the change isolated to the navigation order and required version/continuity/test files. Do not merge without the user's explicit `Merge it` authorization, and do not run production providers, production research workflows, production smoke, deployments or production-data mutations without separate explicit authorization.
