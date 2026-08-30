@@ -64,25 +64,55 @@
     return core.canonicalVenueIdentity(value, getVenueIndex());
   }
 
+  function richerIdentityForGroup(group) {
+    const identities = (group?.concerts || [])
+      .map((concert) => core.canonicalVenueIdentity(concert, getVenueIndex()))
+      .filter(Boolean);
+    if (!identities.length) return null;
+    const keys = [...new Set(identities.map((identity) => identity.key).filter(Boolean))];
+    return keys.length === 1 ? identities[0] : null;
+  }
+
   function canonicalVenueGroups(concertList) {
-    const groups = new Map();
-    for (const concert of concertList || []) {
-      const identity = canonicalVenueIdentity(concert);
-      if (!identity) continue;
-      if (!groups.has(identity.key)) {
-        groups.set(identity.key, {
-          key: identity.key,
-          venue: identity.venue,
-          city: identity.city,
-          country: identity.country,
-          concerts: [],
-          record: identity.record,
-          identity,
-        });
+    // v164 already contains important physical-venue merge semantics that are
+    // broader than literal identity-key equality (same venue record, or same
+    // name/address across city aliases). Keep those established groups intact.
+    // v174 may then merge separate v164 groups when every member of each group
+    // resolves to one identical richer canonical identity. It never splits a
+    // pre-existing group and unresolved placeholders remain excluded.
+    const baseGroups = typeof priorVenueApi.canonicalVenueGroups === 'function'
+      ? priorVenueApi.canonicalVenueGroups(concertList || [])
+      : [];
+    if (!baseGroups.length) return [];
+
+    const merged = [];
+    const byRichKey = new Map();
+    for (const baseGroup of baseGroups) {
+      const rich = richerIdentityForGroup(baseGroup);
+      if (!rich?.key) {
+        merged.push({ ...baseGroup, concerts: [...(baseGroup.concerts || [])] });
+        continue;
       }
-      groups.get(identity.key).concerts.push(concert);
+
+      const existing = byRichKey.get(rich.key);
+      if (!existing) {
+        const group = {
+          ...baseGroup,
+          key: rich.key,
+          venue: rich.venue || baseGroup.venue,
+          city: rich.city || baseGroup.city,
+          country: rich.country || baseGroup.country,
+          record: rich.record || baseGroup.record,
+          identity: rich,
+          concerts: [...(baseGroup.concerts || [])],
+        };
+        merged.push(group);
+        byRichKey.set(rich.key, group);
+      } else {
+        existing.concerts.push(...(baseGroup.concerts || []));
+      }
     }
-    return [...groups.values()].sort((a, b) => a.venue.localeCompare(b.venue));
+    return merged.sort((a, b) => a.venue.localeCompare(b.venue));
   }
 
   function setRecords(records) {
