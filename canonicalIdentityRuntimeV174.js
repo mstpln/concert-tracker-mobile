@@ -54,11 +54,13 @@
   function canonicalVenueIdentity(value) {
     // Preserve every established v164 canonical decision exactly. The richer
     // v174 resolver is an additive fallback for historical names/locations,
-    // sub-locations, provider IDs and other new evidence classes.
+    // sub-locations, provider IDs and other new evidence classes. Placeholder
+    // names remain fail-closed unless the established canonical resolver has
+    // already recovered one unique physical venue from stronger evidence.
     const prior = typeof priorVenueApi.canonicalVenueIdentity === 'function'
       ? priorVenueApi.canonicalVenueIdentity(value)
       : null;
-    if (prior) return prior;
+    if (prior || isPlaceholder(value)) return prior || null;
     return core.canonicalVenueIdentity(value, getVenueIndex());
   }
 
