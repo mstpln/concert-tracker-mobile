@@ -194,7 +194,7 @@ test('v164 venue statistics use the same canonical venue identity without changi
   expect(result.topVenues.find((venue) => venue.venue === 'Hollywood Bowl')?.count).toBe(2);
 });
 
-test('v164 canonical venue stats do not change event-level calculations', async ({ page }, testInfo) => {
+test('v174 canonical venue stats apply ordinary-event identity at the same canonical venue and date', async ({ page }, testInfo) => {
   await openApp(page, testInfo);
   await seedCanonicalVenueCases(page);
 
@@ -225,13 +225,14 @@ test('v164 canonical venue stats do not change event-level calculations', async 
     };
   });
 
+  // v174 defines an ordinary event by canonical venue + date, so these two performance rows are one event.
   expect(result.after).toBe(result.before);
-  expect(result.totalShows).toBe(2);
+  expect(result.totalShows).toBe(1);
   expect(result.totalSpend).toBe(300);
-  expect(result.knownSpendCount).toBe(2);
-  expect(result.averageTicketPrice).toBe(150);
-  expect(result.kmTraveled).toBe(60);
-  expect(result.knownDistanceCount).toBe(2);
+  expect(result.knownSpendCount).toBe(1);
+  expect(result.averageTicketPrice).toBe(300);
+  expect(result.kmTraveled).toBe(20);
+  expect(result.knownDistanceCount).toBe(1);
   expect(result.uniqueVenues).toBe(1);
   expect(result.topVenues).toHaveLength(1);
   expect(result.topVenues[0]).toMatchObject({ venue: 'Royal Arena', count: 2 });
