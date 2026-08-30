@@ -193,6 +193,7 @@ const SHELL_FILES = [
   './appUpdateAub3CorrectionV157.js',
   './venueMetadataModelV158.js',
   './canonicalIdentityV174.js',
+  './canonicalEventGroupV174.js',
   './venueMetadataV158.js',
   './canonicalIdentityRuntimeV174.js',
   './venueMetadataLookupPerformanceV166.js',
