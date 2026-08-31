@@ -5,7 +5,6 @@ on:
     branches:
       - feat/canonical-identity-ingestion-lifecycle-v175
     paths:
-      - .v175-review-fixes.patch
       - .github/workflows/v175-review-apply.yml
 
 permissions:
@@ -21,8 +20,204 @@ jobs:
           fetch-depth: 0
       - name: Apply reviewed corrections
         run: |
-          git apply --check .v175-review-fixes.patch
-          git apply .v175-review-fixes.patch
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              text = path.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}')
+              path.write_text(text.replace(old, new, 1))
+
+          ingestion = Path('scripts/lib/canonicalConcertIngestionV175.js')
+          replace_once(
+              ingestion,
+              "  if (!sameCanonicalVenue(existing, candidate, venueIndex)) return { kind: 'ambiguous', reason: 'lifecycle_venue_unresolved' };",
+              "  const venueRelationship = CanonicalIdentity.canonicalVenueRelationship(existing, candidate, venueIndex);\n  if (venueRelationship.kind === 'ambiguous') return { kind: 'ambiguous', reason: 'lifecycle_venue_unresolved' };",
+          )
+          marker = "function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalIdentity.buildVenueIndex([]), now = new Date().toISOString(), continuity = false } = {}) {"
+          helpers = r'''function providerStrength(value) {
+            const namespace = providerNamespace(value);
+            const verified = value?.ticketRetailerVerified === true;
+            const standard = text(value?.providerOfferType) === 'standard';
+            if (namespace === 'ticketmaster' && verified && standard) return 4;
+            if (namespace === 'ticketmaster' && verified) return 3;
+            if (verified) return 2;
+            return 1;
+          }
+
+          function providerPresentationFields() {
+            return [
+              'time', 'distanceKm', 'ticketUrl', 'articleUrl', 'ticketRetailerVerified', 'sourceProvider',
+              'providerEventId', 'providerAttractionId', 'artistMatchMethod', 'providerVenueId',
+              'providerEventName', 'providerEventStatus', 'providerSource', 'providerOfferType',
+            ];
+          }
+
+          function alternateOfferObservations(candidate, now) {
+            return (Array.isArray(candidate?.alternateProviderOffers) ? candidate.alternateProviderOffers : [])
+              .filter((offer) => offer && typeof offer === 'object' && !Array.isArray(offer))
+              .map((offer) => observationFromCandidate({
+                ...candidate,
+                ...offer,
+                sourceProvider: offer.sourceProvider || candidate.sourceProvider,
+                providerEventId: offer.providerEventId,
+              }, now));
+          }
+
+          function existingProviderObservation(existing, now) {
+            if (!providerEventId(existing) && !text(existing?.sourceProvider)) return null;
+            return observationFromCandidate(existing, now);
+          }
+
+          function applyPreferredProviderPresentation(output, existing, candidate, continuity) {
+            const existingStrength = providerStrength(existing);
+            const incomingStrength = providerStrength(candidate);
+            const lifecycle = isLifecycleObservation(candidate);
+            if (incomingStrength < existingStrength && !lifecycle) return output;
+            if (incomingStrength === existingStrength && !continuity && !lifecycle) return output;
+            const next = { ...output };
+            for (const field of providerPresentationFields()) {
+              const incoming = candidate?.[field];
+              if (incoming == null || incoming === '') continue;
+              next[field] = clone(incoming);
+            }
+            return next;
+          }
+
+          function applyReplacementVenue(output, existing, candidate, venueIndex) {
+            const relationship = CanonicalIdentity.canonicalVenueRelationship(existing, candidate, venueIndex);
+            if (relationship.kind !== 'distinct') return output;
+            const venue = CanonicalIdentity.canonicalVenueIdentity(candidate, venueIndex);
+            if (!venue?.canonicalVenueId) return output;
+            const next = { ...output, canonicalVenueId: venue.canonicalVenueId };
+            for (const field of ['venue', 'city', 'country', 'venueAddress', 'distanceKm', 'providerVenueId']) {
+              const incoming = candidate?.[field];
+              if (incoming == null || incoming === '') continue;
+              next[field] = clone(incoming);
+            }
+            if (venue.roomOrStage) next.roomOrStage = clone(venue.roomOrStage);
+            else delete next.roomOrStage;
+            return next;
+          }
+
+          '''
+          replace_once(ingestion, marker, helpers + marker)
+          replace_once(
+              ingestion,
+              "  output.providerObservations = mergeProviderObservations(output.providerObservations, [observation]);",
+              "  const priorObservation = existingProviderObservation(existing, now);\n  output.providerObservations = mergeProviderObservations(output.providerObservations, [priorObservation, observation, ...alternateOfferObservations(candidate, now)].filter(Boolean));\n  output = applyPreferredProviderPresentation(output, existing, candidate, continuity);",
+          )
+          text = ingestion.read_text()
+          target = "      output.date = text(candidate.date);\n      if (candidate.time != null) output.time = candidate.time;"
+          if text.count(target) != 1:
+              raise SystemExit(f'{ingestion}: expected reschedule date block once, found {text.count(target)}')
+          text = text.replace(target, "      output.date = text(candidate.date);\n      output = applyReplacementVenue(output, existing, candidate, venueIndex);\n      if (candidate.time != null) output.time = candidate.time;", 1)
+          target2 = "    output.date = text(candidate.date);\n    if (candidate.time != null) output.time = candidate.time;"
+          if text.count(target2) != 1:
+              raise SystemExit(f'{ingestion}: expected postponed replacement block once, found {text.count(target2)}')
+          ingestion.write_text(text.replace(target2, "    output.date = text(candidate.date);\n    output = applyReplacementVenue(output, existing, candidate, venueIndex);\n    if (candidate.time != null) output.time = candidate.time;", 1))
+
+          ticketmaster = Path('scripts/lib/ticketmaster.js')
+          replace_once(
+              ticketmaster,
+              "  return ConcertIntegrity.collapseTicketmasterOffers(concerts);",
+              r'''  const rawByEventId = new Map(concerts.map((concert) => [concert.providerEventId, concert]));
+            return ConcertIntegrity.collapseTicketmasterOffers(concerts).map((concert) => {
+              if (!Array.isArray(concert.alternateProviderOffers) || !concert.alternateProviderOffers.length) return concert;
+              return {
+                ...concert,
+                alternateProviderOffers: concert.alternateProviderOffers.map((offer) => {
+                  const raw = rawByEventId.get(offer.providerEventId);
+                  if (!raw) return offer;
+                  return {
+                    ...offer,
+                    sourceProvider: raw.sourceProvider,
+                    providerVenueId: raw.providerVenueId,
+                    providerAttractionId: raw.providerAttractionId,
+                    venue: raw.venue,
+                    city: raw.city,
+                    country: raw.country,
+                    venueAddress: raw.venueAddress,
+                    date: raw.date,
+                    time: raw.time,
+                    distanceKm: raw.distanceKm,
+                    ticketRetailerVerified: raw.ticketRetailerVerified,
+                  };
+                }),
+              };
+            });''',
+          )
+
+          tests = Path('test/canonical-ingestion-lifecycle-v175.test.js')
+          insert1 = r'''
+          test('v175 retains every collapsed Ticketmaster offer as a full provider observation', () => {
+            const candidate = observation({
+              alternateProviderOffers: [
+                { providerEventId: 'tm-vip', providerEventName: 'Artist A VIP Package', providerOfferType: 'alternate_offer', ticketUrl: 'https://tickets.example/vip', time: '18:00', providerVenueId: 'tm-room-a', venue: 'Room A' },
+                { providerEventId: 'tm-hotel', providerEventName: 'Artist A Hotel Package', providerOfferType: 'alternate_offer', ticketUrl: 'https://tickets.example/hotel', time: '17:30', providerVenueId: 'tm-room-a', venue: 'Room A' },
+              ],
+            });
+            const merged = Ingestion.ingestCandidate([stored()], candidate, options).records[0];
+            assert.deepEqual(merged.providerObservations.map((item) => item.providerEventId), ['tm-standard', 'tm-vip', 'tm-hotel']);
+            assert.deepEqual(merged.providerObservations.map((item) => item.time), ['21:30', '18:00', '17:30']);
+          });
+
+          test('v175 prefers verified standard Ticketmaster presentation over weaker provider fields', () => {
+            const weak = stored({ sourceProvider: 'tavily_groq', providerEventId: 'tavily-old', ticketRetailerVerified: false, ticketUrl: 'https://unverified.example', time: '18:00' });
+            const merged = Ingestion.ingestCandidate([weak], observation({ ticketRetailerVerified: true }), options).records[0];
+            assert.equal(merged.id, weak.id);
+            assert.equal(merged.sourceProvider, 'ticketmaster');
+            assert.equal(merged.providerEventId, 'tm-standard');
+            assert.equal(merged.ticketUrl, 'https://tickets.example/standard');
+            assert.equal(merged.time, '21:30');
+            assert.deepEqual(merged.providerObservations.map((item) => item.providerEventId), ['tavily-old', 'tm-standard']);
+          });
+
+          '''
+          marker1 = "test('v175 keeps different date, different canonical venue and different artist concerts separate', () => {"
+          replace_once(tests, marker1, insert1 + marker1)
+          insert2 = r'''
+          test('v175 proven reschedule may move venue while retaining the stable concert and old provider evidence', () => {
+            const existing = stored({ sourceProvider: 'ticketmaster', providerEventId: 'tm-old', providerVenueId: 'tm-venue-main', providerAttractionId: 'tm-artist-a', ticketRetailerVerified: true, providerOfferType: 'standard' });
+            const moved = Ingestion.ingestCandidate([existing], observation({
+              providerEventId: 'tm-new', providerRelatedEventIds: ['tm-old'], date: '2026-11-12', ticketRetailerVerified: true,
+              venue: 'Other Hall', venueAddress: 'Other Street 2, Lund, Sweden', providerVenueId: 'tm-venue-other',
+            }), options).records[0];
+            assert.equal(moved.id, existing.id);
+            assert.equal(moved.date, '2026-11-12');
+            assert.equal(moved.venue, 'Other Hall');
+            assert.equal(moved.canonicalVenueId, 'venue-ccccdddd');
+            assert.deepEqual(moved.providerObservations.map((item) => item.providerEventId), ['tm-old', 'tm-new']);
+          });
+
+          '''
+          marker2 = "test('v175 postponed without replacement becomes DATE TBD without inventing a date or year', () => {"
+          replace_once(tests, marker2, insert2 + marker2)
+          insert3 = r'''
+          test('v175 Ticketmaster collapse keeps alternate offer time and venue evidence for canonical ingestion', async () => {
+            const followed = { id: 'band-a', name: 'Artist A', musicbrainz: { ticketmaster: { id: 'tm-artist-a', status: 'confirmed' } } };
+            const rawEvent = (id, name, time) => ({
+              id, name, url: `https://tickets.example/${id}`, source: { name: 'ticketmaster' },
+              dates: { start: { localDate: '2026-10-10', localTime: time }, status: { code: 'onsale' } },
+              _embedded: { attractions: [{ id: 'tm-artist-a', name: 'Artist A' }], venues: [{ id: 'tm-venue-main', name: 'Main Hall', city: { name: 'Lund' }, country: { name: 'Sweden' }, address: { line1: 'Main Street 1' } }] },
+            });
+            const payload = { _embedded: { events: [rawEvent('standard', 'Artist A', '19:00:00'), rawEvent('vip', 'Artist A VIP Package', '19:04:00')] }, page: { totalPages: 1 } };
+            const usage = { canCallTicketmaster: () => true, recordTicketmasterCall: async () => {}, note: () => {} };
+            const [candidate] = await ticketmaster.fetchUpcomingEvents(followed, usage, { now: '2026-08-31T00:00:00.000Z', fetchImpl: async () => ({ ok: true, json: async () => payload }) });
+            assert.equal(candidate.providerEventId, 'standard');
+            assert.equal(candidate.alternateProviderOffers[0].providerEventId, 'vip');
+            assert.equal(candidate.alternateProviderOffers[0].time, '19:04:00');
+            assert.equal(candidate.alternateProviderOffers[0].providerVenueId, 'tm-venue-main');
+            const merged = Ingestion.ingestCandidate([stored()], candidate, options).records[0];
+            assert.deepEqual(merged.providerObservations.map((item) => item.providerEventId), ['standard', 'vip']);
+          });
+
+          '''
+          marker3 = "test('v175 UI presents postponed DATE TBD and suppresses invalid calendar actions', () => {"
+          replace_once(tests, marker3, insert3 + marker3)
+          PY
           rm .v175-review-fixes.patch
           rm .github/workflows/v175-review-apply.yml
           git config user.name "github-actions[bot]"
