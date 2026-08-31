@@ -279,7 +279,6 @@ function providerObservationFromRecord(record) {
 function observationCompatible(existing, incoming) {
   const keys = new Set([...Object.keys(existing || {}), ...Object.keys(incoming || {})]);
   for (const key of keys) {
-    if (key === 'observedAt' || key === 'foundAt') continue;
     const left = existing?.[key];
     const right = incoming?.[key];
     if (!meaningful(left) || !meaningful(right)) continue;
