@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const Migration = require('./lib/canonicalMigrationV176Final');
+const Migration = require('./lib/canonicalMigrationV176Contract');
 
 function usage() {
   return [
