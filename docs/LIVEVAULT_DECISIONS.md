@@ -156,6 +156,12 @@ This continuity file was compacted on 2026-08-30 for the canonical identity proj
 
 **Consequence:** Known provider leakage and location ambiguity can be closed deterministically without weakening canonical matching or treating pair-specific research as a generic rule. Missing members/targets, ambiguous aliases and conflicting assignments block the plan. Replaying the same registry over migrated output must remain a no-op.
 
+### Missing canonical venues are added only through researched definitions
+
+**Decision:** When a real concert venue is absent from the venue export, the hashed registry may add one complete, valid stable venue record with an explicit rationale and supporting evidence before venue reconciliation. The addition is local migration output, not a production write or a generic discovery rule.
+
+**Consequence:** Invalid or placeholder records, absent evidence, conflicting definitions and current/legacy ID collisions block. Replaying an unchanged addition against the migrated output is a no-op, and the addition remains visible in the migration manifest and venue-count reconciliation.
+
 ### Production migration is deterministic, hash-guarded, reversible and separately authorized
 
 **Decision:** Build 3 produces read-only audit/research/migration tooling and local dry-run outputs only. Production migration starts later from a fresh authorized export with exact counts/SHA-256 hashes.

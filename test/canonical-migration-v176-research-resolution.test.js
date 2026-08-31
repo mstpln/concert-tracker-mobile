@@ -125,3 +125,69 @@ test('v176 venue corrections reject user-owned fields and contradictory registry
   assert.equal(conflicting.venues[0].address, 'Correct Street 1');
   assert.equal(Migration.validatePlan(conflicting).valid, false);
 });
+
+test('v176 researched venue addition enables assignment and is a second-pass no-op', () => {
+  const addedVenueId = 'venue-c1d2e3f4';
+  const decisions = {
+    venueAdditions: [{
+      venue: venue(addedVenueId, {
+        name: 'New Hall',
+        currentName: 'New Hall',
+        city: 'Copenhagen',
+        country: 'Denmark',
+        address: 'New Street 1',
+        providerIdentities: [{ provider: 'ticketmaster', providerVenueId: 'tm-new-hall' }],
+      }),
+      reason: 'official event and venue pages identify a venue absent from the source venue export',
+      evidence: ['https://example.invalid/official-venue'],
+    }],
+    concertVenueAssignments: [{ concertIds: ['concert-a'], canonicalVenueId: addedVenueId, reason: 'official event venue' }],
+  };
+  const sourceConcert = concert('concert-a', { venue: 'New Hall', city: 'Copenhagen', country: 'Denmark', venueAddress: 'New Street 1' });
+  const first = Migration.planMigration([venue(VENUE_A)], [sourceConcert], decisions);
+  assert.equal(Migration.validatePlan(first).valid, true);
+  assert.equal(first.venues.length, 2);
+  assert.equal(first.concerts[0].canonicalVenueId, addedVenueId);
+  assert.ok(first.mergeManifest.some((item) => item.kind === 'venue_addition' && item.venueId === addedVenueId));
+
+  const second = Migration.planMigration(first.venues, first.concerts, decisions);
+  assert.equal(Migration.validatePlan(second).valid, true);
+  assert.deepEqual(second.venues, first.venues);
+  assert.deepEqual(second.concerts, first.concerts);
+  assert.equal(second.mergeManifest.length, 0);
+});
+
+test('v176 researched venue additions fail closed on malformed, conflicting and legacy-colliding IDs', () => {
+  const invalid = Migration.planMigration([venue(VENUE_A)], [], {
+    venueAdditions: [{ venue: { venueId: 'venue-c1d2e3f4', name: 'Unknown venue' }, reason: 'bad', evidence: ['source'] }],
+  });
+  assert.ok(invalid.blocked.some((item) => item.reason === 'venue_addition_invalid'));
+
+  const conflicting = Migration.planMigration([venue(VENUE_A)], [], {
+    venueAdditions: [
+      { venue: venue('venue-c1d2e3f4', { name: 'Hall C' }), reason: 'one', evidence: ['source one'] },
+      { venue: venue('venue-c1d2e3f4', { name: 'Hall D' }), reason: 'two', evidence: ['source two'] },
+    ],
+  });
+  assert.ok(conflicting.blocked.some((item) => item.reason === 'conflicting_venue_additions'));
+
+  const collision = Migration.planMigration([venue(VENUE_A, { legacyVenueIds: ['venue-c1d2e3f4'] })], [], {
+    venueAdditions: [{ venue: venue('venue-c1d2e3f4'), reason: 'collision', evidence: ['source'] }],
+  });
+  assert.ok(collision.blocked.some((item) => item.reason === 'venue_addition_id_collides_with_legacy'));
+  assert.equal(Migration.validatePlan(collision).valid, false);
+});
+
+test('v176 researched additions may participate in explicit distinct venue decisions', () => {
+  const addedVenueId = 'venue-c1d2e3f4';
+  const plan = Migration.planMigration([venue(VENUE_A)], [], {
+    venueAdditions: [{
+      venue: venue(addedVenueId, { city: 'Copenhagen', country: 'Denmark', address: 'Main Street 1, Copenhagen' }),
+      reason: 'independent same-name venue absent from export',
+      evidence: ['https://example.invalid/venue-c'],
+    }],
+    venueDistinct: [{ ids: [VENUE_A, addedVenueId], reason: 'different countries and physical locations' }],
+  });
+  assert.equal(Migration.validatePlan(plan).valid, true);
+  assert.equal(plan.venues.length, 2);
+});

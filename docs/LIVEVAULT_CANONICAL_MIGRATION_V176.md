@@ -42,6 +42,19 @@ Pair/group-specific decisions are evidence records; they do not become generic m
       "reason": "independent venues despite shared name/address"
     }
   ],
+  "venueAdditions": [
+    {
+      "venue": {
+        "venueId": "venue-new12345",
+        "name": "Verified Hall",
+        "city": "Verified City",
+        "country": "Verified Country",
+        "address": "Verified address"
+      },
+      "reason": "official event and venue evidence identifies a real venue absent from the export",
+      "evidence": ["official venue reference"]
+    }
+  ],
   "venueCorrections": [
     {
       "venueId": "legacy-venue-b",
@@ -85,6 +98,8 @@ Pair/group-specific decisions are evidence records; they do not become generic m
 
 Contradictory, incomplete, missing-member or ambiguous decisions block rather than guessing. `canonicalId` is mandatory for researched venue/concert merge decisions, must name a decision member, and may be a legacy member alias that resolves unambiguously to its current stable identity.
 
+`venueAdditions` define a complete researched canonical venue that is absent from the venue source. The venue must pass the existing v174 venue-record validation, use a non-colliding stable ID and include a reason plus evidence. Duplicate identical definitions collapse to one addition; conflicting definitions, current-record conflicts and legacy-ID collisions block. An identical venue already present on the second pass is a no-op.
+
 `venueCorrections` make reviewed field-level corrections to one exact source venue before merge decisions are applied. They cannot change `venueId` or `legacyVenueIds`. Changed and cleared values, rationale and evidence are retained in the merge manifest. When that exact source ID has already merged away, its legacy alias makes the correction a replay-safe no-op.
 
 `concertVenueAssignments` attach explicitly listed current or legacy concert IDs to one existing canonical venue after venue reconciliation. Missing or ambiguous concert members, missing venue targets and conflicting assignments block. Only `canonicalVenueId` changes; raw venue wording, provider location fields and provider observations remain evidence.
@@ -115,7 +130,7 @@ This means ordinary records cannot silently pass through with incomplete canonic
 ## Migration order
 
 1. Validate researched distinct/merge decisions against current and legacy stable IDs.
-2. Apply exact researched venue corrections, then venue merge/separate decisions.
+2. Apply evidence-backed missing-venue additions, exact researched venue corrections, then venue merge/separate decisions.
 3. Build canonical venue identity from the resulting venue set.
 4. Remap existing concert venue references, then apply researched concert-to-venue assignments while preserving historical/raw venue wording.
 5. Apply evidence-backed festival-edition decisions and remap existing festival primary venue references through researched venue mappings.

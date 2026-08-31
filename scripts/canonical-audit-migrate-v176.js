@@ -5,7 +5,7 @@ const path = require('node:path');
 const Migration = require('./lib/canonicalMigrationV176Contract');
 
 const DECISION_ARRAY_FIELDS = Object.freeze([
-  'venueMerges', 'venueDistinct', 'venueCorrections', 'concertMerges', 'concertDistinct',
+  'venueMerges', 'venueDistinct', 'venueAdditions', 'venueCorrections', 'concertMerges', 'concertDistinct',
   'concertVenueAssignments', 'festivalEditions',
 ]);
 
@@ -87,6 +87,10 @@ function validateDecisionShape(decisions) {
         }
         if (Object.prototype.hasOwnProperty.call(decision, 'set') && (!decision.set || typeof decision.set !== 'object' || Array.isArray(decision.set))) {
           throw new Error(`Research decisions ${field}[${index}].set must be an object.`);
+        }
+      } else if (field === 'venueAdditions') {
+        if (Object.prototype.hasOwnProperty.call(decision, 'venue') && (!decision.venue || typeof decision.venue !== 'object' || Array.isArray(decision.venue))) {
+          throw new Error(`Research decisions ${field}[${index}].venue must be an object.`);
         }
       } else if (Object.prototype.hasOwnProperty.call(decision, 'ids') && !Array.isArray(decision.ids)) {
         throw new Error(`Research decisions ${field}[${index}].ids must be an array.`);
