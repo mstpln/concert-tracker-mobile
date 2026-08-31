@@ -38,7 +38,9 @@ test('v175 replay does not manufacture a second observation from top-level provi
 });
 
 test('v175 postponed status makes a still-returned old provider date inactive', () => {
-  const result = Ingestion.ingestCandidate([existing()], incoming({ providerEventStatus: 'postponed' }), options).records[0];
+  const candidate = incoming({ providerEventStatus: 'postponed' });
+  const first = Ingestion.ingestCandidate([existing()], candidate, options);
+  const result = first.records[0];
   assert.equal(result.id, 'stable-id');
   assert.equal(result.date, null);
   assert.equal(result.time, null);
@@ -47,4 +49,9 @@ test('v175 postponed status makes a still-returned old provider date inactive', 
   assert.equal(result.lifecycleHistory[0].replacementDate, null);
   assert.equal(result.providerObservations.at(-1).date, '2026-10-10');
   assert.equal(result.providerObservations.at(-1).status, 'postponed');
+
+  const replay = Ingestion.ingestCandidate(first.records, candidate, options);
+  assert.equal(replay.changed, false);
+  assert.deepEqual(replay.records, first.records);
+  assert.equal(replay.records[0].lifecycleHistory.length, 1);
 });
