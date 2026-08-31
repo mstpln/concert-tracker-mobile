@@ -113,10 +113,10 @@ function crossDecisionBlockers(venues, concerts, decisions) {
     const merges = normalized[field] || [];
     for (let i = 0; i < merges.length; i += 1) {
       const leftMembers = resolvedIds(decisionMembers(merges[i]), mapping);
-      const leftCanonical = text(merges[i]?.canonicalId);
+      const leftCanonical = mapping[text(merges[i]?.canonicalId)] || text(merges[i]?.canonicalId);
       for (let j = i + 1; j < merges.length; j += 1) {
         const rightMembers = resolvedIds(decisionMembers(merges[j]), mapping);
-        const rightCanonical = text(merges[j]?.canonicalId);
+        const rightCanonical = mapping[text(merges[j]?.canonicalId)] || text(merges[j]?.canonicalId);
         if (!setsOverlap(leftMembers, rightMembers)) continue;
         if (leftCanonical && rightCanonical && leftCanonical !== rightCanonical) {
           blockers.push({
@@ -171,10 +171,10 @@ function sourceOrderSurvivor(sourceConcerts, ids) {
   return text(best?.id);
 }
 
-function hasExplicitConcertDecision(decisions, ids) {
-  const idSet = new Set(ids.map(text));
+function hasExplicitConcertDecision(decisions, ids, mapping = {}) {
+  const idSet = new Set(resolvedIds(ids, mapping));
   return (Base.normalizeDecisions(decisions).concertMerges || []).some((decision) =>
-    decisionMembers(decision).some((id) => idSet.has(id)));
+    resolvedIds(decisionMembers(decision), mapping).some((id) => idSet.has(id)));
 }
 
 function prepareConcertsForCore(concerts) {
@@ -188,10 +188,11 @@ function prepareConcertsForCore(concerts) {
 function withSourceOrderSurvivors(venues, coreConcerts, sourceConcerts, decisions) {
   const initial = Base.planMigration(venues, coreConcerts, decisions);
   const additions = [];
+  const aliases = legacyAliasState(sourceConcerts, 'id', 'legacyConcertIds').mapping;
   for (const item of initial.mergeManifest || []) {
     if (item?.kind !== 'concert_merge') continue;
     const ids = uniqueStable([item.winnerId, ...(Array.isArray(item.mergedAway) ? item.mergedAway : [])].map(text).filter(Boolean));
-    if (ids.length < 2 || hasExplicitConcertDecision(decisions, ids)) continue;
+    if (ids.length < 2 || hasExplicitConcertDecision(decisions, ids, aliases)) continue;
     const survivor = sourceOrderSurvivor(sourceConcerts, ids);
     if (survivor && survivor !== item.winnerId) {
       additions.push({
@@ -230,9 +231,25 @@ function providerObservationFromRecord(record) {
   const eventId = providerEventId(record);
   const providerVenueId = text(record?.providerVenueId);
   const providerAttractionId = text(record?.providerAttractionId);
-  if (!provider || ['manual', 'unknown'].includes(provider)) return null;
-  if (!eventId && !providerVenueId && !providerAttractionId) return null;
-  return {
+  const relatedEventIds = uniqueStable((Array.isArray(record?.providerRelatedEventIds) ? record.providerRelatedEventIds : []).map(text).filter(Boolean));
+  const articleUrl = text(record?.articleUrl || record?.sourceUrl);
+  const providerSpecificEvidence = [
+    eventId,
+    providerVenueId,
+    providerAttractionId,
+    articleUrl,
+    text(record?.providerEventName),
+    text(record?.providerEventStatus),
+    text(record?.providerOfferType),
+    text(record?.providerSource),
+    text(record?.providerObservedAt),
+    text(record?.observedAt),
+    text(record?.providerFoundAt),
+    text(record?.foundAt),
+    relatedEventIds,
+  ].some(meaningful);
+  if (!provider || ['manual', 'unknown'].includes(provider) || !providerSpecificEvidence) return null;
+  const observation = {
     provider,
     providerEventId: eventId || null,
     providerVenueId: providerVenueId || null,
@@ -246,18 +263,23 @@ function providerObservationFromRecord(record) {
     date: text(record?.date) || null,
     time: text(record?.time) || null,
     ticketUrl: text(record?.ticketUrl) || null,
-    articleUrl: text(record?.articleUrl || record?.sourceUrl) || null,
+    articleUrl: articleUrl || null,
     offerType: text(record?.providerOfferType) || null,
     status: text(record?.providerEventStatus || record?.lifecycleStatus || record?.status) || null,
-    relatedEventIds: uniqueStable((Array.isArray(record?.providerRelatedEventIds) ? record.providerRelatedEventIds : []).map(text).filter(Boolean)),
+    relatedEventIds,
     source: text(record?.providerSource || record?.sourceProvider || record?.sourceUrl || record?.articleUrl) || null,
   };
+  const observedAt = text(record?.providerObservedAt || record?.observedAt);
+  const foundAt = text(record?.providerFoundAt || record?.foundAt);
+  if (observedAt) observation.observedAt = observedAt;
+  if (foundAt) observation.foundAt = foundAt;
+  return observation;
 }
 
 function observationCompatible(existing, incoming) {
   const keys = new Set([...Object.keys(existing || {}), ...Object.keys(incoming || {})]);
   for (const key of keys) {
-    if (key === 'observedAt') continue;
+    if (key === 'observedAt' || key === 'foundAt') continue;
     const left = existing?.[key];
     const right = incoming?.[key];
     if (!meaningful(left) || !meaningful(right)) continue;
