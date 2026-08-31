@@ -17,9 +17,9 @@
 //
 // Every external call is gated through usageTracker so this can never
 // exceed (self-imposed, below-free-tier) hard caps, and every provider
-// call is paced to respect real-time rate limits. New concerts/news are
-// appended; existing concert records are only enriched in place through
-// the explicit Ticketmaster provider-field allowlist, or with setlist data.
+// call is paced to respect real-time rate limits. Every automatic concert
+// observation is reconciled through the shared canonical identity/lifecycle
+// layer before the latest-state guarded concerts.json write.
 
 const worker = require('./lib/workerClient');
 const { UsageTracker } = require('./lib/usageTracker');
@@ -40,6 +40,8 @@ const { slugify, isValidFullDate, daysAgo, truncate, todayIso } = require('./lib
 const config = require('./lib/config');
 const LineupRole = require('../lineupRoleV155');
 const TicketmasterIntegrity = require('./lib/ticketmasterConcertIntegrityV163');
+const CanonicalIdentity = require('../canonicalIdentityV174');
+const CanonicalIngestion = require('./lib/canonicalConcertIngestionV175');
 
 // How long to wait before re-checking a past-attended show that didn't have
 // a setlist logged last time — setlist.fm is crowd-sourced, so a fan may
@@ -674,8 +676,8 @@ function finalConcertWritePayload(concerts, newConcerts, { latestConcerts = conc
   return LineupRole.initializeConcerts([...merged, ...(newConcerts || []).filter((concert) => !existingIds.has(concert.id))]);
 }
 
-function concertWriteRequired({ newConcerts = [], ticketmasterUpgrades = [], pipelineUpdates = 0, setlistChecksAttempted = 0, spotifyConcertsProcessed = 0 } = {}) {
-  return newConcerts.length > 0 || ticketmasterUpgrades.length > 0 || pipelineUpdates > 0 || setlistChecksAttempted > 0 || spotifyConcertsProcessed > 0;
+function concertWriteRequired({ newConcerts = [], ticketmasterUpgrades = [], providerReconciliations = 0, pipelineUpdates = 0, setlistChecksAttempted = 0, spotifyConcertsProcessed = 0 } = {}) {
+  return newConcerts.length > 0 || ticketmasterUpgrades.length > 0 || providerReconciliations > 0 || pipelineUpdates > 0 || setlistChecksAttempted > 0 || spotifyConcertsProcessed > 0;
 }
 
 function predictionDiagnostics(concerts, bands, usage, now) {
@@ -902,6 +904,8 @@ async function fetchTourDatesViaTavily(band, usage, { allowGroq = true, seenFing
       articleUrl: s.sourceUrl || null,
       ticketUrl: null,
       ticketRetailerVerified: false,
+      sourceProvider: 'tavily_groq',
+      providerSource: s.sourceUrl || null,
       isNew: true,
       foundAt: new Date().toISOString(),
       venueAddress: null,
@@ -977,9 +981,10 @@ let sharedUsage = null;
 async function main() {
   console.log('Concert Tracker research pipeline starting…');
 
-  let [bands, concerts, news, usage] = await Promise.all([
+  let [bands, concerts, venues, news, usage] = await Promise.all([
     worker.readJson('bands.json', []),
     worker.readJson('concerts.json', []),
+    worker.readJson('venues.json', []),
     worker.readJson('news.json', []),
     UsageTracker.load(),
   ]);
@@ -1020,6 +1025,7 @@ async function main() {
 
   const newConcerts = [];
   const ticketmasterUpgrades = new Map();
+  const providerReconciliations = [];
   const pipelineUpdatedIds = new Set();
   const newNews = [];
   let bandsProcessed = 0;
@@ -1032,6 +1038,7 @@ async function main() {
   let newsBudgetExhaustedNoted = false;
   const routingUpdates = new Map();
   const structuredEnabled = config.STRUCTURED_RESEARCH.enabled;
+  const venueIndex = CanonicalIdentity.buildVenueIndex(venues);
 
   for (const band of orderedBands) {
     bandsProcessed += 1;
@@ -1099,37 +1106,32 @@ async function main() {
       // timeout and the deliberate Groq TPM throttling), so a date snapshot
       // taken at run-start could be stale by the time later bands are
       // processed, right on a UTC-midnight boundary.
-      if (!candidate.date || candidate.date < todayIso()) {
+      if ((!candidate.date && !CanonicalIngestion.isLifecycleObservation(candidate)) || (candidate.date && candidate.date < todayIso())) {
         usage.note(`Dropped past-dated candidate for "${candidate.bandName}": ${candidate.date} at ${candidate.venue} (source: ${candidate.ticketRetailerVerified ? 'Ticketmaster' : 'Tavily/Groq'})`);
         continue;
       }
-      const reconciliation = reconcileConcertCandidate(concerts, newConcerts, candidate);
-      if (reconciliation.action === 'upgrade' || reconciliation.action === 'merge_alternate_offer') {
-        const upgradeCandidate = reconciliation.reason === 'trusted_venue_evidence'
-          ? { ...candidate, _venueRecoveryOnly: true }
-          : (reconciliation.candidate || candidate);
-        const existingIndex = concerts.findIndex((concert) => concert.id === reconciliation.concert.id);
-        if (existingIndex >= 0) {
-          concerts[existingIndex] = upgradeExistingConcertWithTicketmaster(concerts[existingIndex], upgradeCandidate);
-          ticketmasterUpgrades.set(concerts[existingIndex].id, { id: concerts[existingIndex].id, candidate: upgradeCandidate });
-          ticketmasterConcertsUpgraded += 1;
-        } else {
-          const newIndex = newConcerts.findIndex((concert) => concert.id === reconciliation.concert.id);
-          if (newIndex >= 0) newConcerts[newIndex] = upgradeExistingConcertWithTicketmaster(newConcerts[newIndex], upgradeCandidate);
-        }
-        continue;
-      }
-      if (reconciliation.action === 'skip_ticketmaster_duplicate') {
-        tavilyDuplicatesSkippedForTicketmaster += 1;
-        continue;
-      }
-      if (reconciliation.action === 'skip_duplicate') continue;
+      const applied = CanonicalIngestion.ingestCandidate([...concerts, ...newConcerts], candidate, { venueIndex, now: candidate.foundAt || new Date().toISOString() });
+      const reconciliation = applied.result;
       if (reconciliation.action === 'hold_for_review') {
         ambiguousTicketmasterConcertMatches += 1;
-        usage.note(`Ambiguous Ticketmaster concert match held for review for "${candidate.bandName}" on ${candidate.date}: ${reconciliation.reason}`);
+        usage.note(`Ambiguous canonical concert observation held for review for "${candidate.bandName}" on ${candidate.date || 'DATE TBD'}: ${reconciliation.reason}`);
         continue;
       }
-      newConcerts.push(uniqueConcertCandidate(candidate, [...concerts, ...newConcerts]));
+      if (!applied.changed) continue;
+      providerReconciliations.push(candidate);
+      if (reconciliation.action === 'add') {
+        newConcerts.push(reconciliation.concert);
+        continue;
+      }
+      const existingIndex = concerts.findIndex((concert) => concert.id === reconciliation.concert.id);
+      if (existingIndex >= 0) {
+        concerts[existingIndex] = reconciliation.concert;
+        ticketmasterUpgrades.set(reconciliation.concert.id, { id: reconciliation.concert.id, candidate });
+        ticketmasterConcertsUpgraded += 1;
+      } else {
+        const newIndex = newConcerts.findIndex((concert) => concert.id === reconciliation.concert.id);
+        if (newIndex >= 0) newConcerts[newIndex] = reconciliation.concert;
+      }
     }
 
     // Legacy mode retains the combined broad search.  Structured mode only
@@ -1273,14 +1275,12 @@ async function main() {
   // (newConcerts), any setlist/setlistCheckedAt fields just filled in on
   // existing records, and any spotifyUrl/spotifyChecked fields just filled
   // in on setlist songs — a single PUT rather than three separate ones.
-  if (concertWriteRequired({ newConcerts, ticketmasterUpgrades: [...ticketmasterUpgrades.values()], pipelineUpdates: pipelineUpdatedIds.size })) {
-    const latestConcerts = await worker.readJson('concerts.json', []);
-    concerts = finalConcertWritePayload(concerts, newConcerts, {
-      latestConcerts,
-      ticketmasterUpgrades: [...ticketmasterUpgrades.values()],
-      pipelineUpdatedIds,
+  if (concertWriteRequired({ newConcerts, ticketmasterUpgrades: [...ticketmasterUpgrades.values()], providerReconciliations: providerReconciliations.length, pipelineUpdates: pipelineUpdatedIds.size })) {
+    concerts = await worker.writeJsonReconciled('concerts.json', (latestConcerts) => {
+      const latestWithPipelineFields = mergePipelineConcertFields(latestConcerts, concerts, pipelineUpdatedIds);
+      const latestReconciled = CanonicalIngestion.reconcileBatch(latestWithPipelineFields, providerReconciliations, { venueIndex });
+      return LineupRole.initializeConcerts(latestReconciled.records);
     });
-    await worker.writeJson('concerts.json', concerts);
   }
   // Persist newly found setlists and Spotify song fields before insight work.
   // The insight processor then rereads that latest document and merges only

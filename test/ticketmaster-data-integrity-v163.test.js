@@ -218,13 +218,15 @@ test('ambiguous same-performance listings are held and never authorized for salt
   assert.equal(research.reconcileConcertCandidate([existing], [], missingTimePackage).action, 'hold_for_review');
 });
 
-test('unsafe lifecycle events are held and not admitted as ordinary upcoming concerts', async () => {
+test('lifecycle events reach the canonical ingestion boundary as evidence, not ordinary confirmed state', async () => {
   const followed = band('Artist', 'artist', 'tm-artist');
   const payload = { _embedded: { events: [event({ id: 'cancelled', attractionId: 'tm-artist', attractionName: 'Artist', name: 'Artist', status: 'canceled' })] }, page: { totalPages: 1 } };
   const tracker = usage();
   const result = await ticketmaster.fetchUpcomingEvents(followed, tracker, { fetchImpl: async () => ({ ok: true, json: async () => payload }), now: '2026-08-24T00:00:00.000Z' });
-  assert.deepEqual(result, []);
-  assert.match(tracker.notes.join('\n'), /canceled event held/);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].providerEventId, 'cancelled');
+  assert.equal(result[0].providerEventStatus, 'canceled');
+  assert.equal(tracker.notes.some((note) => /canceled event held/.test(note)), false);
 });
 
 test('missing venue name is recovered by provider venue ID with a bounded lookup', async () => {
