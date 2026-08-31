@@ -26,32 +26,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Unit tests
-        run: |
-          mkdir -p test-results
-          set +e
-          npm run test 2>&1 | tee test-results/unit.log
-          status=${PIPESTATUS[0]}
-          node <<'NODE' 2>&1 | tee -a test-results/unit.log
-          const Migration = require('./scripts/lib/canonicalMigrationV176');
-          const venues = [
-            { venueId: 'venue-main', name: 'Main Hall', currentName: 'Main Hall', city: 'Malmo', country: 'Sweden', address: 'Main Street 1', identityAliases: ['Main Hall Arena'], providerIdentities: [{ provider: 'ticketmaster', providerVenueId: 'tm-main', name: 'Main Hall' }] },
-            { venueId: 'venue-room', name: 'Main Hall Room 2', city: 'Malmo', country: 'Sweden', address: 'Main Street 1', customFutureVenueField: 'preserve-me' },
-            { venueId: 'venue-other', name: 'Other Arena', city: 'Copenhagen', country: 'Denmark', address: 'Other Street 2' },
-          ];
-          const base = (overrides = {}) => ({ id: 'concert-user', bandId: 'band-1', bandName: 'Band One', date: '2026-10-10', venue: 'Main Hall', city: 'Malmo', country: 'Sweden', venueAddress: 'Main Street 1', canonicalVenueId: 'venue-main', attending: true, ticketPrice: 500, ticketQuantity: 1, freeTicket: false, notes: 'Keep this note', lineupRole: 'headliner', manuallyAdded: true, customFutureConcertField: 'keep-me', ...overrides });
-          const plan = Migration.planMigration(venues, [
-            base({ id: 'concert-room-listing', canonicalVenueId: 'venue-room', venue: 'Main Hall Room 2', roomOrStage: { name: 'Room 2', type: 'room' }, attending: false, ticketPrice: undefined, notes: undefined, manuallyAdded: false }),
-            base({ id: 'concert-main-listing' }),
-          ], { venueMerges: [{ ids: ['venue-main', 'venue-room'], canonicalId: 'venue-main', reason: 'researched_parent_room' }] });
-          console.log('V176_TRACE', JSON.stringify({
-            legacyVenueMap: plan.legacyVenueMap,
-            blocked: plan.blocked,
-            unresolved: plan.unresolved,
-            concerts: plan.concerts.map((record) => ({ id: record.id, bandId: record.bandId, date: record.date, canonicalVenueId: record.canonicalVenueId, venue: record.venue, roomOrStage: record.roomOrStage })),
-            groups: Migration.migrationEventGroups(plan.venues, plan.concerts).map((group) => ({ key: group.key, relationship: group.relationship, ids: group.records.map((record) => record.id), validation: group.validation })),
-          }));
-          NODE
-          exit "$status"
+        run: npm run test
       - name: JavaScript syntax
         run: npm run qa:syntax
       - name: Version and cache synchronization
