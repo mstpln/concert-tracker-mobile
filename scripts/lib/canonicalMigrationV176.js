@@ -409,8 +409,68 @@ function protectedInvariant(sourceConcerts, outputConcerts, mapping) {
   return { valid: errors.length === 0, errors };
 }
 
+function validExplicitEventGroup(records) {
+  const model = CanonicalIdentity.EventModelV174 || {};
+  const values = (records || []).map((record) => {
+    const value = record?.eventGroupId;
+    const valid = typeof model.validGroupId === 'function'
+      ? model.validGroupId(value)
+      : typeof value === 'string' && value.trim().length > 0;
+    return valid ? String(value).trim() : '';
+  });
+  return values.length > 0 && values.every(Boolean) && new Set(values).size === 1;
+}
+
+function migrationEventGroups(venues, concerts) {
+  const model = CanonicalIdentity.EventModelV174 || {};
+  const venueIndex = CanonicalIdentity.buildVenueIndex(venues || []);
+  const groups = new Map();
+  (concerts || []).forEach((concert, sourceIndex) => {
+    const explicit = validExplicitEventGroup([concert]);
+    const festival = explicit ? null : CanonicalIdentity.festivalEditionIdentity(concert);
+    const ordinary = explicit || festival ? null : CanonicalIdentity.ordinaryEventContext(concert, venueIndex);
+    const explicitId = explicit ? String(concert.eventGroupId).trim() : '';
+    const key = explicit ? `group:${explicitId}`
+      : festival ? `festival:${festival.key}`
+        : ordinary ? `auto:${ordinary.key}`
+          : `concert:${concert?.id ?? sourceIndex}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        eventGroupId: explicitId || null,
+        relationship: explicit ? 'explicit' : festival ? 'festival' : ordinary ? 'automatic' : 'single',
+        festivalEdition: festival || null,
+        records: [],
+        indexes: [],
+        firstIndex: sourceIndex,
+      });
+    }
+    const group = groups.get(key);
+    group.records.push(concert);
+    group.indexes.push(sourceIndex);
+  });
+  return [...groups.values()].map((event) => {
+    let validation = { valid: true, reasons: [] };
+    if (event.relationship === 'explicit') {
+      validation = validExplicitEventGroup(event.records)
+        ? { valid: true, reasons: [] }
+        : { valid: false, reasons: ['eventGroupId'] };
+    } else if (event.relationship === 'festival') {
+      const identities = event.records.map((record) => CanonicalIdentity.festivalEditionIdentity(record));
+      validation = identities.every(Boolean) && new Set(identities.map((identity) => identity.key)).size === 1
+        ? { valid: true, reasons: [] }
+        : { valid: false, reasons: ['festivalEdition'] };
+    } else if (event.relationship === 'automatic') {
+      validation = typeof model.validateEventGroup === 'function'
+        ? model.validateEventGroup(event.records, venueIndex)
+        : { valid: true, reasons: [] };
+    }
+    return { ...event, validation };
+  });
+}
+
 function metricSnapshot(venues, concerts) {
-  const events = CanonicalIdentity.EventModelV174.groupConcertPerformances(concerts || []);
+  const events = migrationEventGroups(venues, concerts);
   const ticketTotal = (concerts || []).reduce((sum, record) => {
     const value = Number(record?.ticketPrice);
     return sum + (Number.isFinite(value) ? value : 0);
@@ -514,7 +574,7 @@ function audit(venues, concerts, decisions = {}) {
     const resolvedDistinct = ids.every((left, index) => ids.slice(index + 1).every((right) => venueDistinct.has(pairKey(left, right))));
     return { key, reason: key.startsWith('provider:') ? 'shared_provider_identity' : 'shared_identity_name_requires_research', ids, resolvedDistinct };
   });
-  const eventGroups = CanonicalIdentity.EventModelV174.groupConcertPerformances(concerts || []);
+  const eventGroups = migrationEventGroups(venues, concerts);
   return {
     schemaVersion: 1,
     sourceHashes: { venues: sha256(venues || []), concerts: sha256(concerts || []), decisions: sha256(normalizeDecisions(decisions)) },
@@ -535,7 +595,7 @@ function planMigration(venues, concerts, decisions = {}) {
   const sourceConcerts = clone(concerts || []);
   const before = audit(sourceVenues, sourceConcerts, decisions);
   const venueStep = applyVenueDecisions(sourceVenues, decisions);
-  let mappedConcerts = mapConcertVenues(sourceConcerts, venueStep.mapping, venueStep.records);
+  const mappedConcerts = mapConcertVenues(sourceConcerts, venueStep.mapping, venueStep.records);
   const festivalStep = applyFestivalDecisions(mappedConcerts, decisions);
   const concertStep = reconcileConcerts(festivalStep.records, venueStep.records, decisions);
   const after = audit(venueStep.records, concertStep.records, decisions);
@@ -581,6 +641,7 @@ module.exports = Object.freeze({
   protectedSnapshot,
   protectedInvariant,
   metricSnapshot,
+  migrationEventGroups,
   orphanChecks,
   reverseMapping,
   normalizeDecisions,
