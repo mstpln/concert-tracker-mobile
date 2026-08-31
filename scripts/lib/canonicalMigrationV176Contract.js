@@ -1,0 +1,320 @@
+'use strict';
+
+const Migration = require('./canonicalMigrationV176Final');
+const CanonicalIdentity = require('../../canonicalIdentityV174');
+
+const USER_FIELDS = new Set(CanonicalIdentity.USER_OWNED_FIELDS || []);
+
+function clone(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function text(value) {
+  return String(value || '').trim();
+}
+
+function normalizedText(value) {
+  return text(value).toLocaleLowerCase().replace(/\s+/g, ' ');
+}
+
+function meaningful(value) {
+  if (value == null) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'boolean') return value === true;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
+function uniqueStable(values) {
+  const seen = new Set();
+  const output = [];
+  for (const value of values || []) {
+    const key = JSON.stringify(value);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(clone(value));
+  }
+  return output;
+}
+
+function legacyAliasMapping(records, idField, legacyField) {
+  const owners = new Map();
+  const add = (alias, owner) => {
+    const key = text(alias);
+    const ownerId = text(owner);
+    if (!key || !ownerId) return;
+    if (!owners.has(key)) owners.set(key, new Set());
+    owners.get(key).add(ownerId);
+  };
+  for (const record of records || []) {
+    const owner = text(record?.[idField]);
+    if (!owner) continue;
+    add(owner, owner);
+    for (const alias of Array.isArray(record?.[legacyField]) ? record[legacyField] : []) add(alias, owner);
+  }
+  const mapping = {};
+  for (const [alias, ownerSet] of owners) {
+    if (ownerSet.size === 1) mapping[alias] = [...ownerSet][0];
+  }
+  return mapping;
+}
+
+function pairKey(left, right) {
+  return [text(left), text(right)].sort().join('\u001f');
+}
+
+function distinctPairSet(decisions, field, mapping) {
+  const pairs = new Set();
+  for (const decision of Migration.normalizeDecisions(decisions)[field] || []) {
+    const ids = [...new Set((Array.isArray(decision?.ids) ? decision.ids : [])
+      .map((id) => mapping[text(id)] || text(id)).filter(Boolean))];
+    for (let i = 0; i < ids.length; i += 1) {
+      for (let j = i + 1; j < ids.length; j += 1) pairs.add(pairKey(ids[i], ids[j]));
+    }
+  }
+  return pairs;
+}
+
+function allPairsDistinct(ids, pairs) {
+  if (ids.length < 2) return false;
+  for (let i = 0; i < ids.length; i += 1) {
+    for (let j = i + 1; j < ids.length; j += 1) {
+      if (!pairs.has(pairKey(ids[i], ids[j]))) return false;
+    }
+  }
+  return true;
+}
+
+function normalizeIdentityText(value) {
+  const model = CanonicalIdentity.VenueModelV174 || {};
+  if (typeof model.normalizeIdentityText === 'function') return model.normalizeIdentityText(value);
+  return text(value).normalize('NFKD').replace(/\p{M}/gu, '').toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
+}
+
+function exhaustiveVenueCandidates(venues, decisions) {
+  const owners = new Map();
+  for (const venue of venues || []) {
+    for (const variant of CanonicalIdentity.VenueModelV174.identityVariants(venue)) {
+      const provider = normalizeIdentityText(variant?.provider || variant?.namespace || variant?.sourceProvider || variant?.source);
+      const providerVenueId = text(variant?.providerVenueId || variant?.venueId || variant?.id);
+      if (variant?.kind === 'sub_location' && !(provider && providerVenueId)) continue;
+      const name = normalizeIdentityText(variant?.name);
+      const key = provider && providerVenueId ? `provider:${provider}:${providerVenueId}` : name ? `name:${name}` : '';
+      if (!key) continue;
+      if (!owners.has(key)) owners.set(key, new Set());
+      owners.get(key).add(text(venue?.venueId));
+    }
+  }
+  const aliasMap = legacyAliasMapping(venues, 'venueId', 'legacyVenueIds');
+  const distinct = distinctPairSet(decisions, 'venueDistinct', aliasMap);
+  return [...owners.entries()]
+    .filter(([, ids]) => ids.size > 1)
+    .map(([key, idSet]) => {
+      const ids = [...idSet].filter(Boolean).sort();
+      return {
+        key,
+        reason: key.startsWith('provider:') ? 'shared_provider_identity' : 'shared_identity_name_requires_research',
+        ids,
+        resolvedDistinct: allPairsDistinct(ids, distinct),
+      };
+    });
+}
+
+function unresolvedConcertClassification(venues, concerts) {
+  const venueIndex = CanonicalIdentity.buildVenueIndex(venues || []);
+  const allowed = [];
+  const blocking = [];
+  for (const record of concerts || []) {
+    const identity = CanonicalIdentity.canonicalConcertIdentity(record, venueIndex);
+    if (identity.kind === 'same') continue;
+    const item = { id: record?.id || null, reason: identity.reason };
+    const status = normalizedText(record?.lifecycleStatus || record?.providerEventStatus || record?.status);
+    const postponedTbd = identity.reason === 'date_missing_or_tbd' && status === 'postponed';
+    if (postponedTbd) allowed.push(item);
+    else blocking.push(item);
+  }
+  return { allowed, blocking };
+}
+
+function audit(venues, concerts, decisions = {}) {
+  const report = Migration.audit(venues, concerts, decisions);
+  const venueCandidates = exhaustiveVenueCandidates(venues, decisions);
+  const concertAliasMap = legacyAliasMapping(concerts, 'id', 'legacyConcertIds');
+  const concertDistinct = distinctPairSet(decisions, 'concertDistinct', concertAliasMap);
+  const concertCandidates = (report.concertCandidates || []).map((candidate) => ({
+    ...candidate,
+    resolvedDistinct: allPairsDistinct(candidate.ids || [], concertDistinct),
+  }));
+  const unresolved = unresolvedConcertClassification(venues, concerts);
+  return {
+    ...report,
+    venueCandidates,
+    unresolvedVenueCandidates: venueCandidates.filter((item) => !item.resolvedDistinct),
+    concertCandidates,
+    unresolvedConcertCandidates: concertCandidates.filter((item) => !item.resolvedDistinct),
+    unresolvedConcerts: [...unresolved.allowed, ...unresolved.blocking],
+    allowedUnresolvedConcerts: unresolved.allowed,
+    blockingUnresolvedConcerts: unresolved.blocking,
+  };
+}
+
+function sourceIdBlockers(venues, concerts) {
+  const blockers = [];
+  for (const [kind, records, field] of [
+    ['venue', venues || [], 'venueId'],
+    ['concert', concerts || [], 'id'],
+  ]) {
+    const seen = new Set();
+    const duplicates = new Set();
+    const missing = [];
+    records.forEach((record, index) => {
+      const id = text(record?.[field]);
+      if (!id) {
+        missing.push(index);
+        return;
+      }
+      if (seen.has(id)) duplicates.add(id);
+      seen.add(id);
+    });
+    if (duplicates.size) blockers.push({ kind, reason: 'source_duplicate_ids', ids: [...duplicates].sort() });
+    if (missing.length) blockers.push({ kind, reason: 'source_missing_ids', indexes: missing });
+  }
+  return blockers;
+}
+
+function collapsedDistinctDecisionBlockers(venues, concerts, decisions) {
+  const blockers = [];
+  const venueAliases = legacyAliasMapping(venues, 'venueId', 'legacyVenueIds');
+  const concertAliases = legacyAliasMapping(concerts, 'id', 'legacyConcertIds');
+  for (const [kind, field, mapping] of [
+    ['venue', 'venueDistinct', venueAliases],
+    ['concert', 'concertDistinct', concertAliases],
+  ]) {
+    for (const decision of Migration.normalizeDecisions(decisions)[field] || []) {
+      const sourceIds = [...new Set((Array.isArray(decision?.ids) ? decision.ids : []).map(text).filter(Boolean))];
+      if (sourceIds.length < 2) continue;
+      const resolved = [...new Set(sourceIds.map((id) => mapping[id] || id))];
+      if (resolved.length < 2) blockers.push({ kind, reason: 'distinct_decision_collapses_to_same_identity', ids: sourceIds });
+    }
+  }
+  return blockers;
+}
+
+function userRichScore(record) {
+  let score = 0;
+  if (record?.manuallyAdded === true) score += 100;
+  if (record?.attending === true || record?.attended === true) score += 80;
+  if (record?.lineupRole === 'support') score += 10;
+  for (const field of USER_FIELDS) if (meaningful(record?.[field])) score += 3;
+  return score;
+}
+
+function unsafeConcertSurvivorBlockers(concerts, decisions) {
+  const blockers = [];
+  const aliases = legacyAliasMapping(concerts, 'id', 'legacyConcertIds');
+  const byId = new Map((concerts || []).map((record) => [text(record?.id), record]).filter(([id]) => id));
+  for (const decision of Migration.normalizeDecisions(decisions).concertMerges || []) {
+    const sourceIds = [...new Set((Array.isArray(decision?.ids) ? decision.ids : []).map(text).filter(Boolean))];
+    const resolvedIds = [...new Set(sourceIds.map((id) => aliases[id] || id))];
+    if (resolvedIds.length < 2) continue;
+    const selectedId = aliases[text(decision?.canonicalId)] || text(decision?.canonicalId);
+    const members = resolvedIds.map((id) => byId.get(id)).filter(Boolean);
+    const selected = byId.get(selectedId);
+    if (!selected || members.length !== resolvedIds.length) continue;
+    const maximum = Math.max(...members.map(userRichScore));
+    if (userRichScore(selected) < maximum) {
+      blockers.push({
+        kind: 'concert',
+        reason: 'canonical_survivor_not_user_rich',
+        ids: sourceIds,
+        canonicalId: text(decision?.canonicalId) || null,
+      });
+    }
+  }
+  return blockers;
+}
+
+function remapFestivalPrimaryReferences(concerts, venueMapping) {
+  return (concerts || []).map((record) => {
+    const next = clone(record);
+    const mapValue = (value) => {
+      const id = text(value);
+      return id && venueMapping?.[id] ? venueMapping[id] : value;
+    };
+    if (next.festivalEdition && typeof next.festivalEdition === 'object' && !Array.isArray(next.festivalEdition)) {
+      const primary = text(next.festivalEdition.primaryCanonicalVenueId);
+      if (primary) next.festivalEdition.primaryCanonicalVenueId = mapValue(primary);
+    }
+    if (text(next.festivalPrimaryCanonicalVenueId)) next.festivalPrimaryCanonicalVenueId = mapValue(next.festivalPrimaryCanonicalVenueId);
+    if (text(next.festivalPrimaryVenueId)) next.festivalPrimaryVenueId = mapValue(next.festivalPrimaryVenueId);
+    return next;
+  });
+}
+
+function orphanChecks(venues, concerts, venueMap = {}, concertMap = {}) {
+  const base = Migration.orphanChecks(venues, concerts, venueMap, concertMap);
+  const errors = [...(base.errors || [])];
+  const venueIds = new Set((venues || []).map((record) => text(record?.venueId)).filter(Boolean));
+  for (const concert of concerts || []) {
+    const primary = text(
+      concert?.festivalEdition?.primaryCanonicalVenueId
+      || concert?.festivalPrimaryCanonicalVenueId
+      || concert?.festivalPrimaryVenueId,
+    );
+    if (primary && !venueIds.has(primary) && !errors.some((item) => item.reason === 'festival_primary_venue_orphan' && text(item.concertId) === text(concert?.id))) {
+      errors.push({ reason: 'festival_primary_venue_orphan', concertId: concert?.id || null, canonicalVenueId: primary });
+    }
+  }
+  return { valid: errors.length === 0, errors };
+}
+
+function planMigration(venues, concerts, decisions = {}) {
+  const plan = Migration.planMigration(venues, concerts, decisions);
+  plan.blocked = uniqueStable([
+    ...(plan.blocked || []),
+    ...sourceIdBlockers(venues, concerts),
+    ...collapsedDistinctDecisionBlockers(venues, concerts, decisions),
+    ...unsafeConcertSurvivorBlockers(concerts, decisions),
+  ]);
+  plan.concerts = remapFestivalPrimaryReferences(plan.concerts, plan.legacyVenueMap);
+  const after = audit(plan.venues, plan.concerts, decisions);
+  plan.blocked = uniqueStable([
+    ...plan.blocked,
+    ...after.blockingUnresolvedConcerts.map((item) => ({
+      ...item,
+      identityReason: item.reason,
+      kind: 'concert',
+      reason: 'unresolved_canonical_identity',
+    })),
+  ]);
+  plan.unresolved = clone(after.unresolvedConcerts);
+  plan.outputHashes = {
+    venues: Migration.sha256(plan.venues),
+    concerts: Migration.sha256(plan.concerts),
+  };
+  plan.unresolvedIdentity = {
+    venues: clone(after.unresolvedVenueCandidates),
+    concerts: clone(after.unresolvedConcertCandidates),
+  };
+  plan.invariants = {
+    protected: Migration.protectedInvariant(concerts, plan.concerts, plan.legacyConcertMap),
+    orphans: orphanChecks(plan.venues, plan.concerts, plan.legacyVenueMap, plan.legacyConcertMap),
+    invalidEvents: clone(after.invalidEvents),
+  };
+  plan.after = {
+    counts: clone(after.counts),
+    metrics: clone(after.metrics),
+    protected: clone(after.protected),
+  };
+  return plan;
+}
+
+module.exports = Object.freeze({
+  ...Migration,
+  audit,
+  planMigration,
+  orphanChecks,
+});
