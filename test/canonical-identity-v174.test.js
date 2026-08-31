@@ -139,6 +139,61 @@ test('v174 venue normalization preserves unknown fields and legacy IDs', () => {
   assert.deepEqual(normalized.legacyVenueIds, ['venue-deadbeef']);
 });
 
+test('v174 document normalization skips malformed records and safely consolidates rich duplicates', () => {
+  const normalized = Canonical.VenueModelV174.normalizeDocument([
+    null,
+    venue({ venueId: 'invalid', city: '' }),
+    venue({
+      currentName: 'Malmö Arena',
+      currentLocation: { city: 'Malmö', country: 'Sweden', address: 'Hyllie Stationstorg 4, Malmö, Sweden' },
+      historicalNames: ['Malmö Isstadion'],
+      locationHistory: [{ city: 'Malmö', address: 'Old Address 1' }],
+      unknownFutureField: { preserve: true },
+    }),
+    venue({
+      providerIdentities: [{ provider: 'ticketmaster', venueId: 'tm-malmo' }],
+      subLocations: [{ name: 'Room A', type: 'room' }],
+      legacyVenueIds: ['venue-deadbeef'],
+    }),
+  ]);
+  assert.equal(normalized.length, 1);
+  assert.equal(normalized[0].currentName, 'Malmö Arena');
+  assert.deepEqual(normalized[0].currentLocation, { city: 'Malmö', country: 'Sweden', address: 'Hyllie Stationstorg 4, Malmö, Sweden' });
+  assert.deepEqual(normalized[0].historicalNames, ['Malmö Isstadion']);
+  assert.deepEqual(normalized[0].locationHistory, [{ city: 'Malmö', address: 'Old Address 1' }]);
+  assert.deepEqual(normalized[0].providerIdentities, [{ provider: 'ticketmaster', venueId: 'tm-malmo' }]);
+  assert.deepEqual(normalized[0].subLocations, [{ name: 'Room A', type: 'room' }]);
+  assert.deepEqual(normalized[0].legacyVenueIds, ['venue-deadbeef']);
+  assert.deepEqual(normalized[0].unknownFutureField, { preserve: true });
+  assert.doesNotThrow(() => Canonical.buildVenueIndex([null, venue({ venueId: 'invalid', city: '' }), normalized[0]]));
+});
+
+test('v174 raw fallback uses normalized address evidence conservatively', () => {
+  const first = Canonical.resolveCanonicalVenue({ venue: 'Uncatalogued Hall', city: 'Lund', country: 'Sweden', venueAddress: 'Main Street 12, Lund, Sweden' }, []);
+  const formattingEquivalent = Canonical.resolveCanonicalVenue({ venue: 'Uncatalogued Hall', city: 'Lund', country: 'Sweden', venueAddress: 'Main Street 12 Lund Sweden' }, []);
+  const conflicting = Canonical.resolveCanonicalVenue({ venue: 'Uncatalogued Hall', city: 'Lund', country: 'Sweden', venueAddress: 'Other Street 99, Lund, Sweden' }, []);
+  assert.equal(first.key, formattingEquivalent.key);
+  assert.notEqual(first.key, conflicting.key);
+});
+
+test('v174 unique ID indexes resolve one owner and fail closed on collisions', () => {
+  const uniqueProvider = Canonical.buildVenueIndex([
+    venue({ providerIdentities: [{ provider: 'ticketmaster', venueId: 'shared-provider-id' }] }),
+    venue({ venueId: 'venue-bbbbbbbb', name: 'Namespace Hall', city: 'Lund', address: 'Namespace Street 1, Lund, Sweden', providerIdentities: [{ provider: 'spotify', venueId: 'shared-provider-id' }] }),
+  ]);
+  assert.equal(Canonical.resolveCanonicalVenue({ provider: 'ticketmaster', providerVenueId: 'shared-provider-id' }, uniqueProvider).canonicalVenueId, 'venue-aaaabbbb');
+  assert.equal(Canonical.resolveCanonicalVenue({ provider: 'spotify', providerVenueId: 'shared-provider-id' }, uniqueProvider).canonicalVenueId, 'venue-bbbbbbbb');
+
+  const collisions = Canonical.buildVenueIndex([
+    venue({ name: 'First Hall', address: 'First Street 1, Malmö, Sweden', legacyVenueIds: ['venue-cafebabe'], providerIdentities: [{ provider: 'ticketmaster', venueId: 'collision-id' }] }),
+    venue({ venueId: 'venue-bbbbbbbb', name: 'Second Hall', address: 'Second Street 2, Malmö, Sweden', legacyVenueIds: ['venue-cafebabe'], providerIdentities: [{ provider: 'ticketmaster', venueId: 'collision-id' }] }),
+    venue({ name: 'Conflicting Canonical Hall', address: 'Third Street 3, Malmö, Sweden' }),
+  ]);
+  assert.equal(Canonical.resolveCanonicalVenue({ provider: 'ticketmaster', providerVenueId: 'collision-id' }, collisions).reason, 'provider_venue_id_collision');
+  assert.equal(Canonical.resolveCanonicalVenue({ venueId: 'venue-cafebabe' }, collisions).reason, 'legacy_venue_id_collision');
+  assert.equal(Canonical.resolveCanonicalVenue({ venueId: 'venue-aaaabbbb' }, collisions).reason, 'venue_id_collision');
+});
+
 test('v174 indexed identity resolution stays fast at 3300 concerts / 530 venues', () => {
   const scaleVenues = Array.from({ length: 530 }, (_, i) => venue({ venueId: `venue-${i.toString(16).padStart(8, '0')}`, name: `Synthetic Venue ${i}`, city: `Synthetic City ${i}`, address: `Synthetic Street ${i}, Synthetic City ${i}, Sweden` }));
   const scaleIndex = Canonical.buildVenueIndex(scaleVenues);

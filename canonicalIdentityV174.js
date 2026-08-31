@@ -219,7 +219,30 @@
   }
 
   function normalizeRichDocument(records) {
-    return (Array.isArray(records) ? records : []).map(normalizeRichRecord);
+    const normalized = typeof baseVenueModel.normalizeDocument === 'function'
+      ? baseVenueModel.normalizeDocument(records)
+      : (Array.isArray(records) ? records : []).map(normalizeRichRecord).filter(Boolean);
+    return normalized.map(normalizeRichRecord).filter(Boolean);
+  }
+
+  function addUniqueIndexValue(map, key, entry) {
+    if (!key) return;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, entry);
+      return;
+    }
+    if (existing === entry) return;
+    if (Array.isArray(existing)) {
+      if (!existing.includes(entry)) existing.push(entry);
+      return;
+    }
+    map.set(key, [existing, entry]);
+  }
+
+  function uniqueIndexLookup(map, key) {
+    const value = map.get(key);
+    return { entry: value && !Array.isArray(value) ? value : null, collision: Array.isArray(value) };
   }
 
   function buildVenueIndex(records) {
@@ -250,19 +273,19 @@
       }));
       const entry = { record, variants };
       entries.push(entry);
-      if (record.venueId) byVenueId.set(String(record.venueId), entry);
+      if (record.venueId) addUniqueIndexValue(byVenueId, String(record.venueId), entry);
       for (const legacyId of Array.isArray(record.legacyVenueIds) ? record.legacyVenueIds : []) {
-        if (legacyId) byLegacyVenueId.set(String(legacyId), entry);
+        if (legacyId) addUniqueIndexValue(byLegacyVenueId, String(legacyId), entry);
       }
       for (const variant of variants) {
         addMapValue(byName, variant.nameKey, entry);
         addMapValue(byFullAddress, variant.fullAddress, entry);
         addMapValue(byAddressHead, variant.addressHead, entry);
-        if (variant.providerKey) byProviderIdentity.set(variant.providerKey, entry);
+        if (variant.providerKey) addUniqueIndexValue(byProviderIdentity, variant.providerKey, entry);
       }
       for (const providerIdentity of Array.isArray(record.providerIdentities) ? record.providerIdentities : []) {
         const key = providerIdentityKey(providerIdentity);
-        if (key) byProviderIdentity.set(key, entry);
+        if (key) addUniqueIndexValue(byProviderIdentity, key, entry);
       }
     }
     return { records: normalizedRecords, entries, byVenueId, byLegacyVenueId, byProviderIdentity, byName, byFullAddress, byAddressHead };
@@ -341,16 +364,32 @@
 
     const canonicalId = String(value.canonicalVenueId || '').trim();
     if (canonicalId && index.byVenueId.has(canonicalId)) {
-      return venueResolution(index.byVenueId.get(canonicalId), null, 'canonical_venue_id');
+      const lookup = uniqueIndexLookup(index.byVenueId, canonicalId);
+      if (lookup.collision) return { kind: 'ambiguous', reason: 'canonical_venue_id_collision', record: null };
+      return venueResolution(lookup.entry, null, 'canonical_venue_id');
     }
     const venueId = String(value.venueId || '').trim();
-    if (venueId && index.byVenueId.has(venueId)) return venueResolution(index.byVenueId.get(venueId), null, 'venue_id');
-    if (venueId && index.byLegacyVenueId.has(venueId)) return venueResolution(index.byLegacyVenueId.get(venueId), null, 'legacy_venue_id');
-    if (canonicalId && index.byLegacyVenueId.has(canonicalId)) return venueResolution(index.byLegacyVenueId.get(canonicalId), null, 'legacy_venue_id');
+    if (venueId && index.byVenueId.has(venueId)) {
+      const lookup = uniqueIndexLookup(index.byVenueId, venueId);
+      if (lookup.collision) return { kind: 'ambiguous', reason: 'venue_id_collision', record: null };
+      return venueResolution(lookup.entry, null, 'venue_id');
+    }
+    if (venueId && index.byLegacyVenueId.has(venueId)) {
+      const lookup = uniqueIndexLookup(index.byLegacyVenueId, venueId);
+      if (lookup.collision) return { kind: 'ambiguous', reason: 'legacy_venue_id_collision', record: null };
+      return venueResolution(lookup.entry, null, 'legacy_venue_id');
+    }
+    if (canonicalId && index.byLegacyVenueId.has(canonicalId)) {
+      const lookup = uniqueIndexLookup(index.byLegacyVenueId, canonicalId);
+      if (lookup.collision) return { kind: 'ambiguous', reason: 'legacy_venue_id_collision', record: null };
+      return venueResolution(lookup.entry, null, 'legacy_venue_id');
+    }
 
     const providerKey = exactProviderKeyFromValue(value);
     if (providerKey && index.byProviderIdentity.has(providerKey)) {
-      return venueResolution(index.byProviderIdentity.get(providerKey), null, 'provider_venue_id');
+      const lookup = uniqueIndexLookup(index.byProviderIdentity, providerKey);
+      if (lookup.collision) return { kind: 'ambiguous', reason: 'provider_venue_id_collision', record: null };
+      return venueResolution(lookup.entry, null, 'provider_venue_id');
     }
 
     const rawVenue = String(value.venue ?? value.name ?? '').trim();
@@ -391,11 +430,12 @@
     const city = String(value.city || '').trim();
     const country = String(value.country || '').trim();
     if (!city) return { kind: 'ambiguous', reason: 'venue_identity_incomplete', record: null };
+    const rawAddressKey = normalizedAddress(value.venueAddress ?? value.address);
     return {
       kind: 'same',
       reason: 'raw_fallback',
       canonicalVenueId: null,
-      key: `raw:${nameKey}|${canonicalCity(city)}|${canonicalCountry(country)}`,
+      key: `raw:${nameKey}|${canonicalCity(city)}|${canonicalCountry(country)}${rawAddressKey ? `|${rawAddressKey}` : ''}`,
       venue: rawVenue,
       city,
       country,
