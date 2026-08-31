@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const Migration = require('./lib/canonicalMigrationV176Contract');
 
+const DECISION_ARRAY_FIELDS = Object.freeze(['venueMerges', 'venueDistinct', 'concertMerges', 'concertDistinct', 'festivalEditions']);
+
 function usage() {
   return [
     'Usage:',
@@ -13,7 +15,7 @@ function usage() {
     'Safety: this command reads explicit local files only. It has no network or production write path.',
     'Plan mode is dry-run only and refuses to run unless exact source-file SHA-256 guards match.',
     'When a research decision registry is supplied in plan mode, its exact byte-level SHA-256 is mandatory too.',
-    'Output paths may not overwrite or contain any supplied source input file.',
+    'Output paths may not overwrite or contain any supplied source input file, including through links.',
     'Plan output directories must be absent or empty so stale artifacts cannot survive a later run.',
   ].join('\n');
 }
@@ -32,12 +34,51 @@ function argsFrom(argv) {
   return result;
 }
 
+function physicalPath(filePath) {
+  const resolved = path.resolve(filePath);
+  if (fs.existsSync(resolved)) return fs.realpathSync(resolved);
+  const suffix = [];
+  let cursor = resolved;
+  while (!fs.existsSync(cursor)) {
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    suffix.unshift(path.basename(cursor));
+    cursor = parent;
+  }
+  const physicalParent = fs.existsSync(cursor) ? fs.realpathSync(cursor) : cursor;
+  return path.join(physicalParent, ...suffix);
+}
+
 function readJson(filePath, label) {
   if (!filePath) throw new Error(`Missing --${label}`);
   const resolved = path.resolve(filePath);
   const raw = fs.readFileSync(resolved);
   const parsed = JSON.parse(raw.toString('utf8'));
-  return { path: resolved, raw, value: parsed, sha256: Migration.sha256Bytes(raw) };
+  return {
+    path: resolved,
+    physicalPath: fs.realpathSync(resolved),
+    raw,
+    value: parsed,
+    sha256: Migration.sha256Bytes(raw),
+  };
+}
+
+function validateDecisionShape(decisions) {
+  if (!decisions || typeof decisions !== 'object' || Array.isArray(decisions)) throw new Error('Research decisions input must be a JSON object.');
+  for (const field of DECISION_ARRAY_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(decisions, field)) continue;
+    if (!Array.isArray(decisions[field])) throw new Error(`Research decisions field ${field} must be an array.`);
+    decisions[field].forEach((decision, index) => {
+      if (!decision || typeof decision !== 'object' || Array.isArray(decision)) throw new Error(`Research decisions ${field}[${index}] must be an object.`);
+      if (field === 'festivalEditions') {
+        if (Object.prototype.hasOwnProperty.call(decision, 'concertIds') && !Array.isArray(decision.concertIds)) {
+          throw new Error(`Research decisions ${field}[${index}].concertIds must be an array.`);
+        }
+      } else if (Object.prototype.hasOwnProperty.call(decision, 'ids') && !Array.isArray(decision.ids)) {
+        throw new Error(`Research decisions ${field}[${index}].ids must be an array.`);
+      }
+    });
+  }
 }
 
 function validateSha256(value, label) {
@@ -51,7 +92,7 @@ function assertHash(actual, expected, label) {
 }
 
 function inputPaths(venues, concerts, decisionsFile) {
-  return [venues.path, concerts.path, decisionsFile?.path].filter(Boolean);
+  return [venues.physicalPath, concerts.physicalPath, decisionsFile?.physicalPath].filter(Boolean);
 }
 
 function pathInside(parent, candidate) {
@@ -59,15 +100,27 @@ function pathInside(parent, candidate) {
   return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
 }
 
+function sameExistingFile(left, right) {
+  if (!fs.existsSync(left) || !fs.existsSync(right)) return false;
+  const a = fs.statSync(left);
+  const b = fs.statSync(right);
+  return a.dev === b.dev && a.ino === b.ino;
+}
+
 function assertAuditOutputSafe(outPath, inputs) {
   const resolved = path.resolve(outPath);
-  if (inputs.includes(resolved)) throw new Error('Audit output path must not overwrite a source input file.');
+  const physical = physicalPath(resolved);
+  if (inputs.includes(physical)) throw new Error('Audit output path must not overwrite a source input file.');
+  if (fs.existsSync(resolved) && inputs.some((input) => sameExistingFile(resolved, input))) {
+    throw new Error('Audit output path must not overwrite a source input file through a link.');
+  }
   return resolved;
 }
 
 function assertPlanOutputSafe(outDir, inputs) {
   const resolved = path.resolve(outDir);
-  const contained = inputs.find((input) => pathInside(resolved, input));
+  const physical = physicalPath(resolved);
+  const contained = inputs.find((input) => pathInside(physical, input));
   if (contained) throw new Error(`Plan output directory must not contain a source input file: ${contained}`);
   if (fs.existsSync(resolved)) {
     const stat = fs.statSync(resolved);
@@ -99,7 +152,7 @@ function main() {
   if (!Array.isArray(venues.value) || !Array.isArray(concerts.value)) throw new Error('Venue and concert inputs must both be JSON arrays.');
   const decisionsFile = args.decisions ? readJson(args.decisions, 'decisions') : null;
   const decisions = decisionsFile?.value || {};
-  if (!decisions || typeof decisions !== 'object' || Array.isArray(decisions)) throw new Error('Research decisions input must be a JSON object.');
+  validateDecisionShape(decisions);
   const inputs = inputPaths(venues, concerts, decisionsFile);
 
   if (args.command === 'audit') {
