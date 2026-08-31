@@ -19,6 +19,10 @@ function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
+function hasOwn(record, key) {
+  return !!record && Object.prototype.hasOwnProperty.call(record, key);
+}
+
 function stable(value) {
   if (value && typeof value === 'object') {
     if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
@@ -32,6 +36,11 @@ function sha256(value) {
   return crypto.createHash('sha256').update(input).digest('hex');
 }
 
+function sha256Bytes(value) {
+  const input = Buffer.isBuffer(value) ? value : Buffer.from(value);
+  return crypto.createHash('sha256').update(input).digest('hex');
+}
+
 function meaningful(value) {
   if (value == null) return false;
   if (typeof value === 'string') return value.trim() !== '';
@@ -39,6 +48,14 @@ function meaningful(value) {
   if (typeof value === 'boolean') return value === true;
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
+function present(record, field) {
+  if (!hasOwn(record, field)) return false;
+  const value = record[field];
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string') return value.trim() !== '';
   return true;
 }
 
@@ -97,7 +114,7 @@ function unknownConflicts(records, type) {
     if (USER_FIELDS.has(key) || SAFE_MERGE_ARRAY_FIELDS.has(key) || PROVIDER_PRESENTATION_FIELDS.has(key) || IDENTITY_FIELDS.has(key)) continue;
     if (type === 'concert' && ['bandId', 'bandName', 'date', 'venue', 'city', 'country', 'venueAddress', 'roomOrStage'].includes(key)) continue;
     if (type === 'venue' && ['name', 'currentName', 'city', 'country', 'address', 'currentLocation'].includes(key)) continue;
-    const values = records.map((record) => record?.[key]).filter(meaningful);
+    const values = records.filter((record) => present(record, key)).map((record) => record[key]);
     const unique = [...new Set(values.map(stable))];
     if (unique.length > 1) conflicts.push(key);
   }
@@ -107,7 +124,7 @@ function unknownConflicts(records, type) {
 function copyMissingFields(target, records) {
   for (const record of records) {
     for (const [key, value] of Object.entries(record || {})) {
-      if (!meaningful(target[key]) && meaningful(value)) target[key] = clone(value);
+      if (!hasOwn(target, key) && value !== undefined) target[key] = clone(value);
     }
   }
   return target;
@@ -120,6 +137,7 @@ function mergeVenueRecords(records, preferredId) {
   if (conflictingUnknownFields.length) return { blocked: true, reason: 'unknown_field_conflict', fields: conflictingUnknownFields };
   const merged = copyMissingFields(clone(winner), records);
   const winnerId = String(winner.venueId || '').trim();
+  if (!winnerId) return { blocked: true, reason: 'canonical_venue_id_missing' };
   const mergedAway = records.map((record) => String(record.venueId || '').trim()).filter((id) => id && id !== winnerId);
   merged.legacyVenueIds = uniqueStable([
     ...asArray(winner.legacyVenueIds),
@@ -127,7 +145,7 @@ function mergeVenueRecords(records, preferredId) {
     ...mergedAway,
   ]).map(String);
   for (const field of SAFE_MERGE_ARRAY_FIELDS) {
-    if (field === 'legacyConcertIds') continue;
+    if (field === 'legacyConcertIds' || field === 'legacyVenueIds') continue;
     const value = mergeArrayField(records, field);
     if (value.length) merged[field] = value;
   }
@@ -145,6 +163,14 @@ function providerStrength(record) {
   return 1;
 }
 
+function preferredUserValue(records, field) {
+  const meaningfulValues = records.filter((record) => meaningful(record?.[field])).map((record) => record[field]);
+  if (field === 'lineupRole' && meaningfulValues.some((value) => String(value) === 'support')) return 'support';
+  if (meaningfulValues.length) return clone(meaningfulValues[0]);
+  const explicit = records.find((record) => present(record, field));
+  return explicit ? clone(explicit[field]) : undefined;
+}
+
 function mergeConcertRecords(records, preferredId) {
   const userConflicts = CanonicalIdentity.userOwnedConflicts(records);
   if (userConflicts.length) return { blocked: true, reason: 'user_owned_conflict', fields: userConflicts };
@@ -154,6 +180,7 @@ function mergeConcertRecords(records, preferredId) {
   if (!winner) return { blocked: true, reason: 'concert_group_empty' };
   const merged = copyMissingFields(clone(winner), records);
   const winnerId = String(winner.id || '').trim();
+  if (!winnerId) return { blocked: true, reason: 'canonical_concert_id_missing' };
   const mergedAway = records.map((record) => String(record.id || '').trim()).filter((id) => id && id !== winnerId);
   merged.legacyConcertIds = uniqueStable([
     ...asArray(winner.legacyConcertIds),
@@ -161,19 +188,19 @@ function mergeConcertRecords(records, preferredId) {
     ...mergedAway,
   ]).map(String);
   for (const field of SAFE_MERGE_ARRAY_FIELDS) {
-    if (field === 'legacyVenueIds') continue;
+    if (field === 'legacyVenueIds' || field === 'legacyConcertIds') continue;
     const value = mergeArrayField(records, field);
     if (value.length) merged[field] = value;
   }
   const providerWinner = [...records].sort((a, b) => providerStrength(b) - providerStrength(a))[0];
   if (providerWinner) {
     for (const field of PROVIDER_PRESENTATION_FIELDS) {
-      if (meaningful(providerWinner[field])) merged[field] = clone(providerWinner[field]);
+      if (present(providerWinner, field)) merged[field] = clone(providerWinner[field]);
     }
   }
   for (const field of USER_FIELDS) {
-    const value = records.map((record) => record?.[field]).find(meaningful);
-    if (meaningful(value)) merged[field] = clone(value);
+    const value = preferredUserValue(records, field);
+    if (value !== undefined) merged[field] = value;
   }
   merged.id = winnerId;
   return { blocked: false, record: merged, winnerId, mergedAway };
@@ -190,14 +217,36 @@ function normalizeDecisions(decisions) {
   };
 }
 
+function pairKey(left, right) {
+  return [String(left || ''), String(right || '')].sort().join('\u001f');
+}
+
+function decisionPairSet(decisions, field) {
+  const set = new Set();
+  for (const decision of normalizeDecisions(decisions)[field] || []) {
+    const ids = uniqueStable(asArray(decision?.ids).map(String).filter(Boolean));
+    for (let i = 0; i < ids.length; i += 1) {
+      for (let j = i + 1; j < ids.length; j += 1) set.add(pairKey(ids[i], ids[j]));
+    }
+  }
+  return set;
+}
+
 function applyVenueDecisions(venues, decisions) {
-  let output = clone(venues || []);
-  const mapping = {};
+  const source = clone(venues || []);
+  let output = clone(source);
+  const mapping = Object.fromEntries(source.map((record) => [String(record?.venueId || ''), String(record?.venueId || '')]).filter(([id]) => id));
   const manifest = [];
   const blocked = [];
+  const distinctPairs = decisionPairSet(decisions, 'venueDistinct');
   for (const decision of normalizeDecisions(decisions).venueMerges) {
     const ids = uniqueStable(asArray(decision?.ids).map(String).filter(Boolean));
     if (ids.length < 2) continue;
+    const contradiction = ids.some((left, index) => ids.slice(index + 1).some((right) => distinctPairs.has(pairKey(left, right))));
+    if (contradiction) {
+      blocked.push({ kind: 'venue', reason: 'merge_conflicts_with_explicit_distinct', ids });
+      continue;
+    }
     const members = output.filter((record) => ids.includes(String(record?.venueId || '')));
     if (members.length !== ids.length) {
       blocked.push({ kind: 'venue', reason: 'decision_member_missing', ids });
@@ -208,12 +257,12 @@ function applyVenueDecisions(venues, decisions) {
       blocked.push({ kind: 'venue', ids, ...result });
       continue;
     }
+    const firstIndex = Math.min(...members.map((member) => output.indexOf(member)));
     output = output.filter((record) => !ids.includes(String(record?.venueId || '')));
-    output.push(result.record);
+    output.splice(firstIndex, 0, result.record);
     for (const id of ids) mapping[id] = result.winnerId;
     manifest.push({ kind: 'venue_merge', winnerId: result.winnerId, mergedAway: result.mergedAway, reason: decision?.reason || 'research_decision', evidence: clone(decision?.evidence || []) });
   }
-  output.sort((a, b) => String(a?.venueId || '').localeCompare(String(b?.venueId || '')));
   return { records: output, mapping, manifest, blocked };
 }
 
@@ -230,27 +279,22 @@ function mapConcertVenues(concerts, venueMapping, venues) {
   });
 }
 
-function explicitDistinctPairSet(decisions) {
-  const set = new Set();
-  for (const decision of normalizeDecisions(decisions).concertDistinct) {
-    const ids = asArray(decision?.ids).map(String).filter(Boolean).sort();
-    if (ids.length === 2) set.add(ids.join('\u001f'));
-  }
-  return set;
-}
-
 function applyFestivalDecisions(concerts, decisions) {
   const output = clone(concerts || []);
   const byId = new Map(output.map((record) => [String(record?.id || ''), record]));
+  const blocked = [];
   for (const decision of normalizeDecisions(decisions).festivalEditions) {
     const ids = uniqueStable(asArray(decision?.concertIds).map(String).filter(Boolean));
     if (!ids.length) continue;
     const festivalId = String(decision?.id || '').trim();
     const year = String(decision?.year || '').trim();
-    if (!festivalId || !/^\d{4}$/.test(year)) continue;
+    const missing = ids.filter((id) => !byId.has(id));
+    if (!festivalId || !/^\d{4}$/.test(year) || missing.length) {
+      blocked.push({ kind: 'festival', reason: missing.length ? 'decision_member_missing' : 'festival_identity_invalid', id: festivalId || null, concertIds: ids, missing });
+      continue;
+    }
     for (const id of ids) {
       const record = byId.get(id);
-      if (!record) continue;
       record.festivalEditionId = festivalId;
       record.festivalEdition = {
         ...(record.festivalEdition && typeof record.festivalEdition === 'object' ? record.festivalEdition : {}),
@@ -262,70 +306,107 @@ function applyFestivalDecisions(concerts, decisions) {
       };
     }
   }
-  return output;
+  return { records: output, blocked };
 }
 
 function reconcileConcerts(concerts, venues, decisions) {
+  const source = clone(concerts || []);
   const venueIndex = CanonicalIdentity.buildVenueIndex(venues || []);
   const groups = new Map();
   const unresolved = [];
-  const distinctPairs = explicitDistinctPairSet(decisions);
-  for (const record of concerts || []) {
+  const distinctPairs = decisionPairSet(decisions, 'concertDistinct');
+  const mapping = Object.fromEntries(source.map((record) => [String(record?.id || ''), String(record?.id || '')]).filter(([id]) => id));
+  source.forEach((record, sourceIndex) => {
     const identity = CanonicalIdentity.canonicalConcertIdentity(record, venueIndex);
     if (identity.kind !== 'same') {
-      unresolved.push({ record: clone(record), reason: identity.reason });
-      continue;
+      unresolved.push({ sourceIndex, record: clone(record), reason: identity.reason });
+      return;
     }
     if (!groups.has(identity.key)) groups.set(identity.key, []);
-    groups.get(identity.key).push(record);
-  }
+    groups.get(identity.key).push({ sourceIndex, record });
+  });
   const preferred = new Map();
   for (const decision of normalizeDecisions(decisions).concertMerges) {
     for (const id of asArray(decision?.ids)) preferred.set(String(id), String(decision?.canonicalId || ''));
   }
-  const output = [];
-  const mapping = {};
+  const replacements = new Map();
+  const skipped = new Set();
   const manifest = [];
   const blocked = [];
   for (const [key, members] of groups) {
-    if (members.length === 1) {
-      output.push(clone(members[0]));
-      mapping[String(members[0]?.id || '')] = String(members[0]?.id || '');
-      continue;
-    }
-    const memberIds = members.map((record) => String(record?.id || '')).filter(Boolean);
-    const hasDistinct = memberIds.some((left, index) => memberIds.slice(index + 1).some((right) => distinctPairs.has([left, right].sort().join('\u001f'))));
+    if (members.length === 1) continue;
+    const records = members.map((member) => member.record);
+    const memberIds = records.map((record) => String(record?.id || '')).filter(Boolean);
+    const hasDistinct = memberIds.some((left, index) => memberIds.slice(index + 1).some((right) => distinctPairs.has(pairKey(left, right))));
     if (hasDistinct) {
-      output.push(...members.map(clone));
       blocked.push({ kind: 'concert', reason: 'explicit_distinct_conflicts_with_canonical_identity', key, ids: memberIds });
       continue;
     }
     const preferredId = memberIds.map((id) => preferred.get(id)).find(Boolean);
-    const result = mergeConcertRecords(members, preferredId);
+    const result = mergeConcertRecords(records, preferredId);
     if (result.blocked) {
-      output.push(...members.map(clone));
       blocked.push({ kind: 'concert', key, ids: memberIds, ...result });
       continue;
     }
-    output.push(result.record);
+    const firstIndex = Math.min(...members.map((member) => member.sourceIndex));
+    replacements.set(firstIndex, result.record);
+    for (const member of members) if (member.sourceIndex !== firstIndex) skipped.add(member.sourceIndex);
     for (const id of memberIds) mapping[id] = result.winnerId;
     manifest.push({ kind: 'concert_merge', key, winnerId: result.winnerId, mergedAway: result.mergedAway, reason: 'canonical_band_venue_date' });
   }
-  output.push(...unresolved.map((item) => item.record));
-  output.sort((a, b) => String(a?.id || '').localeCompare(String(b?.id || '')));
+  const output = [];
+  source.forEach((record, index) => {
+    if (skipped.has(index)) return;
+    output.push(replacements.has(index) ? replacements.get(index) : clone(record));
+  });
   return { records: output, mapping, manifest, blocked, unresolved: unresolved.map((item) => ({ id: item.record?.id || null, reason: item.reason })) };
 }
 
 function protectedSnapshot(concerts) {
   const rows = [];
   for (const record of concerts || []) {
-    const protectedValues = {};
-    for (const field of USER_FIELDS) if (record?.[field] !== undefined) protectedValues[field] = clone(record[field]);
-    if (record?.attending === true || record?.attended === true || Object.keys(protectedValues).some((field) => meaningful(protectedValues[field]))) {
-      rows.push({ id: record?.id || null, date: record?.date || null, fields: protectedValues });
+    const fields = {};
+    for (const field of USER_FIELDS) if (present(record, field)) fields[field] = clone(record[field]);
+    if (record?.attending === true || record?.attended === true || Object.keys(fields).some((field) => meaningful(fields[field]))) {
+      rows.push({ id: record?.id || null, date: record?.date || null, fields });
     }
   }
   return { count: rows.length, sha256: sha256(rows), rows };
+}
+
+function protectedInvariant(sourceConcerts, outputConcerts, mapping) {
+  const errors = [];
+  const outputById = new Map((outputConcerts || []).map((record) => [String(record?.id || ''), record]));
+  const groups = new Map();
+  for (const source of sourceConcerts || []) {
+    const sourceId = String(source?.id || '').trim();
+    const targetId = String(mapping?.[sourceId] || sourceId).trim();
+    if (!sourceId || !targetId) {
+      errors.push({ reason: 'protected_mapping_missing', sourceId: sourceId || null });
+      continue;
+    }
+    if (!groups.has(targetId)) groups.set(targetId, []);
+    groups.get(targetId).push(source);
+  }
+  for (const [targetId, sources] of groups) {
+    const target = outputById.get(targetId);
+    if (!target) {
+      errors.push({ reason: 'protected_target_missing', targetId });
+      continue;
+    }
+    const conflicts = CanonicalIdentity.userOwnedConflicts(sources);
+    if (conflicts.length) continue;
+    const attendedDates = uniqueStable(sources.filter((record) => record?.attending === true || record?.attended === true).map((record) => record?.date).filter(Boolean));
+    if (attendedDates.length === 1 && String(target?.date || '') !== String(attendedDates[0])) {
+      errors.push({ reason: 'attended_historical_date_changed', targetId, expected: attendedDates[0], actual: target?.date || null });
+    }
+    for (const field of USER_FIELDS) {
+      const expected = preferredUserValue(sources, field);
+      if (expected === undefined) continue;
+      if (stable(target?.[field]) !== stable(expected)) errors.push({ reason: 'protected_field_changed', targetId, field });
+    }
+  }
+  return { valid: errors.length === 0, errors };
 }
 
 function metricSnapshot(venues, concerts) {
@@ -344,6 +425,58 @@ function metricSnapshot(venues, concerts) {
   };
 }
 
+function duplicateIds(records, field) {
+  const seen = new Set();
+  const duplicates = new Set();
+  const missing = [];
+  (records || []).forEach((record, index) => {
+    const id = String(record?.[field] || '').trim();
+    if (!id) {
+      missing.push(index);
+      return;
+    }
+    if (seen.has(id)) duplicates.add(id);
+    seen.add(id);
+  });
+  return { duplicates: [...duplicates].sort(), missing };
+}
+
+function orphanChecks(venues, concerts, venueMap = {}, concertMap = {}) {
+  const errors = [];
+  const venueIds = new Set((venues || []).map((record) => String(record?.venueId || '').trim()).filter(Boolean));
+  const concertIds = new Set((concerts || []).map((record) => String(record?.id || '').trim()).filter(Boolean));
+  const venueIdState = duplicateIds(venues, 'venueId');
+  const concertIdState = duplicateIds(concerts, 'id');
+  if (venueIdState.duplicates.length) errors.push({ reason: 'duplicate_venue_ids', ids: venueIdState.duplicates });
+  if (venueIdState.missing.length) errors.push({ reason: 'missing_venue_ids', indexes: venueIdState.missing });
+  if (concertIdState.duplicates.length) errors.push({ reason: 'duplicate_concert_ids', ids: concertIdState.duplicates });
+  if (concertIdState.missing.length) errors.push({ reason: 'missing_concert_ids', indexes: concertIdState.missing });
+  for (const concert of concerts || []) {
+    const canonicalVenueId = String(concert?.canonicalVenueId || '').trim();
+    if (canonicalVenueId && !venueIds.has(canonicalVenueId)) errors.push({ reason: 'concert_canonical_venue_orphan', concertId: concert?.id || null, canonicalVenueId });
+    const festivalPrimary = String(concert?.festivalEdition?.primaryCanonicalVenueId || concert?.festivalPrimaryCanonicalVenueId || '').trim();
+    if (festivalPrimary && !venueIds.has(festivalPrimary)) errors.push({ reason: 'festival_primary_venue_orphan', concertId: concert?.id || null, canonicalVenueId: festivalPrimary });
+  }
+  for (const [sourceId, targetId] of Object.entries(venueMap || {})) {
+    if (!String(sourceId).trim() || !String(targetId).trim() || !venueIds.has(String(targetId))) errors.push({ reason: 'venue_mapping_target_orphan', sourceId, targetId });
+  }
+  for (const [sourceId, targetId] of Object.entries(concertMap || {})) {
+    if (!String(sourceId).trim() || !String(targetId).trim() || !concertIds.has(String(targetId))) errors.push({ reason: 'concert_mapping_target_orphan', sourceId, targetId });
+  }
+  return { valid: errors.length === 0, errors };
+}
+
+function reverseMapping(mapping) {
+  const reverse = {};
+  for (const [sourceId, targetId] of Object.entries(mapping || {})) {
+    if (!targetId) continue;
+    if (!reverse[targetId]) reverse[targetId] = [];
+    if (!reverse[targetId].includes(sourceId)) reverse[targetId].push(sourceId);
+  }
+  for (const ids of Object.values(reverse)) ids.sort();
+  return reverse;
+}
+
 function audit(venues, concerts, decisions = {}) {
   const venueIndex = CanonicalIdentity.buildVenueIndex(venues || []);
   const concertGroups = new Map();
@@ -357,12 +490,12 @@ function audit(venues, concerts, decisions = {}) {
     if (!concertGroups.has(identity.key)) concertGroups.set(identity.key, []);
     concertGroups.get(identity.key).push(record);
   }
-  const concertCandidates = [...concertGroups.entries()].filter(([, records]) => records.length > 1).map(([key, records]) => ({
-    key,
-    reason: 'canonical_band_venue_date',
-    ids: records.map((record) => record?.id || null),
-    userConflicts: CanonicalIdentity.userOwnedConflicts(records),
-  }));
+  const concertDistinct = decisionPairSet(decisions, 'concertDistinct');
+  const concertCandidates = [...concertGroups.entries()].filter(([, records]) => records.length > 1).map(([key, records]) => {
+    const ids = records.map((record) => String(record?.id || '')).filter(Boolean);
+    const resolvedDistinct = ids.some((left, index) => ids.slice(index + 1).some((right) => concertDistinct.has(pairKey(left, right))));
+    return { key, reason: 'canonical_band_venue_date', ids, userConflicts: CanonicalIdentity.userOwnedConflicts(records), resolvedDistinct };
+  });
   const variantOwners = new Map();
   for (const venue of venues || []) {
     for (const variant of CanonicalIdentity.VenueModelV174.identityVariants(venue)) {
@@ -375,18 +508,21 @@ function audit(venues, concerts, decisions = {}) {
       variantOwners.get(key).add(String(venue?.venueId || ''));
     }
   }
-  const venueCandidates = [...variantOwners.entries()].filter(([, ids]) => ids.size > 1).map(([key, ids]) => ({
-    key,
-    reason: key.startsWith('provider:') ? 'shared_provider_identity' : 'shared_identity_name_requires_research',
-    ids: [...ids].sort(),
-  }));
+  const venueDistinct = decisionPairSet(decisions, 'venueDistinct');
+  const venueCandidates = [...variantOwners.entries()].filter(([, ids]) => ids.size > 1).map(([key, idsSet]) => {
+    const ids = [...idsSet].sort();
+    const resolvedDistinct = ids.every((left, index) => ids.slice(index + 1).every((right) => venueDistinct.has(pairKey(left, right))));
+    return { key, reason: key.startsWith('provider:') ? 'shared_provider_identity' : 'shared_identity_name_requires_research', ids, resolvedDistinct };
+  });
   const eventGroups = CanonicalIdentity.EventModelV174.groupConcertPerformances(concerts || []);
   return {
     schemaVersion: 1,
     sourceHashes: { venues: sha256(venues || []), concerts: sha256(concerts || []), decisions: sha256(normalizeDecisions(decisions)) },
     counts: { venues: (venues || []).length, concerts: (concerts || []).length, events: eventGroups.length },
     venueCandidates,
+    unresolvedVenueCandidates: venueCandidates.filter((item) => !item.resolvedDistinct),
     concertCandidates,
+    unresolvedConcertCandidates: concertCandidates.filter((item) => !item.resolvedDistinct),
     unresolvedConcerts,
     invalidEvents: eventGroups.filter((event) => !event.validation?.valid).map((event) => ({ key: event.key, relationship: event.relationship, reasons: event.validation?.reasons || [], ids: event.records.map((record) => record?.id || null) })),
     protected: protectedSnapshot(concerts || []),
@@ -395,12 +531,16 @@ function audit(venues, concerts, decisions = {}) {
 }
 
 function planMigration(venues, concerts, decisions = {}) {
-  const before = audit(venues, concerts, decisions);
-  const venueStep = applyVenueDecisions(venues || [], decisions);
-  let mappedConcerts = mapConcertVenues(concerts || [], venueStep.mapping, venueStep.records);
-  mappedConcerts = applyFestivalDecisions(mappedConcerts, decisions);
-  const concertStep = reconcileConcerts(mappedConcerts, venueStep.records, decisions);
+  const sourceVenues = clone(venues || []);
+  const sourceConcerts = clone(concerts || []);
+  const before = audit(sourceVenues, sourceConcerts, decisions);
+  const venueStep = applyVenueDecisions(sourceVenues, decisions);
+  let mappedConcerts = mapConcertVenues(sourceConcerts, venueStep.mapping, venueStep.records);
+  const festivalStep = applyFestivalDecisions(mappedConcerts, decisions);
+  const concertStep = reconcileConcerts(festivalStep.records, venueStep.records, decisions);
   const after = audit(venueStep.records, concertStep.records, decisions);
+  const protectedCheck = protectedInvariant(sourceConcerts, concertStep.records, concertStep.mapping);
+  const orphans = orphanChecks(venueStep.records, concertStep.records, venueStep.mapping, concertStep.mapping);
   return {
     schemaVersion: 1,
     sourceHashes: before.sourceHashes,
@@ -409,9 +549,12 @@ function planMigration(venues, concerts, decisions = {}) {
     concerts: concertStep.records,
     legacyVenueMap: venueStep.mapping,
     legacyConcertMap: concertStep.mapping,
+    reverseVenueMap: reverseMapping(venueStep.mapping),
+    reverseConcertMap: reverseMapping(concertStep.mapping),
     mergeManifest: [...venueStep.manifest, ...concertStep.manifest],
-    blocked: [...venueStep.blocked, ...concertStep.blocked],
+    blocked: [...venueStep.blocked, ...festivalStep.blocked, ...concertStep.blocked],
     unresolved: concertStep.unresolved,
+    invariants: { protected: protectedCheck, orphans, invalidEvents: after.invalidEvents },
     before: { counts: before.counts, metrics: before.metrics, protected: before.protected },
     after: { counts: after.counts, metrics: after.metrics, protected: after.protected },
   };
@@ -420,22 +563,25 @@ function planMigration(venues, concerts, decisions = {}) {
 function validatePlan(plan) {
   const errors = [];
   if (!plan || typeof plan !== 'object') return { valid: false, errors: ['plan_missing'] };
-  if (plan.before?.protected?.sha256 !== plan.after?.protected?.sha256) errors.push('protected_fields_changed');
-  const attendedBefore = plan.before?.metrics?.attendedCount;
-  const attendedAfter = plan.after?.metrics?.attendedCount;
-  if (attendedBefore !== attendedAfter) errors.push('attended_count_changed');
   for (const item of plan.blocked || []) errors.push(`blocked:${item.kind}:${item.reason}`);
-  return { valid: errors.length === 0, errors };
+  if (!plan.invariants?.protected?.valid) for (const item of plan.invariants?.protected?.errors || []) errors.push(`protected:${item.reason}`);
+  if (!plan.invariants?.orphans?.valid) for (const item of plan.invariants?.orphans?.errors || []) errors.push(`orphan:${item.reason}`);
+  if ((plan.invariants?.invalidEvents || []).length) errors.push('invalid_event_groups');
+  return { valid: errors.length === 0, errors: [...new Set(errors)] };
 }
 
 module.exports = Object.freeze({
   sha256,
+  sha256Bytes,
   audit,
   planMigration,
   validatePlan,
   mergeVenueRecords,
   mergeConcertRecords,
   protectedSnapshot,
+  protectedInvariant,
   metricSnapshot,
+  orphanChecks,
+  reverseMapping,
   normalizeDecisions,
 });
