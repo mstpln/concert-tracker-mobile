@@ -13,7 +13,7 @@ const PROVIDER_PRESENTATION_FIELDS = new Set([
   'provider', 'providerSource', 'providerNamespace', 'sourceProvider', 'providerEventId', 'providerVenueId',
   'providerAttractionId', 'providerOfferType', 'ticketUrl', 'articleUrl', 'sourceUrl', 'time', 'distanceKm',
   'title', 'providerEventName', 'providerEventStatus', 'status', 'lifecycleStatus', 'artistMatchMethod',
-  'ticketRetailerVerified', 'providerVerified', 'verified', 'providerConfidence',
+  'ticketRetailerVerified', 'providerVerified', 'verified', 'providerConfidence', 'foundAt', 'isNew',
 ]);
 const IDENTITY_FIELDS = new Set(['id', 'venueId', 'canonicalVenueId', 'legacyVenueIds', 'legacyConcertIds']);
 
