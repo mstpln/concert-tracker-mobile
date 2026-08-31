@@ -98,6 +98,43 @@ test('v176 final planner preserves conflicting observations for the same provide
   assert.equal(Migration.validatePlan(plan).valid, true);
 });
 
+test('v176 final planner preserves provider article evidence even when the provider has no event or venue ID', () => {
+  const plan = Migration.planMigration([venue(VENUE_A, 'Main Hall')], [
+    concert('concert-a'),
+    concert('concert-b', {
+      sourceProvider: 'tavily',
+      providerSource: 'tavily-search',
+      articleUrl: 'https://example.invalid/announcement',
+      foundAt: '2026-08-30T12:00:00Z',
+    }),
+  ]);
+  assert.equal(plan.concerts.length, 1);
+  const observation = plan.concerts[0].providerObservations.find((item) => item.provider === 'tavily');
+  assert.ok(observation);
+  assert.equal(observation.providerEventId, null);
+  assert.equal(observation.articleUrl, 'https://example.invalid/announcement');
+  assert.equal(observation.source, 'tavily-search');
+  assert.equal(observation.foundAt, '2026-08-30T12:00:00Z');
+  assert.equal(Migration.validatePlan(plan).valid, true);
+});
+
+test('v176 final planner recognizes explicit concert merge members supplied only through legacy aliases', () => {
+  const plan = Migration.planMigration([venue(VENUE_A, 'Main Hall')], [
+    concert('concert-z', { legacyConcertIds: ['concert-old-z'] }),
+    concert('concert-a', { legacyConcertIds: ['concert-old-a'] }),
+  ], {
+    concertMerges: [{
+      ids: ['concert-old-z', 'concert-old-a'],
+      canonicalId: 'concert-a',
+      reason: 'researched duplicate through legacy aliases',
+    }],
+  });
+  assert.equal(plan.concerts.length, 1);
+  assert.equal(plan.concerts[0].id, 'concert-a');
+  assert.equal(plan.blocked.some((item) => item.reason === 'conflicting_overlapping_merge_decisions'), false);
+  assert.equal(Migration.validatePlan(plan).valid, true);
+});
+
 test('v176 final planner blocks overlapping venue merge decisions with conflicting survivors', () => {
   const plan = Migration.planMigration([
     venue(VENUE_A, 'Hall A'),
