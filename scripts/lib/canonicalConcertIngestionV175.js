@@ -275,10 +275,9 @@ function existingProviderObservation(existing, now) {
 function applyPreferredProviderPresentation(output, existing, candidate, continuityReason) {
   const existingStrength = providerStrength(existing);
   const incomingStrength = providerStrength(candidate);
-  const lifecycle = isLifecycleObservation(candidate);
   const replacementContinuity = continuityReason === 'provider_replacement_continuity';
-  if (incomingStrength < existingStrength && !lifecycle) return output;
-  if (incomingStrength === existingStrength && !replacementContinuity && !lifecycle) return output;
+  if (incomingStrength < existingStrength) return output;
+  if (incomingStrength === existingStrength && !replacementContinuity) return output;
   const next = { ...output };
   for (const field of providerPresentationFields()) {
     const incoming = candidate?.[field];
@@ -322,14 +321,14 @@ function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalId
   const history = [];
   if (status === 'cancelled') {
     if (attendedHistorical) {
-      history.push(lifecycleHistoryEntry('provider_status_conflict', output, candidate, now, { observedStatus: 'cancelled' }));
+      history.push(lifecycleHistoryEntry('provider_status_conflict', output, candidate, now, { replacementDate: null, observedStatus: 'cancelled' }));
     } else {
       output.lifecycleStatus = 'cancelled';
-      history.push(lifecycleHistoryEntry('cancelled', output, candidate, now));
+      history.push(lifecycleHistoryEntry('cancelled', output, candidate, now, { replacementDate: null }));
     }
   } else if (status === 'postponed') {
     if (attendedHistorical) {
-      history.push(lifecycleHistoryEntry('provider_status_conflict', output, candidate, now, { observedStatus: 'postponed' }));
+      history.push(lifecycleHistoryEntry('provider_status_conflict', output, candidate, now, { replacementDate: null, observedStatus: 'postponed' }));
     } else {
       if (!(output.lifecycleStatus === 'postponed' && !activeDate)) {
         history.push(lifecycleHistoryEntry('postponed', output, candidate, now, { replacementDate: null }));
