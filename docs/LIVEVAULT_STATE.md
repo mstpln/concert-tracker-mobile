@@ -6,11 +6,11 @@ This continuity file was compacted on 2026-08-30 for the canonical identity proj
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged baseline is **v175 — Canonical Ingestion & Lifecycle (Build 2 of 3)** at merge commit `3be9c7e662d2c415d45df83180ef32ae7a873138` (PR #191). Build 1 / v174 remains the canonical identity foundation underneath it.
+The current merged baseline is **v176 — Canonical Audit, Research Closure & Migration (Build 3 of 3)** at merge commit `a12b83f44d27a4194d82739c28273e0fea1e02ed` (PR #192). Build 1 / v174 and Build 2 / v175 remain the canonical identity foundation and ingestion/lifecycle layers underneath it.
 
-The active unmerged build is **v176 — Canonical Audit, Research Closure & Migration (Build 3 of 3)** on branch `feat/canonical-identity-audit-migration-v176`, draft PR #192. Build 3 provides local/read-only audit and deterministic dry-run migration tooling only. It does not fetch production data, call providers, write Worker/R2 data, deploy, run production smoke, or perform the later production migration.
+Build 3 is merged and complete. It provides local/read-only audit and deterministic dry-run migration tooling only. It does not fetch production data, call providers, write Worker/R2 data, run production smoke, or perform the later production migration.
 
-`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v176` on the active branch. Production migration remains a separately authorized operation after Build 3 is merged and after a fresh authorized export and final hash-guarded dry run.
+`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v176` on merged `main`. The production historical audit/dry run and any later production migration remain separately authorized operations that must begin from a fresh authorized export with exact source hashes.
 
 ## v174 canonical identity foundation — merged
 
@@ -32,7 +32,7 @@ Lifecycle handling follows the locked decisions: cancellation retains the record
 
 The research pipeline uses the canonical venue index and latest-state ETag reconciliation so a stale provider run cannot wipe newer user edits. Minimal lifecycle UI renders cancelled and postponed/TBD states safely.
 
-## v176 canonical audit and dry-run migration — active
+## v176 canonical audit and dry-run migration — merged
 
 Build 3 is designed around a **fresh local export**, never repository or QA fixture data treated as production. The audit reports canonical concert collision candidates, normalized venue identity ambiguity candidates, unresolved canonical identity, invalid event groups, protected-field snapshots and before metrics without mutating its inputs. Room/stage-only sub-location names do not create cross-venue merge candidates unless provider identity anchors them.
 
@@ -67,6 +67,7 @@ Production venue cleanup completed with **530** reviewed `venues.json` records a
 - v173: bottom navigation order is `Music · Bands · Discover · Stats · Alerts` while stable route IDs remain unchanged.
 - v174: canonical venue/concert/event identity foundation and read-time/stat integration.
 - v175: automatic ingestion, provider-observation accumulation, lifecycle handling and latest-state reconciliation.
+- v176: exhaustive local audit, research decision registry, deterministic/hash-guarded dry-run migration planning, legacy/reverse mappings, rollback artifacts, invariant/stat reports and no-op replay validation.
 
 ## Active safety and ownership boundaries
 
@@ -82,8 +83,8 @@ Production venue cleanup completed with **530** reviewed `venues.json` records a
 
 1. **Build 1 / v174:** canonical venue, concert and event identity foundation; read-time/stat integration; focused synthetic QA. **Merged and complete.**
 2. **Build 2 / v175:** automatic discovery/write paths use canonical identity; provider observations accumulate; lifecycle rules and latest-state reconciliation are implemented. **Merged and complete.**
-3. **Build 3 / v176:** exhaustive local audit, research decision registry, deterministic/hash-guarded dry-run migration planner, legacy/reverse ID mappings, rollback artifacts, invariant/stat reports and idempotency validation. **Active and unmerged. No production writes.**
-4. **Production migration:** only after all three builds are merged and a fresh export/final dry run is separately approved. This is not a fourth code build.
+3. **Build 3 / v176:** exhaustive local audit, research decision registry, deterministic/hash-guarded dry-run migration planner, legacy/reverse ID mappings, rollback artifacts, invariant/stat reports and idempotency validation. **Merged and complete. No production migration performed.**
+4. **Production migration:** only after a fresh authorized production export, exact source hashes, final audit/research closure and hash-guarded dry run are separately approved. This is not a fourth code build.
 
 ## Backlog hygiene
 
@@ -91,4 +92,4 @@ PR #134 remains intentionally open as unrelated production-inert listening backf
 
 ## Next operational steps
 
-Complete the v176 fix/review cycle on PR #192, require exact-head unit/safety and desktop/mobile QA, verify production-scale synthetic migration performance and no-op replay, and keep the PR unmerged until explicit `Merge it` authorization. Do not export or mutate production data, run production providers/smoke, deploy, or perform the production migration as part of Build 3.
+The three canonical identity code builds are complete. The next operational stage, only with separate authorization, is to obtain a fresh production export through the approved read path, run the v176 read-only audit and research-closure process, generate the exact hash-guarded dry-run migration outputs, review every invariant/stat delta and blocker, and only then consider a separately authorized production data write. Do not run production providers, production smoke or production-data mutation without their specific authorization.
