@@ -370,10 +370,144 @@ function normalizeDecisions(decisions) {
   return {
     venueMerges: asArray(source.venueMerges),
     venueDistinct: asArray(source.venueDistinct),
+    venueCorrections: asArray(source.venueCorrections),
     concertMerges: asArray(source.concertMerges),
     concertDistinct: asArray(source.concertDistinct),
+    concertVenueAssignments: asArray(source.concertVenueAssignments),
     festivalEditions: asArray(source.festivalEditions),
   };
+}
+
+function applyVenueCorrections(venues, decisions) {
+  const source = clone(venues || []);
+  const byId = new Map(source.map((record) => [text(record?.venueId), record]).filter(([id]) => id));
+  const aliases = legacyAliasState(source, 'venueId', 'legacyVenueIds');
+  const ambiguous = new Set(aliases.collisions.map((item) => item.alias));
+  const forbidden = new Set(['venueId', 'legacyVenueIds', '__proto__', 'prototype', 'constructor', ...USER_FIELDS]);
+  const blocked = [];
+  const manifest = [];
+  const corrections = normalizeDecisions(decisions).venueCorrections;
+  const requestedValues = new Map();
+  const conflictingIds = new Set();
+  for (const decision of corrections) {
+    const requestedId = text(decision?.venueId);
+    const set = decision?.set && typeof decision.set === 'object' && !Array.isArray(decision.set) ? decision.set : {};
+    const clear = asArray(decision?.clear).map(text).filter(Boolean);
+    for (const field of uniqueStable([...Object.keys(set), ...clear])) {
+      const key = `${requestedId}\u001f${field}`;
+      const requestedValue = hasOwn(set, field) ? stable({ set: set[field] }) : stable({ clear: true });
+      if (requestedValues.has(key) && requestedValues.get(key) !== requestedValue) conflictingIds.add(requestedId);
+      else requestedValues.set(key, requestedValue);
+    }
+  }
+  for (const venueId of conflictingIds) blocked.push({ kind: 'venue', reason: 'conflicting_venue_corrections', venueId });
+  for (const decision of corrections) {
+    const requestedId = text(decision?.venueId);
+    const set = decision?.set && typeof decision.set === 'object' && !Array.isArray(decision.set) ? decision.set : {};
+    const clear = uniqueStable(asArray(decision?.clear).map(text).filter(Boolean));
+    const fields = uniqueStable([...Object.keys(set), ...clear]);
+    if (conflictingIds.has(requestedId)) continue;
+    if (!requestedId || !fields.length) {
+      blocked.push({ kind: 'venue', reason: 'venue_correction_invalid', venueId: requestedId || null });
+      continue;
+    }
+    const forbiddenFields = fields.filter((field) => forbidden.has(field));
+    if (forbiddenFields.length || clear.some((field) => hasOwn(set, field))) {
+      blocked.push({ kind: 'venue', reason: 'venue_correction_fields_invalid', venueId: requestedId, fields: forbiddenFields.length ? forbiddenFields : clear.filter((field) => hasOwn(set, field)) });
+      continue;
+    }
+    if (ambiguous.has(requestedId)) {
+      blocked.push({ kind: 'venue', reason: 'venue_correction_member_ambiguous', venueId: requestedId });
+      continue;
+    }
+    const record = byId.get(requestedId);
+    if (!record) {
+      // A correction for a merged-away exact ID has already been consumed on a
+      // second pass. Its legacy alias remains proof that the decision member existed.
+      if (aliases.mapping[requestedId]) continue;
+      blocked.push({ kind: 'venue', reason: 'venue_correction_member_missing', venueId: requestedId });
+      continue;
+    }
+    const changes = [];
+    for (const [field, value] of Object.entries(set)) {
+      if (stable(record[field]) === stable(value)) continue;
+      changes.push({ field, before: clone(record[field]), after: clone(value) });
+      record[field] = clone(value);
+    }
+    for (const field of clear) {
+      if (!hasOwn(record, field)) continue;
+      changes.push({ field, before: clone(record[field]), cleared: true });
+      delete record[field];
+    }
+    if (changes.length) manifest.push({
+      kind: 'venue_correction',
+      venueId: requestedId,
+      changes,
+      reason: decision?.reason || 'research_decision',
+      evidence: clone(decision?.evidence || []),
+    });
+  }
+  return { records: source, manifest, blocked };
+}
+
+function applyConcertVenueAssignments(concerts, venues, venueMapping, decisions) {
+  const source = clone(concerts || []);
+  const concertAliases = legacyAliasState(source, 'id', 'legacyConcertIds');
+  const ambiguousConcertIds = new Set(concertAliases.collisions.map((item) => item.alias));
+  const venueAliases = legacyAliasState(venues || [], 'venueId', 'legacyVenueIds');
+  const venueIds = new Set((venues || []).map((record) => text(record?.venueId)).filter(Boolean));
+  const requested = new Map();
+  const prepared = [];
+  const blocked = [];
+  const invalidConcertIds = new Set();
+  for (const decision of normalizeDecisions(decisions).concertVenueAssignments) {
+    const sourceIds = uniqueStable(asArray(decision?.concertIds).map(text).filter(Boolean));
+    const ambiguous = sourceIds.filter((id) => ambiguousConcertIds.has(id));
+    const resolvedIds = uniqueStable(sourceIds.map((id) => concertAliases.mapping[id] || id));
+    const missing = resolvedIds.filter((id) => !concertAliases.mapping[id]);
+    const requestedVenueId = text(decision?.canonicalVenueId);
+    const canonicalVenueId = text(venueMapping?.[requestedVenueId] || venueAliases.mapping[requestedVenueId] || requestedVenueId);
+    if (!sourceIds.length || !requestedVenueId || ambiguous.length || missing.length || !venueIds.has(canonicalVenueId)) {
+      blocked.push({
+        kind: 'concert',
+        reason: ambiguous.length ? 'venue_assignment_member_ambiguous' : missing.length ? 'venue_assignment_member_missing' : !venueIds.has(canonicalVenueId) ? 'venue_assignment_target_missing' : 'venue_assignment_invalid',
+        concertIds: sourceIds,
+        canonicalVenueId: requestedVenueId || null,
+        ambiguous,
+        missing,
+      });
+      for (const id of resolvedIds) invalidConcertIds.add(id);
+      continue;
+    }
+    for (const id of resolvedIds) {
+      const prior = requested.get(id);
+      if (prior && prior !== canonicalVenueId) {
+        blocked.push({ kind: 'concert', reason: 'conflicting_venue_assignments', concertId: id, canonicalVenueIds: [prior, canonicalVenueId].sort() });
+        invalidConcertIds.add(id);
+      } else requested.set(id, canonicalVenueId);
+    }
+    prepared.push({ ids: resolvedIds, canonicalVenueId, decision });
+  }
+  const byId = new Map(source.map((record) => [text(record?.id), record]).filter(([id]) => id));
+  const manifest = [];
+  for (const entry of prepared) {
+    for (const id of entry.ids) {
+      if (invalidConcertIds.has(id)) continue;
+      const record = byId.get(id);
+      if (!record || text(record.canonicalVenueId) === entry.canonicalVenueId) continue;
+      const previousCanonicalVenueId = text(record.canonicalVenueId) || null;
+      record.canonicalVenueId = entry.canonicalVenueId;
+      manifest.push({
+        kind: 'concert_venue_assignment',
+        concertId: id,
+        canonicalVenueId: entry.canonicalVenueId,
+        previousCanonicalVenueId,
+        reason: entry.decision?.reason || 'research_decision',
+        evidence: clone(entry.decision?.evidence || []),
+      });
+    }
+  }
+  return { records: source, manifest, blocked };
 }
 
 function pairKey(left, right) {
@@ -931,9 +1065,11 @@ function planMigration(venues, concerts, decisions = {}) {
   const sourceConcerts = clone(concerts || []);
   const before = audit(sourceVenues, sourceConcerts, decisions);
   const decisionBlockers = validateDistinctDecisions(sourceVenues, sourceConcerts, decisions);
-  const venueStep = applyVenueDecisions(sourceVenues, decisions);
+  const venueCorrectionStep = applyVenueCorrections(sourceVenues, decisions);
+  const venueStep = applyVenueDecisions(venueCorrectionStep.records, decisions);
   const mappedConcerts = mapConcertVenues(sourceConcerts, venueStep.mapping, venueStep.records);
-  const festivalStep = applyFestivalDecisions(mappedConcerts, decisions, venueStep.mapping);
+  const assignmentStep = applyConcertVenueAssignments(mappedConcerts, venueStep.records, venueStep.mapping, decisions);
+  const festivalStep = applyFestivalDecisions(assignmentStep.records, decisions, venueStep.mapping);
   const concertStep = reconcileConcerts(festivalStep.records, venueStep.records, decisions);
   const after = audit(venueStep.records, concertStep.records, decisions);
   const protectedCheck = protectedInvariant(sourceConcerts, concertStep.records, concertStep.mapping);
@@ -948,8 +1084,8 @@ function planMigration(venues, concerts, decisions = {}) {
     legacyConcertMap: concertStep.mapping,
     reverseVenueMap: reverseMapping(venueStep.mapping),
     reverseConcertMap: reverseMapping(concertStep.mapping),
-    mergeManifest: [...venueStep.manifest, ...concertStep.manifest],
-    blocked: [...decisionBlockers, ...venueStep.blocked, ...festivalStep.blocked, ...concertStep.blocked],
+    mergeManifest: [...venueCorrectionStep.manifest, ...venueStep.manifest, ...assignmentStep.manifest, ...concertStep.manifest],
+    blocked: [...decisionBlockers, ...venueCorrectionStep.blocked, ...venueStep.blocked, ...assignmentStep.blocked, ...festivalStep.blocked, ...concertStep.blocked],
     unresolved: concertStep.unresolved,
     unresolvedIdentity: {
       venues: clone(after.unresolvedVenueCandidates),
