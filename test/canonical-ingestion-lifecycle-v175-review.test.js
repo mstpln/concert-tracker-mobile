@@ -16,6 +16,7 @@ function existing(extra = {}) {
     venueAddress: 'Main Street 1, Lund, Sweden', date: '2026-10-10', time: '19:00', attending: true,
     sourceProvider: 'ticketmaster', providerEventId: 'tm-old', providerAttractionId: 'tm-artist-a',
     providerVenueId: 'tm-main', providerEventName: 'Artist A', providerOfferType: 'standard', ticketRetailerVerified: true,
+    ticketUrl: 'https://tickets.example/standard',
     ...extra,
   };
 }
@@ -26,7 +27,7 @@ function incoming(extra = {}) {
     venueAddress: 'Main Street 1, Lund, Sweden', date: '2026-10-10', time: '19:00', sourceProvider: 'ticketmaster',
     providerEventId: 'tm-old', providerAttractionId: 'tm-artist-a', providerVenueId: 'tm-main',
     providerEventName: 'Artist A', providerOfferType: 'standard', ticketRetailerVerified: true,
-    foundAt: '2026-08-31T10:00:00.000Z', ...extra,
+    ticketUrl: 'https://tickets.example/standard', foundAt: '2026-08-31T10:00:00.000Z', ...extra,
   };
 }
 
@@ -54,4 +55,49 @@ test('v175 postponed status makes a still-returned old provider date inactive', 
   assert.equal(replay.changed, false);
   assert.deepEqual(replay.records, first.records);
   assert.equal(replay.records[0].lifecycleHistory.length, 1);
+});
+
+test('v175 cancellation records no replacement date and replay stays idempotent', () => {
+  const candidate = incoming({ providerEventStatus: 'canceled' });
+  const first = Ingestion.ingestCandidate([existing()], candidate, options);
+  assert.equal(first.records[0].lifecycleStatus, 'cancelled');
+  assert.equal(first.records[0].date, '2026-10-10');
+  assert.equal(first.records[0].lifecycleHistory[0].previousDate, '2026-10-10');
+  assert.equal(first.records[0].lifecycleHistory[0].replacementDate, null);
+
+  const replay = Ingestion.ingestCandidate(first.records, candidate, options);
+  assert.equal(replay.changed, false);
+  assert.deepEqual(replay.records, first.records);
+  assert.equal(replay.records[0].lifecycleHistory.length, 1);
+});
+
+test('v175 weaker lifecycle evidence cannot replace stronger top-level provider presentation', () => {
+  const candidate = incoming({
+    sourceProvider: 'other_provider', providerEventId: 'other-cancelled', providerEventStatus: 'cancelled',
+    ticketRetailerVerified: false, providerOfferType: 'standard', ticketUrl: 'https://other.example/cancelled',
+  });
+  const result = Ingestion.ingestCandidate([existing()], candidate, options).records[0];
+  assert.equal(result.lifecycleStatus, 'cancelled');
+  assert.equal(result.sourceProvider, 'ticketmaster');
+  assert.equal(result.providerEventId, 'tm-old');
+  assert.equal(result.ticketUrl, 'https://tickets.example/standard');
+  assert.equal(result.providerObservations.at(-1).provider, 'other_provider');
+  assert.equal(result.providerObservations.at(-1).status, 'cancelled');
+});
+
+test('v175 proven replacement continuity may advance presentation and remains stable on replay', () => {
+  const candidate = incoming({
+    providerEventId: 'tm-new', providerRelatedEventIds: ['tm-old'], date: '2026-11-12', time: '20:00',
+    ticketUrl: 'https://tickets.example/replacement',
+  });
+  const first = Ingestion.ingestCandidate([existing()], candidate, options);
+  assert.equal(first.result.reason, 'provider_replacement_continuity');
+  assert.equal(first.records[0].id, 'stable-id');
+  assert.equal(first.records[0].providerEventId, 'tm-new');
+  assert.equal(first.records[0].date, '2026-11-12');
+  assert.equal(first.records[0].ticketUrl, 'https://tickets.example/replacement');
+
+  const replay = Ingestion.ingestCandidate(first.records, candidate, options);
+  assert.equal(replay.changed, false);
+  assert.deepEqual(replay.records, first.records);
 });
