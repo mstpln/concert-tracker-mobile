@@ -3,12 +3,28 @@
 const Migration = require('./canonicalMigrationV176Final');
 const CanonicalIdentity = require('../../canonicalIdentityV174');
 
+const USER_FIELDS = new Set(CanonicalIdentity.USER_OWNED_FIELDS || []);
+
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
 function text(value) {
   return String(value || '').trim();
+}
+
+function normalizedText(value) {
+  return text(value).toLocaleLowerCase().replace(/\s+/g, ' ');
+}
+
+function meaningful(value) {
+  if (value == null) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'boolean') return value === true;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
 }
 
 function uniqueStable(values) {
@@ -82,9 +98,10 @@ function exhaustiveVenueCandidates(venues, decisions) {
   const owners = new Map();
   for (const venue of venues || []) {
     for (const variant of CanonicalIdentity.VenueModelV174.identityVariants(venue)) {
-      const name = normalizeIdentityText(variant?.name);
       const provider = normalizeIdentityText(variant?.provider || variant?.namespace || variant?.sourceProvider || variant?.source);
       const providerVenueId = text(variant?.providerVenueId || variant?.venueId || variant?.id);
+      if (variant?.kind === 'sub_location' && !(provider && providerVenueId)) continue;
+      const name = normalizeIdentityText(variant?.name);
       const key = provider && providerVenueId ? `provider:${provider}:${providerVenueId}` : name ? `name:${name}` : '';
       if (!key) continue;
       if (!owners.has(key)) owners.set(key, new Set());
@@ -106,6 +123,22 @@ function exhaustiveVenueCandidates(venues, decisions) {
     });
 }
 
+function unresolvedConcertClassification(venues, concerts) {
+  const venueIndex = CanonicalIdentity.buildVenueIndex(venues || []);
+  const allowed = [];
+  const blocking = [];
+  for (const record of concerts || []) {
+    const identity = CanonicalIdentity.canonicalConcertIdentity(record, venueIndex);
+    if (identity.kind === 'same') continue;
+    const item = { id: record?.id || null, reason: identity.reason };
+    const status = normalizedText(record?.lifecycleStatus || record?.providerEventStatus || record?.status);
+    const postponedTbd = identity.reason === 'date_missing_or_tbd' && status === 'postponed';
+    if (postponedTbd) allowed.push(item);
+    else blocking.push(item);
+  }
+  return { allowed, blocking };
+}
+
 function audit(venues, concerts, decisions = {}) {
   const report = Migration.audit(venues, concerts, decisions);
   const venueCandidates = exhaustiveVenueCandidates(venues, decisions);
@@ -115,12 +148,16 @@ function audit(venues, concerts, decisions = {}) {
     ...candidate,
     resolvedDistinct: allPairsDistinct(candidate.ids || [], concertDistinct),
   }));
+  const unresolved = unresolvedConcertClassification(venues, concerts);
   return {
     ...report,
     venueCandidates,
     unresolvedVenueCandidates: venueCandidates.filter((item) => !item.resolvedDistinct),
     concertCandidates,
     unresolvedConcertCandidates: concertCandidates.filter((item) => !item.resolvedDistinct),
+    unresolvedConcerts: [...unresolved.allowed, ...unresolved.blocking],
+    allowedUnresolvedConcerts: unresolved.allowed,
+    blockingUnresolvedConcerts: unresolved.blocking,
   };
 }
 
@@ -166,6 +203,40 @@ function collapsedDistinctDecisionBlockers(venues, concerts, decisions) {
   return blockers;
 }
 
+function userRichScore(record) {
+  let score = 0;
+  if (record?.manuallyAdded === true) score += 100;
+  if (record?.attending === true || record?.attended === true) score += 80;
+  if (record?.lineupRole === 'support') score += 10;
+  for (const field of USER_FIELDS) if (meaningful(record?.[field])) score += 3;
+  return score;
+}
+
+function unsafeConcertSurvivorBlockers(concerts, decisions) {
+  const blockers = [];
+  const aliases = legacyAliasMapping(concerts, 'id', 'legacyConcertIds');
+  const byId = new Map((concerts || []).map((record) => [text(record?.id), record]).filter(([id]) => id));
+  for (const decision of Migration.normalizeDecisions(decisions).concertMerges || []) {
+    const sourceIds = [...new Set((Array.isArray(decision?.ids) ? decision.ids : []).map(text).filter(Boolean))];
+    const resolvedIds = [...new Set(sourceIds.map((id) => aliases[id] || id))];
+    if (resolvedIds.length < 2) continue;
+    const selectedId = aliases[text(decision?.canonicalId)] || text(decision?.canonicalId);
+    const members = resolvedIds.map((id) => byId.get(id)).filter(Boolean);
+    const selected = byId.get(selectedId);
+    if (!selected || members.length !== resolvedIds.length) continue;
+    const maximum = Math.max(...members.map(userRichScore));
+    if (userRichScore(selected) < maximum) {
+      blockers.push({
+        kind: 'concert',
+        reason: 'canonical_survivor_not_user_rich',
+        ids: sourceIds,
+        canonicalId: text(decision?.canonicalId) || null,
+      });
+    }
+  }
+  return blockers;
+}
+
 function remapFestivalPrimaryReferences(concerts, venueMapping) {
   return (concerts || []).map((record) => {
     const next = clone(record);
@@ -206,9 +277,15 @@ function planMigration(venues, concerts, decisions = {}) {
     ...(plan.blocked || []),
     ...sourceIdBlockers(venues, concerts),
     ...collapsedDistinctDecisionBlockers(venues, concerts, decisions),
+    ...unsafeConcertSurvivorBlockers(concerts, decisions),
   ]);
   plan.concerts = remapFestivalPrimaryReferences(plan.concerts, plan.legacyVenueMap);
   const after = audit(plan.venues, plan.concerts, decisions);
+  plan.blocked = uniqueStable([
+    ...plan.blocked,
+    ...after.blockingUnresolvedConcerts.map((item) => ({ kind: 'concert', reason: 'unresolved_canonical_identity', ...item })),
+  ]);
+  plan.unresolved = clone(after.unresolvedConcerts);
   plan.outputHashes = {
     venues: Migration.sha256(plan.venues),
     concerts: Migration.sha256(plan.concerts),
