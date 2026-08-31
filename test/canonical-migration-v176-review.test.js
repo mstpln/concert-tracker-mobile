@@ -97,6 +97,36 @@ test('v176 orphan checks reject dangling canonical venue and duplicate IDs', () 
   assert.ok(result.errors.some((item) => item.reason === 'concert_canonical_venue_orphan'));
 });
 
+test('v176 event metrics use the migrated local venue index after researched venue reconciliation', () => {
+  const sourceVenues = [
+    venue('venue-main', 'Main Hall'),
+    { ...venue('venue-room', 'Main Hall Room 2'), currentName: 'Main Hall Room 2' },
+  ];
+  const sourceConcerts = [
+    concert({ id: 'concert-a', bandId: 'band-a', canonicalVenueId: 'venue-main', venue: 'Main Hall' }),
+    concert({ id: 'concert-b', bandId: 'band-b', canonicalVenueId: 'venue-room', venue: 'Main Hall Room 2', lineupRole: 'support' }),
+  ];
+  const plan = Migration.planMigration(sourceVenues, sourceConcerts, {
+    venueMerges: [{ ids: ['venue-main', 'venue-room'], canonicalId: 'venue-main', reason: 'researched_parent_room' }],
+  });
+  assert.equal(plan.concerts.length, 2);
+  assert.equal(plan.after.metrics.eventCount, 1);
+  assert.equal(plan.invariants.invalidEvents.length, 0);
+  assert.equal(Migration.validatePlan(plan).valid, true);
+});
+
+test('v176 migration event metrics preserve authoritative explicit event groups across venue and date', () => {
+  const sourceVenues = [venue(), { ...venue('venue-b', 'Venue B'), city: 'Copenhagen', country: 'Denmark', address: 'Other Street 2' }];
+  const sourceConcerts = [
+    concert({ id: 'explicit-a', eventGroupId: 'event-user-1' }),
+    concert({ id: 'explicit-b', bandId: 'band-b', date: '2026-10-11', eventGroupId: 'event-user-1', venue: 'Venue B', city: 'Copenhagen', country: 'Denmark', venueAddress: 'Other Street 2', canonicalVenueId: 'venue-b', lineupRole: 'support' }),
+  ];
+  const plan = Migration.planMigration(sourceVenues, sourceConcerts, {});
+  assert.equal(plan.after.metrics.eventCount, 1);
+  assert.equal(plan.invariants.invalidEvents.length, 0);
+  assert.equal(Migration.validatePlan(plan).valid, true);
+});
+
 test('v176 dry-run CLI refuses a plan when exact input hashes are absent or wrong', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lv-v176-hash-'));
   const venuesPath = path.join(dir, 'venues.json');
