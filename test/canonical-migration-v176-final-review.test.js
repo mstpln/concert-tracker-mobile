@@ -143,6 +143,29 @@ test('v176 final planner preserves provider article evidence even when the provi
   assert.equal(Migration.validatePlan(plan).valid, true);
 });
 
+test('v176 discovery metadata differences do not block a canonical provider duplicate merge', () => {
+  const plan = Migration.planMigration([venue(VENUE_A, 'Main Hall')], [
+    concert('concert-a', {
+      sourceProvider: 'ticketmaster',
+      providerEventId: 'tm-event-a',
+      foundAt: '2026-08-30T10:00:00Z',
+      isNew: true,
+    }),
+    concert('concert-b', {
+      sourceProvider: 'ticketmaster',
+      providerEventId: 'tm-event-b',
+      foundAt: '2026-08-30T11:00:00Z',
+      isNew: false,
+    }),
+  ]);
+  assert.equal(plan.blocked.some((item) => item.reason === 'unknown_field_conflict'), false);
+  assert.equal(plan.concerts.length, 1);
+  assert.deepEqual(
+    plan.concerts[0].providerObservations.map((item) => item.foundAt).sort(),
+    ['2026-08-30T10:00:00Z', '2026-08-30T11:00:00Z'],
+  );
+});
+
 test('v176 final planner recognizes explicit concert merge members supplied only through legacy aliases', () => {
   const plan = Migration.planMigration([venue(VENUE_A, 'Main Hall')], [
     concert('concert-z', { legacyConcertIds: ['concert-old-z'] }),
@@ -254,3 +277,4 @@ test('v176 final planner remains idempotent with provider evidence finalization'
   assert.deepEqual(second.venues, first.venues);
   assert.deepEqual(second.concerts, first.concerts);
 });
+792b7b404671c51fb6d3f9386072b0100c812f37
