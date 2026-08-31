@@ -44,5 +44,7 @@ test('v175 postponed status makes a still-returned old provider date inactive', 
   assert.equal(result.time, null);
   assert.equal(result.lifecycleStatus, 'postponed');
   assert.equal(result.lifecycleHistory[0].previousDate, '2026-10-10');
-  assert.equal(result.lifecycleHistory[0].replacementDate, '2026-10-10');
+  assert.equal(result.lifecycleHistory[0].replacementDate, null);
+  assert.equal(result.providerObservations.at(-1).date, '2026-10-10');
+  assert.equal(result.providerObservations.at(-1).status, 'postponed');
 });
