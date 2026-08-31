@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const Migration = require('./lib/canonicalMigrationV176');
+const Migration = require('./lib/canonicalMigrationV176Final');
 
 function usage() {
   return [
@@ -14,6 +14,7 @@ function usage() {
     'Plan mode is dry-run only and refuses to run unless exact source-file SHA-256 guards match.',
     'When a research decision registry is supplied in plan mode, its exact byte-level SHA-256 is mandatory too.',
     'Output paths may not overwrite or contain any supplied source input file.',
+    'Plan output directories must be absent or empty so stale artifacts cannot survive a later run.',
   ].join('\n');
 }
 
@@ -68,6 +69,11 @@ function assertPlanOutputSafe(outDir, inputs) {
   const resolved = path.resolve(outDir);
   const contained = inputs.find((input) => pathInside(resolved, input));
   if (contained) throw new Error(`Plan output directory must not contain a source input file: ${contained}`);
+  if (fs.existsSync(resolved)) {
+    const stat = fs.statSync(resolved);
+    if (!stat.isDirectory()) throw new Error('Plan output path must be a directory.');
+    if (fs.readdirSync(resolved).length > 0) throw new Error('Plan output directory must be absent or empty.');
+  }
   return resolved;
 }
 
