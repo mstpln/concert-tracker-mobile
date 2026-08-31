@@ -8,10 +8,11 @@ function usage() {
   return [
     'Usage:',
     '  node scripts/canonical-audit-migrate-v176.js audit --venues <local venues.json> --concerts <local concerts.json> [--decisions <local decisions.json>] --out <local report.json>',
-    '  node scripts/canonical-audit-migrate-v176.js plan --venues <local venues.json> --concerts <local concerts.json> [--decisions <local decisions.json>] --expected-venues-sha256 <sha256> --expected-concerts-sha256 <sha256> --out-dir <local directory>',
+    '  node scripts/canonical-audit-migrate-v176.js plan --venues <local venues.json> --concerts <local concerts.json> [--decisions <local decisions.json> --expected-decisions-sha256 <sha256>] --expected-venues-sha256 <sha256> --expected-concerts-sha256 <sha256> --out-dir <local directory>',
     '',
     'Safety: this command reads explicit local files only. It has no network or production write path.',
     'Plan mode is dry-run only and refuses to run unless exact source-file SHA-256 guards match.',
+    'When a research decision registry is supplied in plan mode, its exact byte-level SHA-256 is mandatory too.',
   ].join('\n');
 }
 
@@ -69,6 +70,7 @@ function main() {
   if (!Array.isArray(venues.value) || !Array.isArray(concerts.value)) throw new Error('Venue and concert inputs must both be JSON arrays.');
   const decisionsFile = args.decisions ? readJson(args.decisions, 'decisions') : null;
   const decisions = decisionsFile?.value || {};
+  if (!decisions || typeof decisions !== 'object' || Array.isArray(decisions)) throw new Error('Research decisions input must be a JSON object.');
 
   if (args.command === 'audit') {
     if (!args.out) throw new Error('Missing --out');
@@ -80,7 +82,7 @@ function main() {
     };
     const out = writeJson(args.out, report);
     process.stdout.write(`Audit written: ${out}\n`);
-    process.stdout.write(`Source file hashes: venues=${venues.sha256} concerts=${concerts.sha256}\n`);
+    process.stdout.write(`Source file hashes: venues=${venues.sha256} concerts=${concerts.sha256}${decisionsFile ? ` decisions=${decisionsFile.sha256}` : ''}\n`);
     process.stdout.write(`Candidates: venues=${report.venueCandidates.length} concerts=${report.concertCandidates.length} unresolved=${report.unresolvedConcerts.length}\n`);
     return;
   }
@@ -90,6 +92,12 @@ function main() {
   const expectedConcertsHash = validateSha256(args['expected-concerts-sha256'], 'expected-concerts-sha256');
   assertHash(venues.sha256, expectedVenuesHash, 'venues');
   assertHash(concerts.sha256, expectedConcertsHash, 'concerts');
+  if (decisionsFile) {
+    const expectedDecisionsHash = validateSha256(args['expected-decisions-sha256'], 'expected-decisions-sha256');
+    assertHash(decisionsFile.sha256, expectedDecisionsHash, 'decisions');
+  } else if (args['expected-decisions-sha256']) {
+    throw new Error('--expected-decisions-sha256 requires --decisions.');
+  }
 
   const outDir = path.resolve(args['out-dir']);
   const plan = Migration.planMigration(venues.value, concerts.value, decisions);
@@ -118,6 +126,7 @@ function main() {
     after: plan.after,
     blocked: plan.blocked,
     unresolved: plan.unresolved,
+    unresolvedIdentity: plan.unresolvedIdentity,
     invariants: plan.invariants,
     validation,
   });
