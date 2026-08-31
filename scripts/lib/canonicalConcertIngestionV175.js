@@ -326,7 +326,7 @@ function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalId
       output.lifecycleStatus = 'cancelled';
       history.push(lifecycleHistoryEntry('cancelled', output, candidate, now));
     }
-  } else if (status === 'postponed' && !text(candidate?.date)) {
+  } else if (status === 'postponed') {
     if (attendedHistorical) {
       history.push(lifecycleHistoryEntry('provider_status_conflict', output, candidate, now, { observedStatus: 'postponed' }));
     } else {
