@@ -125,7 +125,7 @@ test('v176 final planner recognizes explicit concert merge members supplied only
   ], {
     concertMerges: [{
       ids: ['concert-old-z', 'concert-old-a'],
-      canonicalId: 'concert-a',
+      canonicalId: 'concert-old-a',
       reason: 'researched duplicate through legacy aliases',
     }],
   });
