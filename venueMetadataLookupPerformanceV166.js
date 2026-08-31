@@ -1,12 +1,7 @@
 'use strict';
 
-// v166 indexed venue-metadata lookup.
-// findVenueRecord itself is deliberately conservative and remains authoritative;
-// this layer only reduces its input from the full venue document to records
-// whose primary name or reviewed alias has the same normalized name. A record
-// with a different normalized name cannot satisfy VenueMetadataModelV158's
-// recordMatches contract, so this is a performance index rather than a new
-// matching rule.
+// v166 indexed venue-metadata lookup, extended by v174 to index the richer
+// canonical identity evidence without reintroducing full concert x venue scans.
 (function installVenueMetadataLookupPerformanceV166(root) {
   if (root.__LIVEVAULT_VENUE_METADATA_LOOKUP_PERFORMANCE_V166__) return;
   root.__LIVEVAULT_VENUE_METADATA_LOOKUP_PERFORMANCE_V166__ = true;
@@ -28,17 +23,24 @@
     }
   }
 
+  function indexedNames(record) {
+    if (typeof model.identityVariants === 'function') {
+      return model.identityVariants(record).map((variant) => model.normalizeIdentityText(variant?.name)).filter(Boolean);
+    }
+    return [
+      model.normalizeIdentityText(record?.name),
+      ...(Array.isArray(record?.identityAliases)
+        ? record.identityAliases.map((alias) => model.normalizeIdentityText(alias?.name))
+        : []),
+    ].filter(Boolean);
+  }
+
   function ensureIndex() {
     if (index) return index;
     const records = prior.getRecords();
     const byName = new Map();
     for (const record of records) {
-      const names = new Set([
-        model.normalizeIdentityText(record?.name),
-        ...(Array.isArray(record?.identityAliases)
-          ? record.identityAliases.map((alias) => model.normalizeIdentityText(alias?.name))
-          : []),
-      ].filter(Boolean));
+      const names = new Set(indexedNames(record));
       for (const name of names) {
         if (!byName.has(name)) byName.set(name, []);
         byName.get(name).push(record);
@@ -50,10 +52,23 @@
   }
 
   function metadataFor(value) {
+    // Keep the indexed v166 lookup on the hot path. Calling the v174 runtime
+    // first would delegate to v158's original full-record scan for every
+    // concert, recreating the concert x venue regression that v166 removed.
+    // Only fall through to v174 when established indexed name/alias evidence
+    // has no answer, so richer historical/provider/sub-location evidence stays
+    // additive without penalizing ordinary current-venue reads.
+    const byName = ensureIndex();
     const targetName = model.normalizeIdentityText(value?.venue ?? value?.name);
-    if (!targetName) return null;
-    const candidates = ensureIndex().get(targetName) || [];
-    return model.findVenueRecord(value, candidates);
+    if (targetName) {
+      const candidates = byName.get(targetName) || [];
+      const established = model.findVenueRecord(value, candidates);
+      if (established) return established;
+    }
+    if (typeof root.CanonicalIdentityRuntimeV174?.metadataFor === 'function') {
+      return root.CanonicalIdentityRuntimeV174.metadataFor(value);
+    }
+    return null;
   }
 
   function setRecords(records) {

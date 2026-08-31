@@ -1,56 +1,32 @@
 # LiveVault Current State
 
-This continuity file was compacted again on 2026-08-28. Earlier detailed state remains recoverable in Git history. GitHub `main` is authoritative.
+This continuity file was compacted on 2026-08-30 for the canonical identity project. Earlier detailed state remains recoverable in Git history. GitHub `main` is authoritative.
 
 ## Repository and current build
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged application baseline is **v172** at `16e7918c7c77824fa38274756b3934d5ab8ea289`, which merged PR #188. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v172` on `main`.
+The current merged baseline is **v173** at merge commit `38843164dd4ac5d2f3a0c0f8eb69294d0e1d1220` (PR #189). `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v173` on `main`.
 
-The active unmerged application build is **v173** on branch `fix/bottom-nav-order-v173`. It is a tightly scoped bottom-navigation order change. The branch keeps `APP_VERSION` and `CACHE_NAME_LITERAL` synchronized at `v173`.
+The active unmerged build is **v174 — Canonical Identity Foundation (Build 1 of 3)** on branch `feat/canonical-identity-foundation-v174`. It is intentionally limited to the shared canonical venue/concert/event read model, current-vs-historical venue presentation, event/stat integration and focused synthetic regression/performance QA. Provider ingestion/lifecycle prevention is Build 2. Existing-data audit/research/migration tooling is Build 3. Production migration is a later separately authorized operation.
 
-No production provider call, production research workflow, production smoke or production-data mutation has been performed for v173.
+No merge, deploy, live provider run, production smoke, production workflow or production-data mutation is authorized or has been performed for v174.
 
-## v173 bottom-navigation order
+## v174 canonical identity foundation
 
-The bottom navigation order changes only from `Music · Discover · Bands · Stats · Alerts` to `Music · Bands · Discover · Stats · Alerts`.
+The new shared identity layer extends the existing v158/v166 architecture rather than replacing its safety/performance model.
 
-This is an order-only change to the existing navigation elements. Their stable `data-tab` identities, icons, labels, click behavior, active-state logic and Alerts unread badge ownership stay attached to the same destinations. Bands still opens the existing Bands page through `mybands`; Discover still opens the existing Discover page through the stable internal `concerts` route. No other navigation, screen, styling, iconography or app behavior changes.
+Canonical venue identity now supports additive current/historical names, location history, namespace-scoped provider venue identities, parent/sub-location mappings and legacy venue IDs. Rooms, halls, stages, theatres, temporary structures and hospitality/loge-style sub-locations resolve to their parent venue when that relationship is explicitly represented. Relocation/rebuild continuity can therefore remain one venue without turning different addresses into a generic merge rule. Separately named venues in one complex and simultaneous brand branches remain distinct.
 
-## v172 Discover compact-filter correction
+Historical concert records keep their date-correct venue name/city/address. Current venue metadata and Venue Detail use the latest canonical venue facts. Upcoming concert read views may display the current canonical venue name/location while retaining the stored historical/provider wording as source evidence.
 
-v172 merged in PR #188. The Discover visual baseline remains the v171 app: BANDMARKR blue brand bar, Discover header, Concerts / Venues / Bands segmented selector, concert cards, typography, colors, icons, spacing and bottom navigation are otherwise unchanged.
+Canonical concert identity is **bandId + canonical venue identity + full calendar date**. Time, provider event/listing ID, room/stage and ticket offer/package type do not create another canonical concert. Build 1 applies this non-destructively at read time and fails closed when duplicate rows contain a genuine contradictory user-owned field. Persistent provider-observation accumulation and write-time prevention are deliberately deferred to Build 2.
 
-Only the geographic filter presentation changed. The v171 placement is retained directly below Concerts / Venues / Bands and remains limited to Discover > Concerts, but the full-width secondary segmented row was replaced with the compact pre-v171 control treatment, left-aligned in one row. Nearby is the existing compact location-pin control; SE and EU are compact text pills with identical geometry. EU is text-only and contains no globe or other icon. Active/inactive state continues to mirror the existing hidden header-owned controls, so persistence, mutual exclusion and filtering behavior remain unchanged.
+Canonical event identity keeps existing valid explicit `eventGroupId` relationships authoritative. Otherwise ordinary events group by **canonical venue + date**. A reliably identified festival edition overrides the ordinary rule and may span multiple dates and multiple canonical venues. Annual editions remain separate and non-festival consecutive-night shows remain separate events.
 
-v172 is presentation-only for the geographic filters. It does not alter Discover recommendation identity behavior, concert filtering rules, provider ownership, stored data, navigation IDs or venue-render performance.
+Event-level spend/travel/night/venue/city behavior continues to use event groups. Festival travel is one event-level distance: verified primary venue when supplied, otherwise the shortest known festival-venue distance. Artist appearances, ratings, setlists, genres and lineup roles remain performance-level.
 
-## v171 Discover/header correction build
-
-v171 merged in PR #187. Compound header emphasis is corrected so **MYMUSIC** renders `MY` white + `MUSIC` blue and **CONCERTALERTS** renders `CONCERT` white + `ALERTS` blue. Discover keeps its existing globe/header identity and Settings action.
-
-On Discover > Concerts, the Nearby / SE / EU geographic controls were moved out of the crowded app header and rendered immediately below the existing Concerts / Venues / Bands segmented selector. The controls reuse the existing geographic-filter owners and persisted state rather than introducing a second filter model. The secondary geographic row is only shown for Discover > Concerts; Venues and Bands keep it hidden.
-
-v171 also closes a Discover duplicate-risk exposed by an existing followed artist such as Klaxons that has a confirmed Ticketmaster identity but no trusted MusicBrainz identity. Discover still prefers trusted MBID matching first. If Add Band finds exactly one existing followed band with the same exact normalized name and that band has no trusted or stored MBID, the recommendation is linked into that existing record instead of appending a duplicate. The stable band ID, user-owned fields, nested Ticketmaster/provider decisions, unknown future fields and existing provenance are preserved. The Discover MBID becomes a user-confirmed MusicBrainz identity, Discover provenance is added provider-neutrally, and normal pending artist-enrichment state is prepared. Multiple same-name records, a different trusted MBID, or any existing nonblank stored MBID fail closed rather than guessing.
-
-The Band Data Setlist.fm presentation is also corrected for the per-band case: when a band lacks a trusted MusicBrainz MBID, the UI no longer claims `Linked through the confirmed MusicBrainz MBID`; it instead reports that Setlist.fm is waiting for MusicBrainz identity. No stored provider state is rewritten by this presentation correction.
-
-## v170 Discover artist recommendations
-
-The visible Dates destination is **Discover** while retaining the stable internal `concerts` tab identifier. Its bottom-navigation icon and header icon use the existing globe glyph. Discover uses the existing Stats segmented-control classes and dimensions for three views: **Concerts / Venues / Bands**. Concerts and Venues continue to delegate to the established v166 venue-navigation/render path; the feature must not reintroduce full-dataset venue scans on the ordinary Concerts view.
-
-Discover/Bands is a cache-first recommendation stack grouped as `Similar to <Seed Artist>`. Seeds come only from trusted MusicBrainz identities in `listening/band-activity.json`, using the 14-day bucket, sorted by listen count then recency, capped at 10. The recommendation provider is ListenBrainz similar-artists plus ListenBrainz artist metadata. Spotify is not queried as an API for discovery; the visible Spotify action is a local name-search URL under `https://open.spotify.com/search/`.
-
-Recommendation state is stored separately in `discoverRecommendations.json`. The Worker permits that document only to the browser role, caps it at 512 KB, validates kind/schema/MBIDs/group and queue bounds/decisions on write and on read, and retains the existing conditional-write semantics. Unknown future fields are allowed rather than exact-key rejected.
-
-The queue contract is append-only for already stored group/candidate order. Candidate identity is the MusicBrainz MBID. A candidate may exist globally only once; when a new refresh returns the same candidate for multiple seeds, the strongest similarity relationship wins with deterministic tie-breaking. Followed and already-decided MBIDs are excluded. At most 10 candidates are visible per group, at most 20 unresolved candidates are retained per group, and at most 30 active groups are retained. A full 30-group queue does not discard unresolved groups to admit a new one.
-
-Refresh is no more frequent than once every seven days and also checks when the app becomes visible again. Provider failure leaves the prior cached recommendations intact. Automated QA sets the synthetic/fake-backend flags, blocks external origins, and therefore never calls live ListenBrainz/MusicBrainz/Spotify providers.
-
-Dismiss writes a durable `dismissed` decision. Add Band first persists the band using a fresh `bands.json` read plus conditional write/retry, reuses an existing trusted MBID rather than creating a duplicate, preserves the latest remote records/unknown fields, then writes the durable `added` Discover decision. Discover provenance is provider-neutral at the band root and is not stored inside MusicBrainz-owned metadata. Newly created bands receive the existing pending artist-enrichment checkpoint so the normal later enrichment flow can fill missing safe fields. On success the card briefly shows `Added ✓`, removes Dismiss, then disappears and the hidden queue fills from the bottom.
-
-Synthetic browser coverage includes grouped cards, Spotify local-search URLs, Add/Dismiss durability, queue refill and responsive widths from 320 through 480 px. Existing desktop/mobile PR QA remains the required merge-readiness gate.
+The v166 navigation architecture remains a hard contract: ordinary Discover/Concerts must not build the complete venue directory; canonical venue metadata is indexed/cached; Venues builds the canonical directory once and reuses it for detail/return navigation. v174 extends the indexed metadata lookup rather than restoring concert × venue full scans.
 
 ## Production data baseline carried forward
 
@@ -58,36 +34,39 @@ The validated production `concerts.json` cleanup completed on 2026-08-24 with **
 
 Production `bands.json` Ticketmaster identity review completed with **370** bands, **334** trusted unique Ticketmaster attraction IDs and **36** unresolved bands. The verified reviewed replacement SHA-256 was `9744a107b22586d3446a1560514378511b262a3ea12c740224a1edab536e0774`.
 
-Production venue cleanup completed with **530** reviewed `venues.json` records after conservative consolidation/removal of placeholders. The user confirmed that file was uploaded to the top level of production R2. No provider run or deployment was used for the cleanup.
+Production venue cleanup completed with **530** reviewed `venues.json` records after conservative consolidation/removal of placeholders. These production figures are historical continuity only; the future canonical migration must begin from a fresh separately authorized export and exact source hashes.
 
-## Merged architecture and UI contracts carried forward
+## Merged architecture carried forward
 
-- v163: Ticketmaster ingestion is identity-first; loose name matching is review-only, alternate offers require direct same-performance proof, and provider IDs remain namespace-scoped.
-- v164: the venue directory uses canonical physical-venue identity without changing event grouping or non-venue statistics; ambiguous placeholders fail closed and distinct same-address venues remain distinct.
-- v165: manual provider decisions are preserved across root MusicBrainz review actions, including unknown future nested-provider fields.
-- v166: venue navigation uses indexed/cached canonical grouping; ordinary concert dates do not build the canonical venue directory.
-- v167-v169: Start uses the existing upcoming card as Next Concert and keeps the complete next valid event group together; countdown/concert-day/ticket/directions behavior and event-level Upcoming count remain established.
-- v170: Discover replaces the visible Dates identity while retaining the internal `concerts` route and adds bounded cache-first ListenBrainz/MusicBrainz recommendations with durable Add/Dismiss decisions.
-- v171: Discover filters move below the primary Discover selector; header emphasis, safe exact-name recommendation linking and per-band Setlist.fm identity copy are corrected.
-- v172: Discover keeps that placement while restoring the compact old-style Nearby / SE / EU controls.
-
-Concert performance records remain independent. `lineupRole` is user-owned. Existing explicit `eventGroupId` relationships remain authoritative; conservative automatic grouping is read-time only. Concert nights/spend/travel/venue/city/event milestones are event-level, while artist appearances/ratings/setlists/genres/lineup roles are performance-level.
+- v163: Ticketmaster ingestion is identity-first; provider IDs remain namespace-scoped and provider evidence is not user identity.
+- v164: venue metadata/canonical overlays introduced conservative alias handling and same-address separation safety.
+- v165: reviewed provider decisions and unknown future fields survive root-level identity operations.
+- v166: venue navigation uses indexed/cached canonical grouping; ordinary concert dates do not construct the venue directory.
+- v167-v169: Start/Next Concert and existing event-level presentation behavior were established.
+- v170-v172: Discover/Bands recommendations and geographic-filter presentation were established.
+- v173: bottom navigation order is `Music · Bands · Discover · Stats · Alerts` while stable route IDs remain unchanged.
 
 ## Active safety and ownership boundaries
 
-- Stable IDs, user-owned fields, reviewed decisions, provider ownership and unknown future fields must be preserved.
-- Attendance, notes, ratings, ticket price/quantity/free state, playlist/photo links, manually added concerts, favorites, muted state, lineup role and event relationships remain user-owned under their established rules.
-- Automated browser QA uses only synthetic fixtures and the QA fake backend.
-- Production provider calls, production workflows, deployments and production data changes require explicit authorization.
+- Stable BANDMARKR IDs, user-owned fields, reviewed decisions, provider ownership and unknown future fields must be preserved.
+- Existing valid `eventGroupId` relationships remain user-owned/authoritative; system canonical event identity is derived separately.
+- Automated browser QA uses only synthetic fixtures and the QA fake backend; live providers and production R2 are forbidden in automated QA.
+- Production provider calls, production workflows, deployments, production smoke and production data changes require their specific explicit authorization. `Merge it` authorizes merge only.
 - Production smoke is manual-only and read-only.
-- Provider calls remain under UsageTracker caps/pacing and existing circuit/lease rules.
-- Raw private listening history remains outside ordinary GitHub Actions/automation inputs.
-- Existing JSON writes use optimistic concurrency and bounded reread/reconciliation.
+- Existing JSON writes keep optimistic concurrency/latest-state safeguards.
+- v166 indexed/cached venue navigation is a performance contract and regression is a blocker.
+
+## Canonical identity project sequence
+
+1. **Build 1 / v174:** canonical venue, concert and event identity foundation; read-time/stat integration; focused synthetic QA. Active now.
+2. **Build 2:** route Ticketmaster and other automatic discovery/write paths through the Build 1 identity resolver; accumulate provider observations; implement cancellation/postponement/reschedule/replacement-ID lifecycle rules; preserve latest-state concurrency and user ownership.
+3. **Build 3:** exhaustive local audit, research decision registry, deterministic/hash-guarded dry-run migration planner, legacy ID mappings, rollback artifacts, invariant/stat reports and idempotency validation. No production writes.
+4. **Production migration:** only after all three builds are merged and a fresh export/final dry run is separately approved. This is not a fourth code build.
 
 ## Backlog hygiene
 
-Completed/superseded historical work must not be treated as current debt. PR #134 remains intentionally open as production-inert NB2 tooling. Cloudflare Worker CORS-origin hardening and versioned CSS/JS patch-layer consolidation remain deferred maintenance work and should stay isolated from feature builds. The focused Ticketmaster offer-label hardening (`Premium Experience`, `Logen Seat`, plain `Box Seat`) remains separate from v173.
+PR #134 remains intentionally open as unrelated production-inert listening backfill tooling. Cloudflare Worker CORS-origin hardening, patch-layer consolidation and unrelated Ticketmaster label hardening remain outside v174.
 
 ## Next operational steps
 
-Validate v173 on the exact branch head with unit/safety, version/cache sync, deterministic build-state, desktop Chromium and mobile Chromium QA. Verify the bottom navigation order and that every destination still opens through its existing stable route. Keep the change isolated to the navigation order and required version/continuity/test files. Do not merge without the user's explicit `Merge it` authorization, and do not run production providers, production research workflows, production smoke, deployments or production-data mutations without separate explicit authorization.
+Finish v174 exact-head validation: focused unit/syntax/version/build-state/safety checks, desktop Chromium, mobile Chromium at approximately 375px and 480px, dark/light coverage, and production-scale synthetic performance at approximately 3,300 concerts / 530 venues. Review the final PR head and correct any failures without changing the v174 version. Do not merge without explicit `Merge it`; do not perform Build 2, Build 3 or any production operation in this PR.
