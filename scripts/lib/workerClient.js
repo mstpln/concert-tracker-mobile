@@ -106,8 +106,28 @@ function createWorkerClient({ endpointEnv = config.WORKER.endpointEnv, tokenEnv 
     return reconcileCallerData(data, intended);
   }
 
+  async function writeJsonReconciled(filename, reconcile) {
+    if (typeof reconcile !== 'function') throw new Error('writeJsonReconciled requires a reconciliation function');
+    let state = documentState.get(filename);
+    if (!state) {
+      await readJson(filename, undefined);
+      state = documentState.get(filename);
+    }
+    let intended = clone(reconcile(clone(state?.value)));
+    let res = await putJson(filename, intended, state);
+    if (res.status === 412) {
+      const latest = await readJson(filename, undefined);
+      const latestState = documentState.get(filename);
+      intended = clone(reconcile(clone(latest)));
+      res = await putJson(filename, intended, latestState);
+    }
+    if (!res.ok) throw new Error(`PUT ${filename} failed: ${res.status} ${await res.text()}`);
+    documentState.set(filename, { etag: res.headers.get('ETag'), missing: false, value: clone(intended) });
+    return clone(intended);
+  }
+
   function resetDocumentState() { documentState.clear(); }
-  return { readJson, writeJson, writeJsonStrict, resetDocumentState };
+  return { readJson, writeJson, writeJsonStrict, writeJsonReconciled, resetDocumentState };
 }
 
 const defaultClient = createWorkerClient();

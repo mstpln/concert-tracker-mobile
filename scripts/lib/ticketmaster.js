@@ -118,6 +118,14 @@ function eventStatus(event) {
   return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : null;
 }
 
+function relatedEventIds(event) {
+  const values = [
+    ...(Array.isArray(event?.relatedEvents) ? event.relatedEvents : []),
+    ...(Array.isArray(event?._embedded?.relatedEvents) ? event._embedded.relatedEvents : []),
+  ];
+  return [...new Set(values.map((value) => typeof value === 'string' ? value.trim() : String(value?.id || '').trim()).filter(Boolean))];
+}
+
 async function eventToConcert(event, band, attractionId, usage, fetchImpl, venueCache, now) {
   const attractions = event?._embedded?.attractions || [];
   const matchingAttraction = attractions.find((attraction) => attraction?.id === attractionId);
@@ -125,13 +133,10 @@ async function eventToConcert(event, band, attractionId, usage, fetchImpl, venue
 
   const localDate = event?.dates?.start?.localDate;
   const start = event?.dates?.start || {};
-  if (start.dateTBD || start.dateTBA || !isValidFullDate(localDate)) return null;
-
   const status = eventStatus(event);
-  if (ConcertIntegrity.isUnsafeEventStatus(status)) {
-    note(usage, `Ticketmaster ${status} event held from automatic concert admission for "${band.name}" on ${localDate}`);
-    return null;
-  }
+  const lifecycleObservation = ['cancelled', 'canceled', 'postponed', 'rescheduled'].includes(status);
+  const dateTbd = Boolean(start.dateTBD || start.dateTBA);
+  if ((!isValidFullDate(localDate) || dateTbd) && !(lifecycleObservation && status === 'postponed')) return null;
 
   const embeddedVenue = event?._embedded?.venues?.[0];
   if (!embeddedVenue) return null;
@@ -144,14 +149,14 @@ async function eventToConcert(event, band, attractionId, usage, fetchImpl, venue
   const distanceKm = haversineKm(config.HOME_LAT, config.HOME_LON, venue.latitude, venue.longitude);
   const eventName = typeof event?.name === 'string' && event.name.trim() ? event.name.trim() : null;
   return {
-    id: `${band.id}-${localDate}-${slugify(venue.city || venue.venue)}`,
+    id: `${band.id}-${dateTbd ? 'date-tbd' : localDate}-${slugify(venue.city || venue.venue)}`,
     bandId: band.id,
     bandName: band.name,
     venue: venue.venue,
     city: venue.city,
     country: venue.country,
-    date: localDate,
-    time: start.localTime || null,
+    date: dateTbd ? null : localDate,
+    time: dateTbd ? null : start.localTime || null,
     distanceKm,
     articleUrl: null,
     ticketUrl: event.url || null,
@@ -167,6 +172,7 @@ async function eventToConcert(event, band, attractionId, usage, fetchImpl, venue
     providerEventStatus: status,
     providerSource: providerSource(event),
     providerOfferType: ConcertIntegrity.offerKind(eventName),
+    providerRelatedEventIds: relatedEventIds(event),
     artistMatchMethod: 'confirmed_attraction_id',
   };
 }
@@ -218,7 +224,31 @@ async function fetchUpcomingEvents(band, usage, { fetchImpl = fetch, now = new D
     const concert = await eventToConcert(event, band, attractionId, usage, fetchImpl, venueCache, now);
     if (concert) concerts.push(concert);
   }
-  return ConcertIntegrity.collapseTicketmasterOffers(concerts);
+  const rawByEventId = new Map(concerts.map((concert) => [concert.providerEventId, concert]));
+  return ConcertIntegrity.collapseTicketmasterOffers(concerts).map((concert) => {
+    if (!Array.isArray(concert.alternateProviderOffers) || !concert.alternateProviderOffers.length) return concert;
+    return {
+      ...concert,
+      alternateProviderOffers: concert.alternateProviderOffers.map((offer) => {
+        const raw = rawByEventId.get(offer.providerEventId);
+        if (!raw) return offer;
+        return {
+          ...offer,
+          sourceProvider: raw.sourceProvider,
+          providerVenueId: raw.providerVenueId,
+          providerAttractionId: raw.providerAttractionId,
+          venue: raw.venue,
+          city: raw.city,
+          country: raw.country,
+          venueAddress: raw.venueAddress,
+          date: raw.date,
+          time: raw.time,
+          distanceKm: raw.distanceKm,
+          ticketRetailerVerified: raw.ticketRetailerVerified,
+        };
+      }),
+    };
+  });
 }
 
 const identityNorm = (value) => String(value || '').toLocaleLowerCase().normalize('NFKD').replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/^the\s+/u, '').replace(/\s+/g, ' ');
@@ -354,6 +384,7 @@ module.exports = {
   unresolvedAttraction,
   trustedAttractionId,
   eventStatus,
+  relatedEventIds,
   venueFields,
   resolveVenue,
   collisionRisk,

@@ -52,6 +52,12 @@ function dlIsUpcoming(concert) {
   return d >= today;
 }
 
+function dlUpcomingDateValue(concert) {
+  if (!concert?.date) return Number.POSITIVE_INFINITY;
+  const value = new Date(`${concert.date}T00:00:00`).getTime();
+  return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
+}
+
 // Returns, per bandId, a single representative upcoming concert: if the band
 // has any upcoming show marked attending, the earliest of those wins (so a
 // show you've committed to always surfaces on the Concerts tab, even if a
@@ -72,12 +78,12 @@ function dlNearestPerBand(concerts) {
     const cAttending = !!c.attending;
     if (cAttending && !existingAttending) {
       byBand.set(c.bandId, c);
-    } else if (cAttending === existingAttending && new Date(c.date) < new Date(existing.date)) {
+    } else if (cAttending === existingAttending && dlUpcomingDateValue(c) < dlUpcomingDateValue(existing)) {
       byBand.set(c.bandId, c);
     }
   }
   return [...byBand.values()].sort((a, b) => {
-    const dateDiff = new Date(a.date) - new Date(b.date);
+    const dateDiff = dlUpcomingDateValue(a) - dlUpcomingDateValue(b);
     if (dateDiff !== 0) return dateDiff;
     const da = a.distanceKm ?? Infinity;
     const db = b.distanceKm ?? Infinity;
@@ -124,7 +130,7 @@ function dlIsNearby(concert) {
 function dlAllUpcomingForBand(concerts, bandId) {
   return concerts
     .filter((c) => c.bandId === bandId && dlIsUpcoming(c))
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
+    .sort((a, b) => dlUpcomingDateValue(a) - dlUpcomingDateValue(b));
 }
 
 // Groups every concert on record (any tracked band, past or upcoming,
@@ -264,7 +270,7 @@ function dlPrimaryGenreGroupForBand(band) {
 // concert.
 function dlMyConcerts(concerts) {
   const mine = concerts.filter((c) => c.attending);
-  const upcoming = DLEventModel.orderPerformances(mine.filter(dlIsUpcoming).sort((a, b) => new Date(a.date) - new Date(b.date)));
+  const upcoming = DLEventModel.orderPerformances(mine.filter(dlIsUpcoming).sort((a, b) => dlUpcomingDateValue(a) - dlUpcomingDateValue(b)));
   const past = DLEventModel.orderPerformances(mine.filter((c) => !dlIsUpcoming(c)).sort((a, b) => new Date(b.date) - new Date(a.date)));
   return { upcoming, past };
 }

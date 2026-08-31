@@ -664,7 +664,7 @@ function concertsListHtml() {
   }
 
   return renderWithYearDividers(nearest, (c) => {
-    const dateStr = formatDate(c.date, c.time);
+    const dateStr = concertDateLabel(c);
     return `
         <div class="row-card clickable" data-band-id="${c.bandId}">
           <div class="row-top">
@@ -777,7 +777,7 @@ function renderVenueDetailScreen(key) {
   container.innerHTML = `
     <p class="section-label" style="margin-top:0">${escapeHtml(group.city)}${group.country ? ', ' + escapeHtml(group.country) : ''}</p>
     ${renderWithYearDividers(sorted, (c) => {
-      const dateStr = formatDate(c.date, c.time);
+      const dateStr = concertDateLabel(c);
       const isPast = !dlIsUpcoming(c);
       return `
         <div class="row-card clickable${isPast ? ' is-past' : ''}" data-band-id="${escapeAttr(c.bandId)}">
@@ -926,6 +926,15 @@ function countdownCardHtml(nextConcert) {
     return `
       <div class="countdown-card countdown-empty">
         <p class="countdown-empty-text">No upcoming concert marked as attending</p>
+      </div>`;
+  }
+  if (!nextConcert.date && nextConcert.lifecycleStatus === 'postponed') {
+    return `
+      <div class="countdown-card countdown-empty">
+        <p class="countdown-label">Postponed</p>
+        <p class="countdown-band">${escapeHtml(nextConcert.bandName)}</p>
+        <p class="countdown-venue">${escapeHtml([nextConcert.venue, nextConcert.city].filter(Boolean).join(', '))}</p>
+        <p class="countdown-empty-text">DATE TBD</p>
       </div>`;
   }
   const time = nextConcert.time ? nextConcert.time.slice(0, 5) : '00:00';
@@ -1093,7 +1102,7 @@ function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
           ${tourName ? `<p class="row-tour">${escapeHtml(tourName)}</p>` : ''}
         </div>
       </div>
-      <p class="row-sub">${formatDate(c.date, c.time)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
+      <p class="row-sub">${concertDateLabel(c)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
       ${venueAddressLinkHtml(c)}
       ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
       ${isPast ? pastConcertDetailsGroupHtml(c) : concertPrepGroupHtml(c)}
@@ -2550,7 +2559,7 @@ function profileUpcomingRowHtml(c) {
   return `
     <div class="row-card">
       ${c.type === 'festival' ? `<div class="row-top"><div class="row-title-group"><span class="pill pill-festival">Festival</span></div></div>` : ''}
-      <p class="row-sub">${formatDate(c.date, c.time)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
+      <p class="row-sub">${concertDateLabel(c)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
       ${venueAddressLinkHtml(c)}
       ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
       ${playlistLinkHtml(c)}
@@ -2561,7 +2570,7 @@ function profileUpcomingRowHtml(c) {
         </div>
         <div class="show-buttons-group">
           <button class="${going ? 'btn-primary' : 'btn-secondary'} going-btn" data-concert-id="${c.id}">${icon(going ? 'check' : 'plus')}${going ? 'Going' : "I'm going"}</button>
-          <a class="btn-secondary" href="${escapeAttr(buildGoogleCalendarUrl(c))}" target="_blank" rel="noopener">${icon('calendarPlus')}Add to calendar</a>
+          ${c.date ? `<a class="btn-secondary" href="${escapeAttr(buildGoogleCalendarUrl(c))}" target="_blank" rel="noopener">${icon('calendarPlus')}Add to calendar</a>` : ''}
         </div>
       </div>
       ${c.ticketUrl && c.ticketRetailerVerified === false ? `<p class="settings-hint" style="color:var(--danger)">Unverified retailer — double-check before buying</p>` : ''}
@@ -3813,6 +3822,15 @@ function formatDate(dateStr, timeStr) {
   } catch {
     return '';
   }
+}
+
+function concertDateLabel(concert) {
+  if (!concert?.date && concert?.lifecycleStatus === 'postponed') return 'POSTPONED · DATE TBD';
+  if (concert?.lifecycleStatus === 'cancelled') {
+    const scheduled = formatDate(concert.date, concert.time);
+    return scheduled ? `CANCELLED · ${scheduled}` : 'CANCELLED';
+  }
+  return formatDate(concert?.date, concert?.time);
 }
 
 function formatKm(km) {
