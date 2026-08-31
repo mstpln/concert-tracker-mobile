@@ -91,6 +91,28 @@ test('v176 blocks festival decisions with missing concert members', () => {
   assert.equal(Migration.validatePlan(plan).valid, false);
 });
 
+test('v176 remaps a festival primary venue through researched venue reconciliation', () => {
+  const sourceVenues = [venue(), venue(ROOM_VENUE_ID, 'Main Hall Room 2')];
+  const sourceConcerts = [
+    concert({ id: 'festival-a', bandId: 'band-a', canonicalVenueId: MAIN_VENUE_ID, venue: 'Main Hall' }),
+    concert({ id: 'festival-b', bandId: 'band-b', canonicalVenueId: ROOM_VENUE_ID, venue: 'Main Hall Room 2', lineupRole: 'support' }),
+  ];
+  const plan = Migration.planMigration(sourceVenues, sourceConcerts, {
+    venueMerges: [{ ids: [MAIN_VENUE_ID, ROOM_VENUE_ID], canonicalId: MAIN_VENUE_ID, reason: 'researched_parent_room' }],
+    festivalEditions: [{
+      id: 'festival-2026',
+      name: 'Festival',
+      year: '2026',
+      concertIds: ['festival-a', 'festival-b'],
+      primaryCanonicalVenueId: ROOM_VENUE_ID,
+    }],
+  });
+  assert.equal(plan.concerts.length, 2);
+  assert.ok(plan.concerts.every((record) => record.festivalEdition.primaryCanonicalVenueId === MAIN_VENUE_ID));
+  assert.equal(plan.invariants.orphans.valid, true);
+  assert.equal(Migration.validatePlan(plan).valid, true);
+});
+
 test('v176 orphan checks reject dangling canonical venue and duplicate IDs', () => {
   const result = Migration.orphanChecks(
     [venue()],
@@ -121,16 +143,27 @@ test('v176 event metrics use the migrated local venue index after researched ven
   assert.equal(Migration.validatePlan(plan).valid, true);
 });
 
-test('v176 migration event metrics preserve authoritative explicit event groups across venue and date', () => {
-  const sourceVenues = [venue(), { ...venue(OTHER_VENUE_ID, 'Venue B'), city: 'Copenhagen', country: 'Denmark', address: 'Other Street 2' }];
+test('v176 migration event metrics preserve a valid authoritative explicit event group', () => {
   const sourceConcerts = [
     concert({ id: 'explicit-a', eventGroupId: 'event-user-0001' }),
-    concert({ id: 'explicit-b', bandId: 'band-b', date: '2026-10-11', eventGroupId: 'event-user-0001', venue: 'Venue B', city: 'Copenhagen', country: 'Denmark', venueAddress: 'Other Street 2', canonicalVenueId: OTHER_VENUE_ID, lineupRole: 'support' }),
+    concert({ id: 'explicit-b', bandId: 'band-b', eventGroupId: 'event-user-0001', lineupRole: 'support' }),
   ];
-  const plan = Migration.planMigration(sourceVenues, sourceConcerts, {});
+  const plan = Migration.planMigration([venue()], sourceConcerts, {});
   assert.equal(plan.after.metrics.eventCount, 1);
   assert.equal(plan.invariants.invalidEvents.length, 0);
   assert.equal(Migration.validatePlan(plan).valid, true);
+});
+
+test('v176 rejects an explicit ordinary event group that violates v174 venue/date identity', () => {
+  const sourceVenues = [venue(), { ...venue(OTHER_VENUE_ID, 'Venue B'), city: 'Copenhagen', country: 'Denmark', address: 'Other Street 2' }];
+  const sourceConcerts = [
+    concert({ id: 'explicit-a', eventGroupId: 'event-user-0002' }),
+    concert({ id: 'explicit-b', bandId: 'band-b', date: '2026-10-11', eventGroupId: 'event-user-0002', venue: 'Venue B', city: 'Copenhagen', country: 'Denmark', venueAddress: 'Other Street 2', canonicalVenueId: OTHER_VENUE_ID, lineupRole: 'support' }),
+  ];
+  const plan = Migration.planMigration(sourceVenues, sourceConcerts, {});
+  assert.equal(plan.after.metrics.eventCount, 1);
+  assert.equal(plan.invariants.invalidEvents.length, 1);
+  assert.equal(Migration.validatePlan(plan).valid, false);
 });
 
 test('v176 dry-run CLI refuses a plan when exact input hashes are absent or wrong', () => {
