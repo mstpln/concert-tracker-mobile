@@ -177,14 +177,22 @@ function hasExplicitConcertDecision(decisions, ids) {
     decisionMembers(decision).some((id) => idSet.has(id)));
 }
 
-function withSourceOrderSurvivors(venues, concerts, decisions) {
-  const initial = Base.planMigration(venues, concerts, decisions);
+function prepareConcertsForCore(concerts) {
+  return (concerts || []).map((record) => {
+    const next = clone(record);
+    delete next.providerRelatedEventIds;
+    return next;
+  });
+}
+
+function withSourceOrderSurvivors(venues, coreConcerts, sourceConcerts, decisions) {
+  const initial = Base.planMigration(venues, coreConcerts, decisions);
   const additions = [];
   for (const item of initial.mergeManifest || []) {
     if (item?.kind !== 'concert_merge') continue;
     const ids = uniqueStable([item.winnerId, ...(Array.isArray(item.mergedAway) ? item.mergedAway : [])].map(text).filter(Boolean));
     if (ids.length < 2 || hasExplicitConcertDecision(decisions, ids)) continue;
-    const survivor = sourceOrderSurvivor(concerts, ids);
+    const survivor = sourceOrderSurvivor(sourceConcerts, ids);
     if (survivor && survivor !== item.winnerId) {
       additions.push({
         ids,
@@ -200,7 +208,7 @@ function withSourceOrderSurvivors(venues, concerts, decisions) {
     ...normalized,
     concertMerges: [...normalized.concertMerges, ...additions],
   };
-  return { plan: Base.planMigration(venues, concerts, effectiveDecisions), effectiveDecisions };
+  return { plan: Base.planMigration(venues, coreConcerts, effectiveDecisions), effectiveDecisions };
 }
 
 function providerNamespace(record) {
@@ -314,14 +322,15 @@ function finalizeProviderEvidence(sourceConcerts, outputConcerts, mapping) {
   });
 }
 
-function refreshDerivedPlan(plan, sourceConcerts, decisions) {
+function refreshDerivedPlan(plan, sourceVenues, sourceConcerts, decisions) {
   const after = Base.audit(plan.venues, plan.concerts, decisions);
   plan.outputHashes = {
     venues: Base.sha256(plan.venues),
     concerts: Base.sha256(plan.concerts),
   };
   plan.sourceHashes = {
-    ...plan.sourceHashes,
+    venues: Base.sha256(sourceVenues || []),
+    concerts: Base.sha256(sourceConcerts || []),
     decisions: Base.sha256(Base.normalizeDecisions(decisions)),
   };
   plan.unresolvedIdentity = {
@@ -343,10 +352,11 @@ function refreshDerivedPlan(plan, sourceConcerts, decisions) {
 
 function planMigration(venues, concerts, decisions = {}) {
   const blockers = crossDecisionBlockers(venues, concerts, decisions);
-  const { plan } = withSourceOrderSurvivors(venues, concerts, decisions);
+  const coreConcerts = prepareConcertsForCore(concerts);
+  const { plan } = withSourceOrderSurvivors(venues, coreConcerts, concerts, decisions);
   plan.concerts = finalizeProviderEvidence(concerts, plan.concerts, plan.legacyConcertMap);
   plan.blocked = uniqueStable([...(plan.blocked || []), ...blockers]);
-  return refreshDerivedPlan(plan, concerts, decisions);
+  return refreshDerivedPlan(plan, venues, concerts, decisions);
 }
 
 module.exports = Object.freeze({
