@@ -4,20 +4,24 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Migration = require('../scripts/lib/canonicalMigrationV176');
 
+const MAIN_VENUE_ID = 'venue-a1b2c3d4';
+const ROOM_VENUE_ID = 'venue-b1c2d3e4';
+const OTHER_VENUE_ID = 'venue-c1d2e3f4';
+
 function venues() {
   return [
     {
-      venueId: 'venue-main',
+      venueId: MAIN_VENUE_ID,
       name: 'Main Hall',
       currentName: 'Main Hall',
       city: 'Malmo',
       country: 'Sweden',
       address: 'Main Street 1',
-      identityAliases: ['Main Hall Arena'],
+      identityAliases: [{ name: 'Main Hall Arena', city: 'Malmo', country: 'Sweden', address: 'Main Street 1' }],
       providerIdentities: [{ provider: 'ticketmaster', providerVenueId: 'tm-main', name: 'Main Hall' }],
     },
     {
-      venueId: 'venue-room',
+      venueId: ROOM_VENUE_ID,
       name: 'Main Hall Room 2',
       city: 'Malmo',
       country: 'Sweden',
@@ -25,7 +29,7 @@ function venues() {
       customFutureVenueField: 'preserve-me',
     },
     {
-      venueId: 'venue-other',
+      venueId: OTHER_VENUE_ID,
       name: 'Other Arena',
       city: 'Copenhagen',
       country: 'Denmark',
@@ -44,7 +48,7 @@ function baseConcert(overrides = {}) {
     city: 'Malmo',
     country: 'Sweden',
     venueAddress: 'Main Street 1',
-    canonicalVenueId: 'venue-main',
+    canonicalVenueId: MAIN_VENUE_ID,
     attending: true,
     ticketPrice: 500,
     ticketQuantity: 1,
@@ -106,7 +110,7 @@ test('v176 applies researched venue merge first and preserves historical/raw con
   const sourceConcerts = [
     baseConcert({
       id: 'concert-room-listing',
-      canonicalVenueId: 'venue-room',
+      canonicalVenueId: ROOM_VENUE_ID,
       venue: 'Main Hall Room 2',
       roomOrStage: { name: 'Room 2', type: 'room' },
       attending: false,
@@ -117,16 +121,16 @@ test('v176 applies researched venue merge first and preserves historical/raw con
     baseConcert({ id: 'concert-main-listing' }),
   ];
   const decisions = {
-    venueMerges: [{ ids: ['venue-main', 'venue-room'], canonicalId: 'venue-main', reason: 'researched_parent_room' }],
+    venueMerges: [{ ids: [MAIN_VENUE_ID, ROOM_VENUE_ID], canonicalId: MAIN_VENUE_ID, reason: 'researched_parent_room' }],
   };
   const plan = Migration.planMigration(venues(), sourceConcerts, decisions);
   assert.equal(plan.venues.length, 2);
-  const main = plan.venues.find((record) => record.venueId === 'venue-main');
-  assert.ok(main.legacyVenueIds.includes('venue-room'));
+  const main = plan.venues.find((record) => record.venueId === MAIN_VENUE_ID);
+  assert.ok(main.legacyVenueIds.includes(ROOM_VENUE_ID));
   assert.equal(main.customFutureVenueField, 'preserve-me');
   assert.equal(plan.concerts.length, 1);
   assert.equal(plan.concerts[0].id, 'concert-main-listing');
-  assert.equal(plan.legacyVenueMap['venue-room'], 'venue-main');
+  assert.equal(plan.legacyVenueMap[ROOM_VENUE_ID], MAIN_VENUE_ID);
   assert.equal(plan.concerts[0].venue, 'Main Hall');
 });
 
@@ -139,7 +143,7 @@ test('v176 keeps same band/date at genuinely different canonical venues as separ
       city: 'Copenhagen',
       country: 'Denmark',
       venueAddress: 'Other Street 2',
-      canonicalVenueId: 'venue-other',
+      canonicalVenueId: OTHER_VENUE_ID,
       attending: false,
       ticketPrice: undefined,
       notes: undefined,
@@ -162,7 +166,7 @@ test('v176 festival decision groups multiple dates and venues into one festival 
       city: 'Copenhagen',
       country: 'Denmark',
       venueAddress: 'Other Street 2',
-      canonicalVenueId: 'venue-other',
+      canonicalVenueId: OTHER_VENUE_ID,
       attending: false,
       ticketPrice: 0,
       freeTicket: true,
@@ -176,7 +180,7 @@ test('v176 festival decision groups multiple dates and venues into one festival 
       name: 'Festival Example',
       year: '2026',
       concertIds: ['festival-a', 'festival-b'],
-      primaryCanonicalVenueId: 'venue-main',
+      primaryCanonicalVenueId: MAIN_VENUE_ID,
     }],
   };
   const plan = Migration.planMigration(venues(), sourceConcerts, decisions);
