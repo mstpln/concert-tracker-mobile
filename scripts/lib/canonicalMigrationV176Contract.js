@@ -283,7 +283,12 @@ function planMigration(venues, concerts, decisions = {}) {
   const after = audit(plan.venues, plan.concerts, decisions);
   plan.blocked = uniqueStable([
     ...plan.blocked,
-    ...after.blockingUnresolvedConcerts.map((item) => ({ kind: 'concert', reason: 'unresolved_canonical_identity', ...item })),
+    ...after.blockingUnresolvedConcerts.map((item) => ({
+      ...item,
+      identityReason: item.reason,
+      kind: 'concert',
+      reason: 'unresolved_canonical_identity',
+    })),
   ]);
   plan.unresolved = clone(after.unresolvedConcerts);
   plan.outputHashes = {
