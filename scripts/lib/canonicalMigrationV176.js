@@ -117,6 +117,31 @@ function mergeArrayField(records, field) {
   return uniqueStable(records.flatMap((record) => asArray(record?.[field])));
 }
 
+function legacyAliasState(records, idField, legacyField) {
+  const owners = new Map();
+  const add = (alias, owner) => {
+    const key = text(alias);
+    const ownerId = text(owner);
+    if (!key || !ownerId) return;
+    if (!owners.has(key)) owners.set(key, new Set());
+    owners.get(key).add(ownerId);
+  };
+  for (const record of records || []) {
+    const owner = text(record?.[idField]);
+    if (!owner) continue;
+    add(owner, owner);
+    for (const alias of asArray(record?.[legacyField])) add(alias, owner);
+  }
+  const mapping = {};
+  const collisions = [];
+  for (const [alias, ownerSet] of owners) {
+    const ownerIds = [...ownerSet].sort();
+    if (ownerIds.length === 1) mapping[alias] = ownerIds[0];
+    else collisions.push({ alias, ownerIds });
+  }
+  return { mapping, collisions };
+}
+
 function unknownConflicts(records, type) {
   const keys = new Set(records.flatMap((record) => Object.keys(record || {})));
   const conflicts = [];
@@ -224,6 +249,10 @@ function providerNamespace(record) {
   return normalizedText(record?.providerNamespace || record?.sourceProvider || record?.providerSource || record?.provider || record?.namespace);
 }
 
+function providerEventId(record) {
+  return text(record?.providerEventId || record?.eventId || record?.listingId);
+}
+
 function providerStrength(record) {
   const provider = providerNamespace(record);
   const offer = normalizedText(record?.providerOfferType);
@@ -235,6 +264,54 @@ function providerStrength(record) {
   if (provider === 'ticketmaster' && verified) return 3;
   if (verified) return 2;
   return 1;
+}
+
+function providerObservationKey(record) {
+  const provider = providerNamespace(record);
+  const eventId = providerEventId(record);
+  return provider && eventId ? `${provider}\u001f${eventId}` : '';
+}
+
+function providerObservationFromRecord(record) {
+  const provider = providerNamespace(record);
+  const eventId = providerEventId(record);
+  const providerVenueId = text(record?.providerVenueId);
+  const providerAttractionId = text(record?.providerAttractionId);
+  if (!provider || ['manual', 'unknown'].includes(provider)) return null;
+  if (!eventId && !providerVenueId && !providerAttractionId) return null;
+  return {
+    provider,
+    providerEventId: eventId || null,
+    providerVenueId: providerVenueId || null,
+    providerAttractionId: providerAttractionId || null,
+    eventName: text(record?.providerEventName || record?.title) || null,
+    venue: text(record?.venue) || null,
+    city: text(record?.city) || null,
+    country: text(record?.country) || null,
+    address: clone(record?.venueAddress ?? null),
+    roomOrStage: clone(record?.roomOrStage ?? null),
+    date: text(record?.date) || null,
+    time: text(record?.time) || null,
+    ticketUrl: text(record?.ticketUrl) || null,
+    articleUrl: text(record?.articleUrl || record?.sourceUrl) || null,
+    offerType: text(record?.providerOfferType) || null,
+    status: text(record?.providerEventStatus || record?.lifecycleStatus || record?.status) || null,
+    source: text(record?.providerSource || record?.sourceProvider || record?.sourceUrl || record?.articleUrl) || null,
+  };
+}
+
+function mergeProviderEvidence(records) {
+  const output = mergeArrayField(records, 'providerObservations');
+  const keys = new Set(output.map(providerObservationKey).filter(Boolean));
+  for (const record of records) {
+    const observation = providerObservationFromRecord(record);
+    if (!observation) continue;
+    const key = providerObservationKey(observation);
+    if (key && keys.has(key)) continue;
+    output.push(observation);
+    if (key) keys.add(key);
+  }
+  return uniqueStable(output);
 }
 
 function preferredUserValue(records, field) {
@@ -262,10 +339,12 @@ function mergeConcertRecords(records, preferredId) {
     ...mergedAway,
   ]).map(String);
   for (const field of SAFE_MERGE_ARRAY_FIELDS) {
-    if (field === 'legacyVenueIds' || field === 'legacyConcertIds') continue;
+    if (field === 'legacyVenueIds' || field === 'legacyConcertIds' || field === 'providerObservations') continue;
     const value = mergeArrayField(records, field);
     if (value.length) merged[field] = value;
   }
+  const providerEvidence = mergeProviderEvidence(records);
+  if (providerEvidence.length) merged.providerObservations = providerEvidence;
   const providerWinner = [...records].sort((a, b) => {
     const strength = providerStrength(b) - providerStrength(a);
     if (strength) return strength;
@@ -323,11 +402,11 @@ function allPairsMatch(ids, predicate) {
 
 function validateDistinctDecisions(venues, concerts, decisions) {
   const blocked = [];
-  const venueIds = new Set((venues || []).map((record) => text(record?.venueId)).filter(Boolean));
-  const concertIds = new Set((concerts || []).map((record) => text(record?.id)).filter(Boolean));
+  const venueState = legacyAliasState(venues, 'venueId', 'legacyVenueIds');
+  const concertState = legacyAliasState(concerts, 'id', 'legacyConcertIds');
   for (const [kind, field, available] of [
-    ['venue', 'venueDistinct', venueIds],
-    ['concert', 'concertDistinct', concertIds],
+    ['venue', 'venueDistinct', new Set(Object.keys(venueState.mapping))],
+    ['concert', 'concertDistinct', new Set(Object.keys(concertState.mapping))],
   ]) {
     for (const decision of normalizeDecisions(decisions)[field]) {
       const ids = uniqueStable(asArray(decision?.ids).map(String).filter(Boolean));
@@ -345,7 +424,8 @@ function validateDistinctDecisions(venues, concerts, decisions) {
 function applyVenueDecisions(venues, decisions) {
   const source = clone(venues || []);
   let output = clone(source);
-  const mapping = Object.fromEntries(source.map((record) => [String(record?.venueId || ''), String(record?.venueId || '')]).filter(([id]) => id));
+  const aliasState = legacyAliasState(source, 'venueId', 'legacyVenueIds');
+  const mapping = { ...aliasState.mapping };
   const manifest = [];
   const blocked = [];
   const distinctPairs = decisionPairSet(decisions, 'venueDistinct');
@@ -365,21 +445,24 @@ function applyVenueDecisions(venues, decisions) {
       blocked.push({ kind: 'venue', reason: 'merge_conflicts_with_explicit_distinct', ids });
       continue;
     }
-    const members = output.filter((record) => ids.includes(String(record?.venueId || '')));
-    if (members.length !== ids.length) {
-      blocked.push({ kind: 'venue', reason: 'decision_member_missing', ids });
+    const resolvedIds = uniqueStable(ids.map((id) => mapping[id] || id));
+    const resolvedCanonicalId = mapping[requestedCanonicalId] || requestedCanonicalId;
+    const members = output.filter((record) => resolvedIds.includes(String(record?.venueId || '')));
+    if (resolvedIds.length === 1 && members.length === 1 && text(members[0]?.venueId) === resolvedCanonicalId) continue;
+    if (members.length !== resolvedIds.length || !resolvedIds.includes(resolvedCanonicalId)) {
+      blocked.push({ kind: 'venue', reason: 'decision_member_missing', ids, resolvedIds });
       continue;
     }
-    const result = mergeVenueRecords(members, requestedCanonicalId);
+    const result = mergeVenueRecords(members, resolvedCanonicalId);
     if (result.blocked) {
       blocked.push({ kind: 'venue', ids, ...result });
       continue;
     }
     const firstIndex = Math.min(...members.map((member) => output.indexOf(member)));
-    output = output.filter((record) => !ids.includes(String(record?.venueId || '')));
+    output = output.filter((record) => !resolvedIds.includes(String(record?.venueId || '')));
     output.splice(firstIndex, 0, result.record);
     for (const [sourceId, targetId] of Object.entries(mapping)) {
-      if (ids.includes(targetId)) mapping[sourceId] = result.winnerId;
+      if (resolvedIds.includes(targetId)) mapping[sourceId] = result.winnerId;
     }
     for (const id of ids) mapping[id] = result.winnerId;
     manifest.push({ kind: 'venue_merge', winnerId: result.winnerId, mergedAway: result.mergedAway, reason: decision?.reason || 'research_decision', evidence: clone(decision?.evidence || []) });
@@ -411,6 +494,8 @@ function compatibleFestivalMetadata(left, right) {
 function applyFestivalDecisions(concerts, decisions, venueMapping = {}) {
   const output = clone(concerts || []);
   const byId = new Map(output.map((record) => [String(record?.id || ''), record]));
+  const concertAliases = legacyAliasState(output, 'id', 'legacyConcertIds');
+  const ambiguousAliases = new Set(concertAliases.collisions.map((item) => item.alias));
   const blocked = [];
   const prepared = [];
   const invalidIndexes = new Set();
@@ -421,17 +506,21 @@ function applyFestivalDecisions(concerts, decisions, venueMapping = {}) {
   const normalized = normalizeDecisions(decisions).festivalEditions;
 
   normalized.forEach((decision, index) => {
-    const ids = uniqueStable(asArray(decision?.concertIds).map(String).filter(Boolean));
+    const sourceIds = uniqueStable(asArray(decision?.concertIds).map(String).filter(Boolean));
     const festivalId = text(decision?.id);
     const year = text(decision?.year);
-    const missing = ids.filter((id) => !byId.has(id));
-    if (!ids.length || !festivalId || !/^\d{4}$/.test(year) || missing.length) {
+    const ambiguous = sourceIds.filter((id) => ambiguousAliases.has(id));
+    const resolvedIds = uniqueStable(sourceIds.map((id) => concertAliases.mapping[id] || id));
+    const missing = resolvedIds.filter((id) => !byId.has(id));
+    if (!sourceIds.length || !festivalId || !/^\d{4}$/.test(year) || missing.length || ambiguous.length) {
       blocked.push({
         kind: 'festival',
-        reason: missing.length ? 'decision_member_missing' : 'festival_identity_invalid',
+        reason: ambiguous.length ? 'decision_member_ambiguous' : missing.length ? 'decision_member_missing' : 'festival_identity_invalid',
         id: festivalId || null,
-        concertIds: ids,
+        concertIds: sourceIds,
+        resolvedConcertIds: resolvedIds,
         missing,
+        ambiguous,
       });
       invalidIndexes.add(index);
       if (festivalId) invalidFestivalIds.add(festivalId);
@@ -460,7 +549,7 @@ function applyFestivalDecisions(concerts, decisions, venueMapping = {}) {
         primaryCanonicalVenueId: existingMetadata?.primaryCanonicalVenueId || metadata.primaryCanonicalVenueId,
       });
     }
-    for (const concertId of ids) {
+    for (const concertId of resolvedIds) {
       const prior = concertAssignments.get(concertId);
       if (prior && prior.festivalId !== festivalId) {
         blocked.push({
@@ -477,7 +566,7 @@ function applyFestivalDecisions(concerts, decisions, venueMapping = {}) {
         concertAssignments.set(concertId, { festivalId, index });
       }
     }
-    prepared.push({ index, ids, festivalId });
+    prepared.push({ index, ids: resolvedIds, festivalId });
   });
 
   for (const entry of prepared) {
@@ -490,10 +579,10 @@ function applyFestivalDecisions(concerts, decisions, venueMapping = {}) {
       record.festivalEdition = {
         ...(record.festivalEdition && typeof record.festivalEdition === 'object' ? record.festivalEdition : {}),
         id: entry.festivalId,
-        name: metadata.name || record?.festivalName || null,
+        name: metadata.name || record?.festivalEdition?.name || record?.festivalName || null,
         year: metadata.year,
         status: 'confirmed',
-        primaryCanonicalVenueId: metadata.primaryCanonicalVenueId,
+        primaryCanonicalVenueId: metadata.primaryCanonicalVenueId || record?.festivalEdition?.primaryCanonicalVenueId || null,
       };
     }
   }
@@ -508,7 +597,8 @@ function reconcileConcerts(concerts, venues, decisions) {
   const unresolved = [];
   const blocked = [];
   const distinctPairs = decisionPairSet(decisions, 'concertDistinct');
-  const mapping = Object.fromEntries(source.map((record) => [String(record?.id || ''), String(record?.id || '')]).filter(([id]) => id));
+  const aliasState = legacyAliasState(source, 'id', 'legacyConcertIds');
+  const mapping = { ...aliasState.mapping };
   source.forEach((record, sourceIndex) => {
     const identity = CanonicalIdentity.canonicalConcertIdentity(record, venueIndex);
     if (identity.kind !== 'same') {
@@ -529,25 +619,33 @@ function reconcileConcerts(concerts, venues, decisions) {
       blocked.push({ kind: 'concert', reason: 'decision_ids_invalid', ids });
       continue;
     }
-    const missing = ids.filter((id) => !sourceById.has(id));
-    if (missing.length) {
-      blocked.push({ kind: 'concert', reason: 'decision_member_missing', ids, missing });
-      continue;
-    }
     if (!canonicalId || !ids.includes(canonicalId)) {
       blocked.push({ kind: 'concert', reason: 'canonical_id_not_member', ids, canonicalId: canonicalId || null });
       continue;
     }
-    const keys = uniqueStable(ids.map((id) => groupKeyById.get(id)).filter(Boolean));
-    if (keys.length !== 1 || ids.some((id) => !groupKeyById.has(id))) {
-      blocked.push({ kind: 'concert', reason: 'merge_decision_not_canonical_duplicate', ids });
+    const ambiguous = ids.filter((id) => aliasState.collisions.some((item) => item.alias === id));
+    if (ambiguous.length) {
+      blocked.push({ kind: 'concert', reason: 'decision_member_ambiguous', ids, ambiguous });
+      continue;
+    }
+    const resolvedIds = uniqueStable(ids.map((id) => mapping[id] || id));
+    const resolvedCanonicalId = mapping[canonicalId] || canonicalId;
+    const missing = resolvedIds.filter((id) => !sourceById.has(id));
+    if (missing.length || !resolvedIds.includes(resolvedCanonicalId)) {
+      blocked.push({ kind: 'concert', reason: 'decision_member_missing', ids, resolvedIds, missing });
+      continue;
+    }
+    if (resolvedIds.length === 1) continue;
+    const keys = uniqueStable(resolvedIds.map((id) => groupKeyById.get(id)).filter(Boolean));
+    if (keys.length !== 1 || resolvedIds.some((id) => !groupKeyById.has(id))) {
+      blocked.push({ kind: 'concert', reason: 'merge_decision_not_canonical_duplicate', ids, resolvedIds });
       continue;
     }
     const key = keys[0];
     const groupIds = (groups.get(key) || []).map((member) => text(member.record?.id)).filter(Boolean).sort();
-    const decisionIds = [...ids].sort();
+    const decisionIds = [...resolvedIds].sort();
     if (stable(groupIds) !== stable(decisionIds)) {
-      blocked.push({ kind: 'concert', reason: 'merge_decision_incomplete_group', key, ids, canonicalGroupIds: groupIds });
+      blocked.push({ kind: 'concert', reason: 'merge_decision_incomplete_group', key, ids, resolvedIds, canonicalGroupIds: groupIds });
       continue;
     }
     const hasDistinct = ids.some((left, index) => ids.slice(index + 1).some((right) => distinctPairs.has(pairKey(left, right))));
@@ -556,11 +654,11 @@ function reconcileConcerts(concerts, venues, decisions) {
       continue;
     }
     const existing = preferredByKey.get(key);
-    if (existing && existing !== canonicalId) {
-      blocked.push({ kind: 'concert', reason: 'conflicting_merge_decisions', key, ids, canonicalIds: [existing, canonicalId].sort() });
+    if (existing && existing !== resolvedCanonicalId) {
+      blocked.push({ kind: 'concert', reason: 'conflicting_merge_decisions', key, ids, canonicalIds: [existing, resolvedCanonicalId].sort() });
       continue;
     }
-    preferredByKey.set(key, canonicalId);
+    preferredByKey.set(key, resolvedCanonicalId);
   }
 
   const replacements = new Map();
@@ -583,6 +681,9 @@ function reconcileConcerts(concerts, venues, decisions) {
     const firstIndex = Math.min(...members.map((member) => member.sourceIndex));
     replacements.set(firstIndex, result.record);
     for (const member of members) if (member.sourceIndex !== firstIndex) skipped.add(member.sourceIndex);
+    for (const [sourceId, targetId] of Object.entries(mapping)) {
+      if (memberIds.includes(targetId)) mapping[sourceId] = result.winnerId;
+    }
     for (const id of memberIds) mapping[id] = result.winnerId;
     manifest.push({ kind: 'concert_merge', key, winnerId: result.winnerId, mergedAway: result.mergedAway, reason: 'canonical_band_venue_date' });
   }
@@ -738,10 +839,14 @@ function orphanChecks(venues, concerts, venueMap = {}, concertMap = {}) {
   const concertIds = new Set((concerts || []).map((record) => String(record?.id || '').trim()).filter(Boolean));
   const venueIdState = duplicateIds(venues, 'venueId');
   const concertIdState = duplicateIds(concerts, 'id');
+  const venueAliases = legacyAliasState(venues, 'venueId', 'legacyVenueIds');
+  const concertAliases = legacyAliasState(concerts, 'id', 'legacyConcertIds');
   if (venueIdState.duplicates.length) errors.push({ reason: 'duplicate_venue_ids', ids: venueIdState.duplicates });
   if (venueIdState.missing.length) errors.push({ reason: 'missing_venue_ids', indexes: venueIdState.missing });
   if (concertIdState.duplicates.length) errors.push({ reason: 'duplicate_concert_ids', ids: concertIdState.duplicates });
   if (concertIdState.missing.length) errors.push({ reason: 'missing_concert_ids', indexes: concertIdState.missing });
+  if (venueAliases.collisions.length) errors.push({ reason: 'duplicate_legacy_venue_id_owners', collisions: venueAliases.collisions });
+  if (concertAliases.collisions.length) errors.push({ reason: 'duplicate_legacy_concert_id_owners', collisions: concertAliases.collisions });
   for (const concert of concerts || []) {
     const canonicalVenueId = String(concert?.canonicalVenueId || '').trim();
     if (canonicalVenueId && !venueIds.has(canonicalVenueId)) errors.push({ reason: 'concert_canonical_venue_orphan', concertId: concert?.id || null, canonicalVenueId });
