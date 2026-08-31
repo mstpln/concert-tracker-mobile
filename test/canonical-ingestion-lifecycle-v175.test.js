@@ -134,7 +134,7 @@ test('v175 confirmed reschedule and replacement listing preserve ID and former d
 
   const replacement = Ingestion.ingestCandidate([existing], observation({ providerEventId: 'tm-new', providerRelatedEventIds: ['tm-old'], date: '2026-11-12' }), options);
   assert.equal(replacement.records[0].id, existing.id);
-  assert.deepEqual(replacement.records[0].providerObservations.map((item) => item.providerEventId), ['tm-new']);
+  assert.deepEqual(replacement.records[0].providerObservations.map((item) => item.providerEventId), ['tm-old', 'tm-new']);
   assert.equal(replacement.result.reason, 'provider_replacement_continuity');
 });
 
