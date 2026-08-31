@@ -12,8 +12,8 @@ const SAFE_MERGE_ARRAY_FIELDS = new Set([
 const PROVIDER_PRESENTATION_FIELDS = new Set([
   'provider', 'providerSource', 'providerNamespace', 'sourceProvider', 'providerEventId', 'providerVenueId',
   'providerAttractionId', 'providerOfferType', 'ticketUrl', 'articleUrl', 'sourceUrl', 'time', 'distanceKm',
-  'title', 'providerEventName', 'providerEventStatus', 'artistMatchMethod', 'ticketRetailerVerified',
-  'providerVerified', 'verified', 'providerConfidence',
+  'title', 'providerEventName', 'providerEventStatus', 'status', 'lifecycleStatus', 'artistMatchMethod',
+  'ticketRetailerVerified', 'providerVerified', 'verified', 'providerConfidence',
 ]);
 const IDENTITY_FIELDS = new Set(['id', 'venueId', 'canonicalVenueId', 'legacyVenueIds', 'legacyConcertIds']);
 
@@ -321,6 +321,27 @@ function allPairsMatch(ids, predicate) {
   return ids.length > 1;
 }
 
+function validateDistinctDecisions(venues, concerts, decisions) {
+  const blocked = [];
+  const venueIds = new Set((venues || []).map((record) => text(record?.venueId)).filter(Boolean));
+  const concertIds = new Set((concerts || []).map((record) => text(record?.id)).filter(Boolean));
+  for (const [kind, field, available] of [
+    ['venue', 'venueDistinct', venueIds],
+    ['concert', 'concertDistinct', concertIds],
+  ]) {
+    for (const decision of normalizeDecisions(decisions)[field]) {
+      const ids = uniqueStable(asArray(decision?.ids).map(String).filter(Boolean));
+      if (ids.length < 2) {
+        blocked.push({ kind, reason: 'distinct_decision_ids_invalid', ids });
+        continue;
+      }
+      const missing = ids.filter((id) => !available.has(id));
+      if (missing.length) blocked.push({ kind, reason: 'distinct_decision_member_missing', ids, missing });
+    }
+  }
+  return blocked;
+}
+
 function applyVenueDecisions(venues, decisions) {
   const source = clone(venues || []);
   let output = clone(source);
@@ -335,8 +356,8 @@ function applyVenueDecisions(venues, decisions) {
       continue;
     }
     const requestedCanonicalId = text(decision?.canonicalId);
-    if (requestedCanonicalId && !ids.includes(requestedCanonicalId)) {
-      blocked.push({ kind: 'venue', reason: 'canonical_id_not_member', ids, canonicalId: requestedCanonicalId });
+    if (!requestedCanonicalId || !ids.includes(requestedCanonicalId)) {
+      blocked.push({ kind: 'venue', reason: 'canonical_id_not_member', ids, canonicalId: requestedCanonicalId || null });
       continue;
     }
     const contradiction = ids.some((left, index) => ids.slice(index + 1).some((right) => distinctPairs.has(pairKey(left, right))));
@@ -357,6 +378,9 @@ function applyVenueDecisions(venues, decisions) {
     const firstIndex = Math.min(...members.map((member) => output.indexOf(member)));
     output = output.filter((record) => !ids.includes(String(record?.venueId || '')));
     output.splice(firstIndex, 0, result.record);
+    for (const [sourceId, targetId] of Object.entries(mapping)) {
+      if (ids.includes(targetId)) mapping[sourceId] = result.winnerId;
+    }
     for (const id of ids) mapping[id] = result.winnerId;
     manifest.push({ kind: 'venue_merge', winnerId: result.winnerId, mergedAway: result.mergedAway, reason: decision?.reason || 'research_decision', evidence: clone(decision?.evidence || []) });
   }
@@ -390,6 +414,7 @@ function applyFestivalDecisions(concerts, decisions, venueMapping = {}) {
   const blocked = [];
   const prepared = [];
   const invalidIndexes = new Set();
+  const invalidFestivalIds = new Set();
   const festivalMetadata = new Map();
   const festivalIndexes = new Map();
   const concertAssignments = new Map();
@@ -409,6 +434,7 @@ function applyFestivalDecisions(concerts, decisions, venueMapping = {}) {
         missing,
       });
       invalidIndexes.add(index);
+      if (festivalId) invalidFestivalIds.add(festivalId);
       return;
     }
     const requestedPrimary = text(decision?.primaryCanonicalVenueId);
@@ -423,8 +449,9 @@ function applyFestivalDecisions(concerts, decisions, venueMapping = {}) {
     const existingMetadata = festivalMetadata.get(festivalId);
     if (existingMetadata && !compatibleFestivalMetadata(existingMetadata, metadata)) {
       blocked.push({ kind: 'festival', reason: 'festival_metadata_conflict', id: festivalId });
-      invalidIndexes.add(index);
+      invalidFestivalIds.add(festivalId);
       for (const priorIndex of festivalIndexes.get(festivalId)) invalidIndexes.add(priorIndex);
+      invalidIndexes.add(index);
     } else {
       festivalMetadata.set(festivalId, {
         id: festivalId,
@@ -442,6 +469,8 @@ function applyFestivalDecisions(concerts, decisions, venueMapping = {}) {
           concertId,
           festivalIds: [prior.festivalId, festivalId].sort(),
         });
+        invalidFestivalIds.add(prior.festivalId);
+        invalidFestivalIds.add(festivalId);
         invalidIndexes.add(index);
         invalidIndexes.add(prior.index);
       } else if (!prior) {
@@ -452,7 +481,7 @@ function applyFestivalDecisions(concerts, decisions, venueMapping = {}) {
   });
 
   for (const entry of prepared) {
-    if (invalidIndexes.has(entry.index)) continue;
+    if (invalidIndexes.has(entry.index) || invalidFestivalIds.has(entry.festivalId)) continue;
     const metadata = festivalMetadata.get(entry.festivalId);
     if (!metadata) continue;
     for (const id of entry.ids) {
@@ -796,6 +825,7 @@ function planMigration(venues, concerts, decisions = {}) {
   const sourceVenues = clone(venues || []);
   const sourceConcerts = clone(concerts || []);
   const before = audit(sourceVenues, sourceConcerts, decisions);
+  const decisionBlockers = validateDistinctDecisions(sourceVenues, sourceConcerts, decisions);
   const venueStep = applyVenueDecisions(sourceVenues, decisions);
   const mappedConcerts = mapConcertVenues(sourceConcerts, venueStep.mapping, venueStep.records);
   const festivalStep = applyFestivalDecisions(mappedConcerts, decisions, venueStep.mapping);
@@ -814,7 +844,7 @@ function planMigration(venues, concerts, decisions = {}) {
     reverseVenueMap: reverseMapping(venueStep.mapping),
     reverseConcertMap: reverseMapping(concertStep.mapping),
     mergeManifest: [...venueStep.manifest, ...concertStep.manifest],
-    blocked: [...venueStep.blocked, ...festivalStep.blocked, ...concertStep.blocked],
+    blocked: [...decisionBlockers, ...venueStep.blocked, ...festivalStep.blocked, ...concertStep.blocked],
     unresolved: concertStep.unresolved,
     unresolvedIdentity: {
       venues: clone(after.unresolvedVenueCandidates),
