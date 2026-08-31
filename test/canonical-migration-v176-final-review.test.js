@@ -98,6 +98,31 @@ test('v176 final planner preserves conflicting observations for the same provide
   assert.equal(Migration.validatePlan(plan).valid, true);
 });
 
+test('v176 final planner preserves distinct provider observation timestamps for the same event', () => {
+  const plan = Migration.planMigration([venue(VENUE_A, 'Main Hall')], [
+    concert('concert-a', {
+      providerObservations: [{
+        provider: 'ticketmaster',
+        providerEventId: 'tm-event-1',
+        time: '20:00',
+        observedAt: '2026-08-30T10:00:00Z',
+      }],
+    }),
+    concert('concert-b', {
+      providerObservations: [{
+        provider: 'ticketmaster',
+        providerEventId: 'tm-event-1',
+        time: '20:00',
+        observedAt: '2026-08-30T11:00:00Z',
+      }],
+    }),
+  ]);
+  const observations = plan.concerts[0].providerObservations.filter((item) => item.provider === 'ticketmaster' && item.providerEventId === 'tm-event-1');
+  assert.equal(observations.length, 2);
+  assert.deepEqual(observations.map((item) => item.observedAt).sort(), ['2026-08-30T10:00:00Z', '2026-08-30T11:00:00Z']);
+  assert.equal(Migration.validatePlan(plan).valid, true);
+});
+
 test('v176 final planner preserves provider article evidence even when the provider has no event or venue ID', () => {
   const plan = Migration.planMigration([venue(VENUE_A, 'Main Hall')], [
     concert('concert-a'),
