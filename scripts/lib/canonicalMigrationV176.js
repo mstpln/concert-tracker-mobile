@@ -370,12 +370,65 @@ function normalizeDecisions(decisions) {
   return {
     venueMerges: asArray(source.venueMerges),
     venueDistinct: asArray(source.venueDistinct),
+    venueAdditions: asArray(source.venueAdditions),
     venueCorrections: asArray(source.venueCorrections),
     concertMerges: asArray(source.concertMerges),
     concertDistinct: asArray(source.concertDistinct),
     concertVenueAssignments: asArray(source.concertVenueAssignments),
     festivalEditions: asArray(source.festivalEditions),
   };
+}
+
+function applyVenueAdditions(venues, decisions) {
+  const source = clone(venues || []);
+  const byId = new Map(source.map((record) => [text(record?.venueId), record]).filter(([id]) => id));
+  const aliases = legacyAliasState(source, 'venueId', 'legacyVenueIds');
+  const ambiguousAliases = new Set(aliases.collisions.map((item) => item.alias));
+  const additions = normalizeDecisions(decisions).venueAdditions;
+  const requestedById = new Map();
+  const conflictingIds = new Set();
+  const blocked = [];
+  const manifest = [];
+  for (const decision of additions) {
+    const record = decision?.venue && typeof decision.venue === 'object' && !Array.isArray(decision.venue) ? decision.venue : null;
+    const venueId = text(record?.venueId);
+    if (!venueId) continue;
+    if (requestedById.has(venueId) && stable(requestedById.get(venueId)) !== stable(record)) conflictingIds.add(venueId);
+    else requestedById.set(venueId, record);
+  }
+  for (const venueId of conflictingIds) blocked.push({ kind: 'venue', reason: 'conflicting_venue_additions', venueId });
+  const applied = new Set();
+  for (const decision of additions) {
+    const record = decision?.venue && typeof decision.venue === 'object' && !Array.isArray(decision.venue) ? clone(decision.venue) : null;
+    const venueId = text(record?.venueId);
+    const evidence = asArray(decision?.evidence).filter(meaningful);
+    if (conflictingIds.has(venueId) || applied.has(venueId)) continue;
+    if (!record || !CanonicalIdentity.VenueModelV174?.recordIsValid?.(record) || !text(decision?.reason) || !evidence.length) {
+      blocked.push({ kind: 'venue', reason: 'venue_addition_invalid', venueId: venueId || null });
+      continue;
+    }
+    if (ambiguousAliases.has(venueId) || (!byId.has(venueId) && aliases.mapping[venueId])) {
+      blocked.push({ kind: 'venue', reason: 'venue_addition_id_collides_with_legacy', venueId });
+      continue;
+    }
+    const existing = byId.get(venueId);
+    if (existing) {
+      const conflicts = Object.keys(record).filter((field) => stable(existing[field]) !== stable(record[field]));
+      if (conflicts.length) blocked.push({ kind: 'venue', reason: 'venue_addition_conflicts_with_existing', venueId, fields: conflicts });
+      applied.add(venueId);
+      continue;
+    }
+    source.push(record);
+    byId.set(venueId, record);
+    applied.add(venueId);
+    manifest.push({
+      kind: 'venue_addition',
+      venueId,
+      reason: decision.reason,
+      evidence: clone(evidence),
+    });
+  }
+  return { records: source, manifest, blocked };
 }
 
 function applyVenueCorrections(venues, decisions) {
@@ -1064,8 +1117,9 @@ function planMigration(venues, concerts, decisions = {}) {
   const sourceVenues = clone(venues || []);
   const sourceConcerts = clone(concerts || []);
   const before = audit(sourceVenues, sourceConcerts, decisions);
-  const decisionBlockers = validateDistinctDecisions(sourceVenues, sourceConcerts, decisions);
-  const venueCorrectionStep = applyVenueCorrections(sourceVenues, decisions);
+  const venueAdditionStep = applyVenueAdditions(sourceVenues, decisions);
+  const decisionBlockers = validateDistinctDecisions(venueAdditionStep.records, sourceConcerts, decisions);
+  const venueCorrectionStep = applyVenueCorrections(venueAdditionStep.records, decisions);
   const venueStep = applyVenueDecisions(venueCorrectionStep.records, decisions);
   const mappedConcerts = mapConcertVenues(sourceConcerts, venueStep.mapping, venueStep.records);
   const assignmentStep = applyConcertVenueAssignments(mappedConcerts, venueStep.records, venueStep.mapping, decisions);
@@ -1084,8 +1138,8 @@ function planMigration(venues, concerts, decisions = {}) {
     legacyConcertMap: concertStep.mapping,
     reverseVenueMap: reverseMapping(venueStep.mapping),
     reverseConcertMap: reverseMapping(concertStep.mapping),
-    mergeManifest: [...venueCorrectionStep.manifest, ...venueStep.manifest, ...assignmentStep.manifest, ...concertStep.manifest],
-    blocked: [...decisionBlockers, ...venueCorrectionStep.blocked, ...venueStep.blocked, ...assignmentStep.blocked, ...festivalStep.blocked, ...concertStep.blocked],
+    mergeManifest: [...venueAdditionStep.manifest, ...venueCorrectionStep.manifest, ...venueStep.manifest, ...assignmentStep.manifest, ...concertStep.manifest],
+    blocked: [...decisionBlockers, ...venueAdditionStep.blocked, ...venueCorrectionStep.blocked, ...venueStep.blocked, ...assignmentStep.blocked, ...festivalStep.blocked, ...concertStep.blocked],
     unresolved: concertStep.unresolved,
     unresolvedIdentity: {
       venues: clone(after.unresolvedVenueCandidates),
