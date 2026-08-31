@@ -272,12 +272,13 @@ function existingProviderObservation(existing, now) {
   return observationFromCandidate(existing, now);
 }
 
-function applyPreferredProviderPresentation(output, existing, candidate, continuity) {
+function applyPreferredProviderPresentation(output, existing, candidate, continuityReason) {
   const existingStrength = providerStrength(existing);
   const incomingStrength = providerStrength(candidate);
   const lifecycle = isLifecycleObservation(candidate);
+  const replacementContinuity = continuityReason === 'provider_replacement_continuity';
   if (incomingStrength < existingStrength && !lifecycle) return output;
-  if (incomingStrength === existingStrength && !continuity && !lifecycle) return output;
+  if (incomingStrength === existingStrength && !replacementContinuity && !lifecycle) return output;
   const next = { ...output };
   for (const field of providerPresentationFields()) {
     const incoming = candidate?.[field];
@@ -303,12 +304,12 @@ function applyReplacementVenue(output, existing, candidate, venueIndex) {
   return next;
 }
 
-function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalIdentity.buildVenueIndex([]), now = new Date().toISOString(), continuity = false } = {}) {
+function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalIdentity.buildVenueIndex([]), now = new Date().toISOString(), continuity = false, continuityReason = '' } = {}) {
   let output = fillProviderFields(clone(existing), candidate);
   const observation = observationFromCandidate(candidate, now);
   const priorObservation = existingProviderObservation(existing, now);
   output.providerObservations = mergeProviderObservations(output.providerObservations, [priorObservation, observation, ...alternateOfferObservations(candidate, now)].filter(Boolean));
-  output = applyPreferredProviderPresentation(output, existing, candidate, continuity);
+  output = applyPreferredProviderPresentation(output, existing, candidate, continuityReason);
   const venue = CanonicalIdentity.canonicalVenueIdentity(candidate, venueIndex);
   if (!output.canonicalVenueId && venue?.canonicalVenueId) output.canonicalVenueId = venue.canonicalVenueId;
   if (!output.roomOrStage && venue?.roomOrStage) output.roomOrStage = clone(venue.roomOrStage);
@@ -379,7 +380,12 @@ function ingestCandidate(records, candidate, options = {}) {
   }
   const index = list.findIndex((record) => text(record?.id) === text(result.concert?.id));
   if (index < 0) return { records: list, result: { action: 'hold_for_review', reason: 'stable_concert_missing' }, changed: false };
-  const updated = applyCandidateToConcert(list[index], candidate, { ...options, continuity: result.action === 'lifecycle_continuation' });
+  const lifecycleContinuation = result.action === 'lifecycle_continuation';
+  const updated = applyCandidateToConcert(list[index], candidate, {
+    ...options,
+    continuity: lifecycleContinuation,
+    continuityReason: lifecycleContinuation ? result.reason : '',
+  });
   const changed = stableValue(updated) !== stableValue(list[index]);
   if (changed) list[index] = updated;
   return { records: list, result: { ...result, concert: updated }, changed };
