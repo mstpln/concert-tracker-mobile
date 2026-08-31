@@ -135,6 +135,18 @@ test('v175 provider lifecycle evidence cannot rewrite an attended historical dat
   assert.equal(postponed.lifecycleStatus, undefined);
 });
 
+test('v175 legacy attending past concerts are immutable historical attendance', () => {
+  const existing = stored({
+    date: '2025-10-10', attending: true, attended: undefined,
+    sourceProvider: 'ticketmaster', providerEventId: 'tm-old',
+  });
+  const changed = Ingestion.ingestCandidate([existing], observation({
+    providerEventId: 'tm-old', date: '2026-11-12',
+  }), options).records[0];
+  assert.equal(changed.date, '2025-10-10');
+  assert.equal(changed.lifecycleHistory[0].type, 'provider_date_conflict');
+});
+
 test('v175 ambiguous or weak replacement continuity fails closed', () => {
   const unrelated = observation({ providerEventId: 'tm-new', providerRelatedEventIds: [], date: '2026-11-12' });
   assert.equal(Ingestion.reconcileCandidate([stored({ sourceProvider: 'ticketmaster', providerEventId: 'tm-old' })], unrelated, options).action, 'add');

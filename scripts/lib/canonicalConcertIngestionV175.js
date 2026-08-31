@@ -239,7 +239,10 @@ function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalId
   if (!output.roomOrStage && venue?.roomOrStage) output.roomOrStage = clone(venue.roomOrStage);
 
   const status = lifecycleStatus(candidate);
-  const attendedHistorical = output.attended === true;
+  const activeDate = text(output.date);
+  const currentDate = text(now).slice(0, 10);
+  const attendedHistorical = output.attended === true
+    || (output.attending === true && /^\d{4}-\d{2}-\d{2}$/.test(activeDate) && activeDate < currentDate);
   const history = [];
   if (status === 'cancelled') {
     if (attendedHistorical) {
