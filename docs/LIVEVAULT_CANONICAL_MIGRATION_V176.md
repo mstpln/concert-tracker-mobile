@@ -42,6 +42,23 @@ Pair/group-specific decisions are evidence records; they do not become generic m
       "reason": "independent venues despite shared name/address"
     }
   ],
+  "venueCorrections": [
+    {
+      "venueId": "legacy-venue-b",
+      "set": { "address": "Verified address" },
+      "clear": ["staleResearchField"],
+      "reason": "provider location belonged to another venue",
+      "evidence": ["official venue reference"]
+    }
+  ],
+  "concertVenueAssignments": [
+    {
+      "concertIds": ["concert-a", "concert-b"],
+      "canonicalVenueId": "venue-a",
+      "reason": "official event pages identify this venue",
+      "evidence": ["official event reference"]
+    }
+  ],
   "concertMerges": [
     {
       "ids": ["concert-a", "concert-b"],
@@ -67,6 +84,10 @@ Pair/group-specific decisions are evidence records; they do not become generic m
 ```
 
 Contradictory, incomplete, missing-member or ambiguous decisions block rather than guessing. `canonicalId` is mandatory for researched venue/concert merge decisions, must name a decision member, and may be a legacy member alias that resolves unambiguously to its current stable identity.
+
+`venueCorrections` make reviewed field-level corrections to one exact source venue before merge decisions are applied. They cannot change `venueId` or `legacyVenueIds`. Changed and cleared values, rationale and evidence are retained in the merge manifest. When that exact source ID has already merged away, its legacy alias makes the correction a replay-safe no-op.
+
+`concertVenueAssignments` attach explicitly listed current or legacy concert IDs to one existing canonical venue after venue reconciliation. Missing or ambiguous concert members, missing venue targets and conflicting assignments block. Only `canonicalVenueId` changes; raw venue wording, provider location fields and provider observations remain evidence.
 
 `concertMerges` does **not** create a new concert identity relationship. Canonical concert identity remains `bandId + canonical venue + full date`. A concert merge decision may only select the surviving stable ID for the **complete set of records already forming one canonical duplicate group**. It cannot force otherwise-distinct concerts together or omit members of that duplicate group.
 
@@ -94,13 +115,13 @@ This means ordinary records cannot silently pass through with incomplete canonic
 ## Migration order
 
 1. Validate researched distinct/merge decisions against current and legacy stable IDs.
-2. Apply researched venue merge/separate decisions.
+2. Apply exact researched venue corrections, then venue merge/separate decisions.
 3. Build canonical venue identity from the resulting venue set.
-4. Remap concert canonical venue references while preserving historical/raw venue wording.
+4. Remap existing concert venue references, then apply researched concert-to-venue assignments while preserving historical/raw venue wording.
 5. Apply evidence-backed festival-edition decisions and remap existing festival primary venue references through researched venue mappings.
 6. Reconcile canonical concert collisions using `bandId + canonical venue + full calendar date`.
 7. Validate unresolved canonical identity, event/festival groups, protected fields, attended historical dates, stable/legacy ID ownership and orphan references.
-8. Emit local migration and rollback artifacts.
+8. Emit local migration and rollback artifacts, including correction/assignment evidence.
 9. Re-run the planner against planned output with the **same research decision registry** and require a no-op result before any later production migration can be considered.
 
 Ordinary concerts on different calendar dates remain separate. Multi-date/multi-venue event identity is permitted only for a confirmed festival edition. Existing valid user-owned `eventGroupId` relationships remain authoritative and are validated through the v174 event model using the migrated local venue index.

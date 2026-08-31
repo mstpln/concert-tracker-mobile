@@ -150,6 +150,12 @@ This continuity file was compacted on 2026-08-30 for the canonical identity proj
 
 **Consequence:** Only genuinely contradictory/unresolvable cases remain blocked. Pair-specific evidence must not become unsafe generic matching rules.
 
+### Research corrections are explicit, evidenced and replay-safe
+
+**Decision:** The hashed research registry may correct fields on one exact venue source record and assign explicit concert records to a researched canonical venue. Venue corrections cannot mutate stable or legacy IDs, record before/after values plus evidence in the manifest, and become no-ops after their exact source ID has merged away. Concert venue assignments change only `canonicalVenueId`; raw provider venue, city, address and observation evidence remain intact.
+
+**Consequence:** Known provider leakage and location ambiguity can be closed deterministically without weakening canonical matching or treating pair-specific research as a generic rule. Missing members/targets, ambiguous aliases and conflicting assignments block the plan. Replaying the same registry over migrated output must remain a no-op.
+
 ### Production migration is deterministic, hash-guarded, reversible and separately authorized
 
 **Decision:** Build 3 produces read-only audit/research/migration tooling and local dry-run outputs only. Production migration starts later from a fresh authorized export with exact counts/SHA-256 hashes.

@@ -4,7 +4,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const Migration = require('./lib/canonicalMigrationV176Contract');
 
-const DECISION_ARRAY_FIELDS = Object.freeze(['venueMerges', 'venueDistinct', 'concertMerges', 'concertDistinct', 'festivalEditions']);
+const DECISION_ARRAY_FIELDS = Object.freeze([
+  'venueMerges', 'venueDistinct', 'venueCorrections', 'concertMerges', 'concertDistinct',
+  'concertVenueAssignments', 'festivalEditions',
+]);
 
 function usage() {
   return [
@@ -73,6 +76,17 @@ function validateDecisionShape(decisions) {
       if (field === 'festivalEditions') {
         if (Object.prototype.hasOwnProperty.call(decision, 'concertIds') && !Array.isArray(decision.concertIds)) {
           throw new Error(`Research decisions ${field}[${index}].concertIds must be an array.`);
+        }
+      } else if (field === 'concertVenueAssignments') {
+        if (Object.prototype.hasOwnProperty.call(decision, 'concertIds') && !Array.isArray(decision.concertIds)) {
+          throw new Error(`Research decisions ${field}[${index}].concertIds must be an array.`);
+        }
+      } else if (field === 'venueCorrections') {
+        if (Object.prototype.hasOwnProperty.call(decision, 'clear') && !Array.isArray(decision.clear)) {
+          throw new Error(`Research decisions ${field}[${index}].clear must be an array.`);
+        }
+        if (Object.prototype.hasOwnProperty.call(decision, 'set') && (!decision.set || typeof decision.set !== 'object' || Array.isArray(decision.set))) {
+          throw new Error(`Research decisions ${field}[${index}].set must be an object.`);
         }
       } else if (Object.prototype.hasOwnProperty.call(decision, 'ids') && !Array.isArray(decision.ids)) {
         throw new Error(`Research decisions ${field}[${index}].ids must be an array.`);
