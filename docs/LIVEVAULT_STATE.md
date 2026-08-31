@@ -28,6 +28,8 @@ Build 2 routes automatic Ticketmaster and Tavily/Groq concert observations throu
 
 The reconciliation layer preserves a stable BANDMARKR concert ID when an incoming provider observation belongs to an existing canonical concert, including manually-added records. Provider event/listing/venue/attraction IDs, titles, URLs, times, statuses, offer classifications, source details and related-event evidence accumulate as namespace-scoped provider observations. Replaying the same observation is designed to be idempotent.
 
+Ticketmaster standard/VIP/package pre-collapse now retains the full provider evidence for every collapsed listing before canonical persistence. When provider-owned presentation fields disagree, stronger verified provider evidence may replace weaker top-level provider presentation while the displaced provider values remain preserved as observations. Proven lifecycle continuity may also move an upcoming concert to a different resolved canonical venue without changing its stable BANDMARKR concert ID; ambiguous venue continuity still fails closed.
+
 Lifecycle handling follows the locked Build 2 decisions:
 - cancellation keeps the concert and user history rather than deleting it;
 - a confirmed upcoming reschedule keeps the same BANDMARKR ID, updates the active replacement date and retains the former date in lifecycle history;
@@ -40,7 +42,7 @@ The research pipeline now reads the canonical venue document once, builds the v1
 
 The visible lifecycle adjustment is deliberately small: postponed records without a date render `POSTPONED · DATE TBD`, cancelled records show an explicit cancelled label, missing-date postponed records sort safely, and invalid calendar actions are suppressed.
 
-Focused synthetic coverage exists for stable manual IDs, alternate provider listings/offers/rooms, provider namespace/idempotency, user-owned and unknown-field preservation, user conflicts, cancellation, reschedule/replacement IDs, postponed DATE TBD, attended-history immutability, ambiguous continuity, batch replay, ETag retry, Ticketmaster lifecycle conversion and lifecycle UI behavior.
+Focused synthetic coverage exists for stable manual IDs, alternate provider listings/offers/rooms, full collapsed-offer evidence retention, provider namespace/idempotency, strongest verified provider presentation, user-owned and unknown-field preservation, user conflicts, cancellation, same-venue and moved-venue reschedule/replacement IDs, postponed DATE TBD, attended-history immutability, ambiguous continuity, batch replay, ETag retry, Ticketmaster lifecycle conversion and lifecycle UI behavior.
 
 ## Production data baseline carried forward
 
@@ -84,4 +86,4 @@ PR #134 remains intentionally open as unrelated production-inert listening backf
 
 ## Next operational steps
 
-Regenerate/check `LIVEVAULT_BUILD_STATE.json`, rerun the focused v175 lifecycle browser spec against the v175 cache, run the normal deterministic PR QA once, review the final Build 2 diff for scope/data safety, correct only confirmed failures on the same v175 build, and open/validate the Build 2 PR. Do not merge or deploy without separate explicit authorization, and do not begin Build 3 or any production migration in this PR.
+Run exact-head PR QA after the final review corrections, confirm the complete Build 2 diff remains scoped and data-safe, and keep PR #191 unmerged until explicit authorization. Do not deploy, run production providers/smoke, begin Build 3, or perform any production migration from this PR.
