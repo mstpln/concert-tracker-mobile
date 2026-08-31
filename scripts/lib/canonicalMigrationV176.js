@@ -279,7 +279,7 @@ function mapConcertVenues(concerts, venueMapping, venues) {
   });
 }
 
-function applyFestivalDecisions(concerts, decisions) {
+function applyFestivalDecisions(concerts, decisions, venueMapping = {}) {
   const output = clone(concerts || []);
   const byId = new Map(output.map((record) => [String(record?.id || ''), record]));
   const blocked = [];
@@ -293,6 +293,8 @@ function applyFestivalDecisions(concerts, decisions) {
       blocked.push({ kind: 'festival', reason: missing.length ? 'decision_member_missing' : 'festival_identity_invalid', id: festivalId || null, concertIds: ids, missing });
       continue;
     }
+    const requestedPrimary = String(decision?.primaryCanonicalVenueId || '').trim();
+    const primaryCanonicalVenueId = requestedPrimary ? String(venueMapping[requestedPrimary] || requestedPrimary) : null;
     for (const id of ids) {
       const record = byId.get(id);
       record.festivalEditionId = festivalId;
@@ -302,7 +304,7 @@ function applyFestivalDecisions(concerts, decisions) {
         name: decision?.name || record?.festivalName || null,
         year,
         status: 'confirmed',
-        primaryCanonicalVenueId: decision?.primaryCanonicalVenueId || null,
+        primaryCanonicalVenueId,
       };
     }
   }
@@ -452,9 +454,8 @@ function migrationEventGroups(venues, concerts) {
   return [...groups.values()].map((event) => {
     let validation = { valid: true, reasons: [] };
     if (event.relationship === 'explicit') {
-      validation = validExplicitEventGroup(event.records)
-        ? { valid: true, reasons: [] }
-        : { valid: false, reasons: ['eventGroupId'] };
+      if (!validExplicitEventGroup(event.records)) validation = { valid: false, reasons: ['eventGroupId'] };
+      else if (typeof model.validateExplicitEventGroup === 'function') validation = model.validateExplicitEventGroup(event.records, venueIndex);
     } else if (event.relationship === 'festival') {
       const identities = event.records.map((record) => CanonicalIdentity.festivalEditionIdentity(record));
       validation = identities.every(Boolean) && new Set(identities.map((identity) => identity.key)).size === 1
@@ -596,7 +597,7 @@ function planMigration(venues, concerts, decisions = {}) {
   const before = audit(sourceVenues, sourceConcerts, decisions);
   const venueStep = applyVenueDecisions(sourceVenues, decisions);
   const mappedConcerts = mapConcertVenues(sourceConcerts, venueStep.mapping, venueStep.records);
-  const festivalStep = applyFestivalDecisions(mappedConcerts, decisions);
+  const festivalStep = applyFestivalDecisions(mappedConcerts, decisions, venueStep.mapping);
   const concertStep = reconcileConcerts(festivalStep.records, venueStep.records, decisions);
   const after = audit(venueStep.records, concertStep.records, decisions);
   const protectedCheck = protectedInvariant(sourceConcerts, concertStep.records, concertStep.mapping);
