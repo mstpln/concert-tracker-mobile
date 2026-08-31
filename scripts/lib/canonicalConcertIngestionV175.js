@@ -152,7 +152,8 @@ function continuityMatch(records, candidate, providerIndex, venueIndex) {
   const existing = matches[0];
   if (text(existing.bandId) !== text(candidate.bandId)) return { kind: 'ambiguous', reason: 'provider_band_conflict' };
   if (!attractionCompatible(existing, candidate)) return { kind: 'ambiguous', reason: 'provider_attraction_conflict' };
-  if (!sameCanonicalVenue(existing, candidate, venueIndex)) return { kind: 'ambiguous', reason: 'lifecycle_venue_unresolved' };
+  const venueRelationship = CanonicalIdentity.canonicalVenueRelationship(existing, candidate, venueIndex);
+  if (venueRelationship.kind === 'ambiguous') return { kind: 'ambiguous', reason: 'lifecycle_venue_unresolved' };
   const exact = providerReferences(existing).includes(providerKey(namespace, providerEventId(candidate)));
   return { kind: 'match', concert: existing, reason: exact ? 'provider_event_continuity' : 'provider_replacement_continuity' };
 }
@@ -230,10 +231,77 @@ function fillProviderFields(target, candidate) {
   return output;
 }
 
+function providerStrength(value) {
+  const namespace = providerNamespace(value);
+  const verified = value?.ticketRetailerVerified === true;
+  const standard = text(value?.providerOfferType) === 'standard';
+  if (namespace === 'ticketmaster' && verified && standard) return 4;
+  if (namespace === 'ticketmaster' && verified) return 3;
+  if (verified) return 2;
+  return 1;
+}
+
+function providerPresentationFields() {
+  return [
+    'time', 'distanceKm', 'ticketUrl', 'articleUrl', 'ticketRetailerVerified', 'sourceProvider',
+    'providerEventId', 'providerAttractionId', 'artistMatchMethod', 'providerVenueId',
+    'providerEventName', 'providerEventStatus', 'providerSource', 'providerOfferType',
+  ];
+}
+
+function alternateOfferObservations(candidate, now) {
+  return (Array.isArray(candidate?.alternateProviderOffers) ? candidate.alternateProviderOffers : [])
+    .filter((offer) => offer && typeof offer === 'object' && !Array.isArray(offer))
+    .map((offer) => observationFromCandidate({
+      ...candidate,
+      ...offer,
+      sourceProvider: offer.sourceProvider || candidate.sourceProvider,
+      providerEventId: offer.providerEventId,
+    }, now));
+}
+
+function existingProviderObservation(existing, now) {
+  if (!providerEventId(existing) && !text(existing?.sourceProvider)) return null;
+  return observationFromCandidate(existing, now);
+}
+
+function applyPreferredProviderPresentation(output, existing, candidate, continuity) {
+  const existingStrength = providerStrength(existing);
+  const incomingStrength = providerStrength(candidate);
+  const lifecycle = isLifecycleObservation(candidate);
+  if (incomingStrength < existingStrength && !lifecycle) return output;
+  if (incomingStrength === existingStrength && !continuity && !lifecycle) return output;
+  const next = { ...output };
+  for (const field of providerPresentationFields()) {
+    const incoming = candidate?.[field];
+    if (incoming == null || incoming === '') continue;
+    next[field] = clone(incoming);
+  }
+  return next;
+}
+
+function applyReplacementVenue(output, existing, candidate, venueIndex) {
+  const relationship = CanonicalIdentity.canonicalVenueRelationship(existing, candidate, venueIndex);
+  if (relationship.kind !== 'distinct') return output;
+  const venue = CanonicalIdentity.canonicalVenueIdentity(candidate, venueIndex);
+  if (!venue?.canonicalVenueId) return output;
+  const next = { ...output, canonicalVenueId: venue.canonicalVenueId };
+  for (const field of ['venue', 'city', 'country', 'venueAddress', 'distanceKm', 'providerVenueId']) {
+    const incoming = candidate?.[field];
+    if (incoming == null || incoming === '') continue;
+    next[field] = clone(incoming);
+  }
+  if (venue.roomOrStage) next.roomOrStage = clone(venue.roomOrStage);
+  else delete next.roomOrStage;
+  return next;
+}
+
 function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalIdentity.buildVenueIndex([]), now = new Date().toISOString(), continuity = false } = {}) {
   let output = fillProviderFields(clone(existing), candidate);
   const observation = observationFromCandidate(candidate, now);
-  output.providerObservations = mergeProviderObservations(output.providerObservations, [observation]);
+  const priorObservation = existingProviderObservation(existing, now);
+  output.providerObservations = mergeProviderObservations(output.providerObservations, [priorObservation, observation, ...alternateOfferObservations(candidate, now)].filter(Boolean));
+  output = applyPreferredProviderPresentation(output, existing, candidate, continuity);
   const venue = CanonicalIdentity.canonicalVenueIdentity(candidate, venueIndex);
   if (!output.canonicalVenueId && venue?.canonicalVenueId) output.canonicalVenueId = venue.canonicalVenueId;
   if (!output.roomOrStage && venue?.roomOrStage) output.roomOrStage = clone(venue.roomOrStage);
@@ -266,12 +334,14 @@ function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalId
     } else {
       history.push(lifecycleHistoryEntry('rescheduled', output, candidate, now));
       output.date = text(candidate.date);
+      output = applyReplacementVenue(output, existing, candidate, venueIndex);
       if (candidate.time != null) output.time = candidate.time;
       output.lifecycleStatus = 'rescheduled';
     }
   } else if (output.lifecycleStatus === 'postponed' && text(candidate?.date)) {
     history.push(lifecycleHistoryEntry('rescheduled', output, candidate, now));
     output.date = text(candidate.date);
+    output = applyReplacementVenue(output, existing, candidate, venueIndex);
     if (candidate.time != null) output.time = candidate.time;
     output.lifecycleStatus = 'rescheduled';
   }

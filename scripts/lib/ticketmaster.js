@@ -224,7 +224,31 @@ async function fetchUpcomingEvents(band, usage, { fetchImpl = fetch, now = new D
     const concert = await eventToConcert(event, band, attractionId, usage, fetchImpl, venueCache, now);
     if (concert) concerts.push(concert);
   }
-  return ConcertIntegrity.collapseTicketmasterOffers(concerts);
+  const rawByEventId = new Map(concerts.map((concert) => [concert.providerEventId, concert]));
+  return ConcertIntegrity.collapseTicketmasterOffers(concerts).map((concert) => {
+    if (!Array.isArray(concert.alternateProviderOffers) || !concert.alternateProviderOffers.length) return concert;
+    return {
+      ...concert,
+      alternateProviderOffers: concert.alternateProviderOffers.map((offer) => {
+        const raw = rawByEventId.get(offer.providerEventId);
+        if (!raw) return offer;
+        return {
+          ...offer,
+          sourceProvider: raw.sourceProvider,
+          providerVenueId: raw.providerVenueId,
+          providerAttractionId: raw.providerAttractionId,
+          venue: raw.venue,
+          city: raw.city,
+          country: raw.country,
+          venueAddress: raw.venueAddress,
+          date: raw.date,
+          time: raw.time,
+          distanceKm: raw.distanceKm,
+          ticketRetailerVerified: raw.ticketRetailerVerified,
+        };
+      }),
+    };
+  });
 }
 
 const identityNorm = (value) => String(value || '').toLocaleLowerCase().normalize('NFKD').replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/^the\s+/u, '').replace(/\s+/g, ' ');
