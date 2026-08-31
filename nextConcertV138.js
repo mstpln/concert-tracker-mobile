@@ -90,6 +90,10 @@
 
   function countdownCardV139(nextConcert) {
     if (!nextConcert) return `<div class="countdown-card countdown-empty"><p class="countdown-empty-text">No upcoming concert marked as attending</p></div>`;
+    if (!nextConcert.date && nextConcert.lifecycleStatus === 'postponed') {
+      const venueLine = [displayVenue(nextConcert), String(nextConcert.city || '').trim()].filter(Boolean).join(', ');
+      return `<div class="countdown-card countdown-empty"><p class="countdown-label">Postponed</p><p class="countdown-band">${escapeHtml(nextConcert.bandName)}</p><p class="countdown-venue">${escapeHtml(venueLine)}</p><p class="countdown-empty-text">DATE TBD</p></div>`;
+    }
     const time = nextConcert.time ? nextConcert.time.slice(0, 5) : '00:00';
     const targetIso = `${nextConcert.date}T${time}:00`;
     const now = new Date();
