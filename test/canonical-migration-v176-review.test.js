@@ -8,7 +8,11 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const Migration = require('../scripts/lib/canonicalMigrationV176');
 
-function venue(id = 'venue-main', name = 'Main Hall') {
+const MAIN_VENUE_ID = 'venue-a1b2c3d4';
+const ROOM_VENUE_ID = 'venue-b1c2d3e4';
+const OTHER_VENUE_ID = 'venue-c1d2e3f4';
+
+function venue(id = MAIN_VENUE_ID, name = 'Main Hall') {
   return { venueId: id, name, currentName: name, city: 'Malmo', country: 'Sweden', address: 'Main Street 1' };
 }
 
@@ -22,7 +26,7 @@ function concert(overrides = {}) {
     city: 'Malmo',
     country: 'Sweden',
     venueAddress: 'Main Street 1',
-    canonicalVenueId: 'venue-main',
+    canonicalVenueId: MAIN_VENUE_ID,
     attending: false,
     freeTicket: false,
     ticketPrice: 500,
@@ -57,20 +61,22 @@ test('v176 protected invariant understands legal ID collapse and protects attend
 });
 
 test('v176 emits complete identity mappings for unchanged records', () => {
-  const plan = Migration.planMigration([venue(), venue('venue-b', 'Venue B')], [concert()]);
-  assert.equal(plan.legacyVenueMap['venue-main'], 'venue-main');
-  assert.equal(plan.legacyVenueMap['venue-b'], 'venue-b');
+  const plan = Migration.planMigration([venue(), venue(OTHER_VENUE_ID, 'Venue B')], [concert()]);
+  assert.equal(plan.legacyVenueMap[MAIN_VENUE_ID], MAIN_VENUE_ID);
+  assert.equal(plan.legacyVenueMap[OTHER_VENUE_ID], OTHER_VENUE_ID);
   assert.equal(plan.legacyConcertMap['concert-a'], 'concert-a');
-  assert.deepEqual(plan.reverseVenueMap['venue-b'], ['venue-b']);
+  assert.deepEqual(plan.reverseVenueMap[OTHER_VENUE_ID], [OTHER_VENUE_ID]);
 });
 
 test('v176 blocks a researched venue merge that contradicts an explicit distinct decision', () => {
+  const venueA = 'venue-d1e2f3a4';
+  const venueB = 'venue-e1f2a3b4';
   const plan = Migration.planMigration(
-    [venue('venue-a', 'Shared Name'), venue('venue-b', 'Shared Name')],
+    [venue(venueA, 'Shared Name'), venue(venueB, 'Shared Name')],
     [],
     {
-      venueDistinct: [{ ids: ['venue-a', 'venue-b'], reason: 'independent venues' }],
-      venueMerges: [{ ids: ['venue-a', 'venue-b'], canonicalId: 'venue-a', reason: 'contradictory merge' }],
+      venueDistinct: [{ ids: [venueA, venueB], reason: 'independent venues' }],
+      venueMerges: [{ ids: [venueA, venueB], canonicalId: venueA, reason: 'contradictory merge' }],
     },
   );
   assert.ok(plan.blocked.some((item) => item.kind === 'venue' && item.reason === 'merge_conflicts_with_explicit_distinct'));
@@ -89,7 +95,7 @@ test('v176 orphan checks reject dangling canonical venue and duplicate IDs', () 
   const result = Migration.orphanChecks(
     [venue()],
     [concert({ id: 'dup' }), concert({ id: 'dup', canonicalVenueId: 'missing-venue' })],
-    { 'venue-main': 'venue-main' },
+    { [MAIN_VENUE_ID]: MAIN_VENUE_ID },
     { dup: 'dup' },
   );
   assert.equal(result.valid, false);
@@ -99,15 +105,15 @@ test('v176 orphan checks reject dangling canonical venue and duplicate IDs', () 
 
 test('v176 event metrics use the migrated local venue index after researched venue reconciliation', () => {
   const sourceVenues = [
-    venue('venue-main', 'Main Hall'),
-    { ...venue('venue-room', 'Main Hall Room 2'), currentName: 'Main Hall Room 2' },
+    venue(MAIN_VENUE_ID, 'Main Hall'),
+    { ...venue(ROOM_VENUE_ID, 'Main Hall Room 2'), currentName: 'Main Hall Room 2' },
   ];
   const sourceConcerts = [
-    concert({ id: 'concert-a', bandId: 'band-a', canonicalVenueId: 'venue-main', venue: 'Main Hall' }),
-    concert({ id: 'concert-b', bandId: 'band-b', canonicalVenueId: 'venue-room', venue: 'Main Hall Room 2', lineupRole: 'support' }),
+    concert({ id: 'concert-a', bandId: 'band-a', canonicalVenueId: MAIN_VENUE_ID, venue: 'Main Hall' }),
+    concert({ id: 'concert-b', bandId: 'band-b', canonicalVenueId: ROOM_VENUE_ID, venue: 'Main Hall Room 2', lineupRole: 'support' }),
   ];
   const plan = Migration.planMigration(sourceVenues, sourceConcerts, {
-    venueMerges: [{ ids: ['venue-main', 'venue-room'], canonicalId: 'venue-main', reason: 'researched_parent_room' }],
+    venueMerges: [{ ids: [MAIN_VENUE_ID, ROOM_VENUE_ID], canonicalId: MAIN_VENUE_ID, reason: 'researched_parent_room' }],
   });
   assert.equal(plan.concerts.length, 2);
   assert.equal(plan.after.metrics.eventCount, 1);
@@ -116,10 +122,10 @@ test('v176 event metrics use the migrated local venue index after researched ven
 });
 
 test('v176 migration event metrics preserve authoritative explicit event groups across venue and date', () => {
-  const sourceVenues = [venue(), { ...venue('venue-b', 'Venue B'), city: 'Copenhagen', country: 'Denmark', address: 'Other Street 2' }];
+  const sourceVenues = [venue(), { ...venue(OTHER_VENUE_ID, 'Venue B'), city: 'Copenhagen', country: 'Denmark', address: 'Other Street 2' }];
   const sourceConcerts = [
-    concert({ id: 'explicit-a', eventGroupId: 'event-user-1' }),
-    concert({ id: 'explicit-b', bandId: 'band-b', date: '2026-10-11', eventGroupId: 'event-user-1', venue: 'Venue B', city: 'Copenhagen', country: 'Denmark', venueAddress: 'Other Street 2', canonicalVenueId: 'venue-b', lineupRole: 'support' }),
+    concert({ id: 'explicit-a', eventGroupId: 'event-user-0001' }),
+    concert({ id: 'explicit-b', bandId: 'band-b', date: '2026-10-11', eventGroupId: 'event-user-0001', venue: 'Venue B', city: 'Copenhagen', country: 'Denmark', venueAddress: 'Other Street 2', canonicalVenueId: OTHER_VENUE_ID, lineupRole: 'support' }),
   ];
   const plan = Migration.planMigration(sourceVenues, sourceConcerts, {});
   assert.equal(plan.after.metrics.eventCount, 1);
@@ -165,13 +171,13 @@ test('v176 dry-run CLI writes byte-identical backups and reversible artifacts wi
   const rollback = JSON.parse(fs.readFileSync(path.join(outDir, 'rollback-manifest.json'), 'utf8'));
   assert.equal(rollback.sourceFileHashes.venues, venueHash);
   assert.equal(rollback.sourceFileHashes.concerts, concertHash);
-  assert.deepEqual(rollback.reverseVenueMap['venue-main'], ['venue-main']);
+  assert.deepEqual(rollback.reverseVenueMap[MAIN_VENUE_ID], [MAIN_VENUE_ID]);
   assert.deepEqual(rollback.reverseConcertMap['concert-a'], ['concert-a']);
 });
 
 test('v176 production-scale synthetic dry run is deterministic', () => {
   const sourceVenues = Array.from({ length: 530 }, (_, index) => ({
-    venueId: `venue-${index}`,
+    venueId: `venue-${index.toString(16).padStart(8, '0')}`,
     name: `Synthetic Venue ${index}`,
     city: `City ${index % 40}`,
     country: 'Synthetic Country',
