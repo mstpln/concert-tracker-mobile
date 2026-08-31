@@ -124,6 +124,48 @@ function audit(venues, concerts, decisions = {}) {
   };
 }
 
+function sourceIdBlockers(venues, concerts) {
+  const blockers = [];
+  for (const [kind, records, field] of [
+    ['venue', venues || [], 'venueId'],
+    ['concert', concerts || [], 'id'],
+  ]) {
+    const seen = new Set();
+    const duplicates = new Set();
+    const missing = [];
+    records.forEach((record, index) => {
+      const id = text(record?.[field]);
+      if (!id) {
+        missing.push(index);
+        return;
+      }
+      if (seen.has(id)) duplicates.add(id);
+      seen.add(id);
+    });
+    if (duplicates.size) blockers.push({ kind, reason: 'source_duplicate_ids', ids: [...duplicates].sort() });
+    if (missing.length) blockers.push({ kind, reason: 'source_missing_ids', indexes: missing });
+  }
+  return blockers;
+}
+
+function collapsedDistinctDecisionBlockers(venues, concerts, decisions) {
+  const blockers = [];
+  const venueAliases = legacyAliasMapping(venues, 'venueId', 'legacyVenueIds');
+  const concertAliases = legacyAliasMapping(concerts, 'id', 'legacyConcertIds');
+  for (const [kind, field, mapping] of [
+    ['venue', 'venueDistinct', venueAliases],
+    ['concert', 'concertDistinct', concertAliases],
+  ]) {
+    for (const decision of Migration.normalizeDecisions(decisions)[field] || []) {
+      const sourceIds = [...new Set((Array.isArray(decision?.ids) ? decision.ids : []).map(text).filter(Boolean))];
+      if (sourceIds.length < 2) continue;
+      const resolved = [...new Set(sourceIds.map((id) => mapping[id] || id))];
+      if (resolved.length < 2) blockers.push({ kind, reason: 'distinct_decision_collapses_to_same_identity', ids: sourceIds });
+    }
+  }
+  return blockers;
+}
+
 function remapFestivalPrimaryReferences(concerts, venueMapping) {
   return (concerts || []).map((record) => {
     const next = clone(record);
@@ -132,10 +174,11 @@ function remapFestivalPrimaryReferences(concerts, venueMapping) {
       return id && venueMapping?.[id] ? venueMapping[id] : value;
     };
     if (next.festivalEdition && typeof next.festivalEdition === 'object' && !Array.isArray(next.festivalEdition)) {
-      next.festivalEdition.primaryCanonicalVenueId = mapValue(next.festivalEdition.primaryCanonicalVenueId);
+      const primary = text(next.festivalEdition.primaryCanonicalVenueId);
+      if (primary) next.festivalEdition.primaryCanonicalVenueId = mapValue(primary);
     }
-    if (next.festivalPrimaryCanonicalVenueId) next.festivalPrimaryCanonicalVenueId = mapValue(next.festivalPrimaryCanonicalVenueId);
-    if (next.festivalPrimaryVenueId) next.festivalPrimaryVenueId = mapValue(next.festivalPrimaryVenueId);
+    if (text(next.festivalPrimaryCanonicalVenueId)) next.festivalPrimaryCanonicalVenueId = mapValue(next.festivalPrimaryCanonicalVenueId);
+    if (text(next.festivalPrimaryVenueId)) next.festivalPrimaryVenueId = mapValue(next.festivalPrimaryVenueId);
     return next;
   });
 }
@@ -159,6 +202,11 @@ function orphanChecks(venues, concerts, venueMap = {}, concertMap = {}) {
 
 function planMigration(venues, concerts, decisions = {}) {
   const plan = Migration.planMigration(venues, concerts, decisions);
+  plan.blocked = uniqueStable([
+    ...(plan.blocked || []),
+    ...sourceIdBlockers(venues, concerts),
+    ...collapsedDistinctDecisionBlockers(venues, concerts, decisions),
+  ]);
   plan.concerts = remapFestivalPrimaryReferences(plan.concerts, plan.legacyVenueMap);
   const after = audit(plan.venues, plan.concerts, decisions);
   plan.outputHashes = {
