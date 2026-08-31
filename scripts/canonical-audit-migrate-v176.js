@@ -13,6 +13,7 @@ function usage() {
     'Safety: this command reads explicit local files only. It has no network or production write path.',
     'Plan mode is dry-run only and refuses to run unless exact source-file SHA-256 guards match.',
     'When a research decision registry is supplied in plan mode, its exact byte-level SHA-256 is mandatory too.',
+    'Output paths may not overwrite or contain any supplied source input file.',
   ].join('\n');
 }
 
@@ -48,6 +49,28 @@ function assertHash(actual, expected, label) {
   if (actual !== expected) throw new Error(`${label} SHA-256 mismatch: expected ${expected}, got ${actual}. Refusing dry-run plan.`);
 }
 
+function inputPaths(venues, concerts, decisionsFile) {
+  return [venues.path, concerts.path, decisionsFile?.path].filter(Boolean);
+}
+
+function pathInside(parent, candidate) {
+  const relative = path.relative(parent, candidate);
+  return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
+}
+
+function assertAuditOutputSafe(outPath, inputs) {
+  const resolved = path.resolve(outPath);
+  if (inputs.includes(resolved)) throw new Error('Audit output path must not overwrite a source input file.');
+  return resolved;
+}
+
+function assertPlanOutputSafe(outDir, inputs) {
+  const resolved = path.resolve(outDir);
+  const contained = inputs.find((input) => pathInside(resolved, input));
+  if (contained) throw new Error(`Plan output directory must not contain a source input file: ${contained}`);
+  return resolved;
+}
+
 function writeJson(filePath, value) {
   const resolved = path.resolve(filePath);
   fs.mkdirSync(path.dirname(resolved), { recursive: true });
@@ -71,16 +94,18 @@ function main() {
   const decisionsFile = args.decisions ? readJson(args.decisions, 'decisions') : null;
   const decisions = decisionsFile?.value || {};
   if (!decisions || typeof decisions !== 'object' || Array.isArray(decisions)) throw new Error('Research decisions input must be a JSON object.');
+  const inputs = inputPaths(venues, concerts, decisionsFile);
 
   if (args.command === 'audit') {
     if (!args.out) throw new Error('Missing --out');
+    const safeOut = assertAuditOutputSafe(args.out, inputs);
     const report = Migration.audit(venues.value, concerts.value, decisions);
     report.sourceFileHashes = {
       venues: venues.sha256,
       concerts: concerts.sha256,
       decisions: decisionsFile?.sha256 || null,
     };
-    const out = writeJson(args.out, report);
+    const out = writeJson(safeOut, report);
     process.stdout.write(`Audit written: ${out}\n`);
     process.stdout.write(`Source file hashes: venues=${venues.sha256} concerts=${concerts.sha256}${decisionsFile ? ` decisions=${decisionsFile.sha256}` : ''}\n`);
     process.stdout.write(`Candidates: venues=${report.venueCandidates.length} concerts=${report.concertCandidates.length} unresolved=${report.unresolvedConcerts.length}\n`);
@@ -99,7 +124,7 @@ function main() {
     throw new Error('--expected-decisions-sha256 requires --decisions.');
   }
 
-  const outDir = path.resolve(args['out-dir']);
+  const outDir = assertPlanOutputSafe(args['out-dir'], inputs);
   const plan = Migration.planMigration(venues.value, concerts.value, decisions);
   const validation = Migration.validatePlan(plan);
 
