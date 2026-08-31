@@ -261,7 +261,14 @@ function alternateOfferObservations(candidate, now) {
 }
 
 function existingProviderObservation(existing, now) {
-  if (!providerEventId(existing) && !text(existing?.sourceProvider)) return null;
+  const namespace = providerNamespace(existing);
+  const eventId = providerEventId(existing);
+  if (!eventId && !text(existing?.sourceProvider)) return null;
+  const key = providerKey(namespace, eventId);
+  if (key && (Array.isArray(existing?.providerObservations) ? existing.providerObservations : [])
+    .some((observation) => providerKey(providerNamespace(observation), providerEventId(observation)) === key)) {
+    return null;
+  }
   return observationFromCandidate(existing, now);
 }
 
