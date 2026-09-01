@@ -227,12 +227,16 @@ function providerObservationKey(record) {
 }
 
 function providerObservationFromRecord(record) {
-  const provider = providerNamespace(record);
+  const articleUrl = text(record?.articleUrl || record?.sourceUrl);
+  // Older discovery rows sometimes retained only their source/article URL and
+  // omitted provider namespace metadata. They are still source evidence. Keep
+  // them under a neutral namespace instead of dropping their observed location
+  // when the duplicate row is reconciled away.
+  const provider = providerNamespace(record) || (articleUrl ? 'source' : '');
   const eventId = providerEventId(record);
   const providerVenueId = text(record?.providerVenueId);
   const providerAttractionId = text(record?.providerAttractionId);
   const relatedEventIds = uniqueStable((Array.isArray(record?.providerRelatedEventIds) ? record.providerRelatedEventIds : []).map(text).filter(Boolean));
-  const articleUrl = text(record?.articleUrl || record?.sourceUrl);
   const providerSpecificEvidence = [
     eventId,
     providerVenueId,
@@ -318,9 +322,12 @@ function mergeObservations(values) {
 function topLevelObservationForSource(source) {
   const observation = providerObservationFromRecord(source);
   if (!observation) return null;
+  const structured = Array.isArray(source?.providerObservations) ? source.providerObservations : [];
+  // On replay, a migrated survivor's structured observations are the complete
+  // evidence record. This also covers keyless article/search observations.
+  if (Array.isArray(source?.legacyConcertIds) && source.legacyConcertIds.length && structured.length) return null;
   const key = providerObservationKey(observation);
   if (!key) return observation;
-  const structured = Array.isArray(source?.providerObservations) ? source.providerObservations : [];
   const sameEvent = structured.filter((item) => providerObservationKey(item) === key);
   if (!sameEvent.length) return observation;
   // A migrated survivor can combine provider-owned presentation fields from one

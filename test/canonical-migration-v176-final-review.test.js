@@ -100,7 +100,8 @@ test('v176 final planner does not synthesize a conflicting observation from migr
   ];
   const first = Migration.planMigration([venue(VENUE_A, 'Main Hall')], source);
   assert.equal(Migration.validatePlan(first).valid, true);
-  assert.equal(first.concerts[0].providerObservations.length, 1);
+  assert.equal(first.concerts[0].providerObservations.filter((item) => item.provider === 'ticketmaster').length, 1);
+  assert.equal(first.concerts[0].providerObservations.filter((item) => item.provider === 'source').length, 1);
 
   const second = Migration.planMigration(first.venues, first.concerts, {});
   assert.equal(Migration.validatePlan(second).valid, true);
@@ -201,6 +202,36 @@ test('v176 final planner preserves provider article evidence even when the provi
   assert.equal(observation.source, 'tavily-search');
   assert.equal(observation.foundAt, '2026-08-30T12:00:00Z');
   assert.equal(Migration.validatePlan(plan).valid, true);
+});
+
+test('v176 final planner preserves unnamespaced article evidence and raw location through replay', () => {
+  const source = [
+    concert('concert-a'),
+    concert('concert-b', {
+      venue: 'Historic Hall wording',
+      city: 'Historic City wording',
+      country: 'Historic Country wording',
+      venueAddress: 'Historic address wording',
+      articleUrl: 'https://example.invalid/artist-events',
+      foundAt: '2026-08-30T12:00:00Z',
+    }),
+  ];
+  const first = Migration.planMigration([venue(VENUE_A, 'Main Hall')], source);
+  assert.equal(first.concerts.length, 1);
+  const observation = first.concerts[0].providerObservations.find((item) => item.provider === 'source');
+  assert.ok(observation);
+  assert.equal(observation.providerEventId, null);
+  assert.equal(observation.articleUrl, 'https://example.invalid/artist-events');
+  assert.equal(observation.venue, 'Historic Hall wording');
+  assert.equal(observation.city, 'Historic City wording');
+  assert.equal(observation.country, 'Historic Country wording');
+  assert.equal(observation.address, 'Historic address wording');
+  assert.equal(observation.foundAt, '2026-08-30T12:00:00Z');
+
+  const second = Migration.planMigration(first.venues, first.concerts);
+  assert.equal(Migration.validatePlan(second).valid, true);
+  assert.deepEqual(second.concerts, first.concerts);
+  assert.deepEqual(second.outputHashes, first.outputHashes);
 });
 
 test('v176 discovery metadata differences do not block a canonical provider duplicate merge', () => {
