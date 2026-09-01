@@ -1,95 +1,104 @@
 # LiveVault Current State
 
-This continuity file was compacted on 2026-08-30 for the canonical identity project. Earlier detailed state remains recoverable in Git history. GitHub `main` is authoritative.
+This continuity file was refreshed on 2026-09-01 after the canonical identity production migration and the subsequent production-shaped venue-navigation regression was identified. Earlier detail remains recoverable in Git history. GitHub `main` is authoritative.
 
 ## Repository and current build
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged baseline is **v176 — Canonical Audit, Research Closure & Migration (Build 3 of 3)** at merge commit `a12b83f44d27a4194d82739c28273e0fea1e02ed` (PR #192). Build 1 / v174 and Build 2 / v175 remain the canonical identity foundation and ingestion/lifecycle layers underneath it.
+The current merged `main` before this correction is v176 at `62d259086e7f23d95cde5ba34c4f252fdcc44346` (PR #199). Builds 1-3 of the canonical identity project are merged, the v176 migration-tool stabilization PRs #194-#199 are merged, and the production canonical migration has been completed and independently verified.
 
-Build 3 is merged and complete. It provides local/read-only audit and deterministic dry-run migration tooling only. It does not fetch production data, call providers, write Worker/R2 data, run production smoke, or perform the later production migration.
+The active unreleased correction is **v177 — Production Venue Navigation Compatibility** on branch `fix/production-venue-navigation-v177`. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v177`. This build does not change production data or canonical identity rules; it makes the existing v166 indexed venue-navigation hot path consume migrated `canonicalVenueId` values directly instead of falling through to expensive raw-text/richer identity resolution.
 
-`APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v176` on merged `main`. The production historical audit/dry run and any later production migration remain separately authorized operations that must begin from a fresh authorized export with exact source hashes.
+## Canonical identity implementation
 
-## v174 canonical identity foundation — merged
+### v174 foundation
 
-The shared identity layer extends the existing v158/v166 architecture rather than replacing its safety/performance model. Canonical venue identity supports additive current/historical names, location history, namespace-scoped provider venue identities, parent/sub-location mappings and legacy venue IDs. Rooms, halls, stages, theatres, temporary structures and hospitality/loge-style sub-locations resolve to their parent venue when explicitly represented. Separately named venues in one complex and simultaneous brand branches remain distinct; address conflicts fail closed.
+Canonical venue identity supports current/historical names and locations, namespace-scoped provider identities, legacy venue IDs and parent/sub-location semantics. Rooms, halls, stages, theatres, temporary structures and hospitality sub-locations resolve to their parent venue when explicitly represented. Independent venues in one complex and simultaneous brand branches remain distinct. Historical concerts preserve date-correct raw venue facts while current/upcoming presentation can use current canonical venue facts.
 
-Historical concert records keep their date-correct venue name/city/address. Current venue metadata and Venue Detail use the latest canonical venue facts. Upcoming concert read views may display current canonical venue facts while retaining stored/provider wording as source evidence.
+Canonical concert identity is `bandId + canonical venue identity + full calendar date`. Time, provider event/listing ID, room/stage and ticket package/offer do not split a concert. Canonical event identity preserves valid explicit `eventGroupId`; otherwise ordinary events group by canonical venue + date, with evidence-backed festival-edition overrides.
 
-Canonical concert identity is **bandId + canonical venue identity + full calendar date**. Time, provider event/listing ID, room/stage and ticket offer/package type do not create another canonical concert. Canonical event identity keeps valid explicit `eventGroupId` relationships authoritative; otherwise ordinary events group by **canonical venue + date**, with evidence-backed festival-edition overrides.
+The v166 performance contract remains mandatory: ordinary Discover/Concerts must not build the full venue directory; venue identity data is indexed/cached; Venues builds once and Venue Detail reuses that group.
 
-The v166 navigation architecture remains a hard contract: ordinary Discover/Concerts must not build the complete venue directory; canonical venue metadata is indexed/cached; Venues builds the canonical directory once and reuses it for detail/return navigation.
+### v175 ingestion and lifecycle
 
-## v175 canonical ingestion and lifecycle — merged
+Automatic Ticketmaster and Tavily/Groq observations reconcile through shared canonical identity before persistence. A matching observation preserves the stable BANDMARKR concert ID and user-owned/unknown fields while namespace-scoped provider observations accumulate additively. Latest-state ETag reconciliation protects newer user edits.
 
-Build 2 routes automatic Ticketmaster and Tavily/Groq concert observations through one shared canonical write-time reconciliation layer instead of directly appending provider rows.
+Cancellation retains the record and history. Confirmed upcoming reschedules retain stable identity and preserve former-date evidence. Postponed without a verified replacement date becomes `POSTPONED · DATE TBD` with no stale active date. Attended historical dates are immutable. Ambiguous continuity fails closed.
 
-The reconciliation layer preserves a stable BANDMARKR concert ID when an incoming provider observation belongs to an existing canonical concert, including manually-added records. Provider event/listing/venue/attraction IDs, titles, URLs, times, statuses, offer classifications, source details and related-event evidence accumulate as namespace-scoped provider observations. Replay is idempotent.
+### v176 audit/research/migration tooling
 
-Lifecycle handling follows the locked decisions: cancellation retains the record and user history; confirmed upcoming reschedules retain the BANDMARKR ID and preserve former-date history; postponed concerts without a verified replacement date become `POSTPONED · DATE TBD`; replacement provider IDs require proven continuity; attended historical dates are immutable; ambiguous identity or venue continuity fails closed.
+Build 3 provides deterministic local audit and hash-guarded dry-run migration tooling using explicit local inputs. The research registry supports venue additions, venue merge/distinct decisions, exact venue corrections, concert-to-venue assignments, concert merge/distinct decisions and festival editions. Contradictions and incomplete decisions block rather than guess.
 
-The research pipeline uses the canonical venue index and latest-state ETag reconciliation so a stale provider run cannot wipe newer user edits. Minimal lifecycle UI renders cancelled and postponed/TBD states safely.
+The planner preserves stable/user-rich IDs, transitive legacy mappings, provider/source/lifecycle evidence, explicit false values, user-owned fields and unknown future fields. Plan mode requires exact source/decision SHA-256 guards and produces untouched backups, migrated files, forward/reverse mappings, merge/report/rollback artifacts and no-op second-pass validation.
 
-## v176 canonical audit and dry-run migration — merged
+Real-data preparation produced focused stabilization PRs #194-#199 for provider metadata, deterministic research resolution, missing venue additions, provider observation replay and unnamespaced/source evidence preservation. Final exact-head QA passed before each merge.
 
-Build 3 is designed around a **fresh local export**, never repository or QA fixture data treated as production. The audit reports canonical concert collision candidates, normalized venue identity ambiguity candidates, unresolved canonical identity, invalid event groups, protected-field snapshots and before metrics without mutating its inputs. Room/stage-only sub-location names do not create cross-venue merge candidates unless provider identity anchors them.
+## Canonical production migration — completed and verified
 
-A separate research decision registry can encode evidence-backed venue additions when a real concert venue is absent from the venue export, researched venue merge/separate decisions, field-level venue corrections, concert-to-canonical-venue assignments, explicit concert merge/separate decisions and evidence-backed festival editions. Venue additions, corrections and reconciliation run before researched concert venue assignment, concert reconciliation and event/festival validation. Additions require a valid stable venue record plus reason/evidence; corrections retain before/after evidence in the manifest, while assignments preserve raw provider venue wording. Contradictory, incomplete or malformed decisions block rather than guessing. Stable/legacy ID collisions, merge/distinct contradictions, conflicting assignments and overlapping merge-survivor decisions block, and multi-member distinct resolution requires explicit all-pairs coverage.
+Fresh source baseline:
 
-The migration planner preserves stable/user-rich BANDMARKR IDs, retains merged-away IDs in transitive legacy mappings, unions provider/source/history evidence, preserves user-owned fields including explicit false values, and fails closed on contradictory user-owned or unknown future fields. Explicit concert survivor choices cannot replace a more user-rich member. Equal-richness automatic merges keep source-order stable IDs, while explicit decisions using legacy aliases are recognized so no competing automatic survivor decision is invented. Attended historical dates are protected through mapping-aware invariants.
+- `bands_old.json`: 379 records, SHA-256 `a15e57d86388d7ff731f89faecd07468b4d71c7bc1323bf272beb55d947b1485`
+- `venues_old.json`: 530 records, SHA-256 `a79896aad829e93d5bcd2852adb8075cac3bd71f5682a418840b50fa58aa59d7`
+- `concerts_old.json`: 3,331 records, SHA-256 `21eba3162d0811ca9e36ca651b3ba22567dca6367460bde31cb318afa0b84d47`
+- final decision registry: SHA-256 `09d22ab577756b0bfceece1da41e5181122c7312c4e9c6c764de0277037e8d3c`
 
-Provider evidence remains additive and namespace-owned. Top-level provider IDs are retained as observations, `providerRelatedEventIds` are unioned across merged records, and article/search evidence such as Tavily source URLs is retained even without a provider event/venue/attraction ID. Sparse compatible provider observations may enrich one another, while conflicting observations and distinct meaningful observation timestamps remain separate evidence rather than being silently collapsed.
+`bands.json` was reference-only and was not changed.
 
-Only lifecycle/provider/status `postponed` records whose canonical failure is `date_missing_or_tbd` may remain unresolved as `POSTPONED · DATE TBD`. Any other unresolved canonical concert identity blocks migration readiness. Existing festival primary venue references are remapped through researched venue mappings and orphan-checked.
+Approved production outputs:
 
-Dry-run plan mode requires exact byte-level SHA-256 values for the local venue and concert source files and, when supplied, the exact decisions file. Source records with duplicate or missing stable IDs block. Plan output must be absent or empty; source-equivalent output paths are rejected using path plus symlink/hard-link identity checks. The CLI emits byte-identical untouched source backups, migrated local outputs, complete forward/reverse ID maps, merge manifests, source/output hashes, before/after metrics, protected-field and orphan invariants, and rollback metadata. A second run over the migrated local output with the same decisions must be a no-op.
+- `concerts.json`: SHA-256 `d8514d1beaf710867f767be9eda379e8c991e541432c23caa2e6cdf758f231bf`
+- `venues.json`: SHA-256 `06308d511deadfccf12b86b55441ae00012c49771d1ac597af6c069ba2cc3918`
 
-Multi-day/multi-venue grouping is permitted only for an explicitly confirmed festival edition. Ordinary concerts on different calendar dates remain separate events. Existing valid user-owned `eventGroupId` relationships remain authoritative.
+Final reconciliation:
 
-## Production data baseline carried forward
+- Venues: 530 -> 540 (`+26` researched additions, `-16` duplicates)
+- Concerts: 3,331 -> 2,989 (`-342` duplicate rows across 273 merge groups)
+- Events: 2,909 -> 2,768 (`-141` canonical event consolidations)
+- Festivals: 0 -> 0
+- Attended: 76 -> 76; all historical dates unchanged
+- Ticket total: 14,671 -> 14,671
+- Ticket quantity: 58 -> 58
+- Provider observations: 3,206, including 919 `provider: "source"` observations
 
-The validated production `concerts.json` cleanup completed on 2026-08-24 with **3,262** concert records after removal of 334 unsafe legacy Ticketmaster records. All 76 attended concert IDs were preserved and the ticket-cost total remained **31,337**. The verified replacement SHA-256 was `d30c413cfe84a002e2e93361d94eb05854c529588dc20f7ba0b9fabefa8b3bab`.
+All 530 source venue IDs and 3,331 source concert IDs remain traceable. Independent validation found zero blockers, unresolved identities, orphan references, duplicate stable IDs, unknown-field loss, evidence loss or second-pass mutations.
 
-Production `bands.json` Ticketmaster identity review completed with **370** bands, **334** trusted unique Ticketmaster attraction IDs and **36** unresolved bands. The verified reviewed replacement SHA-256 was `9744a107b22586d3446a1560514378511b262a3ea12c740224a1edab536e0774`.
+The only lineup-role reconciliation was `interpol-2026-11-10-k-benhavn-s` -> `interpol-2026-11-10-copenhagen`, `headliner` -> `support`; independent review confirmed the surviving attended/user-owned record already carried `support`, while Bloc Party remains the headliner for the Royal Arena event.
 
-Production venue cleanup completed with **530** reviewed `venues.json` records after conservative consolidation/removal of placeholders. These values and hashes are historical continuity only. They are **not** authorization or valid source guards for the later canonical production migration, which must start from a fresh separately authorized export.
+After manual R2 upload, the exact production objects were downloaded again and verified byte-for-byte against the approved hashes above. Post-write verification also confirmed 2,989 concerts, 540 venues, zero orphan venue/band references, zero duplicate IDs, zero legacy ownership collisions, 76 attended concerts, ticket total 14,671 and ticket quantity 58.
 
-## Merged architecture carried forward
+## v177 production venue-navigation regression and correction
 
-- v163: Ticketmaster ingestion is identity-first; provider IDs remain namespace-scoped and provider evidence is not user identity.
-- v164: venue metadata/canonical overlays introduced conservative alias handling and same-address separation safety.
-- v165: reviewed provider decisions and unknown future fields survive root-level identity operations.
-- v166: venue navigation uses indexed/cached canonical grouping; ordinary concert dates do not construct the venue directory.
-- v167-v169: Start/Next Concert and existing event-level presentation behavior were established.
-- v170-v172: Discover/Bands recommendations and geographic-filter presentation were established.
-- v173: bottom navigation order is `Music · Bands · Discover · Stats · Alerts` while stable route IDs remain unchanged.
-- v174: canonical venue/concert/event identity foundation and read-time/stat integration.
-- v175: automatic ingestion, provider-observation accumulation, lifecycle handling and latest-state reconciliation.
-- v176: exhaustive local audit, research decision registry, deterministic/hash-guarded dry-run migration planning, legacy/reverse mappings, rollback artifacts, invariant/stat reports and no-op replay validation.
+After the migrated production datasets were placed in R2, the live app exposed a severe regression when opening Discover > Venues: loading could stall indefinitely and desktop could become unresponsive.
+
+Diagnosis showed that the v166 venue-directory fast path still attempted to resolve migrated rows primarily from raw venue/city/address evidence. The migration intentionally preserves historical/provider wording, and 1,017 migrated concerts carry authoritative `canonicalVenueId` values; some of those rows can have stale/different raw wording or empty raw locality fields. The indexed metadata lookup did not use `canonicalVenueId`, so those rows could fall through to the richer v174 resolver during a full venue-directory build, recreating expensive work at production scale.
+
+v177 corrects the hot path by indexing current and uniquely owned legacy venue IDs once and resolving `canonicalVenueId` in O(1) before text/evidence fallback. Legacy IDs remain fail-closed if ownership is ambiguous. Existing raw-text, alias, historical, placeholder and richer-v174 fallbacks are retained for records without a canonical stable ID.
+
+A new synthetic Playwright regression uses 2,989 concerts and 540 venues with migration-shaped data, including canonical IDs paired with intentionally different raw provider wording and missing raw city/country values. It verifies direct canonical-ID lookup, Discover > Venues rendering, Venue Detail opening, one-time index/group construction and timing gates on both configured Chromium projects. Production R2 is not used by automated QA.
+
+No production JSON, provider workflow, Worker configuration, secret or migration artifact is changed by v177.
 
 ## Active safety and ownership boundaries
 
-- Stable BANDMARKR IDs, user-owned fields, reviewed decisions, provider ownership and unknown future fields must be preserved.
-- Existing valid `eventGroupId` relationships remain user-owned/authoritative; system canonical event identity is derived separately.
-- Automated browser QA uses only synthetic fixtures and the QA fake backend; live providers and production R2 are forbidden in automated QA.
-- Production provider calls, production workflows, deployments, production smoke and production data changes require their specific explicit authorization. `Merge it` authorizes merge only.
-- Production smoke is manual-only and read-only.
-- Existing JSON writes keep optimistic concurrency/latest-state safeguards.
-- v166 indexed/cached venue navigation is a performance contract and regression is a blocker.
+- Stable BANDMARKR IDs, user-owned fields, reviewed decisions, provider ownership/provenance and unknown future fields must be preserved.
+- Existing valid `eventGroupId` remains user-owned/authoritative; canonical event identity is derived separately.
+- Automated browser QA uses synthetic fixtures and the QA fake backend only; production R2 and live providers are forbidden.
+- Production provider calls, production workflows, deployments, production smoke and production-data changes require separate explicit authorization. `Merge it` authorizes merge only.
+- Production smoke is manual-only/read-only.
+- Existing optimistic-concurrency/latest-state safeguards remain active.
+- v166 indexed/cached venue navigation remains a hard performance contract.
 
-## Canonical identity project sequence
+## Project sequence and current next step
 
-1. **Build 1 / v174:** canonical venue, concert and event identity foundation; read-time/stat integration; focused synthetic QA. **Merged and complete.**
-2. **Build 2 / v175:** automatic discovery/write paths use canonical identity; provider observations accumulate; lifecycle rules and latest-state reconciliation are implemented. **Merged and complete.**
-3. **Build 3 / v176:** exhaustive local audit, research decision registry, deterministic/hash-guarded dry-run migration planner, legacy/reverse ID mappings, rollback artifacts, invariant/stat reports and idempotency validation. **Merged and complete. No production migration performed.**
-4. **Production migration:** only after a fresh authorized production export, exact source hashes, final audit/research closure and hash-guarded dry run are separately approved. This is not a fourth code build.
+1. Build 1 / v174 — canonical venue/concert/event foundation: merged.
+2. Build 2 / v175 — canonical ingestion/lifecycle: merged.
+3. Build 3 / v176 — audit/research/migration tooling: merged.
+4. Production migration — independently validated, written to R2 and read-back verified: complete.
+5. v177 — production-shaped Venue navigation compatibility/performance correction: in progress, no production action.
+
+The earlier docs-only closeout PR #200 was opened before the production navigation regression was reported and should not be merged as the final project state. The v177 branch supersedes that closeout state. After v177 exact-head QA is green and the user explicitly authorizes merge, a later fresh production `concerts.json` / `venues.json` read-back can be exhaustively QA-checked if requested. The dedicated production smoke workflow remains separately authorized.
 
 ## Backlog hygiene
 
-PR #134 remains intentionally open as unrelated production-inert listening backfill tooling. Cloudflare Worker CORS-origin hardening, patch-layer consolidation and unrelated Ticketmaster label hardening remain outside v176.
-
-## Next operational steps
-
-The three canonical identity code builds are complete. The next operational stage, only with separate authorization, is to obtain a fresh production export through the approved read path, run the v176 read-only audit and research-closure process, generate the exact hash-guarded dry-run migration outputs, review every invariant/stat delta and blocker, and only then consider a separately authorized production data write. Do not run production providers, production smoke or production-data mutation without their specific authorization.
+PR #134 remains intentionally open as unrelated production-inert listening backfill tooling. Cloudflare Worker CORS-origin hardening, patch-layer consolidation and unrelated Ticketmaster label hardening remain outside this correction.
