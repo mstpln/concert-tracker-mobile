@@ -228,24 +228,33 @@ function providerObservationKey(record) {
 
 function providerObservationFromRecord(record) {
   const articleUrl = text(record?.articleUrl || record?.sourceUrl);
-  // Older discovery rows sometimes retained only their source/article URL and
-  // omitted provider namespace metadata. They are still source evidence. Keep
-  // them under a neutral namespace instead of dropping their observed location
-  // when the duplicate row is reconciled away.
-  const provider = providerNamespace(record) || (articleUrl ? 'source' : '');
+  const ticketUrl = text(record?.ticketUrl);
   const eventId = providerEventId(record);
   const providerVenueId = text(record?.providerVenueId);
   const providerAttractionId = text(record?.providerAttractionId);
+  // Older discovery rows sometimes retained only their source/article URL and
+  // omitted provider namespace metadata. A ticket URL or provider identifier is
+  // likewise strong source evidence. Keep these observations under a neutral
+  // namespace instead of dropping their location or observation timestamp when
+  // the duplicate row is reconciled away.
+  const provider = providerNamespace(record)
+    || ([articleUrl, ticketUrl, eventId, providerVenueId, providerAttractionId].some(meaningful) ? 'source' : '');
   const relatedEventIds = uniqueStable((Array.isArray(record?.providerRelatedEventIds) ? record.providerRelatedEventIds : []).map(text).filter(Boolean));
   const providerSpecificEvidence = [
     eventId,
     providerVenueId,
     providerAttractionId,
     articleUrl,
+    ticketUrl,
     text(record?.providerEventName),
     text(record?.providerEventStatus),
     text(record?.providerOfferType),
     text(record?.providerSource),
+    text(record?.artistMatchMethod),
+    record?.ticketRetailerVerified === true,
+    record?.providerVerified === true,
+    record?.verified === true,
+    record?.providerConfidence,
     text(record?.providerObservedAt),
     text(record?.observedAt),
     text(record?.providerFoundAt),
@@ -266,10 +275,15 @@ function providerObservationFromRecord(record) {
     roomOrStage: clone(record?.roomOrStage ?? null),
     date: text(record?.date) || null,
     time: text(record?.time) || null,
-    ticketUrl: text(record?.ticketUrl) || null,
+    ticketUrl: ticketUrl || null,
     articleUrl: articleUrl || null,
     offerType: text(record?.providerOfferType) || null,
     status: text(record?.providerEventStatus || record?.lifecycleStatus || record?.status) || null,
+    artistMatchMethod: text(record?.artistMatchMethod) || null,
+    ticketRetailerVerified: typeof record?.ticketRetailerVerified === 'boolean' ? record.ticketRetailerVerified : null,
+    providerVerified: typeof record?.providerVerified === 'boolean' ? record.providerVerified : null,
+    verified: typeof record?.verified === 'boolean' ? record.verified : null,
+    providerConfidence: meaningful(record?.providerConfidence) ? clone(record.providerConfidence) : null,
     relatedEventIds,
     source: text(record?.providerSource || record?.sourceProvider || record?.sourceUrl || record?.articleUrl) || null,
   };

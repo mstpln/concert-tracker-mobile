@@ -234,6 +234,61 @@ test('v176 final planner preserves unnamespaced article evidence and raw locatio
   assert.deepEqual(second.outputHashes, first.outputHashes);
 });
 
+test('v176 final planner preserves distinct timestamps from unnamespaced ticket evidence', () => {
+  const source = [
+    concert('concert-a', {
+      ticketUrl: 'https://example.invalid/ticket',
+      ticketRetailerVerified: true,
+      foundAt: '2026-08-30T10:00:00Z',
+    }),
+    concert('concert-b', {
+      sourceProvider: 'ticketmaster',
+      providerEventId: 'tm-event-1',
+      ticketUrl: 'https://example.invalid/ticket',
+      ticketRetailerVerified: true,
+      foundAt: '2026-08-30T11:00:00Z',
+    }),
+  ];
+  const first = Migration.planMigration([venue(VENUE_A, 'Main Hall')], source);
+  const observation = first.concerts[0].providerObservations.find((item) => item.provider === 'source');
+  assert.ok(observation);
+  assert.equal(observation.ticketUrl, 'https://example.invalid/ticket');
+  assert.equal(observation.foundAt, '2026-08-30T10:00:00Z');
+
+  const second = Migration.planMigration(first.venues, first.concerts);
+  assert.equal(Migration.validatePlan(second).valid, true);
+  assert.deepEqual(second.concerts, first.concerts);
+  assert.deepEqual(second.outputHashes, first.outputHashes);
+});
+
+test('v176 final planner keeps match and verification metadata scoped to each provider observation', () => {
+  const plan = Migration.planMigration([venue(VENUE_A, 'Main Hall')], [
+    concert('concert-a', {
+      sourceProvider: 'ticketmaster',
+      providerEventId: 'tm-event-a',
+      artistMatchMethod: 'validated_name_fallback',
+      ticketRetailerVerified: true,
+      providerConfidence: 80,
+    }),
+    concert('concert-b', {
+      sourceProvider: 'ticketmaster',
+      providerEventId: 'tm-event-b',
+      artistMatchMethod: 'confirmed_attraction_id',
+      ticketRetailerVerified: true,
+      providerConfidence: 100,
+    }),
+  ]);
+  const first = plan.concerts[0].providerObservations.find((item) => item.providerEventId === 'tm-event-a');
+  const second = plan.concerts[0].providerObservations.find((item) => item.providerEventId === 'tm-event-b');
+  assert.equal(first.artistMatchMethod, 'validated_name_fallback');
+  assert.equal(first.ticketRetailerVerified, true);
+  assert.equal(first.providerConfidence, 80);
+  assert.equal(second.artistMatchMethod, 'confirmed_attraction_id');
+  assert.equal(second.ticketRetailerVerified, true);
+  assert.equal(second.providerConfidence, 100);
+  assert.equal(Migration.validatePlan(plan).valid, true);
+});
+
 test('v176 discovery metadata differences do not block a canonical provider duplicate merge', () => {
   const plan = Migration.planMigration([venue(VENUE_A, 'Main Hall')], [
     concert('concert-a', {
