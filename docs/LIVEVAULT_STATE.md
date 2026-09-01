@@ -1,14 +1,14 @@
 # LiveVault Current State
 
-This continuity file was refreshed on 2026-09-01 after the canonical identity production migration and the subsequent production-shaped venue-navigation regression was identified. Earlier detail remains recoverable in Git history. GitHub `main` is authoritative.
+This continuity file was refreshed on 2026-09-01 after profiling the remaining production-shaped navigation regression on merged v177. Earlier detail remains recoverable in Git history. GitHub `main` is authoritative.
 
 ## Repository and current build
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged `main` before this correction is v176 at `62d259086e7f23d95cde5ba34c4f252fdcc44346` (PR #199). Builds 1-3 of the canonical identity project are merged, the v176 migration-tool stabilization PRs #194-#199 are merged, and the production canonical migration has been completed and independently verified.
+The current merged `main` before this correction is v177 at `84e544ad09d0eee7c150e3ed097f57c8bc35e809` (PR #201). Builds 1-3 of the canonical identity project are merged, the v176 migration-tool stabilization PRs #194-#199 are merged, and the production canonical migration has been completed and independently verified.
 
-The active unreleased correction is **v177 — Production Venue Navigation Compatibility** on branch `fix/production-venue-navigation-v177`. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v177`. This build does not change production data or canonical identity rules; it makes the existing v166 indexed venue-navigation hot path consume migrated `canonicalVenueId` values directly instead of falling through to expensive raw-text/richer identity resolution.
+The active unreleased correction is **v178 — Global Navigation Performance** on branch `fix/global-navigation-performance-v178`. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v178`. This build does not change production data or canonical identity rules; it removes duplicated legacy full scans, reuses the v166 indexed grouping path for statistics and makes cache rebuilding depend on actual venue-record changes.
 
 ## Canonical identity implementation
 
@@ -79,6 +79,18 @@ A new synthetic Playwright regression uses 2,989 concerts and 540 venues with mi
 
 No production JSON, provider workflow, Worker configuration, secret or migration artifact is changed by v177.
 
+## v178 broad performance diagnosis and correction
+
+Production-shaped profiling used 379 synthetic bands, 540 rich venue records and 2,989 mixed concert rows (1,017 with canonical IDs and 1,972 exercising current-name, alias, historical-name, sub-location, missing-locality and recoverable-placeholder fallbacks). The merged v177 baseline measured approximately 19.8 seconds for the first Venues render, 3.6 seconds for concert statistics, 5.5 seconds for Music and 5.7 seconds for startup.
+
+The wrapper chain was finite, not recursive, but two closure boundaries bypassed later performance layers. v174 fallback first invoked the captured v158 full-record scan before using the rich resolver, and the v158 concert-capacity decorator permanently captured that same scan and ran it for every Music card. Statistics also built canonical venue groups through both the legacy v158 path and v174. Finally, each refresh invalidated every venue index even when `venues.json` was byte-equivalent.
+
+v178 routes rich fallback directly to the v174 indexed resolver after the v166 lookup misses, routes the v158 card decorator through the current indexed metadata API, and delegates canonical statistics grouping to the indexed v166 implementation. Venue records now expose a monotonic revision that changes only when normalized content changes; lookup, canonical and navigation indexes rebuild lazily against that revision. The normal Concerts view remains lazy and does not build venue groups.
+
+The same local profile after correction measured approximately 160 ms for first Venues, 27 ms for concert statistics, 147 ms for Music and 259 ms for startup. Cached Venues, back navigation and Venue Detail remained single-digit milliseconds; byte-equivalent refresh data caused zero index rebuilds. Full-array cache-key serialization and 540-card DOM construction were measured but were not material bottlenecks, so no virtualization was introduced. Service-worker inspection found the shell complete, versions synchronized and old caches removed on activation; no mixed-runtime defect was found.
+
+Focused synthetic browser coverage enforces mixed canonical/fallback resolution, lazy ordinary Concerts behavior, one-time group/index construction, equivalent-data cache reuse, changed-data rebuilding, Venue Detail/back/second-detail reuse, finite rich fallback, historical/alias/sub-location behavior and desktop/mobile timing gates. No production data or service is used.
+
 ## Active safety and ownership boundaries
 
 - Stable BANDMARKR IDs, user-owned fields, reviewed decisions, provider ownership/provenance and unknown future fields must be preserved.
@@ -95,9 +107,10 @@ No production JSON, provider workflow, Worker configuration, secret or migration
 2. Build 2 / v175 — canonical ingestion/lifecycle: merged.
 3. Build 3 / v176 — audit/research/migration tooling: merged.
 4. Production migration — independently validated, written to R2 and read-back verified: complete.
-5. v177 — production-shaped Venue navigation compatibility/performance correction: in progress, no production action.
+5. v177 — production-shaped Venue navigation compatibility/performance correction: merged as PR #201.
+6. v178 — global navigation profiling and performance correction: in progress, no production action.
 
-The earlier docs-only closeout PR #200 was opened before the production navigation regression was reported and should not be merged as the final project state. The v177 branch supersedes that closeout state. After v177 exact-head QA is green and the user explicitly authorizes merge, a later fresh production `concerts.json` / `venues.json` read-back can be exhaustively QA-checked if requested. The dedicated production smoke workflow remains separately authorized.
+The earlier docs-only closeout PR #200 was opened before the production navigation regression was reported and should not be merged as the final project state. v178 supersedes that closeout state. After v178 exact-head QA is green and the user explicitly authorizes merge, a later fresh production `concerts.json` / `venues.json` read-back can be exhaustively QA-checked if requested. The dedicated production smoke workflow remains separately authorized.
 
 ## Backlog hygiene
 

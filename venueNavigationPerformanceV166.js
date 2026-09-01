@@ -103,8 +103,8 @@
     ]));
   }
 
-  function buildRecordIndex(records) {
-    const signature = recordSignature(records);
+  function buildRecordIndex(records, revision = null) {
+    const signature = revision == null ? recordSignature(records) : `revision:${revision}`;
     if (recordIndexCache?.signature === signature) return recordIndexCache;
 
     const byName = new Map();
@@ -188,10 +188,16 @@
     const sourceHead = addressHead(sourceAddress);
     let best = 0;
     for (const variant of entry.variants) {
+      // Preserve VenueMetadataModelV158.findVenueRecord(): an exact stored
+      // address is authoritative even when the provider's locality fields are
+      // stale. Only weaker address/name evidence is locality constrained.
+      if (sourceFull && variant.fullAddress && sourceFull === variant.fullAddress) {
+        best = Math.max(best, 6);
+        continue;
+      }
       if (!countriesCompatible(value?.country, variant.source?.country)) continue;
       const sameCity = !value?.city || !variant.source?.city || model.canonicalCityKey(value.city) === variant.cityKey;
-      if (sameCity && sourceFull && variant.fullAddress && sourceFull === variant.fullAddress) best = Math.max(best, 6);
-      else if (sameCity && sourceHead && variant.head && sourceHead === variant.head) best = Math.max(best, 5);
+      if (sameCity && sourceHead && variant.head && sourceHead === variant.head) best = Math.max(best, 5);
 
       const venueName = variant.nameKey || model.normalizeIdentityText(entry.record?.name);
       if (sameCity && venueName && sourceFull && (sourceFull === venueName || sourceFull.startsWith(`${venueName} `))) {
@@ -313,19 +319,10 @@
     return { liveConcerts, key };
   }
 
-  function canonicalVenueGroupsFast() {
-    const records = venueApi.getRecords();
-    const index = buildRecordIndex(records);
-    const state = liveConcertState();
-    const key = `${index.signature}|${state.key}`;
-    if (groupCache?.key === key) {
-      metrics.groupCacheHits += 1;
-      return groupCache;
-    }
-
+  function buildCanonicalGroups(concertList, index) {
     const groups = [];
     const byName = new Map();
-    for (const concert of state.liveConcerts) {
+    for (const concert of concertList || []) {
       const identity = canonicalVenueIdentityFast(concert, index);
       if (!identity) continue;
 
@@ -357,7 +354,27 @@
       group.concerts.push(concert);
       if (!group.country && concert?.country) group.country = String(concert.country).trim();
     }
-    groups.sort((a, b) => a.venue.localeCompare(b.venue));
+    return groups.sort((a, b) => a.venue.localeCompare(b.venue));
+  }
+
+  function canonicalVenueGroupsFor(concertList) {
+    const records = venueApi.getRecords();
+    const revision = typeof venueApi.getRevision === 'function' ? venueApi.getRevision() : null;
+    return buildCanonicalGroups(concertList || [], buildRecordIndex(records, revision));
+  }
+
+  function canonicalVenueGroupsFast() {
+    const records = venueApi.getRecords();
+    const revision = typeof venueApi.getRevision === 'function' ? venueApi.getRevision() : null;
+    const index = buildRecordIndex(records, revision);
+    const state = liveConcertState();
+    const key = `${index.signature}|${state.key}`;
+    if (groupCache?.key === key) {
+      metrics.groupCacheHits += 1;
+      return groupCache;
+    }
+
+    const groups = buildCanonicalGroups(state.liveConcerts, index);
 
     const byKey = new Map(groups.map((group) => [group.key, group]));
     metrics.groupBuilds += 1;
@@ -544,6 +561,7 @@
   root.LiveVaultVenueNavigationPerformanceV166 = Object.freeze({
     buildRecordIndex,
     canonicalVenueIdentityFast,
+    canonicalVenueGroupsFor,
     canonicalVenueGroupsFast,
     getMetrics: () => ({ ...metrics }),
     invalidate() {

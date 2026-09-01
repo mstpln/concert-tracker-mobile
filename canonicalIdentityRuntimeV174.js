@@ -9,18 +9,22 @@
   if (!core || !priorVenueApi || typeof priorVenueApi.getRecords !== 'function') return;
 
   let venueIndex = null;
+  let venueIndexRevision = null;
   let indexBuilds = 0;
 
   function invalidate() {
     venueIndex = null;
+    venueIndexRevision = null;
     indexBuilds = 0;
     if (typeof root.LiveVaultVenueNavigationPerformanceV166?.invalidate === 'function') root.LiveVaultVenueNavigationPerformanceV166.invalidate();
     if (typeof root.LiveVaultVenueNavigationRenderPerformanceV166?.invalidate === 'function') root.LiveVaultVenueNavigationRenderPerformanceV166.invalidate();
   }
 
   function getVenueIndex() {
-    if (venueIndex) return venueIndex;
+    const revision = typeof priorVenueApi.getRevision === 'function' ? priorVenueApi.getRevision() : null;
+    if (venueIndex && (revision == null || venueIndexRevision === revision)) return venueIndex;
     venueIndex = core.buildVenueIndex(priorVenueApi.getRecords());
+    venueIndexRevision = revision;
     indexBuilds += 1;
     return venueIndex;
   }
@@ -32,14 +36,8 @@
       : ['unknown venue', 'unknown', 'tba', 'tbd'].includes(raw.toLowerCase());
   }
 
-  function metadataFor(value) {
-    // Existing v158/v164 lookup semantics stay first. v174 only adds evidence
-    // when the established lookup has no answer. Placeholder recovery remains
-    // canonical-only and therefore must never turn ordinary metadataFor() into
-    // a successful lookup.
-    const prior = typeof priorVenueApi.metadataFor === 'function' ? priorVenueApi.metadataFor(value) : null;
-    if (prior || isPlaceholder(value)) return prior || null;
-
+  function richMetadataFallback(value) {
+    if (isPlaceholder(value)) return null;
     const resolution = core.resolveCanonicalVenue(value, getVenueIndex());
     if (resolution.kind !== 'same' || !resolution.record) return null;
     return {
@@ -49,6 +47,16 @@
       country: resolution.country,
       address: resolution.address,
     };
+  }
+
+  function metadataFor(value) {
+    // Existing v158/v164 lookup semantics stay first. v174 only adds evidence
+    // when the established lookup has no answer. Placeholder recovery remains
+    // canonical-only and therefore must never turn ordinary metadataFor() into
+    // a successful lookup.
+    const prior = typeof priorVenueApi.metadataFor === 'function' ? priorVenueApi.metadataFor(value) : null;
+    if (prior || isPlaceholder(value)) return prior || null;
+    return richMetadataFallback(value);
   }
 
   function canonicalVenueIdentity(value) {
@@ -74,6 +82,8 @@
   }
 
   function canonicalVenueGroups(concertList) {
+    const fast = root.LiveVaultVenueNavigationPerformanceV166?.canonicalVenueGroupsFor;
+    if (typeof fast === 'function') return fast(concertList || []);
     // v164 already contains important physical-venue merge semantics that are
     // broader than literal identity-key equality (same venue record, or same
     // name/address across city aliases). Keep those established groups intact.
@@ -116,9 +126,7 @@
   }
 
   function setRecords(records) {
-    const result = priorVenueApi.setRecords(records);
-    invalidate();
-    return result;
+    return priorVenueApi.setRecords(records);
   }
 
   root.VenueMetadataV158 = Object.freeze({
@@ -182,17 +190,10 @@
     };
   }
 
-  const previousLoadDataAndShowApp = root.loadDataAndShowApp;
-  if (typeof previousLoadDataAndShowApp === 'function') {
-    root.loadDataAndShowApp = async function loadDataAndShowAppCanonicalIdentityV174(...args) {
-      invalidate();
-      return previousLoadDataAndShowApp.apply(this, args);
-    };
-  }
-
   root.CanonicalIdentityRuntimeV174 = Object.freeze({
     getVenueIndex,
     metadataFor,
+    richMetadataFallback,
     canonicalVenueIdentity,
     canonicalVenueGroups,
     canonicalReadRecords,

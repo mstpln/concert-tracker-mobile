@@ -176,6 +176,12 @@ This continuity file was compacted on 2026-08-30 for the canonical identity proj
 
 **Consequence:** Any return to repeated concert × venue full scans is a hard regression blocker. Richer v174 identity evidence must be consumed by indexes/caches rather than scans.
 
+### v178 cache validity follows normalized venue-record revisions
+
+**Decision:** Runtime venue indexes and canonical grouping consumers use one normalized venue-record revision. The revision changes only when normalized venue content changes; equivalent refresh data retains caches, while changed data rebuilds each dependent index lazily once.
+
+**Consequence:** Compatibility wrappers must resolve through the current indexed venue API rather than captured legacy full scans. Canonical statistics reuse the indexed grouping implementation, and render/load wrappers do not invalidate venue caches unconditionally. Identity matching remains conservative and fail-closed.
+
 ### Prefer additive fields in existing JSON documents
 
 **Decision:** Canonical venue/event metadata should be additive/backward-compatible in existing data documents unless a separate storage/API change is explicitly approved.

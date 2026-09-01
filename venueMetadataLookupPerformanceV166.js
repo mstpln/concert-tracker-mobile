@@ -11,10 +11,13 @@
   if (!model || !prior || typeof prior.getRecords !== 'function' || typeof prior.metadataFor !== 'function') return;
 
   let index = null;
+  let indexRevision = null;
   let indexBuilds = 0;
 
   function invalidateCaches() {
     index = null;
+    indexRevision = null;
+    indexBuilds = 0;
     if (typeof root.LiveVaultVenueNavigationPerformanceV166?.invalidate === 'function') {
       root.LiveVaultVenueNavigationPerformanceV166.invalidate();
     }
@@ -36,7 +39,8 @@
   }
 
   function ensureIndex() {
-    if (index) return index;
+    const revision = typeof prior.getRevision === 'function' ? prior.getRevision() : null;
+    if (index && (revision == null || indexRevision === revision)) return index;
     const records = prior.getRecords();
     const byName = new Map();
     const byVenueId = new Map();
@@ -62,6 +66,7 @@
       }
     }
     index = { byName, byVenueId, ambiguousVenueIds };
+    indexRevision = revision;
     indexBuilds += 1;
     return index;
   }
@@ -91,6 +96,9 @@
       const established = model.findVenueRecord(value, candidates);
       if (established) return established;
     }
+    if (typeof root.CanonicalIdentityRuntimeV174?.richMetadataFallback === 'function') {
+      return root.CanonicalIdentityRuntimeV174.richMetadataFallback(value);
+    }
     if (typeof root.CanonicalIdentityRuntimeV174?.metadataFor === 'function') {
       return root.CanonicalIdentityRuntimeV174.metadataFor(value);
     }
@@ -98,9 +106,7 @@
   }
 
   function setRecords(records) {
-    const result = prior.setRecords(records);
-    invalidateCaches();
-    return result;
+    return prior.setRecords(records);
   }
 
   root.VenueMetadataV158 = Object.freeze({
@@ -108,19 +114,6 @@
     metadataFor,
     setRecords,
   });
-
-  // v158's refresh wrapper closes over its original local setRecords function,
-  // so replacing VenueMetadataV158.setRecords alone cannot observe a normal app
-  // Refresh. Clear the v166 indexes before delegating so the v158 loader can
-  // replace venueRecords and any rendering during that load rebuilds from the
-  // freshly loaded document rather than an earlier indexed snapshot.
-  const previousLoadDataAndShowApp = root.loadDataAndShowApp;
-  if (typeof previousLoadDataAndShowApp === 'function') {
-    root.loadDataAndShowApp = async function loadDataAndShowAppVenueMetadataLookupV166(...args) {
-      invalidateCaches();
-      return previousLoadDataAndShowApp.apply(this, args);
-    };
-  }
 
   root.LiveVaultVenueMetadataLookupPerformanceV166 = Object.freeze({
     metadataFor,
