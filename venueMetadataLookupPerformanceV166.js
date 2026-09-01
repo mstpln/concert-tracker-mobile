@@ -39,26 +39,52 @@
     if (index) return index;
     const records = prior.getRecords();
     const byName = new Map();
+    const byVenueId = new Map();
+    const ambiguousVenueIds = new Set();
     for (const record of records) {
       const names = new Set(indexedNames(record));
       for (const name of names) {
         if (!byName.has(name)) byName.set(name, []);
         byName.get(name).push(record);
       }
+      const ids = new Set([
+        record?.venueId,
+        ...(Array.isArray(record?.legacyVenueIds) ? record.legacyVenueIds : []),
+      ].map((value) => String(value || '').trim()).filter(Boolean));
+      for (const venueId of ids) {
+        const existing = byVenueId.get(venueId);
+        if (existing && existing?.venueId !== record?.venueId) {
+          ambiguousVenueIds.add(venueId);
+          byVenueId.delete(venueId);
+        } else if (!ambiguousVenueIds.has(venueId)) {
+          byVenueId.set(venueId, record);
+        }
+      }
     }
-    index = byName;
+    index = { byName, byVenueId, ambiguousVenueIds };
     indexBuilds += 1;
     return index;
   }
 
   function metadataFor(value) {
+    // Migrated v176 concert rows may already carry the authoritative canonical
+    // venue stable ID even when their historical/raw venue wording, city or
+    // address intentionally differs from the current venue record. Resolve
+    // that stable identity in O(1) before any text/evidence fallback. Legacy
+    // IDs are accepted only when ownership is unique in the venue document.
+    const { byName, byVenueId } = ensureIndex();
+    const canonicalVenueId = String(value?.canonicalVenueId || '').trim();
+    if (canonicalVenueId) {
+      const canonicalRecord = byVenueId.get(canonicalVenueId);
+      if (canonicalRecord) return canonicalRecord;
+    }
+
     // Keep the indexed v166 lookup on the hot path. Calling the v174 runtime
     // first would delegate to v158's original full-record scan for every
     // concert, recreating the concert x venue regression that v166 removed.
     // Only fall through to v174 when established indexed name/alias evidence
     // has no answer, so richer historical/provider/sub-location evidence stays
     // additive without penalizing ordinary current-venue reads.
-    const byName = ensureIndex();
     const targetName = model.normalizeIdentityText(value?.venue ?? value?.name);
     if (targetName) {
       const candidates = byName.get(targetName) || [];
