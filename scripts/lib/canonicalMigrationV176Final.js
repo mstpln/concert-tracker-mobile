@@ -315,6 +315,23 @@ function mergeObservations(values) {
   return output;
 }
 
+function topLevelObservationForSource(source) {
+  const observation = providerObservationFromRecord(source);
+  if (!observation) return null;
+  const key = providerObservationKey(observation);
+  if (!key) return observation;
+  const structured = Array.isArray(source?.providerObservations) ? source.providerObservations : [];
+  const sameEvent = structured.filter((item) => providerObservationKey(item) === key);
+  if (!sameEvent.length) return observation;
+  // A migrated survivor can combine provider-owned presentation fields from one
+  // source with user/historical location fields from another. Its structured
+  // observations are authoritative evidence; do not synthesize a new conflicting
+  // observation from that hybrid presentation on every replay. Compatible
+  // top-level values still enrich a sparse structured observation.
+  if (Array.isArray(source?.legacyConcertIds) && source.legacyConcertIds.length) return null;
+  return sameEvent.some((item) => observationCompatible(item, observation)) ? observation : null;
+}
+
 function finalizeProviderEvidence(sourceConcerts, outputConcerts, mapping) {
   const sourcesByTarget = new Map();
   for (const source of sourceConcerts || []) {
@@ -330,7 +347,7 @@ function finalizeProviderEvidence(sourceConcerts, outputConcerts, mapping) {
     const observations = [
       ...(Array.isArray(next.providerObservations) ? next.providerObservations : []),
       ...sources.flatMap((source) => Array.isArray(source?.providerObservations) ? source.providerObservations : []),
-      ...sources.map(providerObservationFromRecord).filter(Boolean),
+      ...sources.map(topLevelObservationForSource).filter(Boolean),
     ];
     const mergedObservations = mergeObservations(observations);
     if (mergedObservations.length) next.providerObservations = mergedObservations;

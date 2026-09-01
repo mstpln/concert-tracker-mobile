@@ -79,6 +79,66 @@ test('v176 final planner enriches a sparse same-event provider observation from 
   assert.equal(Migration.validatePlan(plan).valid, true);
 });
 
+test('v176 final planner does not synthesize a conflicting observation from migrated hybrid presentation fields on replay', () => {
+  const source = [
+    concert('concert-a', {
+      articleUrl: 'https://example.invalid/announcement',
+      city: 'Milan',
+      venueAddress: 'Historic address',
+    }),
+    concert('concert-b', {
+      sourceProvider: 'ticketmaster',
+      ticketRetailerVerified: true,
+      providerEventId: 'tm-event-1',
+      providerVenueId: 'tm-venue-1',
+      providerEventName: 'Band A live',
+      city: 'Milano',
+      venueAddress: 'Provider address',
+      ticketUrl: 'https://example.invalid/ticket',
+      foundAt: '2026-08-30T12:00:00Z',
+    }),
+  ];
+  const first = Migration.planMigration([venue(VENUE_A, 'Main Hall')], source);
+  assert.equal(Migration.validatePlan(first).valid, true);
+  assert.equal(first.concerts[0].providerObservations.length, 1);
+
+  const second = Migration.planMigration(first.venues, first.concerts, {});
+  assert.equal(Migration.validatePlan(second).valid, true);
+  assert.deepEqual(second.concerts, first.concerts);
+  assert.deepEqual(second.outputHashes, first.outputHashes);
+});
+
+test('v176 final planner does not enrich one provider event with presentation fields retained from another event on replay', () => {
+  const source = [
+    concert('concert-a', {
+      sourceProvider: 'ticketmaster',
+      ticketRetailerVerified: true,
+      providerEventId: 'tm-event-a',
+      providerAttractionId: 'tm-artist',
+      ticketUrl: 'https://example.invalid/a',
+    }),
+    concert('concert-b', {
+      sourceProvider: 'ticketmaster',
+      ticketRetailerVerified: true,
+      providerEventId: 'tm-event-b',
+      providerVenueId: 'tm-venue-b',
+      providerAttractionId: 'tm-artist',
+      providerEventName: 'Band A live',
+      providerOfferType: 'standard',
+      providerEventStatus: 'onsale',
+      ticketUrl: 'https://example.invalid/b',
+    }),
+  ];
+  const first = Migration.planMigration([venue(VENUE_A, 'Main Hall')], source);
+  assert.equal(Migration.validatePlan(first).valid, true);
+  assert.equal(first.concerts[0].providerObservations.length, 2);
+
+  const second = Migration.planMigration(first.venues, first.concerts, {});
+  assert.equal(Migration.validatePlan(second).valid, true);
+  assert.deepEqual(second.concerts, first.concerts);
+  assert.deepEqual(second.outputHashes, first.outputHashes);
+});
+
 test('v176 final planner preserves conflicting observations for the same provider event instead of discarding one', () => {
   const plan = Migration.planMigration([venue(VENUE_A, 'Main Hall')], [
     concert('concert-a', {
