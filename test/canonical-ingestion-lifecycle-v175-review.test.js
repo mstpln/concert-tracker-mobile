@@ -71,19 +71,29 @@ test('v175 cancellation records no replacement date and replay stays idempotent'
   assert.equal(replay.records[0].lifecycleHistory.length, 1);
 });
 
-test('v175 weaker lifecycle evidence cannot replace stronger top-level provider presentation', () => {
-  const candidate = incoming({
-    sourceProvider: 'other_provider', providerEventId: 'other-cancelled', providerEventStatus: 'cancelled',
-    ticketRetailerVerified: false, providerOfferType: 'standard', ticketUrl: 'https://other.example/cancelled',
-  });
-  const result = Ingestion.ingestCandidate([existing()], candidate, options).records[0];
-  assert.equal(result.lifecycleStatus, 'cancelled');
-  assert.equal(result.sourceProvider, 'ticketmaster');
-  assert.equal(result.providerEventId, 'tm-old');
-  assert.equal(result.providerEventStatus, undefined);
-  assert.equal(result.ticketUrl, 'https://tickets.example/standard');
-  assert.equal(result.providerObservations.at(-1).provider, 'other_provider');
-  assert.equal(result.providerObservations.at(-1).status, 'cancelled');
+test('v175 weaker terminal lifecycle evidence cannot contradict stronger active provider presentation', () => {
+  for (const providerEventStatus of ['cancelled', 'postponed']) {
+    const candidate = incoming({
+      sourceProvider: 'other_provider', providerEventId: `other-${providerEventStatus}`, providerEventStatus,
+      ticketRetailerVerified: false, providerOfferType: 'standard', ticketUrl: `https://other.example/${providerEventStatus}`,
+    });
+    const first = Ingestion.ingestCandidate([existing({ providerEventStatus: 'onsale' })], candidate, options);
+    const result = first.records[0];
+    assert.equal(result.lifecycleStatus, undefined);
+    assert.equal(result.sourceProvider, 'ticketmaster');
+    assert.equal(result.providerEventId, 'tm-old');
+    assert.equal(result.providerEventStatus, 'onsale');
+    assert.equal(result.ticketUrl, 'https://tickets.example/standard');
+    assert.equal(result.lifecycleReviewRequired, true);
+    assert.equal(result.lifecycleHistory.at(-1).type, 'provider_status_conflict');
+    assert.equal(result.lifecycleHistory.at(-1).observedStatus, providerEventStatus);
+    assert.equal(result.providerObservations.at(-1).provider, 'other_provider');
+    assert.equal(result.providerObservations.at(-1).status, providerEventStatus);
+
+    const replay = Ingestion.ingestCandidate(first.records, candidate, options);
+    assert.equal(replay.changed, false);
+    assert.deepEqual(replay.records, first.records);
+  }
 });
 
 test('v175 proven replacement continuity may advance presentation and remains stable on replay', () => {
