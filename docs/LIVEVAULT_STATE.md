@@ -1,14 +1,12 @@
 # LiveVault Current State
 
-This continuity file was refreshed on 2026-09-02 after v178 merged and the missed September 2 structured-research schedule was investigated. Earlier detail remains recoverable in Git history. GitHub `main` is authoritative.
+This continuity file was refreshed on 2026-09-02 for the v179 provider-identity/lifecycle-conflict safeguard. Earlier detail remains recoverable in Git history. GitHub `main` is authoritative.
 
 ## Repository and current build
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged `main` is **v178 — Global Navigation Performance** at merge commit `25a8a2385385d86668db2aaffa61e3b3fcd7b530` (PR #202). `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v178`. Builds 1-3 of the canonical identity project are merged, the v176 migration-tool stabilization PRs #194-#199 are merged, and the production canonical migration has been completed and independently verified.
-
-The active operational correction is on branch `fix/structured-research-schedule`. It changes only the scheduled trigger for `.github/workflows/research.yml`, moving the recurring structured concert/release research from `01:00 UTC` to `07:47 UTC` on Monday, Wednesday and Friday. The off-hour minute is intentional to reduce the risk of GitHub Actions scheduler congestion at `:00`. In Sweden this corresponds to 09:47 CEST during daylight-saving time and 08:47 CET during standard time. No provider logic, quotas, production schema, app runtime, or app/service-worker version changes are included.
+The current merged `main` is **v178 — Global Navigation Performance plus the structured-research schedule correction** at merge commit `2e0a5dac03436ff832b2a5eed4218f25bfbc5829` (PR #203). The active v179 safeguard branch synchronizes `APP_VERSION` and `CACHE_NAME_LITERAL` at `v179`. Builds 1-3 of the canonical identity project are merged, the v176 migration-tool stabilization PRs #194-#199 are merged, and the production canonical migration has been completed and independently verified.
 
 ## Canonical identity implementation
 
@@ -25,6 +23,8 @@ The v166 performance contract remains mandatory: ordinary Discover/Concerts must
 Automatic Ticketmaster and Tavily/Groq observations reconcile through shared canonical identity before persistence. A matching observation preserves the stable BANDMARKR concert ID and user-owned/unknown fields while namespace-scoped provider observations accumulate additively. Latest-state ETag reconciliation protects newer user edits.
 
 Cancellation retains the record and history. Confirmed upcoming reschedules retain stable identity and preserve former-date evidence. Postponed without a verified replacement date becomes `POSTPONED · DATE TBD` with no stale active date. Attended historical dates are immutable. Ambiguous continuity fails closed.
+
+The Ticketmaster ingestion path queries by the band's trusted confirmed attraction ID, requires that exact ID in the event attractions and persists that ID even when another co-bill artist is listed first. A later active observation cannot overwrite an already-cancelled top-level provider presentation without proven provider-linked replacement continuity on a new date; the evidence is retained with `lifecycleReviewRequired` and conflict history.
 
 ### v176 audit/research/migration tooling
 
@@ -69,7 +69,7 @@ After manual R2 upload, the exact production objects were downloaded again and v
 
 ## v177 and v178 navigation-performance correction
 
-After the migrated production datasets were placed in R2, the live app exposed severe venue/navigation and broader startup regressions. v177 added O(1) canonicalVenueId lookup but did not fully resolve the issue. v178 then removed duplicated captured v158 full scans from rich fallback and Music-card rendering, reused the indexed v166 grouping path for statistics, and made venue index rebuilds depend on actual normalized venue-record changes.
+After the migrated production datasets were placed in R2, the live app exposed severe venue/navigation and broader startup regressions. v177 added O(1) canonicalVenueId lookup but did not fully resolve the issue. v178 then removed duplicated captured v158 full scans from rich fallback and Music-card capacity rendering, reused the indexed v166 grouping path for statistics, and made venue index rebuilds depend on actual normalized venue-record changes.
 
 Production-shaped synthetic profiling used 379 bands, 540 venues and 2,989 concerts. The v177 baseline measured approximately 19.8 seconds for first Venues render, 3.6 seconds for statistics, 5.5 seconds for Music and 5.7 seconds for startup. v178 reduced those to approximately 160 ms, 27 ms, 147 ms and 259 ms respectively while preserving canonical identity semantics and lazy ordinary Concerts rendering.
 
@@ -77,9 +77,9 @@ PR #202 merged as `25a8a2385385d86668db2aaffa61e3b3fcd7b530` on 2026-09-02. The 
 
 ## Structured research schedule — September 2 operational correction
 
-The scheduled `Structured concert and release research` workflow remained configured at `01:00 UTC` Monday/Wednesday/Friday, but GitHub Actions created no scheduled run at all on Wednesday 2026-09-02. There was no failed/cancelled run to inspect; the scheduled trigger itself was absent. The workflow supports manual dispatch, but no production run is triggered by this correction branch.
+The scheduled `Structured concert and release research` workflow was still configured at `01:00 UTC` Monday/Wednesday/Friday on Wednesday 2026-09-02. GitHub Actions did eventually create and run that scheduled event, but only at `05:30 UTC` (`07:30 CEST`), roughly 4.5 hours after its nominal trigger. Run #25 completed successfully at about `05:42 UTC` (`07:42 CEST`) on pre-PR-#203 `main`, confirming extreme scheduler delay rather than a missed production research run.
 
-To reduce exposure to GitHub's top-of-hour scheduler congestion, the recurring trigger is being moved to `07:47 UTC` Monday/Wednesday/Friday. This leaves a substantial buffer for the 2026-09-02 correction to be reviewed and merged before today's eligible run while keeping the schedule in the morning for normal operation. The shared `live-vault-data-writes` concurrency group and scheduler lease remain unchanged.
+To reduce exposure to GitHub's top-of-hour scheduler congestion, PR #203 moved the recurring trigger to `07:47 UTC` Monday/Wednesday/Friday and merged at `06:15 UTC` (`08:15 CEST`) on September 2. No second scheduled run was created at the new `07:47 UTC` target that same day, so Friday 2026-09-04 is the first clean validation point for the revised cron. The shared `live-vault-data-writes` concurrency group and scheduler lease remain unchanged.
 
 ## Active safety and ownership boundaries
 
@@ -99,9 +99,10 @@ To reduce exposure to GitHub's top-of-hour scheduler congestion, the recurring t
 4. Production migration — independently validated, written to R2 and read-back verified: complete.
 5. v177 — production-shaped Venue navigation compatibility/performance correction: merged as PR #201.
 6. v178 — global navigation profiling/performance correction: merged as PR #202.
-7. Structured research schedule correction — move recurring run to 07:47 UTC Monday/Wednesday/Friday; review/merge required before today's scheduled time if the September 2 run is to occur automatically.
+7. Structured research schedule correction — merged as PR #203.
+8. v179 — trusted-attraction regression coverage and lifecycle provider-status conflict safeguard: active review branch.
 
-Production smoke remains separately authorized. No workflow run, provider call, deployment or production-data write is authorized merely by this schedule change.
+Production smoke remains separately authorized. No workflow run, provider call, deployment or production-data write is authorized by this code change.
 
 ## Backlog hygiene
 

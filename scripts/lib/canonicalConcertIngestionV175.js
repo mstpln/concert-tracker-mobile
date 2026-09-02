@@ -11,6 +11,7 @@ const PROVIDER_FIELDS = Object.freeze([
 
 const CANCELLED_STATUSES = new Set(['cancelled', 'canceled']);
 const POSTPONED_STATUSES = new Set(['postponed']);
+const ACTIVE_STATUSES = new Set(['onsale', 'on_sale']);
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -33,11 +34,39 @@ function providerKey(namespace, eventId) {
   return namespace && eventId ? `${namespace}\u001f${eventId}` : '';
 }
 
+function ownsProviderPresentation(record, candidate) {
+  const recordKey = providerKey(providerNamespace(record), providerEventId(record));
+  const candidateKey = providerKey(providerNamespace(candidate), providerEventId(candidate));
+  return Boolean(recordKey && candidateKey && recordKey === candidateKey);
+}
+
 function lifecycleStatus(value) {
   const status = text(value?.providerEventStatus || value?.lifecycleStatus || value?.status).toLocaleLowerCase();
   if (CANCELLED_STATUSES.has(status)) return 'cancelled';
   if (POSTPONED_STATUSES.has(status)) return 'postponed';
   return status;
+}
+
+function conflictsWithResolvedLifecycle(existing, candidate, continuity) {
+  const current = lifecycleStatus({ lifecycleStatus: existing?.lifecycleStatus });
+  const incoming = lifecycleStatus(candidate);
+  if (current !== 'cancelled' || !ACTIVE_STATUSES.has(incoming)) return false;
+  // A provider-linked replacement on a new date is the one automatic path
+  // that can safely reactivate a cancelled listing as a reschedule.
+  return !(continuity && text(candidate?.date) && text(candidate.date) !== text(existing?.date));
+}
+
+function conflictsWithSelectedProviderPresentation(existing, candidate) {
+  const selectedNamespace = providerNamespace(existing);
+  const selectedEventId = providerEventId(existing);
+  // An active status without an identifiable provider event has no ownership
+  // boundary to protect; allow a trusted incoming provider to establish it.
+  if (!selectedEventId || selectedNamespace === 'unknown') return false;
+  const selectedStatus = lifecycleStatus({ providerEventStatus: existing?.providerEventStatus });
+  const incoming = lifecycleStatus(candidate);
+  if (!ACTIVE_STATUSES.has(selectedStatus)) return false;
+  if (!['cancelled', 'postponed'].includes(incoming)) return false;
+  return !ownsProviderPresentation(existing, candidate);
 }
 
 function isLifecycleObservation(value) {
@@ -308,7 +337,20 @@ function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalId
   const observation = observationFromCandidate(candidate, now);
   const priorObservation = existingProviderObservation(existing, now);
   output.providerObservations = mergeProviderObservations(output.providerObservations, [priorObservation, observation, ...alternateOfferObservations(candidate, now)].filter(Boolean));
-  output = applyPreferredProviderPresentation(output, existing, candidate, continuityReason);
+  const lifecycleConflict = conflictsWithResolvedLifecycle(existing, candidate, continuity);
+  const presentationConflict = conflictsWithSelectedProviderPresentation(existing, candidate);
+  const statusConflict = lifecycleConflict || presentationConflict;
+  // Conflicting evidence is retained as an observation but cannot replace or
+  // contradict the resolved lifecycle/provider presentation until review.
+  if (!statusConflict) output = applyPreferredProviderPresentation(output, existing, candidate, continuityReason);
+  const candidateOwnsPresentation = ownsProviderPresentation(output, candidate);
+  if (statusConflict) {
+    if (text(existing?.providerEventStatus)) output.providerEventStatus = existing.providerEventStatus;
+    else delete output.providerEventStatus;
+  } else if (!candidateOwnsPresentation && text(candidate?.providerEventStatus)) {
+    if (text(existing?.providerEventStatus)) output.providerEventStatus = existing.providerEventStatus;
+    else delete output.providerEventStatus;
+  }
   const venue = CanonicalIdentity.canonicalVenueIdentity(candidate, venueIndex);
   if (!output.canonicalVenueId && venue?.canonicalVenueId) output.canonicalVenueId = venue.canonicalVenueId;
   if (!output.roomOrStage && venue?.roomOrStage) output.roomOrStage = clone(venue.roomOrStage);
@@ -319,11 +361,19 @@ function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalId
   const attendedHistorical = output.attended === true
     || (output.attending === true && /^\d{4}-\d{2}-\d{2}$/.test(activeDate) && activeDate < currentDate);
   const history = [];
-  if (status === 'cancelled') {
+  if (statusConflict) {
+    output.lifecycleReviewRequired = true;
+    history.push(lifecycleHistoryEntry('provider_status_conflict', output, candidate, now, {
+      replacementDate: null,
+      observedStatus: status,
+      existingLifecycleStatus: lifecycleStatus({ lifecycleStatus: existing?.lifecycleStatus }) || null,
+    }));
+  } else if (status === 'cancelled') {
     if (attendedHistorical) {
       history.push(lifecycleHistoryEntry('provider_status_conflict', output, candidate, now, { replacementDate: null, observedStatus: 'cancelled' }));
     } else {
       output.lifecycleStatus = 'cancelled';
+      if (candidateOwnsPresentation) output.providerEventStatus = text(candidate?.providerEventStatus) || 'cancelled';
       history.push(lifecycleHistoryEntry('cancelled', output, candidate, now, { replacementDate: null }));
     }
   } else if (status === 'postponed') {
@@ -336,6 +386,7 @@ function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalId
       output.date = null;
       output.time = null;
       output.lifecycleStatus = 'postponed';
+      if (candidateOwnsPresentation) output.providerEventStatus = text(candidate?.providerEventStatus) || 'postponed';
     }
   } else if (continuity && text(candidate?.date) && text(candidate.date) !== text(output.date)) {
     if (attendedHistorical) {
