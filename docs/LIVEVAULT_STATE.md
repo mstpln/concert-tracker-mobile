@@ -1,14 +1,14 @@
 # LiveVault Current State
 
-This continuity file was refreshed on 2026-09-01 after profiling the remaining production-shaped navigation regression on merged v177. Earlier detail remains recoverable in Git history. GitHub `main` is authoritative.
+This continuity file was refreshed on 2026-09-02 after v178 merged and the missed September 2 structured-research schedule was investigated. Earlier detail remains recoverable in Git history. GitHub `main` is authoritative.
 
 ## Repository and current build
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged `main` before this correction is v177 at `84e544ad09d0eee7c150e3ed097f57c8bc35e809` (PR #201). Builds 1-3 of the canonical identity project are merged, the v176 migration-tool stabilization PRs #194-#199 are merged, and the production canonical migration has been completed and independently verified.
+The current merged `main` is **v178 — Global Navigation Performance** at merge commit `25a8a2385385d86668db2aaffa61e3b3fcd7b530` (PR #202). `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v178`. Builds 1-3 of the canonical identity project are merged, the v176 migration-tool stabilization PRs #194-#199 are merged, and the production canonical migration has been completed and independently verified.
 
-The active unreleased correction is **v178 — Global Navigation Performance** on branch `fix/global-navigation-performance-v178`. `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v178`. This build does not change production data or canonical identity rules; it removes duplicated legacy full scans, reuses the v166 indexed grouping path for statistics and makes cache rebuilding depend on actual venue-record changes.
+The active operational correction is on branch `fix/structured-research-schedule`. It changes only the scheduled trigger for `.github/workflows/research.yml`, moving the recurring structured concert/release research from `01:00 UTC` to `07:47 UTC` on Monday, Wednesday and Friday. The off-hour minute is intentional to reduce the risk of GitHub Actions scheduler congestion at `:00`. In Sweden this corresponds to 09:47 CEST during daylight-saving time and 08:47 CET during standard time. No provider logic, quotas, production schema, app runtime, or app/service-worker version changes are included.
 
 ## Canonical identity implementation
 
@@ -43,7 +43,7 @@ Fresh source baseline:
 - `concerts_old.json`: 3,331 records, SHA-256 `21eba3162d0811ca9e36ca651b3ba22567dca6367460bde31cb318afa0b84d47`
 - final decision registry: SHA-256 `09d22ab577756b0bfceece1da41e5181122c7312c4e9c6c764de0277037e8d3c`
 
-`bands.json` was reference-only and was not changed.
+`bands.json` was reference-only and was not changed by the canonical migration.
 
 Approved production outputs:
 
@@ -67,29 +67,19 @@ The only lineup-role reconciliation was `interpol-2026-11-10-k-benhavn-s` -> `in
 
 After manual R2 upload, the exact production objects were downloaded again and verified byte-for-byte against the approved hashes above. Post-write verification also confirmed 2,989 concerts, 540 venues, zero orphan venue/band references, zero duplicate IDs, zero legacy ownership collisions, 76 attended concerts, ticket total 14,671 and ticket quantity 58.
 
-## v177 production venue-navigation regression and correction
+## v177 and v178 navigation-performance correction
 
-After the migrated production datasets were placed in R2, the live app exposed a severe regression when opening Discover > Venues: loading could stall indefinitely and desktop could become unresponsive.
+After the migrated production datasets were placed in R2, the live app exposed severe venue/navigation and broader startup regressions. v177 added O(1) canonicalVenueId lookup but did not fully resolve the issue. v178 then removed duplicated captured v158 full scans from rich fallback and Music-card rendering, reused the indexed v166 grouping path for statistics, and made venue index rebuilds depend on actual normalized venue-record changes.
 
-Diagnosis showed that the v166 venue-directory fast path still attempted to resolve migrated rows primarily from raw venue/city/address evidence. The migration intentionally preserves historical/provider wording, and 1,017 migrated concerts carry authoritative `canonicalVenueId` values; some of those rows can have stale/different raw wording or empty raw locality fields. The indexed metadata lookup did not use `canonicalVenueId`, so those rows could fall through to the richer v174 resolver during a full venue-directory build, recreating expensive work at production scale.
+Production-shaped synthetic profiling used 379 bands, 540 venues and 2,989 concerts. The v177 baseline measured approximately 19.8 seconds for first Venues render, 3.6 seconds for statistics, 5.5 seconds for Music and 5.7 seconds for startup. v178 reduced those to approximately 160 ms, 27 ms, 147 ms and 259 ms respectively while preserving canonical identity semantics and lazy ordinary Concerts rendering.
 
-v177 corrects the hot path by indexing current and uniquely owned legacy venue IDs once and resolving `canonicalVenueId` in O(1) before text/evidence fallback. Legacy IDs remain fail-closed if ownership is ambiguous. Existing raw-text, alias, historical, placeholder and richer-v174 fallbacks are retained for records without a canonical stable ID.
+PR #202 merged as `25a8a2385385d86668db2aaffa61e3b3fcd7b530` on 2026-09-02. The live app was then manually observed to be responsive again. No production data was modified by the v178 code build itself.
 
-A new synthetic Playwright regression uses 2,989 concerts and 540 venues with migration-shaped data, including canonical IDs paired with intentionally different raw provider wording and missing raw city/country values. It verifies direct canonical-ID lookup, Discover > Venues rendering, Venue Detail opening, one-time index/group construction and timing gates on both configured Chromium projects. Production R2 is not used by automated QA.
+## Structured research schedule — September 2 operational correction
 
-No production JSON, provider workflow, Worker configuration, secret or migration artifact is changed by v177.
+The scheduled `Structured concert and release research` workflow remained configured at `01:00 UTC` Monday/Wednesday/Friday, but GitHub Actions created no scheduled run at all on Wednesday 2026-09-02. There was no failed/cancelled run to inspect; the scheduled trigger itself was absent. The workflow supports manual dispatch, but no production run is triggered by this correction branch.
 
-## v178 broad performance diagnosis and correction
-
-Production-shaped profiling used 379 synthetic bands, 540 rich venue records and 2,989 mixed concert rows (1,017 with canonical IDs and 1,972 exercising current-name, alias, historical-name, sub-location, missing-locality and recoverable-placeholder fallbacks). The merged v177 baseline measured approximately 19.8 seconds for the first Venues render, 3.6 seconds for concert statistics, 5.5 seconds for Music and 5.7 seconds for startup.
-
-The wrapper chain was finite, not recursive, but two closure boundaries bypassed later performance layers. v174 fallback first invoked the captured v158 full-record scan before using the rich resolver, and the v158 concert-capacity decorator permanently captured that same scan and ran it for every Music card. Statistics also built canonical venue groups through both the legacy v158 path and v174. Finally, each refresh invalidated every venue index even when `venues.json` was byte-equivalent.
-
-v178 routes rich fallback directly to the v174 indexed resolver after the v166 lookup misses, routes the v158 card decorator through the current indexed metadata API, and delegates canonical statistics grouping to the indexed v166 implementation. Venue records now expose a monotonic revision that changes only when normalized content changes; lookup, canonical and navigation indexes rebuild lazily against that revision. The normal Concerts view remains lazy and does not build venue groups.
-
-The same local profile after correction measured approximately 160 ms for first Venues, 27 ms for concert statistics, 147 ms for Music and 259 ms for startup. Cached Venues, back navigation and Venue Detail remained single-digit milliseconds; byte-equivalent refresh data caused zero index rebuilds. Full-array cache-key serialization and 540-card DOM construction were measured but were not material bottlenecks, so no virtualization was introduced. Service-worker inspection found the shell complete, versions synchronized and old caches removed on activation; no mixed-runtime defect was found.
-
-Focused synthetic browser coverage enforces mixed canonical/fallback resolution, lazy ordinary Concerts behavior, one-time group/index construction, equivalent-data cache reuse, changed-data rebuilding, Venue Detail/back/second-detail reuse, finite rich fallback, historical/alias/sub-location behavior and desktop/mobile timing gates. No production data or service is used.
+To reduce exposure to GitHub's top-of-hour scheduler congestion, the recurring trigger is being moved to `07:47 UTC` Monday/Wednesday/Friday. This leaves a substantial buffer for the 2026-09-02 correction to be reviewed and merged before today's eligible run while keeping the schedule in the morning for normal operation. The shared `live-vault-data-writes` concurrency group and scheduler lease remain unchanged.
 
 ## Active safety and ownership boundaries
 
@@ -108,9 +98,10 @@ Focused synthetic browser coverage enforces mixed canonical/fallback resolution,
 3. Build 3 / v176 — audit/research/migration tooling: merged.
 4. Production migration — independently validated, written to R2 and read-back verified: complete.
 5. v177 — production-shaped Venue navigation compatibility/performance correction: merged as PR #201.
-6. v178 — global navigation profiling and performance correction: in progress, no production action.
+6. v178 — global navigation profiling/performance correction: merged as PR #202.
+7. Structured research schedule correction — move recurring run to 07:47 UTC Monday/Wednesday/Friday; review/merge required before today's scheduled time if the September 2 run is to occur automatically.
 
-The earlier docs-only closeout PR #200 was opened before the production navigation regression was reported and should not be merged as the final project state. v178 supersedes that closeout state. After v178 exact-head QA is green and the user explicitly authorizes merge, a later fresh production `concerts.json` / `venues.json` read-back can be exhaustively QA-checked if requested. The dedicated production smoke workflow remains separately authorized.
+Production smoke remains separately authorized. No workflow run, provider call, deployment or production-data write is authorized merely by this schedule change.
 
 ## Backlog hygiene
 
