@@ -8,7 +8,7 @@ LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA
 
 The current merged `main` is **v179 — provider identity/lifecycle conflict safeguard** at merge commit `67d80ff127fde7ec928bc9902ab80258df7e6a13` (PR #204). `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v179`. Builds 1-3 of the canonical identity project are merged, the v176 migration-tool stabilization PRs #194-#199 are merged, the production canonical migration has been completed and independently verified, and the structured-research schedule correction is merged as PR #203.
 
-A focused post-merge QA correction is active on branch `fix/v179-postmerge-lifecycle-qa`. It keeps the same unreleased v179 version and tightens terminal lifecycle ownership so a non-owning provider observation cannot control top-level cancelled/postponed state merely because the selected provider event lacks an explicit status. The correction also treats unproven `rescheduled` status as reactivation evidence against an already-cancelled record. No provider limits, dependencies, production data, workflow schedule or deployment behavior are changed.
+A focused post-merge QA correction is active on branch `fix/v179-postmerge-lifecycle-qa`. It keeps the same v179 version and tightens terminal lifecycle ownership so a non-owning provider observation cannot control top-level cancelled/postponed state merely because the selected provider event lacks an explicit status. The correction also treats unproven `rescheduled` status as reactivation evidence against an already-cancelled record. No provider limits, dependencies, production data, workflow schedule or deployment behavior are changed.
 
 ## Canonical identity implementation
 
