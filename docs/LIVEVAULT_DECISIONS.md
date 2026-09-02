@@ -1,6 +1,6 @@
 # LiveVault Decisions
 
-This continuity file was compacted on 2026-08-30 for the canonical identity project. Earlier durable decisions and rationale remain recoverable in Git history. The active contracts below supersede older wording where they conflict.
+This continuity file was compacted on 2026-08-30 for the canonical identity project and updated on 2026-09-02 for the structured-research scheduling correction. Earlier durable decisions and rationale remain recoverable in Git history. The active contracts below supersede older wording where they conflict.
 
 ## Repository, safety and release control
 
@@ -167,6 +167,12 @@ This continuity file was compacted on 2026-08-30 for the canonical identity proj
 **Decision:** Build 3 produces read-only audit/research/migration tooling and local dry-run outputs only. Production migration starts later from a fresh authorized export with exact counts/SHA-256 hashes.
 
 **Consequence:** Venue reconciliation precedes concert reconciliation, which precedes event/festival reconciliation. Legacy IDs/reverse mappings, untouched backups, merge manifests, before/after metrics, orphan checks and a no-op second run are mandatory before any separately authorized production write.
+
+### Structured research avoids top-of-hour GitHub scheduling
+
+**Decision:** The recurring `Structured concert and release research` workflow runs at `07:47 UTC` on Monday, Wednesday and Friday rather than at `:00`.
+
+**Consequence:** The odd-minute schedule reduces exposure to GitHub Actions scheduler congestion at the start of the hour while preserving the same three-day research cadence. In Sweden it runs at 09:47 CEST during daylight-saving time and 08:47 CET during standard time. Changing the schedule does not authorize manually triggering the production workflow or changing provider limits, leases, concurrency, or data-write rules.
 
 ## Performance and storage contracts
 

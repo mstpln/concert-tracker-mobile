@@ -236,7 +236,7 @@ test('latest manual artwork or changed trusted identity wins before persistence'
 test('integration remains the existing M/W/F leased structured workflow with no new schedule', () => {
   const workflow = fs.readFileSync('.github/workflows/research.yml', 'utf8');
   const research = fs.readFileSync('scripts/research.js', 'utf8');
-  assert.match(workflow, /cron:\s*'0 1 \* \* 1,3,5'/);
+  assert.match(workflow, /cron:\s*'47 7 \* \* 1,3,5'/);
   assert.match(workflow, /run-with-scheduler-lease\.js structured-research/);
   assert.match(research, /runArtistImageMaintenance/);
   assert.ok(research.indexOf('runArtistImageMaintenance') > research.lastIndexOf("writeJson('news.json'"));
