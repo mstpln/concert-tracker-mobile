@@ -56,6 +56,14 @@ function conflictsWithResolvedLifecycle(existing, candidate, continuity) {
   return !(continuity && text(candidate?.date) && text(candidate.date) !== text(existing?.date));
 }
 
+function conflictsWithSelectedProviderPresentation(existing, candidate) {
+  const selectedStatus = lifecycleStatus({ providerEventStatus: existing?.providerEventStatus });
+  const incoming = lifecycleStatus(candidate);
+  if (!ACTIVE_STATUSES.has(selectedStatus)) return false;
+  if (!['cancelled', 'postponed'].includes(incoming)) return false;
+  return !ownsProviderPresentation(existing, candidate);
+}
+
 function isLifecycleObservation(value) {
   return ['cancelled', 'postponed', 'rescheduled'].includes(lifecycleStatus(value))
     || (Array.isArray(value?.providerRelatedEventIds) && value.providerRelatedEventIds.length > 0);
@@ -325,11 +333,13 @@ function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalId
   const priorObservation = existingProviderObservation(existing, now);
   output.providerObservations = mergeProviderObservations(output.providerObservations, [priorObservation, observation, ...alternateOfferObservations(candidate, now)].filter(Boolean));
   const lifecycleConflict = conflictsWithResolvedLifecycle(existing, candidate, continuity);
-  // Conflicting active evidence is retained as an observation but cannot
-  // replace the resolved provider presentation until a person reviews it.
-  if (!lifecycleConflict) output = applyPreferredProviderPresentation(output, existing, candidate, continuityReason);
+  const presentationConflict = conflictsWithSelectedProviderPresentation(existing, candidate);
+  const statusConflict = lifecycleConflict || presentationConflict;
+  // Conflicting evidence is retained as an observation but cannot replace or
+  // contradict the resolved lifecycle/provider presentation until review.
+  if (!statusConflict) output = applyPreferredProviderPresentation(output, existing, candidate, continuityReason);
   const candidateOwnsPresentation = ownsProviderPresentation(output, candidate);
-  if (lifecycleConflict) {
+  if (statusConflict) {
     if (text(existing?.providerEventStatus)) output.providerEventStatus = existing.providerEventStatus;
     else delete output.providerEventStatus;
   } else if (!candidateOwnsPresentation && text(candidate?.providerEventStatus)) {
@@ -346,7 +356,7 @@ function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalId
   const attendedHistorical = output.attended === true
     || (output.attending === true && /^\d{4}-\d{2}-\d{2}$/.test(activeDate) && activeDate < currentDate);
   const history = [];
-  if (lifecycleConflict) {
+  if (statusConflict) {
     output.lifecycleReviewRequired = true;
     history.push(lifecycleHistoryEntry('provider_status_conflict', output, candidate, now, {
       replacementDate: null,
