@@ -80,6 +80,7 @@ test('v175 weaker lifecycle evidence cannot replace stronger top-level provider 
   assert.equal(result.lifecycleStatus, 'cancelled');
   assert.equal(result.sourceProvider, 'ticketmaster');
   assert.equal(result.providerEventId, 'tm-old');
+  assert.equal(result.providerEventStatus, undefined);
   assert.equal(result.ticketUrl, 'https://tickets.example/standard');
   assert.equal(result.providerObservations.at(-1).provider, 'other_provider');
   assert.equal(result.providerObservations.at(-1).status, 'cancelled');

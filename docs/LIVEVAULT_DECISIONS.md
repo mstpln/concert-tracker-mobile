@@ -142,6 +142,12 @@ This continuity file was compacted on 2026-08-30 for the canonical identity proj
 
 **Decision:** A replacement listing/provider ID for a confirmed postponed/rescheduled concert attaches to the existing canonical concert when continuity is proven.
 
+### Conflicting terminal and active provider states require review
+
+**Decision:** Once an upcoming concert is resolved as cancelled, a later active provider observation cannot reactivate or replace its resolved top-level provider presentation unless provider-linked continuity proves a replacement on a new date. The observation remains stored and sets `lifecycleReviewRequired` with an idempotent conflict-history entry.
+
+**Consequence:** Provider evidence remains monotonic without producing an `onsale` presentation for a cancelled concert. Normal cancellation/postponement status is attributed at the top level only when that provider event owns the selected presentation.
+
 ## Migration and research — locked for Build 3/later production operation
 
 ### Research current ambiguity to closure before migration

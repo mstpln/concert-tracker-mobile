@@ -121,8 +121,49 @@ test('v175 cancellation retains the concert, stable ID and user history', () => 
   assert.equal(applied.records[0].id, existing.id);
   assert.equal(applied.records[0].date, existing.date);
   assert.equal(applied.records[0].lifecycleStatus, 'cancelled');
+  assert.equal(applied.records[0].providerEventStatus, 'canceled');
   assert.equal(applied.records[0].lifecycleHistory[0].type, 'cancelled');
   assert.equal(applied.records[0].notes, 'Keep notes');
+});
+
+test('future conflicting cancelled and onsale observations stay review-required without contradictory presentation', () => {
+  const existing = stored({ providerEventStatus: 'onsale' });
+  const cancellation = Ingestion.ingestCandidate([existing], observation({
+    providerEventStatus: 'cancelled', providerOfferType: 'standard', ticketRetailerVerified: true,
+  }), options);
+  assert.equal(cancellation.records[0].lifecycleStatus, 'cancelled');
+  assert.equal(cancellation.records[0].providerEventStatus, 'cancelled');
+
+  const applied = Ingestion.ingestCandidate(cancellation.records, observation({
+    providerEventId: 'tm-active', providerEventStatus: 'onsale', providerOfferType: 'standard',
+    ticketRetailerVerified: true,
+  }), options);
+  const result = applied.records[0];
+  assert.equal(result.id, existing.id);
+  assert.equal(result.lifecycleStatus, 'cancelled');
+  assert.equal(result.providerEventStatus, 'cancelled');
+  assert.equal(result.providerEventId, 'tm-standard');
+  assert.equal(result.lifecycleReviewRequired, true);
+  assert.equal(result.lifecycleHistory.at(-1).type, 'provider_status_conflict');
+  assert.equal(result.lifecycleHistory.at(-1).observedStatus, 'onsale');
+  assert.deepEqual(result.providerObservations.map((item) => item.providerEventId), ['tm-standard', 'tm-active']);
+
+  const replay = Ingestion.ingestCandidate(applied.records, observation({
+    providerEventId: 'tm-active', providerEventStatus: 'onsale', providerOfferType: 'standard',
+    ticketRetailerVerified: true,
+  }), options);
+  assert.equal(replay.changed, false);
+  assert.deepEqual(replay.records, applied.records);
+
+  const legacyWithoutTopLevelStatus = Ingestion.ingestCandidate([
+    stored({
+      lifecycleStatus: 'cancelled', sourceProvider: 'ticketmaster', providerEventId: 'tm-standard',
+      providerAttractionId: 'tm-artist-a', providerOfferType: 'standard', ticketRetailerVerified: true,
+    }),
+  ], observation(), options).records[0];
+  assert.equal(legacyWithoutTopLevelStatus.lifecycleStatus, 'cancelled');
+  assert.equal(legacyWithoutTopLevelStatus.providerEventStatus, undefined);
+  assert.equal(legacyWithoutTopLevelStatus.lifecycleReviewRequired, true);
 });
 
 test('v175 confirmed reschedule and replacement listing preserve ID and former date', () => {
@@ -241,6 +282,25 @@ test('v175 Ticketmaster conversion retains cancellation and postponed DATE TBD o
   const results = await ticketmaster.fetchUpcomingEvents(followed, usage, { now: '2026-08-31T00:00:00.000Z', fetchImpl: async () => ({ ok: true, json: async () => payload }) });
   assert.equal(results.find((item) => item.providerEventId === 'cancelled').providerEventStatus, 'canceled');
   assert.equal(results.find((item) => item.providerEventId === 'postponed').date, null);
+});
+
+test('Ticketmaster multi-attraction events retain the tracked band trusted attraction identity', async () => {
+  const followed = { id: 'band-a', name: 'Artist A', musicbrainz: { ticketmaster: { id: 'tm-artist-a', status: 'confirmed' } } };
+  const payload = { _embedded: { events: [{
+    id: 'co-bill', name: 'Artist B with Artist A', url: 'https://tickets.example/co-bill',
+    dates: { start: { localDate: '2026-10-10', localTime: '19:00:00' }, status: { code: 'onsale' } },
+    _embedded: {
+      attractions: [{ id: 'tm-artist-b', name: 'Artist B' }, { id: 'tm-artist-a', name: 'Artist A' }],
+      venues: [{ id: 'tm-venue-main', name: 'Main Hall', city: { name: 'Lund' }, country: { name: 'Sweden' }, address: { line1: 'Main Street 1' } }],
+    },
+  }] }, page: { totalPages: 1 } };
+  const usage = { canCallTicketmaster: () => true, recordTicketmasterCall: async () => {}, note: () => {} };
+  const [candidate] = await ticketmaster.fetchUpcomingEvents(followed, usage, {
+    now: '2026-08-31T00:00:00.000Z', fetchImpl: async () => ({ ok: true, json: async () => payload }),
+  });
+  assert.equal(candidate.providerAttractionId, 'tm-artist-a');
+  assert.equal(candidate.artistMatchMethod, 'confirmed_attraction_id');
+  assert.equal(Ingestion.ingestCandidate([], candidate, options).records[0].providerAttractionId, 'tm-artist-a');
 });
 
 
