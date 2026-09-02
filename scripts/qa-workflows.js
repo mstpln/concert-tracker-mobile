@@ -79,7 +79,7 @@ assertPinnedNodeWorkflow('Listening maintenance dry run', listeningDryRun);
 
 const scheduleGuard = "vars.LIVEVAULT_RESEARCH_SCHEDULES_ENABLED";
 const structured = getWorkflow('research.yml');
-assert(structured.source.includes("cron: '0 1 * * 1,3,5'"), 'structured research must define the Monday, Wednesday and Friday cadence');
+assert(structured.source.includes("cron: '47 7 * * 1,3,5'"), 'structured research must define the Monday, Wednesday and Friday cadence');
 assert(!structured.source.includes(scheduleGuard), 'structured scheduled execution must be enabled after rollout verification');
 assert(structured.source.includes('preloadStructuredRun.js'), 'structured research must load the focused provider policy');
 assert(!structured.source.includes('TAVILY_API_KEY'), 'structured research must not receive Tavily credentials');
