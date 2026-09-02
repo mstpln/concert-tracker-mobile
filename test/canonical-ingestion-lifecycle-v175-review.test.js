@@ -71,29 +71,69 @@ test('v175 cancellation records no replacement date and replay stays idempotent'
   assert.equal(replay.records[0].lifecycleHistory.length, 1);
 });
 
-test('v175 weaker terminal lifecycle evidence cannot contradict stronger active provider presentation', () => {
-  for (const providerEventStatus of ['cancelled', 'postponed']) {
-    const candidate = incoming({
-      sourceProvider: 'other_provider', providerEventId: `other-${providerEventStatus}`, providerEventStatus,
-      ticketRetailerVerified: false, providerOfferType: 'standard', ticketUrl: `https://other.example/${providerEventStatus}`,
-    });
-    const first = Ingestion.ingestCandidate([existing({ providerEventStatus: 'onsale' })], candidate, options);
-    const result = first.records[0];
-    assert.equal(result.lifecycleStatus, undefined);
-    assert.equal(result.sourceProvider, 'ticketmaster');
-    assert.equal(result.providerEventId, 'tm-old');
-    assert.equal(result.providerEventStatus, 'onsale');
-    assert.equal(result.ticketUrl, 'https://tickets.example/standard');
-    assert.equal(result.lifecycleReviewRequired, true);
-    assert.equal(result.lifecycleHistory.at(-1).type, 'provider_status_conflict');
-    assert.equal(result.lifecycleHistory.at(-1).observedStatus, providerEventStatus);
-    assert.equal(result.providerObservations.at(-1).provider, 'other_provider');
-    assert.equal(result.providerObservations.at(-1).status, providerEventStatus);
+test('v175 weaker terminal lifecycle evidence cannot control a stronger provider presentation even without an active status', () => {
+  for (const existingStatus of [undefined, 'onsale']) {
+    for (const providerEventStatus of ['cancelled', 'postponed']) {
+      const candidate = incoming({
+        sourceProvider: 'other_provider', providerEventId: `other-${providerEventStatus}`, providerEventStatus,
+        ticketRetailerVerified: false, providerOfferType: 'standard', ticketUrl: `https://other.example/${providerEventStatus}`,
+      });
+      const first = Ingestion.ingestCandidate([existing({ providerEventStatus: existingStatus })], candidate, options);
+      const result = first.records[0];
+      assert.equal(result.lifecycleStatus, undefined);
+      assert.equal(result.sourceProvider, 'ticketmaster');
+      assert.equal(result.providerEventId, 'tm-old');
+      assert.equal(result.providerEventStatus, existingStatus);
+      assert.equal(result.ticketUrl, 'https://tickets.example/standard');
+      assert.equal(result.lifecycleReviewRequired, true);
+      assert.equal(result.lifecycleHistory.at(-1).type, 'provider_status_conflict');
+      assert.equal(result.lifecycleHistory.at(-1).observedStatus, providerEventStatus);
+      assert.equal(result.providerObservations.at(-1).provider, 'other_provider');
+      assert.equal(result.providerObservations.at(-1).status, providerEventStatus);
 
-    const replay = Ingestion.ingestCandidate(first.records, candidate, options);
-    assert.equal(replay.changed, false);
-    assert.deepEqual(replay.records, first.records);
+      const replay = Ingestion.ingestCandidate(first.records, candidate, options);
+      assert.equal(replay.changed, false);
+      assert.deepEqual(replay.records, first.records);
+    }
   }
+});
+
+test('v175 a stronger trusted provider may establish presentation ownership before applying terminal status', () => {
+  const prior = existing({
+    sourceProvider: 'other_provider', providerEventId: 'other-old', providerAttractionId: null,
+    providerEventStatus: undefined, ticketRetailerVerified: false, ticketUrl: 'https://other.example/old',
+  });
+  const candidate = incoming({ providerEventStatus: 'cancelled' });
+  const result = Ingestion.ingestCandidate([prior], candidate, options).records[0];
+  assert.equal(result.sourceProvider, 'ticketmaster');
+  assert.equal(result.providerEventId, 'tm-old');
+  assert.equal(result.providerEventStatus, 'cancelled');
+  assert.equal(result.lifecycleStatus, 'cancelled');
+  assert.notEqual(result.lifecycleReviewRequired, true);
+  assert.equal(result.lifecycleHistory.at(-1).type, 'cancelled');
+});
+
+test('v175 cancelled lifecycle rejects unproven rescheduled status but accepts proven replacement continuity', () => {
+  const cancelled = existing({ lifecycleStatus: 'cancelled', providerEventStatus: 'cancelled' });
+  const unproven = incoming({ providerEventId: 'tm-unproven', providerEventStatus: 'rescheduled' });
+  const held = Ingestion.ingestCandidate([cancelled], unproven, options).records[0];
+  assert.equal(held.lifecycleStatus, 'cancelled');
+  assert.equal(held.providerEventStatus, 'cancelled');
+  assert.equal(held.providerEventId, 'tm-old');
+  assert.equal(held.lifecycleReviewRequired, true);
+  assert.equal(held.lifecycleHistory.at(-1).type, 'provider_status_conflict');
+  assert.equal(held.lifecycleHistory.at(-1).observedStatus, 'rescheduled');
+
+  const proven = incoming({
+    providerEventId: 'tm-new', providerEventStatus: 'rescheduled', providerRelatedEventIds: ['tm-old'],
+    date: '2026-11-12', time: '20:00', ticketUrl: 'https://tickets.example/replacement',
+  });
+  const moved = Ingestion.ingestCandidate([cancelled], proven, options);
+  assert.equal(moved.result.reason, 'provider_replacement_continuity');
+  assert.equal(moved.records[0].providerEventId, 'tm-new');
+  assert.equal(moved.records[0].providerEventStatus, 'rescheduled');
+  assert.equal(moved.records[0].lifecycleStatus, 'rescheduled');
+  assert.equal(moved.records[0].date, '2026-11-12');
 });
 
 test('v175 proven replacement continuity may advance presentation and remains stable on replay', () => {
