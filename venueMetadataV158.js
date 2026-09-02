@@ -5,6 +5,8 @@
   if (!model) return;
 
   let venueRecords = [];
+  let venueRecordsSignature = '[]';
+  let venueRecordsRevision = 0;
 
   function currentConcerts() {
     try { return Array.isArray(concerts) ? concerts : []; } catch (_) { return []; }
@@ -114,6 +116,11 @@
     return model.findVenueRecord(value, venueRecords);
   }
 
+  function currentMetadataFor(value) {
+    const current = root.VenueMetadataV158?.metadataFor;
+    return typeof current === 'function' && current !== metadataFor ? current(value) : metadataFor(value);
+  }
+
   function canonicalMetadataFor(value) {
     const direct = metadataFor(value);
     if (direct) return direct;
@@ -132,12 +139,26 @@
   }
 
   function setRecords(records) {
-    venueRecords = model.normalizeDocument(records);
+    const normalized = model.normalizeDocument(records);
+    const signature = JSON.stringify(normalized);
+    if (signature === venueRecordsSignature) return venueRecords;
+    venueRecords = normalized;
+    venueRecordsSignature = signature;
+    venueRecordsRevision += 1;
     return venueRecords;
   }
 
   function getRecords() {
     return venueRecords.map((record) => ({ ...record }));
+  }
+
+  function getRevision() {
+    return venueRecordsRevision;
+  }
+
+  function canonicalGroupsForStats(concertList) {
+    const fast = root.LiveVaultVenueNavigationPerformanceV166?.canonicalVenueGroupsFor;
+    return typeof fast === 'function' ? fast(concertList || []) : canonicalVenueGroups(concertList || []);
   }
 
   function bestConcertAddress(group) {
@@ -254,7 +275,7 @@
         date: visit?.lastDate || representative?.date || null,
       };
     });
-    return canonicalVenueGroups(visitRecords)
+    return canonicalGroupsForStats(visitRecords)
       .map((group) => ({
         venue: group.venue,
         city: group.city,
@@ -318,7 +339,7 @@
     if (!groups.length) return totalHeader + filterRow + '<p class="screen-empty">No venues match these filters yet.</p>';
 
     const rows = groups.map((group) => {
-      const record = group.record || metadataFor({ venue: group.venue, city: group.city, country: group.country, venueAddress: bestConcertAddress(group) });
+      const record = group.record || currentMetadataFor({ venue: group.venue, city: group.city, country: group.country, venueAddress: bestConcertAddress(group) });
       const capacity = model.capacityLabel(record?.maxCapacity);
       return `
         <div class="row-card clickable venue-metadata-list-card${capacity ? ' has-venue-capacity' : ''}" data-venue-key="${escapeAttr(group.key)}">
@@ -342,7 +363,7 @@
       container.innerHTML = '<p class="screen-empty">Venue not found.</p>';
       return;
     }
-    const record = group.record || metadataFor({ venue: group.venue, city: group.city, country: group.country, venueAddress: bestConcertAddress(group) });
+    const record = group.record || currentMetadataFor({ venue: group.venue, city: group.city, country: group.country, venueAddress: bestConcertAddress(group) });
     const sorted = [...group.concerts].sort((a, b) => new Date(b.date) - new Date(a.date));
     container.innerHTML = `
       <p class="venue-detail-location">${escapeHtml(group.city)}${group.country ? ', ' + escapeHtml(group.country) : ''}</p>
@@ -366,7 +387,7 @@
   }
 
   function insertCapacityIntoConcertCard(html, concert) {
-    const record = metadataFor(concert);
+    const record = currentMetadataFor(concert);
     const capacity = capacityHtml(record?.maxCapacity, 'venue-max-capacity-concert');
     if (!capacity) return html;
     if (html.includes('venue-max-capacity-concert')) return html;
@@ -381,7 +402,7 @@
     const upcoming = dlMyConcerts(liveConcerts).upcoming;
     const next = EventModelV156.nextEventPresentation(upcoming);
     if (!next) return;
-    const record = metadataFor(next);
+    const record = currentMetadataFor(next);
     const label = model.capacityLabel(record?.maxCapacity);
     if (!label) return;
     const anchor = [...card.querySelectorAll('.countdown-v139-address')].pop()
@@ -423,7 +444,7 @@
       const topVenues = canonicalTopVenueVisits(attendedPast || []);
       return {
         ...result,
-        uniqueVenues: canonicalVenueGroups(attendedPast || []).length,
+        uniqueVenues: canonicalGroupsForStats(attendedPast || []).length,
         topVenues: Array.isArray(topVenues)
           ? topVenues
           : (Array.isArray(result.topVenues) ? result.topVenues.filter((entry) => !model.isPlaceholderVenueName(entry?.venue)) : result.topVenues),
@@ -445,6 +466,7 @@
 
   root.VenueMetadataV158 = Object.freeze({
     getRecords,
+    getRevision,
     setRecords,
     metadataFor,
     canonicalVenueIdentity,
