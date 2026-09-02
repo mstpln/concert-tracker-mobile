@@ -69,7 +69,7 @@ After manual R2 upload, the exact production objects were downloaded again and v
 
 ## v177 and v178 navigation-performance correction
 
-After the migrated production datasets were placed in R2, the live app exposed severe venue/navigation and broader startup regressions. v177 added O(1) canonicalVenueId lookup but did not fully resolve the issue. v178 then removed duplicated captured v158 full scans from rich fallback and Music-card rendering, reused the indexed v166 grouping path for statistics, and made venue index rebuilds depend on actual normalized venue-record changes.
+After the migrated production datasets were placed in R2, the live app exposed severe venue/navigation and broader startup regressions. v177 added O(1) canonicalVenueId lookup but did not fully resolve the issue. v178 then removed duplicated captured v158 full scans from rich fallback and Music-card capacity rendering, reused the indexed v166 grouping path for statistics, and made venue index rebuilds depend on actual normalized venue-record changes.
 
 Production-shaped synthetic profiling used 379 bands, 540 venues and 2,989 concerts. The v177 baseline measured approximately 19.8 seconds for first Venues render, 3.6 seconds for statistics, 5.5 seconds for Music and 5.7 seconds for startup. v178 reduced those to approximately 160 ms, 27 ms, 147 ms and 259 ms respectively while preserving canonical identity semantics and lazy ordinary Concerts rendering.
 
@@ -77,9 +77,9 @@ PR #202 merged as `25a8a2385385d86668db2aaffa61e3b3fcd7b530` on 2026-09-02. The 
 
 ## Structured research schedule — September 2 operational correction
 
-The scheduled `Structured concert and release research` workflow remained configured at `01:00 UTC` Monday/Wednesday/Friday, but GitHub Actions created no scheduled run at all on Wednesday 2026-09-02. There was no failed/cancelled run to inspect; the scheduled trigger itself was absent. The workflow supports manual dispatch, but no production run is triggered by this correction branch.
+The scheduled `Structured concert and release research` workflow was still configured at `01:00 UTC` Monday/Wednesday/Friday on Wednesday 2026-09-02. GitHub Actions did eventually create and run that scheduled event, but only at `05:30 UTC` (`07:30 CEST`), roughly 4.5 hours after its nominal trigger. Run #25 completed successfully at about `05:42 UTC` (`07:42 CEST`) on pre-PR-#203 `main`, confirming extreme scheduler delay rather than a missed production research run.
 
-To reduce exposure to GitHub's top-of-hour scheduler congestion, the recurring trigger was moved to `07:47 UTC` Monday/Wednesday/Friday in PR #203. The shared `live-vault-data-writes` concurrency group and scheduler lease remain unchanged.
+To reduce exposure to GitHub's top-of-hour scheduler congestion, PR #203 moved the recurring trigger to `07:47 UTC` Monday/Wednesday/Friday and merged at `06:15 UTC` (`08:15 CEST`) on September 2. No second scheduled run was created at the new `07:47 UTC` target that same day, so Friday 2026-09-04 is the first clean validation point for the revised cron. The shared `live-vault-data-writes` concurrency group and scheduler lease remain unchanged.
 
 ## Active safety and ownership boundaries
 
