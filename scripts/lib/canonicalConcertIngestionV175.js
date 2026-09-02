@@ -11,7 +11,7 @@ const PROVIDER_FIELDS = Object.freeze([
 
 const CANCELLED_STATUSES = new Set(['cancelled', 'canceled']);
 const POSTPONED_STATUSES = new Set(['postponed']);
-const ACTIVE_STATUSES = new Set(['onsale', 'on_sale']);
+const REACTIVATING_STATUSES = new Set(['onsale', 'on_sale', 'rescheduled']);
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -50,23 +50,10 @@ function lifecycleStatus(value) {
 function conflictsWithResolvedLifecycle(existing, candidate, continuity) {
   const current = lifecycleStatus({ lifecycleStatus: existing?.lifecycleStatus });
   const incoming = lifecycleStatus(candidate);
-  if (current !== 'cancelled' || !ACTIVE_STATUSES.has(incoming)) return false;
+  if (current !== 'cancelled' || !REACTIVATING_STATUSES.has(incoming)) return false;
   // A provider-linked replacement on a new date is the one automatic path
   // that can safely reactivate a cancelled listing as a reschedule.
   return !(continuity && text(candidate?.date) && text(candidate.date) !== text(existing?.date));
-}
-
-function conflictsWithSelectedProviderPresentation(existing, candidate) {
-  const selectedNamespace = providerNamespace(existing);
-  const selectedEventId = providerEventId(existing);
-  // An active status without an identifiable provider event has no ownership
-  // boundary to protect; allow a trusted incoming provider to establish it.
-  if (!selectedEventId || selectedNamespace === 'unknown') return false;
-  const selectedStatus = lifecycleStatus({ providerEventStatus: existing?.providerEventStatus });
-  const incoming = lifecycleStatus(candidate);
-  if (!ACTIVE_STATUSES.has(selectedStatus)) return false;
-  if (!['cancelled', 'postponed'].includes(incoming)) return false;
-  return !ownsProviderPresentation(existing, candidate);
 }
 
 function isLifecycleObservation(value) {
@@ -337,12 +324,15 @@ function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalId
   const observation = observationFromCandidate(candidate, now);
   const priorObservation = existingProviderObservation(existing, now);
   output.providerObservations = mergeProviderObservations(output.providerObservations, [priorObservation, observation, ...alternateOfferObservations(candidate, now)].filter(Boolean));
+  const status = lifecycleStatus(candidate);
   const lifecycleConflict = conflictsWithResolvedLifecycle(existing, candidate, continuity);
-  const presentationConflict = conflictsWithSelectedProviderPresentation(existing, candidate);
+  const preferredOutput = applyPreferredProviderPresentation(output, existing, candidate, continuityReason);
+  const presentationConflict = ['cancelled', 'postponed'].includes(status)
+    && !ownsProviderPresentation(preferredOutput, candidate);
   const statusConflict = lifecycleConflict || presentationConflict;
   // Conflicting evidence is retained as an observation but cannot replace or
   // contradict the resolved lifecycle/provider presentation until review.
-  if (!statusConflict) output = applyPreferredProviderPresentation(output, existing, candidate, continuityReason);
+  if (!statusConflict) output = preferredOutput;
   const candidateOwnsPresentation = ownsProviderPresentation(output, candidate);
   if (statusConflict) {
     if (text(existing?.providerEventStatus)) output.providerEventStatus = existing.providerEventStatus;
@@ -355,7 +345,6 @@ function applyCandidateToConcert(existing, candidate, { venueIndex = CanonicalId
   if (!output.canonicalVenueId && venue?.canonicalVenueId) output.canonicalVenueId = venue.canonicalVenueId;
   if (!output.roomOrStage && venue?.roomOrStage) output.roomOrStage = clone(venue.roomOrStage);
 
-  const status = lifecycleStatus(candidate);
   const activeDate = text(output.date);
   const currentDate = text(now).slice(0, 10);
   const attendedHistorical = output.attended === true
