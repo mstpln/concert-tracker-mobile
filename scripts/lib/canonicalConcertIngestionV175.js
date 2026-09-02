@@ -57,6 +57,11 @@ function conflictsWithResolvedLifecycle(existing, candidate, continuity) {
 }
 
 function conflictsWithSelectedProviderPresentation(existing, candidate) {
+  const selectedNamespace = providerNamespace(existing);
+  const selectedEventId = providerEventId(existing);
+  // An active status without an identifiable provider event has no ownership
+  // boundary to protect; allow a trusted incoming provider to establish it.
+  if (!selectedEventId || selectedNamespace === 'unknown') return false;
   const selectedStatus = lifecycleStatus({ providerEventStatus: existing?.providerEventStatus });
   const incoming = lifecycleStatus(candidate);
   if (!ACTIVE_STATUSES.has(selectedStatus)) return false;
