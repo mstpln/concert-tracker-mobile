@@ -1,12 +1,14 @@
 # LiveVault Current State
 
-This continuity file was refreshed on 2026-09-02 for the v179 provider-identity/lifecycle-conflict safeguard. Earlier detail remains recoverable in Git history. GitHub `main` is authoritative.
+This continuity file was refreshed on 2026-09-03 after v179 merged and post-merge QA found remaining provider/lifecycle ownership edge cases. Earlier detail remains recoverable in Git history. GitHub `main` is authoritative.
 
 ## Repository and current build
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged `main` is **v178 — Global Navigation Performance plus the structured-research schedule correction** at merge commit `2e0a5dac03436ff832b2a5eed4218f25bfbc5829` (PR #203). The active v179 safeguard branch synchronizes `APP_VERSION` and `CACHE_NAME_LITERAL` at `v179`. Builds 1-3 of the canonical identity project are merged, the v176 migration-tool stabilization PRs #194-#199 are merged, and the production canonical migration has been completed and independently verified.
+The current merged `main` is **v179 — provider identity/lifecycle conflict safeguard** at merge commit `67d80ff127fde7ec928bc9902ab80258df7e6a13` (PR #204). `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v179`. Builds 1-3 of the canonical identity project are merged, the v176 migration-tool stabilization PRs #194-#199 are merged, the production canonical migration has been completed and independently verified, and the structured-research schedule correction is merged as PR #203.
+
+A focused post-merge QA correction is active on branch `fix/v179-postmerge-lifecycle-qa`. It keeps the same v179 version and tightens provider ownership in three ways: non-owning cancelled/postponed observations cannot control top-level lifecycle state, unproven `rescheduled` evidence cannot reactivate a cancelled concert, and weaker unrelated provider observations cannot leak missing provider-presentation identity fields into a stronger selected provider. Stronger or proven replacement providers may still establish ownership through the existing strength/continuity rules. No provider limits, dependencies, production data, workflow schedule or deployment behavior are changed.
 
 ## Canonical identity implementation
 
@@ -24,7 +26,7 @@ Automatic Ticketmaster and Tavily/Groq observations reconcile through shared can
 
 Cancellation retains the record and history. Confirmed upcoming reschedules retain stable identity and preserve former-date evidence. Postponed without a verified replacement date becomes `POSTPONED · DATE TBD` with no stale active date. Attended historical dates are immutable. Ambiguous continuity fails closed.
 
-The Ticketmaster ingestion path queries by the band's trusted confirmed attraction ID, requires that exact ID in the event attractions and persists that ID even when another co-bill artist is listed first. A later active observation cannot overwrite an already-cancelled top-level provider presentation without proven provider-linked replacement continuity on a new date; the evidence is retained with `lifecycleReviewRequired` and conflict history.
+The Ticketmaster ingestion path queries by the band's trusted confirmed attraction ID, requires that exact ID in the event attractions and persists that ID even when another co-bill artist is listed first. Active evidence cannot overwrite an already-cancelled top-level provider presentation without proven provider-linked replacement continuity on a new date; conflicting evidence is retained with `lifecycleReviewRequired` and conflict history. Terminal cancelled/postponed state belongs to the provider event that owns the selected top-level presentation; weaker or unrelated terminal observations remain review-only. Provider-presentation identity fields are likewise ownership-scoped: same-event evidence may fill gaps, a stronger/proven replacement may take over, and weaker unrelated observations remain observations only.
 
 ### v176 audit/research/migration tooling
 
@@ -100,9 +102,10 @@ To reduce exposure to GitHub's top-of-hour scheduler congestion, PR #203 moved t
 5. v177 — production-shaped Venue navigation compatibility/performance correction: merged as PR #201.
 6. v178 — global navigation profiling/performance correction: merged as PR #202.
 7. Structured research schedule correction — merged as PR #203.
-8. v179 — trusted-attraction regression coverage and lifecycle provider-status conflict safeguard: active review branch.
+8. v179 — trusted-attraction regression coverage and lifecycle provider-status conflict safeguard: merged as PR #204.
+9. v179 post-merge provider/lifecycle ownership QA correction — active branch; version remains v179.
 
-Production smoke remains separately authorized. No workflow run, provider call, deployment or production-data write is authorized by this code change.
+Production smoke remains separately authorized. No workflow run, provider call, deployment or production-data write is authorized by this code correction.
 
 ## Backlog hygiene
 
