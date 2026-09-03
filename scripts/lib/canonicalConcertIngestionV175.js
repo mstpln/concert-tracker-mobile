@@ -237,16 +237,6 @@ function mergeLifecycleHistory(existing, entries) {
   return output;
 }
 
-function fillProviderFields(target, candidate) {
-  const output = { ...target };
-  for (const field of PROVIDER_FIELDS) {
-    const incoming = candidate?.[field];
-    if (incoming == null || incoming === '') continue;
-    if (output[field] == null || output[field] === '') output[field] = clone(incoming);
-  }
-  return output;
-}
-
 function providerStrength(value) {
   const namespace = providerNamespace(value);
   const verified = value?.ticketRetailerVerified === true;
@@ -263,6 +253,28 @@ function providerPresentationFields() {
     'providerEventId', 'providerAttractionId', 'artistMatchMethod', 'providerVenueId',
     'providerEventName', 'providerEventStatus', 'providerSource', 'providerOfferType',
   ];
+}
+
+function canFillProviderPresentation(existing, candidate) {
+  const existingEventId = providerEventId(existing);
+  if (existingEventId) return ownsProviderPresentation(existing, candidate);
+  const existingNamespace = providerNamespace(existing);
+  const incomingNamespace = providerNamespace(candidate);
+  if (existingNamespace !== 'unknown' && existingNamespace !== incomingNamespace) return false;
+  return providerStrength(candidate) >= providerStrength(existing);
+}
+
+function fillProviderFields(target, candidate) {
+  const output = { ...target };
+  const presentationFields = new Set(providerPresentationFields());
+  const mayFillPresentation = canFillProviderPresentation(target, candidate);
+  for (const field of PROVIDER_FIELDS) {
+    const incoming = candidate?.[field];
+    if (incoming == null || incoming === '') continue;
+    if (presentationFields.has(field) && !mayFillPresentation) continue;
+    if (output[field] == null || output[field] === '') output[field] = clone(incoming);
+  }
+  return output;
 }
 
 function alternateOfferObservations(candidate, now) {
