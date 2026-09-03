@@ -71,6 +71,31 @@ test('v175 cancellation records no replacement date and replay stays idempotent'
   assert.equal(replay.records[0].lifecycleHistory.length, 1);
 });
 
+test('v175 weaker provider observations cannot leak missing presentation identity fields into the selected provider', () => {
+  const prior = existing({ providerEventId: undefined, providerAttractionId: undefined, providerVenueId: undefined, providerEventStatus: undefined });
+  const candidate = incoming({
+    sourceProvider: 'other_provider', providerEventId: 'other-event', providerAttractionId: 'other-artist',
+    providerVenueId: 'other-venue', providerEventStatus: 'cancelled', ticketRetailerVerified: false,
+    providerOfferType: 'standard', ticketUrl: 'https://other.example/cancelled',
+  });
+  const first = Ingestion.ingestCandidate([prior], candidate, options);
+  const result = first.records[0];
+  assert.equal(result.sourceProvider, 'ticketmaster');
+  assert.equal(result.providerEventId, undefined);
+  assert.equal(result.providerAttractionId, undefined);
+  assert.equal(result.providerVenueId, undefined);
+  assert.equal(result.providerEventStatus, undefined);
+  assert.equal(result.ticketUrl, 'https://tickets.example/standard');
+  assert.equal(result.lifecycleStatus, undefined);
+  assert.equal(result.lifecycleReviewRequired, true);
+  assert.equal(result.providerObservations.at(-1).provider, 'other_provider');
+  assert.equal(result.providerObservations.at(-1).providerEventId, 'other-event');
+
+  const replay = Ingestion.ingestCandidate(first.records, candidate, options);
+  assert.equal(replay.changed, false);
+  assert.deepEqual(replay.records, first.records);
+});
+
 test('v175 weaker terminal lifecycle evidence cannot control a stronger provider presentation even without an active status', () => {
   for (const existingStatus of [undefined, 'onsale']) {
     for (const providerEventStatus of ['cancelled', 'postponed']) {
