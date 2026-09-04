@@ -26,15 +26,24 @@ test('focused Tavily exact replay is reported as unchanged rather than a merge',
 });
 
 test('focused Tavily advances empty-result backoff only after a successful provider evaluation', () => {
-  const success = { _lastTavilyOutcome: 'success', _lastGroqOutcome: 'success' };
-  assert.equal(focused.focusedEvaluationSucceeded(success), true);
+  const validEmpty = { _lastTavilyOutcome: 'success', _lastGroqOutcome: 'success', _lastGroqPayload: { shows: [] } };
+  const validShow = { _lastTavilyOutcome: 'success', _lastGroqOutcome: 'success', _lastGroqPayload: { shows: [{ date: '2026-10-10' }] } };
+  assert.equal(focused.focusedEvaluationSucceeded(validEmpty), true);
+  assert.equal(focused.focusedEvaluationSucceeded(validShow, false, 1), true);
   assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'not_run' }), true);
   assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'failed', _lastGroqOutcome: 'not_run' }), false);
   assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'skipped', _lastGroqOutcome: 'not_run' }), false);
   assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'failed' }), false);
   assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'skipped' }), false);
   assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'pending' }), false);
-  assert.equal(focused.focusedEvaluationSucceeded(success, true), false);
+  assert.equal(focused.focusedEvaluationSucceeded(validEmpty, true), false);
+});
+
+test('focused Tavily rejects structurally invalid or entirely invalid Groq tour output as absence evidence', () => {
+  const malformed = { _lastTavilyOutcome: 'success', _lastGroqOutcome: 'success', _lastGroqPayload: {} };
+  const invalidOnly = { _lastTavilyOutcome: 'success', _lastGroqOutcome: 'success', _lastGroqPayload: { shows: [{ date: 'not-a-full-date' }] } };
+  assert.equal(focused.focusedEvaluationSucceeded(malformed, false, 0), false);
+  assert.equal(focused.focusedEvaluationSucceeded(invalidOnly, false, 0), false);
 });
 
 test('focused Tavily failed evaluation preserves only previously committed fingerprints for retry', () => {
