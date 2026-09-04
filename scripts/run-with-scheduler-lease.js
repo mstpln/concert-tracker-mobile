@@ -1,7 +1,12 @@
 'use strict';
 
 const { spawn } = require('node:child_process');
-const { withSchedulerLease } = require('./lib/schedulerLease');
+const {
+  withSchedulerLease,
+  scheduledPeriodKey,
+  scheduledRunAlreadyCompleted,
+  markScheduledRunCompleted,
+} = require('./lib/schedulerLease');
 
 function parseArgs(argv = []) {
   const separator = argv.indexOf('--');
@@ -42,9 +47,31 @@ async function main({
   withLease = withSchedulerLease,
   spawnImpl = spawn,
   env = process.env,
+  now = () => Date.now(),
+  alreadyCompleted = scheduledRunAlreadyCompleted,
+  markCompleted = markScheduledRunCompleted,
+  log = console.log,
 } = {}) {
   const { owner, command, args } = parseArgs(argv);
-  return withLease({ owner }, () => runChild(command, args, { spawnImpl, env }));
+  const scheduled = env.GITHUB_EVENT_NAME === 'schedule';
+  const periodKey = scheduled ? scheduledPeriodKey(owner, now()) : null;
+  if (scheduled && !periodKey) {
+    const error = new Error(`Scheduled provider owner ${owner} has no valid schedule policy; refusing unmarked provider work.`);
+    error.code = 'SCHEDULER_PERIOD_UNRESOLVED';
+    throw error;
+  }
+
+  return withLease({ owner }, async (handle) => {
+    if (periodKey && await alreadyCompleted({ owner, periodKey, client: handle?.client })) {
+      log(`Provider scheduler skipped duplicate scheduled run for ${owner} period ${periodKey}.`);
+      return 0;
+    }
+    const result = await runChild(command, args, { spawnImpl, env });
+    if (periodKey) {
+      await markCompleted({ owner, periodKey, client: handle?.client, completedAt: new Date(now()).toISOString() });
+    }
+    return result;
+  });
 }
 
 if (require.main === module) {

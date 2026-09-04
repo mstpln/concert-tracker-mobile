@@ -6,7 +6,9 @@ const reporting = require('./lib/automationReporting');
 const policy = require('./lib/tavilyConcertPolicy');
 const geocode = require('./lib/geocode');
 const { slugify, todayIso } = require('./lib/util');
-const { fetchTourDatesViaTavily, reconcileConcertCandidate } = require('./research');
+const { fetchTourDatesViaTavily } = require('./research');
+const CanonicalIdentity = require('../canonicalIdentityV174');
+const CanonicalIngestion = require('./lib/canonicalConcertIngestionV175');
 const LineupRole = require('../lineupRoleV155');
 
 let sharedUsage = null;
@@ -45,6 +47,36 @@ function finalFocusedConcertPayload(concerts) {
   return LineupRole.initializeConcerts(concerts);
 }
 
+function focusedEvaluationSucceeded(usage, threw = false, candidateCount = 0) {
+  if (threw || usage?._lastTavilyOutcome !== 'success') return false;
+  if (usage?._lastGroqOutcome === 'not_run') return true;
+  if (usage?._lastGroqOutcome !== 'success') return false;
+  const shows = usage?._lastGroqPayload?.shows;
+  if (!Array.isArray(shows)) return false;
+  if (shows.length > 0 && candidateCount === 0) return false;
+  return true;
+}
+
+function reconcileFocusedCandidates(concerts, candidates, venues, now = new Date().toISOString()) {
+  const venueIndex = CanonicalIdentity.buildVenueIndex(Array.isArray(venues) ? venues : []);
+  let records = Array.isArray(concerts) ? JSON.parse(JSON.stringify(concerts)) : [];
+  const results = [];
+  const counts = { added: 0, merged: 0, lifecycle: 0, held: 0, unchanged: 0 };
+
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    const applied = CanonicalIngestion.ingestCandidate(records, candidate, { venueIndex, now });
+    records = applied.records;
+    results.push(applied.result);
+    if (applied.result.action === 'hold_for_review') counts.held += 1;
+    else if (!applied.changed) counts.unchanged += 1;
+    else if (applied.result.action === 'add') counts.added += 1;
+    else if (applied.result.action === 'merge_observation') counts.merged += 1;
+    else if (applied.result.action === 'lifecycle_continuation') counts.lifecycle += 1;
+  }
+
+  return { records, results, counts };
+}
+
 async function main() {
   console.log('Live Vault focused Tavily concert research starting...');
   const [bands, storedConcerts, usage] = await Promise.all([
@@ -56,11 +88,11 @@ async function main() {
   sharedUsage = usage;
   geocode.seedFromConcerts(storedConcerts);
   const due = policy.dueBands(bands, storedConcerts, Date.now());
-  const additions = [];
+  const observations = [];
   const routingUpdates = [];
   let attempted = 0;
   let observed = 0;
-  let duplicates = 0;
+  let failedEvaluations = 0;
 
   for (const item of due) {
     if (!usage.canCallTavily() || !usage.canCallGroq(900)) break;
@@ -70,6 +102,10 @@ async function main() {
     const remembered = new Set(band.structuredResearch?.routing?.groqFingerprints || []);
     let rememberedNext = remembered;
     let candidates = [];
+    let searchThrew = false;
+    usage._lastTavilyOutcome = 'pending';
+    usage._lastGroqOutcome = 'not_run';
+    usage._lastGroqPayload = null;
     try {
       candidates = await fetchTourDatesViaTavily(band, usage, {
         allowGroq: true,
@@ -77,6 +113,7 @@ async function main() {
         onFingerprints: (fingerprints) => { rememberedNext = new Set([...remembered, ...fingerprints]); },
       });
     } catch (error) {
+      searchThrew = true;
       usage.note(`Focused Tavily concert search failed for "${band.name}": ${error.message}`);
       reporting.recordProblem(usage, 'webConcertSearch', error, 'Web concert search', 'attention');
     }
@@ -85,54 +122,59 @@ async function main() {
       .filter((candidate) => candidate.date && candidate.date >= todayIso())
       .map(attachResearchGeocode);
     observed += upcomingCandidates.length;
-    for (const candidate of upcomingCandidates) {
-      const reconciliation = reconcileConcertCandidate(storedConcerts, additions, candidate);
-      if (reconciliation.action !== 'add') {
-        duplicates += 1;
-        continue;
-      }
-      additions.push(uniqueConcert(candidate, [...storedConcerts, ...additions]));
-    }
+    observations.push(...upcomingCandidates);
 
     const checkedAt = new Date().toISOString();
+    const evaluated = focusedEvaluationSucceeded(usage, searchThrew, candidates.length);
+    if (!evaluated) failedEvaluations += 1;
     routingUpdates.push({
       id: band.id,
-      routing: {
+      routing: evaluated ? {
         lastTavilyTourAt: checkedAt,
         lastTavilyTourReason: item.eligibility.reason,
         groqFingerprints: [...rememberedNext].slice(-100),
-        tavilyConcert: policy.nextState(band, [...storedConcerts, ...additions], upcomingCandidates.length, checkedAt),
+        tavilyConcert: policy.nextState(band, storedConcerts, upcomingCandidates.length, checkedAt),
+        lastTavilyTourFailureAt: null,
+        lastTavilyTourFailureReason: null,
+      } : {
+        groqFingerprints: [...remembered].slice(-100),
+        lastTavilyTourFailureAt: checkedAt,
+        lastTavilyTourFailureReason: 'provider_evaluation_failed',
       },
     });
   }
 
-  if (additions.length) {
-    const latestConcerts = await worker.readJson('concerts.json', []);
-    const merged = [...latestConcerts];
-    for (const candidate of additions) {
-      const reconciliation = reconcileConcertCandidate(merged, [], candidate);
-      if (reconciliation.action === 'add') merged.push(uniqueConcert(candidate, merged));
-    }
-    await worker.writeJson('concerts.json', finalFocusedConcertPayload(merged));
+  let reconciliationCounts = { added: 0, merged: 0, lifecycle: 0, held: 0, unchanged: 0 };
+  if (observations.length) {
+    const latestVenues = await worker.readJson('venues.json', []);
+    await worker.writeJsonReconciled('concerts.json', (latestConcerts) => {
+      const reconciled = reconcileFocusedCandidates(latestConcerts, observations, latestVenues);
+      reconciliationCounts = reconciled.counts;
+      return finalFocusedConcertPayload(reconciled.records);
+    });
   }
 
   if (routingUpdates.length) {
-    const latestBands = await worker.readJson('bands.json', []);
-    await worker.writeJson('bands.json', applyRoutingUpdates(latestBands, routingUpdates));
+    await worker.writeJsonReconciled('bands.json', (latestBands) => applyRoutingUpdates(latestBands, routingUpdates));
   }
 
-  reporting.recordActivity(usage, 'webConcertSearch', { result: { workCount: attempted, changeCount: additions.length } });
+  const changed = reconciliationCounts.added + reconciliationCounts.merged + reconciliationCounts.lifecycle;
+  reporting.recordActivity(usage, 'webConcertSearch', { result: { workCount: attempted, changeCount: changed } });
   usage.finishRun({
     mode: 'tavily-concert-only',
     bandsDue: due.length,
     bandsAttempted: attempted,
+    failedEvaluations,
     concertCandidatesObserved: observed,
-    concertsAdded: additions.length,
-    candidateDuplicatesSkipped: duplicates,
+    concertsAdded: reconciliationCounts.added,
+    concertObservationsMerged: reconciliationCounts.merged,
+    lifecycleContinuations: reconciliationCounts.lifecycle,
+    candidatesHeldForReview: reconciliationCounts.held,
+    unchangedCandidateReplays: reconciliationCounts.unchanged,
     status: 'ok',
   });
   await usage.save();
-  console.log(`Focused Tavily run complete. Due: ${due.length}, attempted: ${attempted}, candidates observed: ${observed}, additions prepared: ${additions.length}, duplicates skipped: ${duplicates}.`);
+  console.log(`Focused Tavily run complete. Due: ${due.length}, attempted: ${attempted}, failed evaluations: ${failedEvaluations}, candidates observed: ${observed}, added: ${reconciliationCounts.added}, merged: ${reconciliationCounts.merged}, lifecycle: ${reconciliationCounts.lifecycle}, held: ${reconciliationCounts.held}, unchanged: ${reconciliationCounts.unchanged}.`);
 }
 
 if (require.main === module) main().catch(async (error) => {
@@ -148,4 +190,4 @@ if (require.main === module) main().catch(async (error) => {
   process.exitCode = 1;
 });
 
-module.exports = { uniqueConcert, applyRoutingUpdates, attachResearchGeocode, finalFocusedConcertPayload, main };
+module.exports = { uniqueConcert, applyRoutingUpdates, attachResearchGeocode, finalFocusedConcertPayload, focusedEvaluationSucceeded, reconcileFocusedCandidates, main };

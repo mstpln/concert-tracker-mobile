@@ -1,112 +1,124 @@
 # LiveVault Current State
 
-This continuity file was refreshed on 2026-09-03 after v179 merged and post-merge QA found remaining provider/lifecycle ownership edge cases. Earlier detail remains recoverable in Git history. GitHub `main` is authoritative.
+This continuity file was refreshed on 2026-09-04 after the full workflow/data-enrichment audit and final pre-merge PR #206 review. Earlier implementation detail remains recoverable in Git history. GitHub `main` is authoritative.
 
 ## Repository and current build
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-The current merged `main` is **v179 — provider identity/lifecycle conflict safeguard** at merge commit `67d80ff127fde7ec928bc9902ab80258df7e6a13` (PR #204). `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v179`. Builds 1-3 of the canonical identity project are merged, the v176 migration-tool stabilization PRs #194-#199 are merged, the production canonical migration has been completed and independently verified, and the structured-research schedule correction is merged as PR #203.
+Current merged `main` is **v179** at merge commit `845a5bf6a8b16603306a1b427569af74a81936a0` (PR #205). `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v179`. PR #204 introduced the provider identity/lifecycle conflict safeguard; PR #205 completed post-merge ownership hardening so weaker/unrelated provider evidence cannot control top-level lifecycle or leak provider-presentation identity fields.
 
-A focused post-merge QA correction is active on branch `fix/v179-postmerge-lifecycle-qa`. It keeps the same v179 version and tightens provider ownership in three ways: non-owning cancelled/postponed observations cannot control top-level lifecycle state, unproven `rescheduled` evidence cannot reactivate a cancelled concert, and weaker unrelated provider observations cannot leak missing provider-presentation identity fields into a stronger selected provider. Stronger or proven replacement providers may still establish ownership through the existing strength/continuity rules. No provider limits, dependencies, production data, workflow schedule or deployment behavior are changed.
+PR #206 (`fix/workflow-enrichment-integrity-qa`) implements the workflow/data-enrichment integrity correction. It does not change the PWA shell or version. Its scope is scheduled-run idempotency, focused Tavily canonical ingestion/reporting and failure-safe retry behavior, and explicit/latest-state fail-closed safety for the historical legacy release cleanup.
 
-## Canonical identity implementation
+## Canonical identity and ingestion
 
 ### v174 foundation
 
-Canonical venue identity supports current/historical names and locations, namespace-scoped provider identities, legacy venue IDs and parent/sub-location semantics. Rooms, halls, stages, theatres, temporary structures and hospitality sub-locations resolve to their parent venue when explicitly represented. Independent venues in one complex and simultaneous brand branches remain distinct. Historical concerts preserve date-correct raw venue facts while current/upcoming presentation can use current canonical venue facts.
+Canonical venue identity supports current/historical names and locations, namespace-scoped provider identities, legacy venue IDs and parent/sub-location semantics. Rooms, halls, stages, theatres, temporary structures and hospitality sub-locations resolve to their parent venue when explicitly represented. Independent venues in one complex and simultaneous branches remain distinct. Historical concerts preserve date-correct raw venue facts while current/upcoming presentation can use current canonical venue facts.
 
-Canonical concert identity is `bandId + canonical venue identity + full calendar date`. Time, provider event/listing ID, room/stage and ticket package/offer do not split a concert. Canonical event identity preserves valid explicit `eventGroupId`; otherwise ordinary events group by canonical venue + date, with evidence-backed festival-edition overrides.
+Canonical concert identity is `bandId + canonical venue identity + full calendar date`. Time, provider event/listing ID, room/stage and ticket package/offer do not split a concert. Existing valid explicit `eventGroupId` remains user-owned/authoritative. Ordinary derived event identity is canonical venue + date; evidence-backed festival editions may span dates/venues.
 
-The v166 performance contract remains mandatory: ordinary Discover/Concerts must not build the full venue directory; venue identity data is indexed/cached; Venues builds once and Venue Detail reuses that group.
+### v175 lifecycle/provider ownership
 
-### v175 ingestion and lifecycle
+Automatic concert observations must reconcile through shared canonical identity before persistence. Matching observations preserve the stable BANDMARKR concert ID, user-owned fields and unknown future fields while namespace-scoped provider evidence accumulates additively. Latest-state ETag reconciliation protects newer user edits.
 
-Automatic Ticketmaster and Tavily/Groq observations reconcile through shared canonical identity before persistence. A matching observation preserves the stable BANDMARKR concert ID and user-owned/unknown fields while namespace-scoped provider observations accumulate additively. Latest-state ETag reconciliation protects newer user edits.
+Cancellation retains the record and history. Confirmed upcoming reschedules retain stable identity and former-date evidence. Postponed without a verified replacement date becomes `POSTPONED · DATE TBD`. Attended historical dates are immutable. Ambiguous continuity fails closed.
 
-Cancellation retains the record and history. Confirmed upcoming reschedules retain stable identity and preserve former-date evidence. Postponed without a verified replacement date becomes `POSTPONED · DATE TBD` with no stale active date. Attended historical dates are immutable. Ambiguous continuity fails closed.
+Ticketmaster automatic admission requires the band's trusted confirmed attraction ID and that exact attraction on the returned event. The trusted band attraction ID is persisted even when a co-bill artist appears first. Active evidence cannot reactivate a cancelled concert without provider-linked replacement continuity to a new date. Cancelled/postponed top-level state belongs to the provider event that owns the selected presentation. Weaker/unrelated provider evidence remains an observation and may set `lifecycleReviewRequired`, but cannot replace stronger top-level presentation fields.
 
-The Ticketmaster ingestion path queries by the band's trusted confirmed attraction ID, requires that exact ID in the event attractions and persists that ID even when another co-bill artist is listed first. Active evidence cannot overwrite an already-cancelled top-level provider presentation without proven provider-linked replacement continuity on a new date; conflicting evidence is retained with `lifecycleReviewRequired` and conflict history. Terminal cancelled/postponed state belongs to the provider event that owns the selected top-level presentation; weaker or unrelated terminal observations remain review-only. Provider-presentation identity fields are likewise ownership-scoped: same-event evidence may fill gaps, a stronger/proven replacement may take over, and weaker unrelated observations remain observations only.
+### v176 audit/migration
 
-### v176 audit/research/migration tooling
+Deterministic local audit/research/migration tooling is hash-guarded, reversible and fail-closed. It preserves stable/user-rich IDs, transitive legacy mappings, provider/source/lifecycle evidence, explicit false values, unknown future fields and user ownership. Production migration was completed and independently verified.
 
-Build 3 provides deterministic local audit and hash-guarded dry-run migration tooling using explicit local inputs. The research registry supports venue additions, venue merge/distinct decisions, exact venue corrections, concert-to-venue assignments, concert merge/distinct decisions and festival editions. Contradictions and incomplete decisions block rather than guess.
+Verified production migration baseline/output:
+- source venues: 530 -> production venues: 540
+- source concerts: 3,331 -> production concerts: 2,989
+- attended: 76 -> 76; historical dates unchanged
+- ticket total: 14,671 -> 14,671
+- ticket quantity: 58 -> 58
+- all source venue/concert IDs remain traceable
+- zero orphan references, duplicate stable IDs, unknown-field loss, evidence loss or second-pass mutation blockers were found
 
-The planner preserves stable/user-rich IDs, transitive legacy mappings, provider/source/lifecycle evidence, explicit false values, user-owned fields and unknown future fields. Plan mode requires exact source/decision SHA-256 guards and produces untouched backups, migrated files, forward/reverse mappings, merge/report/rollback artifacts and no-op second-pass validation.
+## Performance
 
-Real-data preparation produced focused stabilization PRs #194-#199 for provider metadata, deterministic research resolution, missing venue additions, provider observation replay and unnamespaced/source evidence preservation. Final exact-head QA passed before each merge.
+v177 and v178 restored production-scale navigation performance after the canonical migration. The v166 contract remains mandatory: ordinary Discover/Concerts does not construct the full canonical venue directory; venue identity is indexed/cached; Venues builds once and Venue Detail reuses the group.
 
-## Canonical production migration — completed and verified
+Production-shaped synthetic profiling at 379 bands / 540 venues / 2,989 concerts improved approximately:
+- first Venues render: 19.8 s -> 160 ms
+- statistics: 3.6 s -> 27 ms
+- Music: 5.5 s -> 147 ms
+- startup: 5.7 s -> 259 ms
 
-Fresh source baseline:
+## Workflow and enrichment audit — September 4, 2026
 
-- `bands_old.json`: 379 records, SHA-256 `a15e57d86388d7ff731f89faecd07468b4d71c7bc1323bf272beb55d947b1485`
-- `venues_old.json`: 530 records, SHA-256 `a79896aad829e93d5bcd2852adb8075cac3bd71f5682a418840b50fa58aa59d7`
-- `concerts_old.json`: 3,331 records, SHA-256 `21eba3162d0811ca9e36ca651b3ba22567dca6367460bde31cb318afa0b84d47`
-- final decision registry: SHA-256 `09d22ab577756b0bfceece1da41e5181122c7312c4e9c6c764de0277037e8d3c`
+The audit reviewed all repository workflow definitions, enrichment scripts, provider identity logic, canonical write boundaries, recent scheduled/manual run history, CI/synthetic safety, and the September 4 structured research run. No production workflow was manually dispatched and no production data/provider action was initiated by the audit.
 
-`bands.json` was reference-only and was not changed by the canonical migration.
+### Structured research scheduling
 
-Approved production outputs:
+PR #203 changed `Structured concert and release research` to `07:47 UTC` Monday/Wednesday/Friday to avoid top-of-hour congestion. GitHub Actions delivery remains materially delayed and can duplicate a scheduled period:
 
-- `concerts.json`: SHA-256 `d8514d1beaf710867f767be9eda379e8c991e541432c23caa2e6cdf758f231bf`
-- `venues.json`: SHA-256 `06308d511deadfccf12b86b55441ae00012c49771d1ac597af6c069ba2cc3918`
+- September 2 run #25 was created around 05:30 UTC from the earlier nominal schedule and completed successfully.
+- September 2 run #26 was then created at 12:17 UTC and executed another full provider cycle rather than no-oping. It made roughly 384 Ticketmaster and 29 setlist.fm calls, added one concert and applied one Ticketmaster upgrade.
+- September 4 run #27 was not created until 12:15:50 UTC, about 4 hours 29 minutes after the configured 07:47 UTC target. It completed successfully at about 12:21 UTC.
 
-Final reconciliation:
+The shared `live-vault-data-writes` concurrency group plus persisted scheduler lease correctly prevent overlapping provider writers, but before PR #206 they did not prevent a later duplicate schedule event for the same intended period. PR #206 adds persisted per-owner completion markers. Structured research, focused Tavily, and the optional twice-monthly venue-metadata stage each suppress a later duplicate scheduled execution for the same intended period before provider work. Every known scheduled provider stage maps to its most recent nominal schedule occurrence, including cross-midnight and multi-day GitHub delivery delays, so scheduled provider work never runs without a period marker. An unknown/unconfigured scheduled provider owner fails closed before lease acquisition or provider work. Manual `workflow_dispatch` remains unaffected, failed stages do not mark the period complete, unknown usage fields are preserved, and malformed marker state fails closed. This prevents duplicate quota/data work but cannot force GitHub to deliver a delayed or missing schedule event.
 
-- Venues: 530 -> 540 (`+26` researched additions, `-16` duplicates)
-- Concerts: 3,331 -> 2,989 (`-342` duplicate rows across 273 merge groups)
-- Events: 2,909 -> 2,768 (`-141` canonical event consolidations)
-- Festivals: 0 -> 0
-- Attended: 76 -> 76; all historical dates unchanged
-- Ticket total: 14,671 -> 14,671
-- Ticket quantity: 58 -> 58
-- Provider observations: 3,206, including 919 `provider: "source"` observations
+### September 4 structured research run #27
 
-All 530 source venue IDs and 3,331 source concert IDs remain traceable. Independent validation found zero blockers, unresolved identities, orphan references, duplicate stable IDs, unknown-field loss, evidence loss or second-pass mutations.
+Run #27 completed successfully on merged `main` (`845a5bf...`). Key observed behavior:
+- bands processed: 379
+- new concerts: 10
+- Ticketmaster upgrades: 32
+- ambiguous Ticketmaster matches: 417, held rather than guessed
+- Ticketmaster calls: 384
+- Tavily: 0 (month total remained 142/900)
+- Groq: 0
+- setlist.fm: 29
+- Spotify: 0
+- setlists checked: 9/9 eligible past shows; 0 new setlists
+- predicted setlists: 5 upcoming attending, 0 currently due
+- live-performance insights: 2 eligible, 0 processed; 20 setlist.fm requests
 
-The only lineup-role reconciliation was `interpol-2026-11-10-k-benhavn-s` -> `interpol-2026-11-10-copenhagen`, `headliner` -> `support`; independent review confirmed the surviving attended/user-owned record already carried `support`, while Bloc Party remains the headliner for the Royal Arena event.
+The run repeatedly failed closed on `provider_identity_collision`, `lifecycle_venue_unresolved`, `venue_location_conflict` and `provider_band_conflict`. Ticketmaster event lookup was skipped where a trusted attraction identity was missing. Setlist.fm 404/429 responses were treated as provider errors/retry conditions, not persisted as false no-setlist facts.
 
-After manual R2 upload, the exact production objects were downloaded again and verified byte-for-byte against the approved hashes above. Post-write verification also confirmed 2,989 concerts, 540 venues, zero orphan venue/band references, zero duplicate IDs, zero legacy ownership collisions, 76 attended concerts, ticket total 14,671 and ticket quantity 58.
+### Focused Tavily
 
-## v177 and v178 navigation-performance correction
+Historical focused Tavily scheduling is also substantially delayed: the September 1 run nominally scheduled for 02:00 UTC began around 07:32 UTC. That run attempted 142 bands, observed 23 candidates and prepared 21 additions; malformed Groq responses were rejected/logged rather than accepted. Its venue-metadata phase made zero writes.
 
-After the migrated production datasets were placed in R2, the live app exposed severe venue/navigation and broader startup regressions. v177 added O(1) canonicalVenueId lookup but did not fully resolve the issue. v178 then removed duplicated captured v158 full scans from rich fallback and Music-card capacity rendering, reused the indexed v166 grouping path for statistics, and made venue index rebuilds depend on actual normalized venue-record changes.
+The audit found a code-path inconsistency: focused Tavily still used the pre-v175 `reconcileConcertCandidate` heuristic and a plain latest read/write instead of shared canonical ingestion. PR #206 corrects this. Focused Tavily observations now pass through the v175 canonical ingestion primitive with the current venue index and `writeJsonReconciled`, preserving stable IDs, user/unknown fields, lifecycle/provider ownership and latest-state concurrency. Run metrics count only actual persisted additions, observation merges and lifecycle continuations as changes; exact idempotent replays are reported separately as unchanged. A successful evaluated search with no accepted concerts may advance the established adaptive empty-result backoff, but Tavily/Groq failure, quota skip, malformed/empty extraction, structurally invalid or entirely invalid Groq tour output, or a thrown focused-search error cannot be treated as a trusted no-concert result: the prior success/backoff state and previously committed fingerprints are left intact, additive failure diagnostics are recorded, and the band remains retryable. The optional venue-metadata stage in the same twice-monthly workflow now has its own scheduled completion marker so a duplicate GitHub schedule cannot bypass the first-stage no-op and still spend provider quota in the second stage.
 
-Production-shaped synthetic profiling used 379 bands, 540 venues and 2,989 concerts. The v177 baseline measured approximately 19.8 seconds for first Venues render, 3.6 seconds for statistics, 5.5 seconds for Music and 5.7 seconds for startup. v178 reduced those to approximately 160 ms, 27 ms, 147 ms and 259 ms respectively while preserving canonical identity semantics and lazy ordinary Concerts rendering.
+### Provider/data-quality logic reviewed
 
-PR #202 merged as `25a8a2385385d86668db2aaffa61e3b3fcd7b530` on 2026-09-02. The live app was then manually observed to be responsive again. No production data was modified by the v178 code build itself.
+- **Ticketmaster:** trusted reviewed attraction ID is required for automatic event lookup/admission; the exact trusted ID must appear on the event; multi-attraction/co-bill order cannot replace tracked-band identity; ambiguous identity/venue continuity fails closed.
+- **MusicBrainz:** automatic confirmation requires exact artist-name/alias evidence, no impersonator signal, no origin contradiction/unverifiable saved-origin case, threshold clearance and a clear lead. Otherwise candidates remain reviewable.
+- **Setlist.fm:** actual setlist persistence requires date + artist identity + venue agreement. Multiple/no matching candidates are not guessed. 404/429/provider errors do not become trusted absence facts.
+- **Focused Tavily provider failures:** provider/extraction failure or skip is retryable evidence of an incomplete evaluation, not proof that no concert exists; it cannot advance empty-result backoff or consume newly observed fingerprints as if the evaluation had completed.
+- **Spotify candidate acquisition / provider identity backfills / approved-identity application:** review/approval ownership boundaries remain in place; no audit finding showed automatic overwrite of user-reviewed provider identity.
+- **Venue metadata research:** incomplete/ambiguous research remains fail-closed; the September 1 focused run attempted no venue writes. PR #206 also protects the scheduled venue-metadata stage from later duplicate schedule executions.
+- **Legacy release cleanup:** this is manual/destructive historical tooling. PR #206 requires the explicit phrase `CLEAN_LEGACY_RELEASE_FEED`, requires `RELEASE_FEED_BACKUP_PATH`, refuses missing/malformed non-array `news.json`, uses latest-state reconciled mutation, writes the exact rollback snapshot before mutation, and keeps an existing rollback snapshot eligible for artifact upload even when the cleanup step fails after the snapshot was created.
+- **PR QA / full PWA QA:** synthetic fixture/fake-backend boundaries remain intact. Unit/syntax/version/cache/workflow/build-state/QA-safety checks and desktop/mobile Chromium are the normal merge gates.
+- **Production smoke:** remains manual-only and read-only with separate authorization.
 
-## Structured research schedule — September 2 operational correction
-
-The scheduled `Structured concert and release research` workflow was still configured at `01:00 UTC` Monday/Wednesday/Friday on Wednesday 2026-09-02. GitHub Actions did eventually create and run that scheduled event, but only at `05:30 UTC` (`07:30 CEST`), roughly 4.5 hours after its nominal trigger. Run #25 completed successfully at about `05:42 UTC` (`07:42 CEST`) on pre-PR-#203 `main`, confirming extreme scheduler delay rather than a missed production research run.
-
-To reduce exposure to GitHub's top-of-hour scheduler congestion, PR #203 moved the recurring trigger to `07:47 UTC` Monday/Wednesday/Friday and merged at `06:15 UTC` (`08:15 CEST`) on September 2. No second scheduled run was created at the new `07:47 UTC` target that same day, so Friday 2026-09-04 is the first clean validation point for the revised cron. The shared `live-vault-data-writes` concurrency group and scheduler lease remain unchanged.
-
-## Active safety and ownership boundaries
+## Active safety boundaries
 
 - Stable BANDMARKR IDs, user-owned fields, reviewed decisions, provider ownership/provenance and unknown future fields must be preserved.
-- Existing valid `eventGroupId` remains user-owned/authoritative; canonical event identity is derived separately.
+- Existing optimistic-concurrency/latest-state safeguards remain mandatory on enrichment writes.
 - Automated browser QA uses synthetic fixtures and the QA fake backend only; production R2 and live providers are forbidden.
 - Production provider calls, production workflows, deployments, production smoke and production-data changes require separate explicit authorization. `Merge it` authorizes merge only.
-- Production smoke is manual-only/read-only.
-- Existing optimistic-concurrency/latest-state safeguards remain active.
-- v166 indexed/cached venue navigation remains a hard performance contract.
+- Production smoke remains manual-only/read-only.
+- Provider ambiguity or provider failure must fail closed rather than invent identity, lifecycle, venue or absence facts.
 
-## Project sequence and current next step
+## Project sequence
 
-1. Build 1 / v174 — canonical venue/concert/event foundation: merged.
-2. Build 2 / v175 — canonical ingestion/lifecycle: merged.
-3. Build 3 / v176 — audit/research/migration tooling: merged.
-4. Production migration — independently validated, written to R2 and read-back verified: complete.
-5. v177 — production-shaped Venue navigation compatibility/performance correction: merged as PR #201.
-6. v178 — global navigation profiling/performance correction: merged as PR #202.
-7. Structured research schedule correction — merged as PR #203.
-8. v179 — trusted-attraction regression coverage and lifecycle provider-status conflict safeguard: merged as PR #204.
-9. v179 post-merge provider/lifecycle ownership QA correction — active branch; version remains v179.
+1. v174 canonical venue/concert/event foundation — merged.
+2. v175 canonical ingestion/lifecycle — merged.
+3. v176 audit/research/migration tooling — merged.
+4. Production canonical migration — completed and verified.
+5. v177 venue navigation performance correction — merged PR #201.
+6. v178 global navigation performance correction — merged PR #202.
+7. Structured research schedule adjustment — merged PR #203.
+8. v179 provider identity/lifecycle safeguard — merged PR #204.
+9. v179 post-merge provider/lifecycle ownership QA — merged PR #205 at `845a5bf6a8b16603306a1b427569af74a81936a0`.
+10. Workflow/data-enrichment integrity QA corrections — PR #206; version remains v179; corrections cover scheduler idempotency, canonical focused Tavily persistence, retry-safe provider failure handling, and hardened cleanup rollback safety.
 
-Production smoke remains separately authorized. No workflow run, provider call, deployment or production-data write is authorized by this code correction.
-
-## Backlog hygiene
-
-PR #134 remains intentionally open as unrelated production-inert listening backfill tooling. Cloudflare Worker CORS-origin hardening, patch-layer consolidation and unrelated Ticketmaster label hardening remain outside this correction.
+PR #134 remains intentionally open as unrelated production-inert listening backfill tooling. Production smoke remains separately authorized. No GitHub Desktop/local action is required for this webview-first work.

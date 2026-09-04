@@ -1,0 +1,53 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const focused = require('../scripts/tavilyConcertRun');
+
+test('focused Tavily exact replay is reported as unchanged rather than a merge', () => {
+  const venues = [{ venueId: 'venue-main', name: 'Main Hall', city: 'Lund', country: 'Sweden', schemaVersion: 1 }];
+  const candidate = {
+    bandId: 'band-a', bandName: 'Artist A', venue: 'Main Hall', city: 'Lund', country: 'Sweden',
+    canonicalVenueId: 'venue-main', date: '2026-10-10', time: '20:00',
+    sourceProvider: 'tavily_groq', providerEventId: 'web-1', ticketRetailerVerified: false,
+    ticketUrl: 'https://listing.example/show', foundAt: '2026-09-04T10:00:00Z',
+  };
+  const first = focused.reconcileFocusedCandidates([], [candidate], venues, '2026-09-04T10:00:00Z');
+  assert.equal(first.counts.added, 1);
+  assert.equal(first.counts.unchanged, 0);
+
+  const replay = focused.reconcileFocusedCandidates(first.records, [candidate], venues, '2026-09-04T11:00:00Z');
+  assert.equal(replay.counts.merged, 0);
+  assert.equal(replay.counts.lifecycle, 0);
+  assert.equal(replay.counts.unchanged, 1);
+  assert.deepEqual(replay.records, first.records);
+});
+
+test('focused Tavily advances empty-result backoff only after a successful provider evaluation', () => {
+  const validEmpty = { _lastTavilyOutcome: 'success', _lastGroqOutcome: 'success', _lastGroqPayload: { shows: [] } };
+  const validShow = { _lastTavilyOutcome: 'success', _lastGroqOutcome: 'success', _lastGroqPayload: { shows: [{ date: '2026-10-10' }] } };
+  assert.equal(focused.focusedEvaluationSucceeded(validEmpty), true);
+  assert.equal(focused.focusedEvaluationSucceeded(validShow, false, 1), true);
+  assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'not_run' }), true);
+  assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'failed', _lastGroqOutcome: 'not_run' }), false);
+  assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'skipped', _lastGroqOutcome: 'not_run' }), false);
+  assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'failed' }), false);
+  assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'skipped' }), false);
+  assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'pending' }), false);
+  assert.equal(focused.focusedEvaluationSucceeded(validEmpty, true), false);
+});
+
+test('focused Tavily rejects structurally invalid or entirely invalid Groq tour output as absence evidence', () => {
+  const malformed = { _lastTavilyOutcome: 'success', _lastGroqOutcome: 'success', _lastGroqPayload: {} };
+  const invalidOnly = { _lastTavilyOutcome: 'success', _lastGroqOutcome: 'success', _lastGroqPayload: { shows: [{ date: 'not-a-full-date' }] } };
+  assert.equal(focused.focusedEvaluationSucceeded(malformed, false, 0), false);
+  assert.equal(focused.focusedEvaluationSucceeded(invalidOnly, false, 0), false);
+});
+
+test('focused Tavily failed evaluation preserves only previously committed fingerprints for retry', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'tavilyConcertRun.js'), 'utf8');
+  const failedRouting = source.match(/: \{\n\s+groqFingerprints: \[\.\.\.remembered\]\.slice\(-100\),\n\s+lastTavilyTourFailureAt:/);
+  assert.ok(failedRouting, 'failed focused evaluation must preserve prior fingerprints instead of newly observed fingerprints');
+});

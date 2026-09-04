@@ -12,11 +12,17 @@ function apiKey() {
   return k;
 }
 
+function setOutcome(usage, value) {
+  if (usage && typeof usage === 'object') usage._lastTavilyOutcome = value;
+}
+
 // Returns { results: [{ title, url, content, publishedDate }] } or null if
 // the call was skipped/failed. Every call costs Tavily credits, so every
 // call site MUST check usage.canCallTavily() before calling this.
 async function search(query, usage, { maxResults = 5, days = null, topic = 'general' } = {}) {
+  setOutcome(usage, 'pending');
   if (!usage.canCallTavily()) {
+    setOutcome(usage, 'skipped');
     usage.note(`Tavily monthly/run cap reached — skipping query "${query}"`);
     return null;
   }
@@ -29,7 +35,7 @@ async function search(query, usage, { maxResults = 5, days = null, topic = 'gene
     include_answer: false,
     topic,
   };
-  if (days) body.days = days; // restricts to results published in the last N days (topic: 'news' only)
+  if (days) body.days = days;
 
   let res;
   try {
@@ -42,10 +48,12 @@ async function search(query, usage, { maxResults = 5, days = null, topic = 'gene
       body: JSON.stringify(body),
     });
   } catch (e) {
+    setOutcome(usage, 'failed');
     usage.note(`Tavily request failed for "${query}": ${e.message}`);
     return null;
   }
   if (!res.ok) {
+    setOutcome(usage, 'failed');
     usage.note(`Tavily returned ${res.status} for "${query}"`);
     return null;
   }
@@ -56,6 +64,7 @@ async function search(query, usage, { maxResults = 5, days = null, topic = 'gene
     content: r.content,
     publishedDate: r.published_date || null,
   }));
+  setOutcome(usage, 'success');
   return { results };
 }
 
