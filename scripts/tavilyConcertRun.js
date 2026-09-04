@@ -47,10 +47,14 @@ function finalFocusedConcertPayload(concerts) {
   return LineupRole.initializeConcerts(concerts);
 }
 
-function focusedEvaluationSucceeded(usage, threw = false) {
-  return !threw
-    && usage?._lastTavilyOutcome === 'success'
-    && ['success', 'not_run'].includes(usage?._lastGroqOutcome);
+function focusedEvaluationSucceeded(usage, threw = false, candidateCount = 0) {
+  if (threw || usage?._lastTavilyOutcome !== 'success') return false;
+  if (usage?._lastGroqOutcome === 'not_run') return true;
+  if (usage?._lastGroqOutcome !== 'success') return false;
+  const shows = usage?._lastGroqPayload?.shows;
+  if (!Array.isArray(shows)) return false;
+  if (shows.length > 0 && candidateCount === 0) return false;
+  return true;
 }
 
 function reconcileFocusedCandidates(concerts, candidates, venues, now = new Date().toISOString()) {
@@ -101,6 +105,7 @@ async function main() {
     let searchThrew = false;
     usage._lastTavilyOutcome = 'pending';
     usage._lastGroqOutcome = 'not_run';
+    usage._lastGroqPayload = null;
     try {
       candidates = await fetchTourDatesViaTavily(band, usage, {
         allowGroq: true,
@@ -120,7 +125,7 @@ async function main() {
     observations.push(...upcomingCandidates);
 
     const checkedAt = new Date().toISOString();
-    const evaluated = focusedEvaluationSucceeded(usage, searchThrew);
+    const evaluated = focusedEvaluationSucceeded(usage, searchThrew, candidates.length);
     if (!evaluated) failedEvaluations += 1;
     routingUpdates.push({
       id: band.id,
