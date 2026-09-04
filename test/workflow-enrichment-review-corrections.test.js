@@ -22,3 +22,13 @@ test('focused Tavily exact replay is reported as unchanged rather than a merge',
   assert.equal(replay.counts.unchanged, 1);
   assert.deepEqual(replay.records, first.records);
 });
+
+test('focused Tavily advances empty-result backoff only after a successful provider evaluation', () => {
+  assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'success' }), true);
+  assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'not_run' }), true);
+  assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'failed', _lastGroqOutcome: 'not_run' }), false);
+  assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'skipped', _lastGroqOutcome: 'not_run' }), false);
+  assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'failed' }), false);
+  assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'skipped' }), false);
+  assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'pending' }), false);
+});
