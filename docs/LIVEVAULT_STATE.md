@@ -1,6 +1,6 @@
 # LiveVault Current State
 
-This continuity file was refreshed on 2026-09-04 after the full workflow/data-enrichment audit. Earlier implementation detail remains recoverable in Git history. GitHub `main` is authoritative.
+This continuity file was refreshed on 2026-09-04 after the full workflow/data-enrichment audit and second-pass PR #206 review. Earlier implementation detail remains recoverable in Git history. GitHub `main` is authoritative.
 
 ## Repository and current build
 
@@ -8,7 +8,7 @@ LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA
 
 Current merged `main` is **v179** at merge commit `845a5bf6a8b16603306a1b427569af74a81936a0` (PR #205). `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v179`. PR #204 introduced the provider identity/lifecycle conflict safeguard; PR #205 completed post-merge ownership hardening so weaker/unrelated provider evidence cannot control top-level lifecycle or leak provider-presentation identity fields.
 
-A workflow/data-enrichment integrity correction is active as PR #206 on branch `fix/workflow-enrichment-integrity-qa`. It does not change the PWA shell or version. Its scope is scheduled-run idempotency, focused Tavily canonical ingestion, and explicit/latest-state safety for the historical legacy release cleanup.
+A workflow/data-enrichment integrity correction is active as PR #206 on branch `fix/workflow-enrichment-integrity-qa`. It does not change the PWA shell or version. Its scope is scheduled-run idempotency, focused Tavily canonical ingestion/reporting, and explicit/latest-state fail-closed safety for the historical legacy release cleanup.
 
 ## Canonical identity and ingestion
 
@@ -51,7 +51,7 @@ Production-shaped synthetic profiling at 379 bands / 540 venues / 2,989 concerts
 
 ## Workflow and enrichment audit — September 4, 2026
 
-The audit reviewed the repository workflow definitions, enrichment scripts, provider identity logic, canonical write boundaries, recent scheduled/manual run history, CI/synthetic safety, and today’s structured research run. No production workflow was manually dispatched and no production data/provider action was initiated by the audit.
+The audit reviewed all repository workflow definitions, enrichment scripts, provider identity logic, canonical write boundaries, recent scheduled/manual run history, CI/synthetic safety, and the September 4 structured research run. No production workflow was manually dispatched and no production data/provider action was initiated by the audit.
 
 ### Structured research scheduling
 
@@ -61,7 +61,7 @@ PR #203 changed `Structured concert and release research` to `07:47 UTC` Monday/
 - September 2 run #26 was then created at 12:17 UTC and executed another full provider cycle rather than no-oping. It made roughly 384 Ticketmaster and 29 setlist.fm calls, added one concert and applied one Ticketmaster upgrade.
 - September 4 run #27 was not created until 12:15:50 UTC, about 4 hours 29 minutes after the configured 07:47 UTC target. It completed successfully at about 12:21 UTC.
 
-The shared `live-vault-data-writes` concurrency group plus persisted scheduler lease correctly prevent overlapping provider writers, but before PR #206 they did not prevent a later duplicate schedule event for the same intended period. PR #206 adds persisted per-owner completion markers for scheduled structured research and focused Tavily. A second schedule event for an already-completed UTC period exits before provider work. Manual `workflow_dispatch` remains unaffected, and failed provider runs do not mark the period complete. This prevents duplicate quota/data work but cannot force GitHub to deliver a delayed or missing schedule event.
+The shared `live-vault-data-writes` concurrency group plus persisted scheduler lease correctly prevent overlapping provider writers, but before PR #206 they did not prevent a later duplicate schedule event for the same intended period. PR #206 adds persisted per-owner completion markers. Structured research, focused Tavily, and the optional twice-monthly venue-metadata stage each suppress a later duplicate scheduled execution for the same intended period before provider work. Delayed executions are mapped back to the most recent valid nominal schedule occurrence within a 36-hour bound so crossing UTC midnight does not bypass deduplication. Manual `workflow_dispatch` remains unaffected, failed stages do not mark the period complete, unknown usage fields are preserved, and malformed marker state fails closed. This prevents duplicate quota/data work but cannot force GitHub to deliver a delayed or missing schedule event.
 
 ### September 4 structured research run #27
 
@@ -85,7 +85,7 @@ The run repeatedly failed closed on `provider_identity_collision`, `lifecycle_ve
 
 Historical focused Tavily scheduling is also substantially delayed: the September 1 run nominally scheduled for 02:00 UTC began around 07:32 UTC. That run attempted 142 bands, observed 23 candidates and prepared 21 additions; malformed Groq responses were rejected/logged rather than accepted. Its venue-metadata phase made zero writes.
 
-The audit found a code-path inconsistency: focused Tavily still used the pre-v175 `reconcileConcertCandidate` heuristic and a plain latest read/write instead of shared canonical ingestion. PR #206 corrects this. Focused Tavily observations now pass through `CanonicalIngestion.reconcileBatch` with the current venue index and `writeJsonReconciled`, preserving stable IDs, user/unknown fields, lifecycle/provider ownership and latest-state concurrency. Its reporting now separates added concerts, merged observations, lifecycle continuations and held-for-review candidates.
+The audit found a code-path inconsistency: focused Tavily still used the pre-v175 `reconcileConcertCandidate` heuristic and a plain latest read/write instead of shared canonical ingestion. PR #206 corrects this. Focused Tavily observations now pass through the v175 canonical ingestion primitive with the current venue index and `writeJsonReconciled`, preserving stable IDs, user/unknown fields, lifecycle/provider ownership and latest-state concurrency. Run metrics count only actual persisted additions, observation merges and lifecycle continuations as changes; exact idempotent replays are reported separately as unchanged. The optional venue-metadata stage in the same twice-monthly workflow now has its own scheduled completion marker so a duplicate GitHub schedule cannot bypass the first-stage no-op and still spend provider quota in the second stage.
 
 ### Provider/data-quality logic reviewed
 
@@ -93,8 +93,8 @@ The audit found a code-path inconsistency: focused Tavily still used the pre-v17
 - **MusicBrainz:** automatic confirmation requires exact artist-name/alias evidence, no impersonator signal, no origin contradiction/unverifiable saved-origin case, threshold clearance and a clear lead. Otherwise candidates remain reviewable.
 - **Setlist.fm:** actual setlist persistence requires date + artist identity + venue agreement. Multiple/no matching candidates are not guessed. 404/429/provider errors do not become trusted absence facts.
 - **Spotify candidate acquisition / provider identity backfills / approved-identity application:** review/approval ownership boundaries remain in place; no audit finding showed automatic overwrite of user-reviewed provider identity.
-- **Venue metadata research:** incomplete/ambiguous research remains fail-closed; the September 1 focused run attempted no venue writes.
-- **Legacy release cleanup:** this is manual/destructive historical tooling. PR #206 requires the explicit phrase `CLEAN_LEGACY_RELEASE_FEED`, uses latest-state reconciled mutation and writes an exact rollback snapshot, removing the old one-click/plain-read-write risk.
+- **Venue metadata research:** incomplete/ambiguous research remains fail-closed; the September 1 focused run attempted no venue writes. PR #206 also protects the scheduled venue-metadata stage from later duplicate schedule executions.
+- **Legacy release cleanup:** this is manual/destructive historical tooling. PR #206 requires the explicit phrase `CLEAN_LEGACY_RELEASE_FEED`, requires `RELEASE_FEED_BACKUP_PATH`, refuses missing/malformed non-array `news.json`, uses latest-state reconciled mutation and writes the exact rollback snapshot before mutation.
 - **PR QA / full PWA QA:** synthetic fixture/fake-backend boundaries remain intact. Unit/syntax/version/cache/workflow/build-state/QA-safety checks and desktop/mobile Chromium are the normal merge gates.
 - **Production smoke:** remains manual-only and read-only with separate authorization.
 
@@ -118,6 +118,6 @@ The audit found a code-path inconsistency: focused Tavily still used the pre-v17
 7. Structured research schedule adjustment — merged PR #203.
 8. v179 provider identity/lifecycle safeguard — merged PR #204.
 9. v179 post-merge provider/lifecycle ownership QA — merged PR #205 at `845a5bf6a8b16603306a1b427569af74a81936a0`.
-10. Workflow/data-enrichment integrity QA corrections — active PR #206; version remains v179.
+10. Workflow/data-enrichment integrity QA corrections — active PR #206; version remains v179; second-pass review corrections are included and exact-head CI is the remaining merge gate.
 
 PR #134 remains intentionally open as unrelated production-inert listening backfill tooling. Production smoke remains separately authorized. No GitHub Desktop/local action is required for the current webview-first work.
