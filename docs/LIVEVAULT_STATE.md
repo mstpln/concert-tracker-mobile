@@ -8,7 +8,7 @@ LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA
 
 Current merged `main` is **v179** at merge commit `845a5bf6a8b16603306a1b427569af74a81936a0` (PR #205). `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v179`. PR #204 introduced the provider identity/lifecycle conflict safeguard; PR #205 completed post-merge ownership hardening so weaker/unrelated provider evidence cannot control top-level lifecycle or leak provider-presentation identity fields.
 
-A workflow/data-enrichment integrity correction is active as PR #206 on branch `fix/workflow-enrichment-integrity-qa`. It does not change the PWA shell or version. Its scope is scheduled-run idempotency, focused Tavily canonical ingestion/reporting and failure-safe retry behavior, and explicit/latest-state fail-closed safety for the historical legacy release cleanup.
+PR #206 (`fix/workflow-enrichment-integrity-qa`) implements the workflow/data-enrichment integrity correction. It does not change the PWA shell or version. Its scope is scheduled-run idempotency, focused Tavily canonical ingestion/reporting and failure-safe retry behavior, and explicit/latest-state fail-closed safety for the historical legacy release cleanup.
 
 ## Canonical identity and ingestion
 
@@ -85,14 +85,14 @@ The run repeatedly failed closed on `provider_identity_collision`, `lifecycle_ve
 
 Historical focused Tavily scheduling is also substantially delayed: the September 1 run nominally scheduled for 02:00 UTC began around 07:32 UTC. That run attempted 142 bands, observed 23 candidates and prepared 21 additions; malformed Groq responses were rejected/logged rather than accepted. Its venue-metadata phase made zero writes.
 
-The audit found a code-path inconsistency: focused Tavily still used the pre-v175 `reconcileConcertCandidate` heuristic and a plain latest read/write instead of shared canonical ingestion. PR #206 corrects this. Focused Tavily observations now pass through the v175 canonical ingestion primitive with the current venue index and `writeJsonReconciled`, preserving stable IDs, user/unknown fields, lifecycle/provider ownership and latest-state concurrency. Run metrics count only actual persisted additions, observation merges and lifecycle continuations as changes; exact idempotent replays are reported separately as unchanged. A successful evaluated search with no accepted concerts may advance the established adaptive empty-result backoff, but Tavily/Groq failure, quota skip, malformed/empty extraction, or a thrown focused-search error cannot be treated as a trusted no-concert result: the prior success/backoff state is left intact, additive failure diagnostics are recorded, and the band remains retryable. The optional venue-metadata stage in the same twice-monthly workflow now has its own scheduled completion marker so a duplicate GitHub schedule cannot bypass the first-stage no-op and still spend provider quota in the second stage.
+The audit found a code-path inconsistency: focused Tavily still used the pre-v175 `reconcileConcertCandidate` heuristic and a plain latest read/write instead of shared canonical ingestion. PR #206 corrects this. Focused Tavily observations now pass through the v175 canonical ingestion primitive with the current venue index and `writeJsonReconciled`, preserving stable IDs, user/unknown fields, lifecycle/provider ownership and latest-state concurrency. Run metrics count only actual persisted additions, observation merges and lifecycle continuations as changes; exact idempotent replays are reported separately as unchanged. A successful evaluated search with no accepted concerts may advance the established adaptive empty-result backoff, but Tavily/Groq failure, quota skip, malformed/empty extraction, structurally invalid or entirely invalid Groq tour output, or a thrown focused-search error cannot be treated as a trusted no-concert result: the prior success/backoff state and previously committed fingerprints are left intact, additive failure diagnostics are recorded, and the band remains retryable. The optional venue-metadata stage in the same twice-monthly workflow now has its own scheduled completion marker so a duplicate GitHub schedule cannot bypass the first-stage no-op and still spend provider quota in the second stage.
 
 ### Provider/data-quality logic reviewed
 
 - **Ticketmaster:** trusted reviewed attraction ID is required for automatic event lookup/admission; the exact trusted ID must appear on the event; multi-attraction/co-bill order cannot replace tracked-band identity; ambiguous identity/venue continuity fails closed.
 - **MusicBrainz:** automatic confirmation requires exact artist-name/alias evidence, no impersonator signal, no origin contradiction/unverifiable saved-origin case, threshold clearance and a clear lead. Otherwise candidates remain reviewable.
 - **Setlist.fm:** actual setlist persistence requires date + artist identity + venue agreement. Multiple/no matching candidates are not guessed. 404/429/provider errors do not become trusted absence facts.
-- **Focused Tavily provider failures:** provider/extraction failure or skip is retryable evidence of an incomplete evaluation, not proof that no concert exists; it cannot advance empty-result backoff.
+- **Focused Tavily provider failures:** provider/extraction failure or skip is retryable evidence of an incomplete evaluation, not proof that no concert exists; it cannot advance empty-result backoff or consume newly observed fingerprints as if the evaluation had completed.
 - **Spotify candidate acquisition / provider identity backfills / approved-identity application:** review/approval ownership boundaries remain in place; no audit finding showed automatic overwrite of user-reviewed provider identity.
 - **Venue metadata research:** incomplete/ambiguous research remains fail-closed; the September 1 focused run attempted no venue writes. PR #206 also protects the scheduled venue-metadata stage from later duplicate schedule executions.
 - **Legacy release cleanup:** this is manual/destructive historical tooling. PR #206 requires the explicit phrase `CLEAN_LEGACY_RELEASE_FEED`, requires `RELEASE_FEED_BACKUP_PATH`, refuses missing/malformed non-array `news.json`, uses latest-state reconciled mutation, writes the exact rollback snapshot before mutation, and keeps an existing rollback snapshot eligible for artifact upload even when the cleanup step fails after the snapshot was created.
@@ -108,7 +108,7 @@ The audit found a code-path inconsistency: focused Tavily still used the pre-v17
 - Production smoke remains manual-only/read-only.
 - Provider ambiguity or provider failure must fail closed rather than invent identity, lifecycle, venue or absence facts.
 
-## Project sequence and next step
+## Project sequence
 
 1. v174 canonical venue/concert/event foundation — merged.
 2. v175 canonical ingestion/lifecycle — merged.
@@ -119,6 +119,6 @@ The audit found a code-path inconsistency: focused Tavily still used the pre-v17
 7. Structured research schedule adjustment — merged PR #203.
 8. v179 provider identity/lifecycle safeguard — merged PR #204.
 9. v179 post-merge provider/lifecycle ownership QA — merged PR #205 at `845a5bf6a8b16603306a1b427569af74a81936a0`.
-10. Workflow/data-enrichment integrity QA corrections — active PR #206; version remains v179; implementation and review corrections include scheduler idempotency, canonical focused Tavily persistence, retry-safe provider failure handling, and hardened cleanup rollback safety. Merge remains separately gated by exact-head validation and explicit user authorization.
+10. Workflow/data-enrichment integrity QA corrections — PR #206; version remains v179; corrections cover scheduler idempotency, canonical focused Tavily persistence, retry-safe provider failure handling, and hardened cleanup rollback safety.
 
-PR #134 remains intentionally open as unrelated production-inert listening backfill tooling. Production smoke remains separately authorized. No GitHub Desktop/local action is required for the current webview-first work.
+PR #134 remains intentionally open as unrelated production-inert listening backfill tooling. Production smoke remains separately authorized. No GitHub Desktop/local action is required for this webview-first work.
