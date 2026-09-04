@@ -30,11 +30,16 @@ function storeClient(store) {
   };
 }
 
-test('scheduled period keys cover only the intended production cadence', () => {
+test('scheduled period keys map delayed GitHub schedule events to the intended bounded period', () => {
   assert.equal(scheduler.scheduledPeriodKey('structured-research', Date.parse('2026-09-02T12:17:00Z')), '2026-09-02');
-  assert.equal(scheduler.scheduledPeriodKey('structured-research', Date.parse('2026-09-03T12:17:00Z')), null);
+  assert.equal(scheduler.scheduledPeriodKey('structured-research', Date.parse('2026-09-03T12:17:00Z')), '2026-09-02');
+  assert.equal(scheduler.scheduledPeriodKey('structured-research', Date.parse('2026-09-04T05:00:00Z')), null);
+  assert.equal(scheduler.scheduledPeriodKey('structured-research', Date.parse('2026-09-04T12:15:50Z')), '2026-09-04');
+  assert.equal(scheduler.scheduledPeriodKey('structured-research', Date.parse('2026-09-05T12:00:00Z')), '2026-09-04');
   assert.equal(scheduler.scheduledPeriodKey('focused-tavily-concert', Date.parse('2026-09-01T07:32:00Z')), '2026-09-01');
-  assert.equal(scheduler.scheduledPeriodKey('focused-tavily-concert', Date.parse('2026-09-02T07:32:00Z')), null);
+  assert.equal(scheduler.scheduledPeriodKey('focused-tavily-concert', Date.parse('2026-09-02T07:32:00Z')), '2026-09-01');
+  assert.equal(scheduler.scheduledPeriodKey('venue-metadata-research', Date.parse('2026-09-02T07:32:00Z')), '2026-09-01');
+  assert.equal(scheduler.scheduledPeriodKey('focused-tavily-concert', Date.parse('2026-09-03T15:00:01Z')), null);
 });
 
 test('scheduled completion markers preserve unrelated usage state and suppress the same period', async () => {
@@ -66,10 +71,10 @@ test('duplicate scheduled wrapper exits before provider work but manual dispatch
   const skipped = await wrapper.main({
     argv: ['structured-research', '--', 'node', 'scripts/research.js'],
     env: { GITHUB_EVENT_NAME: 'schedule' },
-    now: () => Date.parse('2026-09-02T12:17:00Z'),
+    now: () => Date.parse('2026-09-03T12:17:00Z'),
     withLease,
     spawnImpl,
-    alreadyCompleted: async () => true,
+    alreadyCompleted: async ({ periodKey }) => periodKey === '2026-09-02',
     markCompleted: async () => { marked += 1; },
     log: () => {},
   });
@@ -88,6 +93,22 @@ test('duplicate scheduled wrapper exits before provider work but manual dispatch
   });
   assert.equal(manual, 0);
   assert.equal(spawned, 1);
+});
+
+test('venue metadata scheduled stage uses its own period marker so duplicate twice-monthly workflows fully no-op', async () => {
+  let spawned = 0;
+  const result = await wrapper.main({
+    argv: ['venue-metadata-research', '--', 'node', 'scripts/venueMetadataResearchRun.js'],
+    env: { GITHUB_EVENT_NAME: 'schedule' },
+    now: () => Date.parse('2026-09-02T07:32:00Z'),
+    withLease: async (_options, operation) => operation({ client: {} }),
+    spawnImpl: () => { spawned += 1; throw new Error('duplicate venue stage must not spawn'); },
+    alreadyCompleted: async ({ owner, periodKey }) => owner === 'venue-metadata-research' && periodKey === '2026-09-01',
+    markCompleted: async () => { throw new Error('duplicate venue stage must not mark again'); },
+    log: () => {},
+  });
+  assert.equal(result, 0);
+  assert.equal(spawned, 0);
 });
 
 test('failed scheduled provider child never marks the period complete', async () => {
