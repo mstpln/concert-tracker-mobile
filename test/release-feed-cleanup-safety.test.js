@@ -16,6 +16,31 @@ test('legacy release cleanup refuses production mutation without the explicit co
   assert.equal(writes, 0);
 });
 
+test('legacy release cleanup refuses production mutation without a rollback path', async () => {
+  let writes = 0;
+  await assert.rejects(() => cleanup.main({
+    env: { RELEASE_FEED_CLEANUP_CONFIRM: cleanup.PRODUCTION_CONFIRMATION },
+    workerClient: { async writeJsonReconciled() { writes += 1; } },
+    log: () => {},
+  }), /RELEASE_FEED_BACKUP_PATH/);
+  assert.equal(writes, 0);
+});
+
+test('legacy release cleanup refuses malformed or missing release feed state', async () => {
+  let backups = 0;
+  await assert.rejects(() => cleanup.main({
+    env: { RELEASE_FEED_CLEANUP_CONFIRM: cleanup.PRODUCTION_CONFIRMATION, RELEASE_FEED_BACKUP_PATH: 'synthetic-backup.json' },
+    workerClient: {
+      async writeJsonReconciled(_filename, mutator) {
+        return mutator(undefined);
+      },
+    },
+    fsImpl: { writeFileSync() { backups += 1; } },
+    log: () => {},
+  }), /news\.json to contain an array/);
+  assert.equal(backups, 0);
+});
+
 test('legacy release cleanup uses latest-state input and creates rollback data before returning the mutation', async () => {
   const latest = [
     { id: 'keep', category: 'album', spotifyReleaseId: 'abc123', spotifyUrl: 'https://open.spotify.com/album/abc123', releaseType: 'Album' },
@@ -47,4 +72,5 @@ test('release cleanup workflow exposes the same explicit confirmation input', ()
   assert.match(source, /confirm:/);
   assert.match(source, /CLEAN_LEGACY_RELEASE_FEED/);
   assert.match(source, /RELEASE_FEED_CLEANUP_CONFIRM:\s*\$\{\{ inputs\.confirm \}\}/);
+  assert.match(source, /RELEASE_FEED_BACKUP_PATH:/);
 });
