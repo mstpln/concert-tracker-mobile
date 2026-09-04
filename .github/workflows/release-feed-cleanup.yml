@@ -1,7 +1,12 @@
 name: Clean legacy release feed
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type CLEAN_LEGACY_RELEASE_FEED to authorize the production cleanup'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -28,6 +33,7 @@ jobs:
           CF_WORKER_ENDPOINT: ${{ secrets.CF_WORKER_ENDPOINT }}
           CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
           RELEASE_FEED_BACKUP_PATH: news-before-v77-cleanup.json
+          RELEASE_FEED_CLEANUP_CONFIRM: ${{ inputs.confirm }}
         run: node scripts/cleanupReleaseFeed.js
 
       - name: Upload rollback backup
