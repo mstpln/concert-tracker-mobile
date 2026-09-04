@@ -9,9 +9,11 @@ const RUN_MARKERS_FIELD = 'schedulerRunMarkers';
 const RUN_MARKER_SCHEMA_VERSION = 1;
 const DEFAULT_LEASE_MS = 6 * 60 * 60 * 1000;
 const MAX_LEASE_MS = DEFAULT_LEASE_MS;
+const MAX_SCHEDULE_DELAY_MS = 36 * 60 * 60 * 1000;
 const SCHEDULE_POLICIES = Object.freeze({
-  'structured-research': Object.freeze({ weekdaysUtc: Object.freeze([1, 3, 5]) }),
-  'focused-tavily-concert': Object.freeze({ monthDaysUtc: Object.freeze([1, 15]) }),
+  'structured-research': Object.freeze({ weekdaysUtc: Object.freeze([1, 3, 5]), hourUtc: 7, minuteUtc: 47 }),
+  'focused-tavily-concert': Object.freeze({ monthDaysUtc: Object.freeze([1, 15]), hourUtc: 2, minuteUtc: 0 }),
+  'venue-metadata-research': Object.freeze({ monthDaysUtc: Object.freeze([1, 15]), hourUtc: 2, minuteUtc: 0 }),
 });
 
 function validDateMs(value) {
@@ -71,14 +73,36 @@ function schedulerRunMarkers(state) {
   return runMarkersValidation(state[RUN_MARKERS_FIELD]).markers;
 }
 
+function policyMatchesDate(policy, date) {
+  if (policy.weekdaysUtc && !policy.weekdaysUtc.includes(date.getUTCDay())) return false;
+  if (policy.monthDaysUtc && !policy.monthDaysUtc.includes(date.getUTCDate())) return false;
+  return true;
+}
+
 function scheduledPeriodKey(owner, nowMs = Date.now()) {
   const policy = SCHEDULE_POLICIES[String(owner || '').trim()];
   if (!policy) return null;
-  const date = new Date(Number(nowMs));
-  if (!Number.isFinite(date.getTime())) throw new Error('Scheduler period clock returned an invalid time.');
-  if (policy.weekdaysUtc && !policy.weekdaysUtc.includes(date.getUTCDay())) return null;
-  if (policy.monthDaysUtc && !policy.monthDaysUtc.includes(date.getUTCDate())) return null;
-  return date.toISOString().slice(0, 10);
+  const normalizedNow = Number(nowMs);
+  const date = new Date(normalizedNow);
+  if (!Number.isFinite(normalizedNow) || !Number.isFinite(date.getTime())) {
+    throw new Error('Scheduler period clock returned an invalid time.');
+  }
+
+  for (let daysBack = 0; daysBack <= 2; daysBack += 1) {
+    const candidate = new Date(Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate() - daysBack,
+      Number(policy.hourUtc) || 0,
+      Number(policy.minuteUtc) || 0,
+      0,
+      0
+    ));
+    if (!policyMatchesDate(policy, candidate)) continue;
+    const delayMs = normalizedNow - candidate.getTime();
+    if (delayMs >= 0 && delayMs <= MAX_SCHEDULE_DELAY_MS) return candidate.toISOString().slice(0, 10);
+  }
+  return null;
 }
 
 function leaseIsActive(lease, nowMs = Date.now()) {
@@ -243,6 +267,7 @@ module.exports = {
   RUN_MARKER_SCHEMA_VERSION,
   DEFAULT_LEASE_MS,
   MAX_LEASE_MS,
+  MAX_SCHEDULE_DELAY_MS,
   SCHEDULE_POLICIES,
   validDateMs,
   leaseValidation,
