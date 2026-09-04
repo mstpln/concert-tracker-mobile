@@ -16,7 +16,7 @@ test('legacy release cleanup refuses production mutation without the explicit co
   assert.equal(writes, 0);
 });
 
-test('legacy release cleanup uses latest-state reconciled input and backs up the exact cleaned snapshot', async () => {
+test('legacy release cleanup uses latest-state input and creates rollback data before returning the mutation', async () => {
   const latest = [
     { id: 'keep', category: 'album', spotifyReleaseId: 'abc123', spotifyUrl: 'https://open.spotify.com/album/abc123', releaseType: 'Album' },
     { id: 'remove', category: 'news', sourceUrl: 'https://example.com/article' },
@@ -29,10 +29,11 @@ test('legacy release cleanup uses latest-state reconciled input and backs up the
       async writeJsonReconciled(filename, mutator) {
         assert.equal(filename, 'news.json');
         written = mutator(latest);
+        assert.ok(backup, 'rollback snapshot must exist before the reconciled write proceeds');
         return written;
       },
     },
-    fsImpl: { writeFileSync(_path, value, options) { backup = value; assert.equal(options.flag, 'wx'); } },
+    fsImpl: { writeFileSync(_path, value, options) { backup = value; assert.equal(options.flag, 'w'); } },
     log: () => {},
   });
   assert.equal(summary.before, 2);
