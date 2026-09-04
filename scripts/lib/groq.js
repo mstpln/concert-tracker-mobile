@@ -13,8 +13,10 @@ function apiKey() {
   return k;
 }
 
-function setOutcome(usage, value) {
-  if (usage && typeof usage === 'object') usage._lastGroqOutcome = value;
+function setOutcome(usage, value, payload = null) {
+  if (!usage || typeof usage !== 'object') return;
+  usage._lastGroqOutcome = value;
+  usage._lastGroqPayload = payload;
 }
 
 // Sends a system+user prompt, asks for a JSON object response, and returns
@@ -70,7 +72,7 @@ async function chatJson(systemPrompt, userPrompt, usage, { estimatedTokens = 150
   }
   try {
     const parsed = JSON.parse(raw);
-    setOutcome(usage, 'success');
+    setOutcome(usage, 'success', parsed);
     return parsed;
   } catch {
     setOutcome(usage, 'failed');
