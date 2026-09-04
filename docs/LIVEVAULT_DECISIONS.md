@@ -154,9 +154,9 @@ This continuity file was compacted on 2026-09-04 after the workflow/data-enrichm
 
 ### Scheduled provider periods are idempotent
 
-**Decision:** A successful scheduled structured-research or focused-Tavily period records a persisted completion marker in `apiUsage.json`. A later duplicate GitHub `schedule` event for the same owner/UTC period must exit before provider work.
+**Decision:** Successful scheduled structured research, focused Tavily, and the optional twice-monthly venue-metadata research stage each record a persisted per-owner completion marker in `apiUsage.json`. A later duplicate GitHub `schedule` event for the same intended period must exit before provider work.
 
-**Consequence:** The existing shared `live-vault-data-writes` concurrency group and scheduler lease continue to prevent overlapping writers; the completion marker separately prevents delayed duplicate provider cycles. Only successful scheduled runs mark a period complete. Failed runs remain retryable. Manual `workflow_dispatch` is never suppressed by a scheduled-period marker. Marker state is additive and preserves unknown usage fields. Malformed marker state fails closed.
+**Consequence:** The shared `live-vault-data-writes` concurrency group and scheduler lease prevent overlapping writers; completion markers separately prevent later duplicate provider cycles. Delayed executions are mapped back to the most recent valid nominal schedule occurrence within a bounded 36-hour lateness window so crossing UTC midnight does not defeat deduplication. Only successful scheduled stages mark a period complete. Failed stages remain retryable. Manual `workflow_dispatch` is never suppressed by a scheduled-period marker. Marker state is additive and preserves unknown usage fields. Malformed marker state fails closed.
 
 ### Scheduler idempotency does not guarantee delivery
 
@@ -168,9 +168,9 @@ This continuity file was compacted on 2026-09-04 after the workflow/data-enrichm
 
 ### All automatic concert enrichment uses shared canonical ingestion
 
-**Decision:** Main structured research and focused Tavily both route persisted concert observations through `CanonicalIngestion.reconcileBatch` with current canonical venue identity and latest-state reconciled writes.
+**Decision:** Main structured research and focused Tavily both route persisted concert observations through the v175 canonical ingestion primitives with current canonical venue identity and latest-state reconciled writes.
 
-**Consequence:** Provider-specific discovery may differ, but persistence semantics for identity, lifecycle, provider ownership, stable IDs, user/unknown fields and ambiguity are shared.
+**Consequence:** Provider-specific discovery may differ, but persistence semantics for identity, lifecycle, provider ownership, stable IDs, user/unknown fields and ambiguity are shared. Focused Tavily run metrics count only actual persisted additions/merges/lifecycle changes as changes; idempotent exact replays are reported separately as unchanged.
 
 ### Ticketmaster automatic admission requires trusted attraction identity
 
@@ -186,9 +186,9 @@ This continuity file was compacted on 2026-09-04 after the workflow/data-enrichm
 
 ### Manual/destructive maintenance requires explicit intent and latest-state safety
 
-**Decision:** Historical destructive cleanup tooling remains manual and must require an explicit confirmation phrase plus latest-state reconciled mutation and rollback evidence.
+**Decision:** Historical destructive cleanup tooling remains manual and must require an explicit confirmation phrase, a mandatory rollback destination, valid expected document shape, and latest-state reconciled mutation.
 
-**Consequence:** The legacy release-feed cleanup requires `CLEAN_LEGACY_RELEASE_FEED`, operates on the latest state and records an exact pre-cleanup snapshot.
+**Consequence:** The legacy release-feed cleanup requires `CLEAN_LEGACY_RELEASE_FEED`, requires `RELEASE_FEED_BACKUP_PATH`, refuses missing/malformed non-array `news.json`, operates on latest state and records an exact pre-cleanup snapshot before mutation.
 
 ## Performance and storage contracts
 
