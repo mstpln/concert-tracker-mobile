@@ -9,7 +9,7 @@ const RUN_MARKERS_FIELD = 'schedulerRunMarkers';
 const RUN_MARKER_SCHEMA_VERSION = 1;
 const DEFAULT_LEASE_MS = 6 * 60 * 60 * 1000;
 const MAX_LEASE_MS = DEFAULT_LEASE_MS;
-const MAX_SCHEDULE_DELAY_MS = 36 * 60 * 60 * 1000;
+const MAX_SCHEDULE_LOOKBACK_DAYS = 32;
 const SCHEDULE_POLICIES = Object.freeze({
   'structured-research': Object.freeze({ weekdaysUtc: Object.freeze([1, 3, 5]), hourUtc: 7, minuteUtc: 47 }),
   'focused-tavily-concert': Object.freeze({ monthDaysUtc: Object.freeze([1, 15]), hourUtc: 2, minuteUtc: 0 }),
@@ -88,7 +88,11 @@ function scheduledPeriodKey(owner, nowMs = Date.now()) {
     throw new Error('Scheduler period clock returned an invalid time.');
   }
 
-  for (let daysBack = 0; daysBack <= 2; daysBack += 1) {
+  // GitHub Actions schedule delivery can be delayed by many hours or even
+  // across calendar boundaries. A known scheduled provider owner must always
+  // map to the most recent nominal schedule occurrence so there is never an
+  // unmarked provider run that can bypass period idempotency.
+  for (let daysBack = 0; daysBack <= MAX_SCHEDULE_LOOKBACK_DAYS; daysBack += 1) {
     const candidate = new Date(Date.UTC(
       date.getUTCFullYear(),
       date.getUTCMonth(),
@@ -99,8 +103,7 @@ function scheduledPeriodKey(owner, nowMs = Date.now()) {
       0
     ));
     if (!policyMatchesDate(policy, candidate)) continue;
-    const delayMs = normalizedNow - candidate.getTime();
-    if (delayMs >= 0 && delayMs <= MAX_SCHEDULE_DELAY_MS) return candidate.toISOString().slice(0, 10);
+    if (candidate.getTime() <= normalizedNow) return candidate.toISOString().slice(0, 10);
   }
   return null;
 }
@@ -267,7 +270,7 @@ module.exports = {
   RUN_MARKER_SCHEMA_VERSION,
   DEFAULT_LEASE_MS,
   MAX_LEASE_MS,
-  MAX_SCHEDULE_DELAY_MS,
+  MAX_SCHEDULE_LOOKBACK_DAYS,
   SCHEDULE_POLICIES,
   validDateMs,
   leaseValidation,
