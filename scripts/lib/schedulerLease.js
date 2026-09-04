@@ -5,8 +5,14 @@ const { createWorkerClient } = require('./workerClient');
 
 const LEASE_FIELD = 'schedulerLease';
 const LEASE_SCHEMA_VERSION = 1;
+const RUN_MARKERS_FIELD = 'schedulerRunMarkers';
+const RUN_MARKER_SCHEMA_VERSION = 1;
 const DEFAULT_LEASE_MS = 6 * 60 * 60 * 1000;
 const MAX_LEASE_MS = DEFAULT_LEASE_MS;
+const SCHEDULE_POLICIES = Object.freeze({
+  'structured-research': Object.freeze({ weekdaysUtc: Object.freeze([1, 3, 5]) }),
+  'focused-tavily-concert': Object.freeze({ monthDaysUtc: Object.freeze([1, 15]) }),
+});
 
 function validDateMs(value) {
   if (value == null || value === '') return null;
@@ -27,6 +33,18 @@ function leaseValidation(value) {
   return { valid: true, lease: value };
 }
 
+function runMarkersValidation(value) {
+  if (value == null) return { valid: true, markers: {} };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { valid: false, markers: {} };
+  for (const marker of Object.values(value)) {
+    if (!marker || typeof marker !== 'object' || Array.isArray(marker)) return { valid: false, markers: {} };
+    if (marker.schemaVersion !== RUN_MARKER_SCHEMA_VERSION) return { valid: false, markers: {} };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(marker.periodKey || ''))) return { valid: false, markers: {} };
+    if (validDateMs(marker.completedAt) == null) return { valid: false, markers: {} };
+  }
+  return { valid: true, markers: value };
+}
+
 function schedulerLeaseStateError(message, code) {
   const error = new Error(message);
   error.code = code;
@@ -41,7 +59,26 @@ function assertUsageRoot(state) {
   if (!checked.valid) {
     throw schedulerLeaseStateError('Persisted scheduler lease state is malformed; refusing to start provider work.', 'SCHEDULER_LEASE_STATE_INVALID');
   }
+  const markers = runMarkersValidation(state[RUN_MARKERS_FIELD]);
+  if (!markers.valid) {
+    throw schedulerLeaseStateError('Persisted scheduler run-marker state is malformed; refusing to start provider work.', 'SCHEDULER_RUN_MARKER_STATE_INVALID');
+  }
   return checked.lease;
+}
+
+function schedulerRunMarkers(state) {
+  assertUsageRoot(state);
+  return runMarkersValidation(state[RUN_MARKERS_FIELD]).markers;
+}
+
+function scheduledPeriodKey(owner, nowMs = Date.now()) {
+  const policy = SCHEDULE_POLICIES[String(owner || '').trim()];
+  if (!policy) return null;
+  const date = new Date(Number(nowMs));
+  if (!Number.isFinite(date.getTime())) throw new Error('Scheduler period clock returned an invalid time.');
+  if (policy.weekdaysUtc && !policy.weekdaysUtc.includes(date.getUTCDay())) return null;
+  if (policy.monthDaysUtc && !policy.monthDaysUtc.includes(date.getUTCDate())) return null;
+  return date.toISOString().slice(0, 10);
 }
 
 function leaseIsActive(lease, nowMs = Date.now()) {
@@ -107,6 +144,57 @@ async function acquireSchedulerLease({
   return { leaseId: normalizedLeaseId, owner: normalizedOwner, acquiredAt, expiresAt, client };
 }
 
+async function scheduledRunAlreadyCompleted({ owner, periodKey, client = createWorkerClient() } = {}) {
+  const normalizedOwner = String(owner || '').trim();
+  const normalizedPeriodKey = String(periodKey || '').trim();
+  if (!normalizedOwner || !/^\d{4}-\d{2}-\d{2}$/.test(normalizedPeriodKey)) {
+    throw new Error('Scheduled-run completion check requires an owner and YYYY-MM-DD period key.');
+  }
+  const state = await client.readJson('apiUsage.json', {});
+  const markers = schedulerRunMarkers(state);
+  return markers[normalizedOwner]?.periodKey === normalizedPeriodKey;
+}
+
+async function markScheduledRunCompleted({
+  owner,
+  periodKey,
+  completedAt = new Date().toISOString(),
+  client = createWorkerClient(),
+  maxConflictRetries = 1,
+} = {}) {
+  const normalizedOwner = String(owner || '').trim();
+  const normalizedPeriodKey = String(periodKey || '').trim();
+  const normalizedCompletedAt = String(completedAt || '').trim();
+  if (!normalizedOwner || !/^\d{4}-\d{2}-\d{2}$/.test(normalizedPeriodKey) || validDateMs(normalizedCompletedAt) == null) {
+    throw new Error('Scheduled-run completion marker requires owner, YYYY-MM-DD period key and valid completion time.');
+  }
+  for (let attempt = 0; attempt <= maxConflictRetries; attempt += 1) {
+    const state = await client.readJson('apiUsage.json', {});
+    const markers = schedulerRunMarkers(state);
+    const prior = markers[normalizedOwner];
+    const next = {
+      ...state,
+      [RUN_MARKERS_FIELD]: {
+        ...markers,
+        [normalizedOwner]: {
+          ...(prior || {}),
+          schemaVersion: RUN_MARKER_SCHEMA_VERSION,
+          periodKey: normalizedPeriodKey,
+          completedAt: normalizedCompletedAt,
+        },
+      },
+    };
+    try {
+      await client.writeJsonStrict('apiUsage.json', next);
+      return true;
+    } catch (error) {
+      if ((error?.code === 'ETAG_CONFLICT' || Number(error?.status) === 412) && attempt < maxConflictRetries) continue;
+      throw error;
+    }
+  }
+  return false;
+}
+
 async function releaseSchedulerLease(handle, { maxConflictRetries = 1 } = {}) {
   if (!handle?.leaseId || !handle?.client) return false;
   for (let attempt = 0; attempt <= maxConflictRetries; attempt += 1) {
@@ -151,10 +239,17 @@ async function withSchedulerLease(options, operation) {
 module.exports = {
   LEASE_FIELD,
   LEASE_SCHEMA_VERSION,
+  RUN_MARKERS_FIELD,
+  RUN_MARKER_SCHEMA_VERSION,
   DEFAULT_LEASE_MS,
   MAX_LEASE_MS,
+  SCHEDULE_POLICIES,
   validDateMs,
   leaseValidation,
+  runMarkersValidation,
+  scheduledPeriodKey,
+  scheduledRunAlreadyCompleted,
+  markScheduledRunCompleted,
   leaseIsActive,
   acquireSchedulerLease,
   releaseSchedulerLease,
