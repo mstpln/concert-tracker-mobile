@@ -13,20 +13,21 @@ function apiKey() {
   return k;
 }
 
+function setOutcome(usage, value) {
+  if (usage && typeof usage === 'object') usage._lastGroqOutcome = value;
+}
+
 // Sends a system+user prompt, asks for a JSON object response, and returns
 // the parsed object (or null on any failure — callers must treat null as
 // "found nothing", never as an error to guess around).
 async function chatJson(systemPrompt, userPrompt, usage, { estimatedTokens = 1500 } = {}) {
+  setOutcome(usage, 'pending');
   if (!usage.canCallGroq(estimatedTokens)) {
+    setOutcome(usage, 'skipped');
     usage.note('Groq per-run/daily cap or safe daily token budget reached — skipping a classification call');
     return null;
   }
   await usage.waitForGroqSlot(estimatedTokens);
-
-  // Recorded before the request goes out, not after — see the comment on
-  // recordGroqAttempt() in usageTracker.js. A failed/errored call below
-  // still consumed a real request against Groq's quota, so it must still
-  // count here even though we return null.
   usage.recordGroqAttempt();
 
   let res;
@@ -48,11 +49,13 @@ async function chatJson(systemPrompt, userPrompt, usage, { estimatedTokens = 150
       }),
     });
   } catch (e) {
+    setOutcome(usage, 'failed');
     usage.note(`Groq request failed: ${e.message}`);
     return null;
   }
 
   if (!res.ok) {
+    setOutcome(usage, 'failed');
     usage.note(`Groq returned ${res.status}: ${await res.text().catch(() => '')}`);
     return null;
   }
@@ -61,10 +64,16 @@ async function chatJson(systemPrompt, userPrompt, usage, { estimatedTokens = 150
   usage.recordGroqTokens(data?.usage?.total_tokens);
 
   const raw = data?.choices?.[0]?.message?.content;
-  if (!raw) return null;
+  if (!raw) {
+    setOutcome(usage, 'failed');
+    return null;
+  }
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    setOutcome(usage, 'success');
+    return parsed;
   } catch {
+    setOutcome(usage, 'failed');
     usage.note('Groq returned non-JSON content — discarding');
     return null;
   }
