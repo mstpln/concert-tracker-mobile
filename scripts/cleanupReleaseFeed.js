@@ -4,17 +4,29 @@ const fs = require('node:fs');
 const worker = require('./lib/workerClient');
 const { cleanupReleaseFeed } = require('./lib/releaseFeedPolicy');
 
-async function main() {
-  const current = await worker.readJson('news.json', []);
-  const backupPath = process.env.RELEASE_FEED_BACKUP_PATH;
-  if (backupPath) fs.writeFileSync(backupPath, JSON.stringify(current, null, 2) + '\n', { flag: 'wx' });
+const PRODUCTION_CONFIRMATION = 'CLEAN_LEGACY_RELEASE_FEED';
 
-  const result = cleanupReleaseFeed(current);
-  console.log(`Release feed cleanup: ${result.summary.before} -> ${result.summary.after}; removed ${result.summary.removed}.`);
-  console.log(`Removed by category: ${JSON.stringify(result.summary.removedByCategory)}`);
-  console.log(`Removed by lifecycle stage: ${JSON.stringify(result.summary.removedByStage)}`);
-  if (result.summary.removed > 0) await worker.writeJson('news.json', result.kept);
-  return result.summary;
+async function main({ env = process.env, fsImpl = fs, workerClient = worker, log = console.log } = {}) {
+  if (env.RELEASE_FEED_CLEANUP_CONFIRM !== PRODUCTION_CONFIRMATION) {
+    throw new Error(`Release feed cleanup requires RELEASE_FEED_CLEANUP_CONFIRM=${PRODUCTION_CONFIRMATION}.`);
+  }
+
+  let backupSnapshot = null;
+  let summary = null;
+  await workerClient.writeJsonReconciled('news.json', (latest) => {
+    backupSnapshot = Array.isArray(latest) ? latest : [];
+    const result = cleanupReleaseFeed(backupSnapshot);
+    summary = result.summary;
+    return result.kept;
+  });
+
+  const backupPath = env.RELEASE_FEED_BACKUP_PATH;
+  if (backupPath) fsImpl.writeFileSync(backupPath, JSON.stringify(backupSnapshot, null, 2) + '\n', { flag: 'wx' });
+
+  log(`Release feed cleanup: ${summary.before} -> ${summary.after}; removed ${summary.removed}.`);
+  log(`Removed by category: ${JSON.stringify(summary.removedByCategory)}`);
+  log(`Removed by lifecycle stage: ${JSON.stringify(summary.removedByStage)}`);
+  return summary;
 }
 
 if (require.main === module) main().catch((error) => {
@@ -22,4 +34,4 @@ if (require.main === module) main().catch((error) => {
   process.exitCode = 1;
 });
 
-module.exports = { main };
+module.exports = { PRODUCTION_CONFIRMATION, main };
