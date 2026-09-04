@@ -53,7 +53,14 @@ async function main({
   log = console.log,
 } = {}) {
   const { owner, command, args } = parseArgs(argv);
-  const periodKey = env.GITHUB_EVENT_NAME === 'schedule' ? scheduledPeriodKey(owner, now()) : null;
+  const scheduled = env.GITHUB_EVENT_NAME === 'schedule';
+  const periodKey = scheduled ? scheduledPeriodKey(owner, now()) : null;
+  if (scheduled && !periodKey) {
+    const error = new Error(`Scheduled provider owner ${owner} has no valid schedule policy; refusing unmarked provider work.`);
+    error.code = 'SCHEDULER_PERIOD_UNRESOLVED';
+    throw error;
+  }
+
   return withLease({ owner }, async (handle) => {
     if (periodKey && await alreadyCompleted({ owner, periodKey, client: handle?.client })) {
       log(`Provider scheduler skipped duplicate scheduled run for ${owner} period ${periodKey}.`);
