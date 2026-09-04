@@ -47,6 +47,11 @@ function finalFocusedConcertPayload(concerts) {
   return LineupRole.initializeConcerts(concerts);
 }
 
+function focusedEvaluationSucceeded(usage) {
+  return usage?._lastTavilyOutcome === 'success'
+    && ['success', 'not_run'].includes(usage?._lastGroqOutcome);
+}
+
 function reconcileFocusedCandidates(concerts, candidates, venues, now = new Date().toISOString()) {
   const venueIndex = CanonicalIdentity.buildVenueIndex(Array.isArray(venues) ? venues : []);
   let records = Array.isArray(concerts) ? JSON.parse(JSON.stringify(concerts)) : [];
@@ -82,6 +87,7 @@ async function main() {
   const routingUpdates = [];
   let attempted = 0;
   let observed = 0;
+  let failedEvaluations = 0;
 
   for (const item of due) {
     if (!usage.canCallTavily() || !usage.canCallGroq(900)) break;
@@ -91,6 +97,8 @@ async function main() {
     const remembered = new Set(band.structuredResearch?.routing?.groqFingerprints || []);
     let rememberedNext = remembered;
     let candidates = [];
+    usage._lastTavilyOutcome = 'pending';
+    usage._lastGroqOutcome = 'not_run';
     try {
       candidates = await fetchTourDatesViaTavily(band, usage, {
         allowGroq: true,
@@ -109,13 +117,21 @@ async function main() {
     observations.push(...upcomingCandidates);
 
     const checkedAt = new Date().toISOString();
+    const evaluated = focusedEvaluationSucceeded(usage);
+    if (!evaluated) failedEvaluations += 1;
     routingUpdates.push({
       id: band.id,
-      routing: {
+      routing: evaluated ? {
         lastTavilyTourAt: checkedAt,
         lastTavilyTourReason: item.eligibility.reason,
         groqFingerprints: [...rememberedNext].slice(-100),
         tavilyConcert: policy.nextState(band, storedConcerts, upcomingCandidates.length, checkedAt),
+        lastTavilyTourFailureAt: null,
+        lastTavilyTourFailureReason: null,
+      } : {
+        groqFingerprints: [...rememberedNext].slice(-100),
+        lastTavilyTourFailureAt: checkedAt,
+        lastTavilyTourFailureReason: 'provider_evaluation_failed',
       },
     });
   }
@@ -140,6 +156,7 @@ async function main() {
     mode: 'tavily-concert-only',
     bandsDue: due.length,
     bandsAttempted: attempted,
+    failedEvaluations,
     concertCandidatesObserved: observed,
     concertsAdded: reconciliationCounts.added,
     concertObservationsMerged: reconciliationCounts.merged,
@@ -149,7 +166,7 @@ async function main() {
     status: 'ok',
   });
   await usage.save();
-  console.log(`Focused Tavily run complete. Due: ${due.length}, attempted: ${attempted}, candidates observed: ${observed}, added: ${reconciliationCounts.added}, merged: ${reconciliationCounts.merged}, lifecycle: ${reconciliationCounts.lifecycle}, held: ${reconciliationCounts.held}, unchanged: ${reconciliationCounts.unchanged}.`);
+  console.log(`Focused Tavily run complete. Due: ${due.length}, attempted: ${attempted}, failed evaluations: ${failedEvaluations}, candidates observed: ${observed}, added: ${reconciliationCounts.added}, merged: ${reconciliationCounts.merged}, lifecycle: ${reconciliationCounts.lifecycle}, held: ${reconciliationCounts.held}, unchanged: ${reconciliationCounts.unchanged}.`);
 }
 
 if (require.main === module) main().catch(async (error) => {
@@ -165,4 +182,4 @@ if (require.main === module) main().catch(async (error) => {
   process.exitCode = 1;
 });
 
-module.exports = { uniqueConcert, applyRoutingUpdates, attachResearchGeocode, finalFocusedConcertPayload, reconcileFocusedCandidates, main };
+module.exports = { uniqueConcert, applyRoutingUpdates, attachResearchGeocode, finalFocusedConcertPayload, focusedEvaluationSucceeded, reconcileFocusedCandidates, main };
