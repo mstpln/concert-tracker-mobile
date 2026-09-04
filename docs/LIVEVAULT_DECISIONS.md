@@ -152,11 +152,11 @@ This continuity file was compacted on 2026-09-04 after the workflow/data-enrichm
 
 **Consequence:** This reduces top-of-hour congestion but does not guarantee timely GitHub Actions delivery. September 2 and September 4, 2026 demonstrated multi-hour schedule latency.
 
-### Scheduled provider periods are idempotent
+### Scheduled provider periods are idempotent and fail closed
 
-**Decision:** Successful scheduled structured research, focused Tavily, and the optional twice-monthly venue-metadata research stage each record a persisted per-owner completion marker in `apiUsage.json`. A later duplicate GitHub `schedule` event for the same intended period must exit before provider work.
+**Decision:** Successful scheduled structured research, focused Tavily, and the optional twice-monthly venue-metadata research stage each record a persisted per-owner completion marker in `apiUsage.json`. Every known scheduled provider stage resolves to its most recent nominal schedule occurrence, even after cross-midnight or multi-day GitHub delivery delay. A later duplicate event for that period exits before provider work. An unknown/unconfigured scheduled provider owner is rejected before lease acquisition or provider execution.
 
-**Consequence:** The shared `live-vault-data-writes` concurrency group and scheduler lease prevent overlapping writers; completion markers separately prevent later duplicate provider cycles. Delayed executions are mapped back to the most recent valid nominal schedule occurrence within a bounded 36-hour lateness window so crossing UTC midnight does not defeat deduplication. Only successful scheduled stages mark a period complete. Failed stages remain retryable. Manual `workflow_dispatch` is never suppressed by a scheduled-period marker. Marker state is additive and preserves unknown usage fields. Malformed marker state fails closed.
+**Consequence:** The shared `live-vault-data-writes` concurrency group and scheduler lease prevent overlapping writers; completion markers separately prevent later duplicate provider cycles and there is no unmarked scheduled-provider path. Only successful scheduled stages mark a period complete. Failed stages remain retryable. Manual `workflow_dispatch` is never suppressed by a scheduled-period marker. Marker state is additive and preserves unknown usage fields. Malformed marker state fails closed.
 
 ### Scheduler idempotency does not guarantee delivery
 
