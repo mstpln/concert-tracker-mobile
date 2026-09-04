@@ -11,11 +11,18 @@ async function main({ env = process.env, fsImpl = fs, workerClient = worker, log
     throw new Error(`Release feed cleanup requires RELEASE_FEED_CLEANUP_CONFIRM=${PRODUCTION_CONFIRMATION}.`);
   }
 
-  const backupPath = env.RELEASE_FEED_BACKUP_PATH;
+  const backupPath = String(env.RELEASE_FEED_BACKUP_PATH || '').trim();
+  if (!backupPath) {
+    throw new Error('Release feed cleanup requires RELEASE_FEED_BACKUP_PATH so every production mutation has an exact rollback snapshot.');
+  }
+
   let summary = null;
   await workerClient.writeJsonReconciled('news.json', (latest) => {
-    const snapshot = Array.isArray(latest) ? latest : [];
-    if (backupPath) fsImpl.writeFileSync(backupPath, JSON.stringify(snapshot, null, 2) + '\n', { flag: 'w' });
+    if (!Array.isArray(latest)) {
+      throw new Error('Release feed cleanup requires news.json to contain an array; refusing to replace malformed or missing production data.');
+    }
+    const snapshot = latest;
+    fsImpl.writeFileSync(backupPath, JSON.stringify(snapshot, null, 2) + '\n', { flag: 'w' });
     const result = cleanupReleaseFeed(snapshot);
     summary = result.summary;
     return result.kept;
