@@ -11,17 +11,15 @@ async function main({ env = process.env, fsImpl = fs, workerClient = worker, log
     throw new Error(`Release feed cleanup requires RELEASE_FEED_CLEANUP_CONFIRM=${PRODUCTION_CONFIRMATION}.`);
   }
 
-  let backupSnapshot = null;
+  const backupPath = env.RELEASE_FEED_BACKUP_PATH;
   let summary = null;
   await workerClient.writeJsonReconciled('news.json', (latest) => {
-    backupSnapshot = Array.isArray(latest) ? latest : [];
-    const result = cleanupReleaseFeed(backupSnapshot);
+    const snapshot = Array.isArray(latest) ? latest : [];
+    if (backupPath) fsImpl.writeFileSync(backupPath, JSON.stringify(snapshot, null, 2) + '\n', { flag: 'w' });
+    const result = cleanupReleaseFeed(snapshot);
     summary = result.summary;
     return result.kept;
   });
-
-  const backupPath = env.RELEASE_FEED_BACKUP_PATH;
-  if (backupPath) fsImpl.writeFileSync(backupPath, JSON.stringify(backupSnapshot, null, 2) + '\n', { flag: 'wx' });
 
   log(`Release feed cleanup: ${summary.before} -> ${summary.after}; removed ${summary.removed}.`);
   log(`Removed by category: ${JSON.stringify(summary.removedByCategory)}`);
