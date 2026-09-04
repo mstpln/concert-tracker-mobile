@@ -132,7 +132,7 @@ async function main() {
         lastTavilyTourFailureAt: null,
         lastTavilyTourFailureReason: null,
       } : {
-        groqFingerprints: [...rememberedNext].slice(-100),
+        groqFingerprints: [...remembered].slice(-100),
         lastTavilyTourFailureAt: checkedAt,
         lastTavilyTourFailureReason: 'provider_evaluation_failed',
       },
