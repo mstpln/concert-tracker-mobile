@@ -47,8 +47,9 @@ function finalFocusedConcertPayload(concerts) {
   return LineupRole.initializeConcerts(concerts);
 }
 
-function focusedEvaluationSucceeded(usage) {
-  return usage?._lastTavilyOutcome === 'success'
+function focusedEvaluationSucceeded(usage, threw = false) {
+  return !threw
+    && usage?._lastTavilyOutcome === 'success'
     && ['success', 'not_run'].includes(usage?._lastGroqOutcome);
 }
 
@@ -97,6 +98,7 @@ async function main() {
     const remembered = new Set(band.structuredResearch?.routing?.groqFingerprints || []);
     let rememberedNext = remembered;
     let candidates = [];
+    let searchThrew = false;
     usage._lastTavilyOutcome = 'pending';
     usage._lastGroqOutcome = 'not_run';
     try {
@@ -106,6 +108,7 @@ async function main() {
         onFingerprints: (fingerprints) => { rememberedNext = new Set([...remembered, ...fingerprints]); },
       });
     } catch (error) {
+      searchThrew = true;
       usage.note(`Focused Tavily concert search failed for "${band.name}": ${error.message}`);
       reporting.recordProblem(usage, 'webConcertSearch', error, 'Web concert search', 'attention');
     }
@@ -117,7 +120,7 @@ async function main() {
     observations.push(...upcomingCandidates);
 
     const checkedAt = new Date().toISOString();
-    const evaluated = focusedEvaluationSucceeded(usage);
+    const evaluated = focusedEvaluationSucceeded(usage, searchThrew);
     if (!evaluated) failedEvaluations += 1;
     routingUpdates.push({
       id: band.id,
