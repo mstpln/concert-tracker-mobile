@@ -1,7 +1,12 @@
 'use strict';
 
 const { spawn } = require('node:child_process');
-const { withSchedulerLease } = require('./lib/schedulerLease');
+const {
+  withSchedulerLease,
+  scheduledPeriodKey,
+  scheduledRunAlreadyCompleted,
+  markScheduledRunCompleted,
+} = require('./lib/schedulerLease');
 
 function parseArgs(argv = []) {
   const separator = argv.indexOf('--');
@@ -42,9 +47,24 @@ async function main({
   withLease = withSchedulerLease,
   spawnImpl = spawn,
   env = process.env,
+  now = () => Date.now(),
+  alreadyCompleted = scheduledRunAlreadyCompleted,
+  markCompleted = markScheduledRunCompleted,
+  log = console.log,
 } = {}) {
   const { owner, command, args } = parseArgs(argv);
-  return withLease({ owner }, () => runChild(command, args, { spawnImpl, env }));
+  const periodKey = env.GITHUB_EVENT_NAME === 'schedule' ? scheduledPeriodKey(owner, now()) : null;
+  return withLease({ owner }, async (handle) => {
+    if (periodKey && await alreadyCompleted({ owner, periodKey, client: handle?.client })) {
+      log(`Provider scheduler skipped duplicate scheduled run for ${owner} period ${periodKey}.`);
+      return 0;
+    }
+    const result = await runChild(command, args, { spawnImpl, env });
+    if (periodKey) {
+      await markCompleted({ owner, periodKey, client: handle?.client, completedAt: new Date(now()).toISOString() });
+    }
+    return result;
+  });
 }
 
 if (require.main === module) {
