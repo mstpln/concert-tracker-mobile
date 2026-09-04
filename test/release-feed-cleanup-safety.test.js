@@ -67,10 +67,12 @@ test('legacy release cleanup uses latest-state input and creates rollback data b
   assert.deepEqual(JSON.parse(backup).map((item) => item.id), ['keep', 'remove']);
 });
 
-test('release cleanup workflow exposes the same explicit confirmation input', () => {
+test('release cleanup workflow exposes confirmation and retains an existing rollback artifact after cleanup failure', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'release-feed-cleanup.yml'), 'utf8');
   assert.match(source, /confirm:/);
   assert.match(source, /CLEAN_LEGACY_RELEASE_FEED/);
   assert.match(source, /RELEASE_FEED_CLEANUP_CONFIRM:\s*\$\{\{ inputs\.confirm \}\}/);
   assert.match(source, /RELEASE_FEED_BACKUP_PATH:/);
+  assert.match(source, /- name: Upload rollback backup\n\s+if: always\(\)/);
+  assert.match(source, /if-no-files-found:\s*ignore/);
 });
