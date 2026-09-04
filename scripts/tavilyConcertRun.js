@@ -49,19 +49,22 @@ function finalFocusedConcertPayload(concerts) {
 
 function reconcileFocusedCandidates(concerts, candidates, venues, now = new Date().toISOString()) {
   const venueIndex = CanonicalIdentity.buildVenueIndex(Array.isArray(venues) ? venues : []);
-  const reconciled = CanonicalIngestion.reconcileBatch(
-    Array.isArray(concerts) ? concerts : [],
-    Array.isArray(candidates) ? candidates : [],
-    { venueIndex, now }
-  );
-  const counts = { added: 0, merged: 0, lifecycle: 0, held: 0 };
-  for (const result of reconciled.results) {
-    if (result.action === 'add') counts.added += 1;
-    else if (result.action === 'merge_observation') counts.merged += 1;
-    else if (result.action === 'lifecycle_continuation') counts.lifecycle += 1;
-    else if (result.action === 'hold_for_review') counts.held += 1;
+  let records = Array.isArray(concerts) ? JSON.parse(JSON.stringify(concerts)) : [];
+  const results = [];
+  const counts = { added: 0, merged: 0, lifecycle: 0, held: 0, unchanged: 0 };
+
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    const applied = CanonicalIngestion.ingestCandidate(records, candidate, { venueIndex, now });
+    records = applied.records;
+    results.push(applied.result);
+    if (applied.result.action === 'hold_for_review') counts.held += 1;
+    else if (!applied.changed) counts.unchanged += 1;
+    else if (applied.result.action === 'add') counts.added += 1;
+    else if (applied.result.action === 'merge_observation') counts.merged += 1;
+    else if (applied.result.action === 'lifecycle_continuation') counts.lifecycle += 1;
   }
-  return { ...reconciled, counts };
+
+  return { records, results, counts };
 }
 
 async function main() {
@@ -117,7 +120,7 @@ async function main() {
     });
   }
 
-  let reconciliationCounts = { added: 0, merged: 0, lifecycle: 0, held: 0 };
+  let reconciliationCounts = { added: 0, merged: 0, lifecycle: 0, held: 0, unchanged: 0 };
   if (observations.length) {
     const latestVenues = await worker.readJson('venues.json', []);
     await worker.writeJsonReconciled('concerts.json', (latestConcerts) => {
@@ -142,10 +145,11 @@ async function main() {
     concertObservationsMerged: reconciliationCounts.merged,
     lifecycleContinuations: reconciliationCounts.lifecycle,
     candidatesHeldForReview: reconciliationCounts.held,
+    unchangedCandidateReplays: reconciliationCounts.unchanged,
     status: 'ok',
   });
   await usage.save();
-  console.log(`Focused Tavily run complete. Due: ${due.length}, attempted: ${attempted}, candidates observed: ${observed}, added: ${reconciliationCounts.added}, merged: ${reconciliationCounts.merged}, lifecycle: ${reconciliationCounts.lifecycle}, held: ${reconciliationCounts.held}.`);
+  console.log(`Focused Tavily run complete. Due: ${due.length}, attempted: ${attempted}, candidates observed: ${observed}, added: ${reconciliationCounts.added}, merged: ${reconciliationCounts.merged}, lifecycle: ${reconciliationCounts.lifecycle}, held: ${reconciliationCounts.held}, unchanged: ${reconciliationCounts.unchanged}.`);
 }
 
 if (require.main === module) main().catch(async (error) => {
