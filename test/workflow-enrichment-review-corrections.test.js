@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const focused = require('../scripts/tavilyConcertRun');
 
 test('focused Tavily exact replay is reported as unchanged rather than a merge', () => {
@@ -33,4 +35,10 @@ test('focused Tavily advances empty-result backoff only after a successful provi
   assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'skipped' }), false);
   assert.equal(focused.focusedEvaluationSucceeded({ _lastTavilyOutcome: 'success', _lastGroqOutcome: 'pending' }), false);
   assert.equal(focused.focusedEvaluationSucceeded(success, true), false);
+});
+
+test('focused Tavily failed evaluation preserves only previously committed fingerprints for retry', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'tavilyConcertRun.js'), 'utf8');
+  const failedRouting = source.match(/: \{\n\s+groqFingerprints: \[\.\.\.remembered\]\.slice\(-100\),\n\s+lastTavilyTourFailureAt:/);
+  assert.ok(failedRouting, 'failed focused evaluation must preserve prior fingerprints instead of newly observed fingerprints');
 });
