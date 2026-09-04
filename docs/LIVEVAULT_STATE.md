@@ -1,6 +1,6 @@
 # LiveVault Current State
 
-This continuity file was refreshed on 2026-09-04 after the full workflow/data-enrichment audit and second-pass PR #206 review. Earlier implementation detail remains recoverable in Git history. GitHub `main` is authoritative.
+This continuity file was refreshed on 2026-09-04 after the full workflow/data-enrichment audit and final pre-merge PR #206 review. Earlier implementation detail remains recoverable in Git history. GitHub `main` is authoritative.
 
 ## Repository and current build
 
@@ -94,7 +94,7 @@ The audit found a code-path inconsistency: focused Tavily still used the pre-v17
 - **Setlist.fm:** actual setlist persistence requires date + artist identity + venue agreement. Multiple/no matching candidates are not guessed. 404/429/provider errors do not become trusted absence facts.
 - **Spotify candidate acquisition / provider identity backfills / approved-identity application:** review/approval ownership boundaries remain in place; no audit finding showed automatic overwrite of user-reviewed provider identity.
 - **Venue metadata research:** incomplete/ambiguous research remains fail-closed; the September 1 focused run attempted no venue writes. PR #206 also protects the scheduled venue-metadata stage from later duplicate schedule executions.
-- **Legacy release cleanup:** this is manual/destructive historical tooling. PR #206 requires the explicit phrase `CLEAN_LEGACY_RELEASE_FEED`, requires `RELEASE_FEED_BACKUP_PATH`, refuses missing/malformed non-array `news.json`, uses latest-state reconciled mutation, writes the exact rollback snapshot before mutation, and retains/uploads an existing rollback snapshot even when the cleanup step fails after that snapshot was created.
+- **Legacy release cleanup:** this is manual/destructive historical tooling. PR #206 requires the explicit phrase `CLEAN_LEGACY_RELEASE_FEED`, requires `RELEASE_FEED_BACKUP_PATH`, refuses missing/malformed non-array `news.json`, uses latest-state reconciled mutation, writes the exact rollback snapshot before mutation, and keeps an existing rollback snapshot eligible for artifact upload even when the cleanup step fails after the snapshot was created.
 - **PR QA / full PWA QA:** synthetic fixture/fake-backend boundaries remain intact. Unit/syntax/version/cache/workflow/build-state/QA-safety checks and desktop/mobile Chromium are the normal merge gates.
 - **Production smoke:** remains manual-only and read-only with separate authorization.
 
@@ -118,6 +118,6 @@ The audit found a code-path inconsistency: focused Tavily still used the pre-v17
 7. Structured research schedule adjustment — merged PR #203.
 8. v179 provider identity/lifecycle safeguard — merged PR #204.
 9. v179 post-merge provider/lifecycle ownership QA — merged PR #205 at `845a5bf6a8b16603306a1b427569af74a81936a0`.
-10. Workflow/data-enrichment integrity QA corrections — active PR #206; version remains v179; second-pass review corrections are included and exact-head CI is the remaining merge gate.
+10. Workflow/data-enrichment integrity QA corrections — active PR #206; version remains v179; implementation and review corrections are complete with no known code-level blocker. Merge remains separately gated by exact-head validation and explicit user authorization.
 
 PR #134 remains intentionally open as unrelated production-inert listening backfill tooling. Production smoke remains separately authorized. No GitHub Desktop/local action is required for the current webview-first work.
