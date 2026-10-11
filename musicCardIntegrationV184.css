@@ -1,0 +1,41 @@
+/* v184: Music > Concerts, approved continuous tab + first concert card.
+   Existing year/show-count remains outside and above the integrated unit.
+   All concert details, extra cards, later years and action controls retain
+   their original design and behavior. */
+#screen-myconcerts .myconcerts-history-tabs.music-history-tabs-v183 {
+  margin-bottom: 0;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+}
+#screen-myconcerts .my-history-panel > .row-card-mc.music-history-first-card-v184 {
+  margin-top: 0;
+  border-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+/* An empty selected history tab still has one complete continuous frame. */
+#screen-myconcerts .my-history-panel:not([hidden]) > .screen-empty {
+  margin: 0 0 8px;
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+  background: var(--concert-card-background-v86);
+}
+
+/* v184: Band Detail > Listening, one outer card enclosing the unchanged
+   timeframe selector, five listening metrics and full-width line chart.
+   Top Tracks / Top Albums and the profile tabs remain separate and untouched. */
+#screen-profile .music-band-combined-v184 {
+  margin-bottom: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+#screen-profile .music-band-combined-v184 > .listening-card {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}

@@ -22,6 +22,12 @@ This continuity file was compacted on 2026-09-04 after the workflow/data-enrichm
 
 **Consequence:** Ambiguity fails closed. Enrichment writes use latest-state optimistic concurrency. Newer provider evidence cannot overwrite user-owned data merely because it is newer.
 
+### v184 Visually continuous Listening and Concerts cards
+
+**Decision:** On Band Detail > Listening, keep the existing 42px muted timeframe control and unaltered Your Listening statistics and Listening Over Time chart, but display them within a single outer card border. Remove only the duplicate card borders and inter-card gap. The chart stays full width, Top Tracks/Top Albums stays separate, and all data and interaction logic remains unchanged.
+
+**Decision:** Under Music > Concerts, the existing 42px Upcoming / Past / Cancelled selector visually forms the top of the first native concert card of whichever panel is selected, removing the separate gap and shared-edge double border. Keep the year/show-count heading outside and above this unit, including its v183 event-aware "more shows" count. Subsequent concert cards and later year headings remain in their original standalone positions, and empty panels have a matching continuous bottom frame. Preserve all existing concert card controls and styling.
+
 ### v183 Music information hierarchy and neutral nested tabs
 
 **Decision:** Music is split into a 33px/13px Highlights (default) / Concerts primary navigation using the same main segmented control as Stats/Discover. Highlights retains the existing listening and concert stats teasers. Concerts begins with the latest genuinely attended concert: artist and elapsed calendar days aligned on one horizontal line, date below; it appears even with no upcoming concert. The promoted v182 Next Concert banner remains the featured show; correct the 1-2-digit numeral's visual bottom alignment inside the existing banner dimensions.

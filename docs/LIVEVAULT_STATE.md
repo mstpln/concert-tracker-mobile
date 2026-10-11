@@ -1,6 +1,14 @@
-## Pending v183 — Music Highlights/Concerts and consistent secondary selectors
+## Pending v184 — Combined Band Listening card and integrated Concerts history tabs
 
-Branch `feat/music-highlights-concerts-navigation-v183` is under review, based on merged v182 `main` at `0fcd9e9bc4ad9efcbc381a4d927eb06465967ed3`. **Not merged or deployed.**
+Branch `feat/integrated-listening-concert-cards-v184` is based on merged/deployed v183 `main` at `9b5fa6ad926c07b735bb927dcfbbe631df1e329a`. **Not merged or deployed.**
+
+- Approved Band Detail > Listening change: the exact existing Your Listening summary and Listening Over Time chart are moved (not cloned/re-rendered) into one common neutral card frame. The v183 muted timeframe control remains at the top of the original summary section. Graph geometry, axes, metrics, timeframe calculations, labels and separate Top Tracks/Top Albums card are unchanged.
+- Approved Music > Concerts change: the 42px muted Upcoming / Past / Cancelled selector visually joins the first native concert card in the active panel, sharing one continuous outline with no gap or duplicate top border. Extra cards remain independent; later-year headings, original concert details and actions are not altered. The v183 year/count heading stays outside/above the tab-card group and keeps its current counting/text rules. Empty lists have a matching attached panel.
+- The new finishing layer changes only DOM grouping/classes and CSS: no new data fields, provider/network/storage calls, identifiers, migrations or production workflows. v184 APP_VERSION and CACHE_NAME_LITERAL remain synchronized. QA runs exclusively with synthetic fixtures and the fake backend.
+
+## Merged v183 — Music Highlights/Concerts and consistent secondary selectors
+
+Branch `feat/music-highlights-concerts-navigation-v183` is under review, based on merged v182 `main` at `0fcd9e9bc4ad9efcbc381a4d927eb06465967ed3`. **Merged and deployed** via PR #210 to GitHub Pages on 2026-10-11 as merge commit `9b5fa6ad926c07b735bb927dcfbbe631df1e329a`.
 
 - Music adds the approved 33px/13px primary Highlights / Concerts selector. Highlights initially opens with the existing start listening and concert stats cards, unchanged. Concerts has last attended concert (artist, calendar date, local elapsed days), the established v182 Next Concert card or its empty state, and Upcoming / Past / Cancelled history.
 - The lower concert-history selector uses the existing neutral 42px Top Bands/Top Tracks styling (three columns), with the existing year-left/show-count-right header outside the individual concert cards and above the selector. The heading follows the selected tab; the first year is not duplicated inside the list, and later year sections remain. Featured validated event group cards are not duplicated in Upcoming.
