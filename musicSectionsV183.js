@@ -84,44 +84,22 @@
       '<p class="music-last-date-v183">' + escapeText(last.formattedDate) + '</p>';
   }
 
-  function cardsInYear(panel) {
-    const known = typeof concerts !== 'undefined' && Array.isArray(concerts) ? concerts : [];
-    const byId = new Map(known.map(function (concert) { return [String(concert.id), concert]; }));
-    const seen = new Set();
-    return [...(panel?.querySelectorAll('.row-card-mc') || [])].map(function (card) {
-      const id = card.querySelector('.delete-corner-btn[data-concert-id]')?.dataset.concertId ||
-        card.querySelector('.concert-prep-group[data-concert-id]')?.dataset.concertId || '';
-      if (!id || seen.has(id)) return null;
-      seen.add(id);
-      return byId.get(String(id)) || null;
-    }).filter(function (record) { return record && dateParts(record.date); });
-  }
-
+  // The existing year-divider DOM is the authority for visible calendar-year
+  // labels, event-aware totals and the special "more shows" wording. Moving
+  // its first heading (not reconstructing counts) preserves all v182 rules.
   function syncHistoryYear(screen) {
     const header = screen.querySelector(':scope > .music-history-year-v183');
     const tabs = screen.querySelector(':scope > .myconcerts-history-tabs');
     if (!header || !tabs) return;
     const selected = tabs.querySelector('[data-my-history-tab][aria-selected="true"]')?.dataset.myHistoryTab || 'upcoming';
     const panel = screen.querySelector('#my-history-' + selected);
-    const records = cardsInYear(panel);
-    const first = records[0];
-    const year = first ? String(first.date).slice(0, 4) : '';
-    header.hidden = !year;
-    panel?.querySelectorAll('.year-divider').forEach(function (divider) {
-      divider.classList.toggle('music-history-first-year-v183',
-        !!year && divider.querySelector('span')?.textContent.trim() === year);
+    const dividers = [...(panel?.querySelectorAll('.year-divider') || [])];
+    dividers.forEach(function (divider, index) {
+      divider.classList.toggle('music-history-first-year-v183', index === 0);
     });
-    if (!year) {
-      header.replaceChildren();
-      return;
-    }
-    const withinYear = records.filter(function (record) { return String(record.date).slice(0, 4) === year; });
-    const count = selected === 'upcoming' && root.NextConcertEventGroupV169?.countEvents
-      ? root.NextConcertEventGroupV169.countEvents(withinYear)
-      : withinYear.length;
-    header.innerHTML = '<span>' + escapeText(year) + '</span>' +
-      '<span class="year-divider-line" aria-hidden="true"></span>' +
-      '<span class="year-divider-count">' + count + (count === 1 ? ' show' : ' shows') + '</span>';
+    const first = dividers[0];
+    header.hidden = !first;
+    header.innerHTML = first ? first.innerHTML : '';
   }
 
   function selectMusicTab(screen, target, focus, resetScroll) {

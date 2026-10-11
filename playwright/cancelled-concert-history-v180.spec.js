@@ -189,6 +189,7 @@ test('v180 one approved event-group cancellation updates every linked performanc
     concerts = next;
     renderMyConcertsScreen();
   });
+  await page.locator('#music-tab-concerts').click();
   const readRows = () => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('livevault-qa:data') || '{}');
     return (saved.concerts || []).filter((c) => ['qa-v180-bill-head', 'qa-v180-bill-support'].includes(c.id));

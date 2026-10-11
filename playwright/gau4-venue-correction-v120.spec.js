@@ -56,6 +56,7 @@ test('GAU4 recovered canonical venue is visible while honest fallback remains Un
     : { width: 480, height: 900 });
 
   await installSyntheticVenueState(page);
+  await page.locator('#music-tab-concerts').click();
   const screen = page.locator('#screen-myconcerts');
   await expect(screen).toBeVisible();
 

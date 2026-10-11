@@ -66,12 +66,12 @@ async function expectNoHorizontalOverflow(page) {
 }
 
 async function expectDividerParity(page) {
-  // The entire Start concert list is a single 33px / 13px tab strip.
+  // v183: the concert list uses the neutral 42px Top Bands/Top Tracks treatment.
   const root = page.locator('#screen-myconcerts .myconcerts-history-tabs');
   const tabs = root.locator('[data-my-history-tab]');
   await expect(tabs).toHaveCount(3);
-  await expect(tabs.nth(0)).toHaveText('Upcoming concerts');
-  await expect(tabs.nth(1)).toHaveText('Past concerts');
+  await expect(tabs.nth(0)).toHaveText('Upcoming');
+  await expect(tabs.nth(1)).toHaveText('Past');
   await expect(tabs.nth(2)).toHaveText('Cancelled');
   await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
   await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'false');
@@ -87,9 +87,9 @@ async function expectDividerParity(page) {
       })),
     };
   });
-  expect(metrics.totalHeight).toBe(33);
-  expect(metrics.buttons.every((item) => item.height <= 33 && item.height >= 31)).toBe(true);
-  expect(metrics.buttons.every((item) => item.fontSize === '13px')).toBe(true);
+  expect(metrics.totalHeight).toBe(50);
+  expect(metrics.buttons.every((item) => item.height === 42)).toBe(true);
+  expect(metrics.buttons.every((item) => item.fontSize === '14px')).toBe(true);
   expect(Math.max(...metrics.buttons.map((item) => item.width)) -
     Math.min(...metrics.buttons.map((item) => item.width))).toBeLessThanOrEqual(1);
 }
@@ -132,6 +132,7 @@ for (const colorScheme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
     await page.setViewportSize(viewportFor(testInfo));
     await installV143SyntheticState(page);
+    await page.locator('#music-tab-concerts').click();
 
     await expectDividerParity(page);
     await expectNoHorizontalOverflow(page);

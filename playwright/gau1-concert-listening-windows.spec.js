@@ -48,6 +48,7 @@ test('visible concert listening rows use GAU1 upcoming and recent-past windows',
     ];
     renderMyConcertsScreen();
   });
+  await page.locator('#music-tab-concerts').click();
 
   const upcomingCard = page.locator('#screen-myconcerts .concert-prep-group:not(.past-concert-details-group)[data-concert-id="qa-show-day"]').locator('xpath=ancestor::div[contains(@class,"row-card-mc")]');
   const pastCard = page.locator('#screen-myconcerts .past-concert-details-group[data-concert-id="qa-past-attended"]').locator('xpath=ancestor::div[contains(@class,"row-card-mc")]');

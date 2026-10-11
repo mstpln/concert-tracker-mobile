@@ -74,7 +74,7 @@ for (const width of [320, 375, 390, 480]) {
 
     const heading = screen.locator('.music-history-year-v183');
     await expect(heading).toBeVisible();
-    await expect(heading.locator('.year-divider-count')).toHaveText('1 show');
+    await expect(heading.locator('.year-divider-count')).toHaveText('1 more show');
     const rightOrder = await screen.evaluate(node => {
       const year = node.querySelector(':scope > .music-history-year-v183');
       return year.nextElementSibling === node.querySelector(':scope > .music-history-tabs-v183');

@@ -45,6 +45,7 @@ test('synthetic app starts, navigates, persists checklist, and resets', async ({
   await expect(page.locator('#screen-mybands')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath(`${testInfo.project.name}.png`), fullPage: true });
   await page.locator('#tabbar [data-tab="myconcerts"]').click();
+  await page.locator('#music-tab-concerts').click();
   const prepGroup = page.locator('.concert-prep-group[data-concert-id="qa-show-day"]');
   await prepGroup.locator('[data-prep-toggle="checklist"]').click();
   const prepKey = await prepGroup.locator('input[data-prep-key]:not(:checked)').first().getAttribute('data-prep-key');
@@ -58,6 +59,7 @@ test('synthetic app starts, navigates, persists checklist, and resets', async ({
     return concert?.prepChecklist?.[key] === true;
   }, { concertId: 'qa-show-day', key: prepKey })).toBe(true);
   await page.reload();
+  await page.locator('#music-tab-concerts').click();
   const reloadedGroup = page.locator('.concert-prep-group[data-concert-id="qa-show-day"]');
   await reloadedGroup.locator('[data-prep-toggle="checklist"]').click();
   await expect(reloadedGroup.locator(`input[data-prep-key="${prepKey}"]`)).toBeChecked();
