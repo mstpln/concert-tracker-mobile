@@ -40,8 +40,7 @@
   margin: 36px 0 14px;
 }
 #screen-myconcerts .myconcerts-history-tab {
-  flex: 1 1 0;
-  width: 33.333333%;
+  width: 100%;
   min-width: 0;
   letter-spacing: -.035em;
   white-space: nowrap;
