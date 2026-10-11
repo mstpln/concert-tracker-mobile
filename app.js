@@ -779,13 +779,14 @@ function renderVenueDetailScreen(key) {
     <p class="section-label" style="margin-top:0">${escapeHtml(group.city)}${group.country ? ', ' + escapeHtml(group.country) : ''}</p>
     ${renderWithYearDividers(sorted, (c) => {
       const dateStr = concertDateLabel(c);
-      const isPast = !dlIsUpcoming(c);
+      const isCancelled = dlIsCancelled(c);
+      const isPast = !isCancelled && !dlIsUpcoming(c);
       return `
         <div class="row-card clickable${isPast ? ' is-past' : ''}" data-band-id="${escapeAttr(c.bandId)}">
           <div class="row-top">
             <div class="row-title-group">
               <span class="row-name">${escapeHtml(c.bandName)}</span>
-              ${c.attending ? `<span class="pill ${isPast ? 'pill-attended' : 'pill-going'}">${icon('check')} ${isPast ? 'Attended' : 'Going'}</span>` : ''}
+              ${c.attending ? (isCancelled ? '<span class="pill pill-cancelled">Cancelled</span>' : `<span class="pill ${isPast ? 'pill-attended' : 'pill-going'}">${icon('check')} ${isPast ? 'Attended' : 'Going'}</span>`) : ''}
             </div>
             <span class="row-chevron">${icon('chevronRight')}</span>
           </div>
