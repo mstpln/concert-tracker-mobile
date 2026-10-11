@@ -113,6 +113,7 @@ for(const width of [320,375,480]){
 
       // The real app renders separate concert rows in the Discover dates list
       // and Band Detail, while artist recommendation cards stay independent.
+      await page.locator('#tabbar [data-tab="concerts"]').click();
       await cardColor(page.locator('#screen-concerts .row-card[data-band-id]').first(),color);
       await page.evaluate(() => openProfile(bands[0].id,{selectedTab:'concerts'}));
       await cardColor(page.locator('#screen-profile .profile-divider .row-card').first(),color);
