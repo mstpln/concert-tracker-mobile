@@ -14,10 +14,10 @@ test('v185 Highlights spacing is scoped to the two approved gaps', () => {
 });
 test('v185 version and existing offline/QA shell stay synchronized', () => {
   const state = JSON.parse(read('docs/LIVEVAULT_BUILD_STATE.json'));
-  assert.match(read('version.js'), /const APP_VERSION = 'v186'/);
-  assert.match(read('service-worker.js'), /const CACHE_NAME_LITERAL = 'v186'/);
-  assert.equal(state.appVersion, 'v186');
-  assert.equal(state.serviceWorkerCacheVersion, 'v186');
+  assert.match(read('version.js'), /const APP_VERSION = 'v187'/);
+  assert.match(read('service-worker.js'), /const CACHE_NAME_LITERAL = 'v187'/);
+  assert.equal(state.appVersion, 'v187');
+  assert.equal(state.serviceWorkerCacheVersion, 'v187');
   assert.ok(state.versionsMatch);
   assert.ok(state.shellFiles.includes('musicSectionsV183.css'));
   assert.ok(state.shellFiles.includes('musicCardIntegrationV184.css'));
