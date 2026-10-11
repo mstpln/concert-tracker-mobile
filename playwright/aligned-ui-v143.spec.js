@@ -110,7 +110,9 @@ async function expectMainFilterGeometry(page) {
     return { primary: primary.height, se: { width: se.width, height: se.height }, eu: { width: eu.width, height: eu.height } };
   });
   expect(Math.abs(sizes.se.height - sizes.eu.height)).toBeLessThanOrEqual(0.5);
-  expect(Math.abs(sizes.se.height - sizes.primary)).toBeLessThanOrEqual(0.5);
+  // Primary tab controls now have 33px outer chrome and 31px inner buttons;
+  // nearby/europe filter pills deliberately keep their established 32px size.
+  expect(Math.abs(sizes.se.height - sizes.primary)).toBeLessThanOrEqual(1);
 }
 
 async function expectProfileFilterGeometry(page) {
