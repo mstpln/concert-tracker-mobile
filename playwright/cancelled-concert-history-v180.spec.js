@@ -155,11 +155,11 @@ test('v180 one approved event-group cancellation updates every linked performanc
     const records = [
       { id: 'qa-v180-bill-head', bandId: bands[0].id, bandName: bands[0].name, lineupRole: 'headliner',
         date: '2027-12-04', time: '19:30', venue: 'QA Paired Bill Hall', city: 'Sample City',
-        country: 'Exampleland', eventGroupId: 'qa-v180-linked-bill', attending: true, ticketPrice: 321,
+        country: 'Exampleland', eventGroupId: 'event-qa-v180-linked-bill', attending: true, ticketPrice: 321,
         futureProperty: { retained: true } },
       { id: 'qa-v180-bill-support', bandId: bands[1].id, bandName: bands[1].name, lineupRole: 'support',
         date: '2027-12-04', time: '19:30', venue: 'QA Paired Bill Hall', city: 'Sample City',
-        country: 'Exampleland', eventGroupId: 'qa-v180-linked-bill', attending: true, ticketPrice: 0,
+        country: 'Exampleland', eventGroupId: 'event-qa-v180-linked-bill', attending: true, ticketPrice: 0,
         futureProperty: { retained: true } },
     ];
     const next = [...latest.filter((r) => !records.some((x) => x.id === r.id)), ...records];
