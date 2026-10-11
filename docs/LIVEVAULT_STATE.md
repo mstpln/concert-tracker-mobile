@@ -1,8 +1,8 @@
 # LiveVault Current State
 
-## Pending v181 — Start concert tabs, restored visibility, and approved Next banner
+## v181 — Start concert tabs, restored visibility, and approved Next banner
 
-Branch `feat/start-concert-tabs-cancelled-visibility-v181` is based on merged `main` at `d168b60aa0a0b60c7c86071b3628d5f84feb068e` (v180 / PR #207). The new build is **not merged or deployed**.
+Implemented in PR #208 on `feat/start-concert-tabs-cancelled-visibility-v181`, based on `main` at `d168b60aa0a0b60c7c86071b3628d5f84feb068e` (v180 / PR #207). This section records implemented behavior; verify PR #208 and the GitHub Pages deployment workflow for authoritative merge and production-release status.
 
 - Root cause: v180 initialized inactive Past/Cancelled tab panels with native HTML `hidden`, then switched them using the CSS `.hidden` class. After navigation or reload, switching to Cancelled selected the tab visually but left `hidden` intact. The stored cancellation was not automatically deleted. v181 sets the actual `panel.hidden` property for all three tabs; automated synthetic QA reopens and reloads a cancelled concert and confirms it remains visible and restorable.
 - Start has a single Upcoming concerts / Past concerts / Cancelled tab strip, default Upcoming. Each of the three equal-width tabs has 33px outside height and 13px normal-case type. The same sizing/typography applies to the app's other primary segmented tab sections, while listening timeframe controls remain separate. The former stand-alone Upcoming and Past headings are retired.
