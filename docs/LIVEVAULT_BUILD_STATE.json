@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v186",
-  "serviceWorkerCacheVersion": "v186",
+  "appVersion": "v187",
+  "serviceWorkerCacheVersion": "v187",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 22,
@@ -50,6 +50,7 @@
     "musicSectionsV183.css",
     "musicCardIntegrationV184.css",
     "bandmarkrLightV186.css",
+    "bandmarkrVisualV187.css",
     "icons/bandmarkr-wordmark.svg",
     "geoFilterPreloadV143.js",
     "app.js",

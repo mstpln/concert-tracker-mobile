@@ -13,7 +13,7 @@
 /* The light is anchored by bandmarkrLightV186.js at the actual first glyph of
    each active blue primary tab; inactive and muted nested controls are intact.
    A pixel fallback provides the same left-origin intent without JavaScript. */
-.stats-subtabs > .stats-subtab-btn.active,
+.stats-subtabs:not(.myconcerts-history-tabs) > .stats-subtab-btn.active,
 .news-subtab-switch > .news-subtab-btn.active,
 #screen-settings .settings-v123-tabs > .settings-v123-tab.is-selected,
 .discover-geo-filters-v172 .discover-geo-filter-btn-v171.active {
@@ -24,7 +24,7 @@
   background-color: var(--accent);
   background-image: linear-gradient(104deg,#102d82 0%,#1c49b8 31%,#1c48af 60%,#0b2874 100%);
 }
-.stats-subtabs > .stats-subtab-btn.active::before,
+.stats-subtabs:not(.myconcerts-history-tabs) > .stats-subtab-btn.active::before,
 .news-subtab-switch > .news-subtab-btn.active::before,
 #screen-settings .settings-v123-tabs > .settings-v123-tab.is-selected::before,
 .discover-geo-filters-v172 .discover-geo-filter-btn-v171.active::before {
@@ -39,7 +39,7 @@
       rgba(27,89,215,.045) 65%, transparent 89%),
     linear-gradient(126deg,rgba(47,116,236,.012),transparent 70%);
 }
-.stats-subtabs > .stats-subtab-btn.active > *,
+.stats-subtabs:not(.myconcerts-history-tabs) > .stats-subtab-btn.active > *,
 .news-subtab-switch > .news-subtab-btn.active > *,
 #screen-settings .settings-v123-tabs > .settings-v123-tab.is-selected > *,
 .discover-geo-filters-v172 .discover-geo-filter-btn-v171.active > * {

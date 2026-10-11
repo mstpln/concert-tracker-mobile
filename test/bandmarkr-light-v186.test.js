@@ -57,10 +57,10 @@ test('v186 first-letter locator does not mutate source labels or touch provider/
 test('v186 shell, QA, service-worker and deterministic build facts are synchronized', () => {
   const html = read('index.html'), sw = read('service-worker.js'),
     build = JSON.parse(read('docs/LIVEVAULT_BUILD_STATE.json'));
-  assert.match(read('version.js'), /const APP_VERSION = 'v186'/);
-  assert.match(sw, /const CACHE_NAME_LITERAL = 'v186'/);
-  assert.equal(build.appVersion, 'v186');
-  assert.equal(build.serviceWorkerCacheVersion, 'v186');
+  assert.match(read('version.js'), /const APP_VERSION = 'v187'/);
+  assert.match(sw, /const CACHE_NAME_LITERAL = 'v187'/);
+  assert.equal(build.appVersion, 'v187');
+  assert.equal(build.serviceWorkerCacheVersion, 'v187');
   assert.equal(build.versionsMatch, true);
   for (const file of ['bandmarkrLightV186.css','bandmarkrLightV186.js']) {
     assert.ok(html.includes(file), 'HTML missing ' + file);

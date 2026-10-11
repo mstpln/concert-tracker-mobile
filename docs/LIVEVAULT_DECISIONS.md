@@ -22,6 +22,16 @@ This continuity file was compacted on 2026-09-04 after the workflow/data-enrichm
 
 **Consequence:** Ambiguity fails closed. Enrichment writes use latest-state optimistic concurrency. Newer provider evidence cannot overwrite user-owned data merely because it is newer.
 
+### v187 Neutral secondary controls and restrained unified blue accents
+
+**Decision:** The Music Upcoming / Past / Cancelled history tabs remain neutral secondary controls and must not inherit primary-tab light overlays or JS first-letter measurement. Keep the v184 continuous shared card frame and existing selection behavior.
+
+**Decision:** My Bands listing rows use the v186 Past concert surface (dark `#1d2124`; light `#eef1f5`), but generic cards, forms, page backgrounds, filters, grey CTAs and pills remain unchanged.
+
+**Decision:** Only blue words in main page headings receive a restrained, static asymmetric neon-like blue gradient/text halo. Only the two Music Highlights stat cards receive a slightly stronger outward blue halo without changing their original 1px shimmering outline. Filled primary CTA buttons/links (`.btn-primary` and Discover `.discover-add`) receive a static dark-edge blue spotlight gradient; neutral secondary tabs, grey pills, grey/outlined actions and unrelated active-state controls do not.
+
+**Safety:** Visual CSS changes and narrower v186 first-letter selector only, no animation, new runtime behavior, API/provider/storage or data modification. APP_VERSION and CACHE_NAME_LITERAL synchronized once at v187. Verify with synthetic QA.
+
 ### v186 Asymmetric static blue light and unified concert-listing card surfaces
 
 **Decision:** Apply the approved Blue Light v3 palette to the existing BANDMARKR top banner (light behind the wordmark), active blue primary tab controls (light originates at the **first glyph**, measured from the actual label), and active bottom navigation tile (light centered near its icon), keeping strong asymmetric dark-blue edges. No other background hues or geometry changes, no animation, and no changes to muted nested tab controls. Keep the already approved Next Concert v182 hero spotlight as the visual source of the palette, not an element to redesign.

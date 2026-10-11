@@ -5,7 +5,7 @@
 (function installBandmarkrLightV186(root) {
   const doc = root.document;
   const SELECTOR = [
-    '.stats-subtabs > .stats-subtab-btn.active',
+    '.stats-subtabs:not(.myconcerts-history-tabs) > .stats-subtab-btn.active',
     '.news-subtab-switch > .news-subtab-btn.active',
     '#screen-settings .settings-v123-tabs > .settings-v123-tab.is-selected',
     '.discover-geo-filters-v172 .discover-geo-filter-btn-v171.active',
