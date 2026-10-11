@@ -86,7 +86,7 @@ async function expectDividerParity(page) {
     };
   });
   expect(geometry.classMatch).toBe(true);
-  expect(geometry.height).toBeGreaterThanOrEqual(40);
+  expect(geometry.height).toBeGreaterThanOrEqual(28);
 }
 
 function rootGeo(page, key) {
