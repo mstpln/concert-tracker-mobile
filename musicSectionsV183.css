@@ -1,0 +1,180 @@
+/* v183: Design #1 primary Music tabs; same 33px/13px geometry as other
+   main app selectors. The original v167/v169 featured cards stay in place. */
+#screen-myconcerts .music-primary-tabs-v183 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 4px 0 14px;
+  width: 100%;
+}
+#screen-myconcerts .music-primary-tabs-v183 > .stats-subtab-btn {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  font-size: 13px;
+  font-weight: 500;
+}
+#screen-myconcerts[data-music-section-v183="highlights"] > .music-concert-content-v183 {
+  display: none !important;
+}
+#screen-myconcerts[data-music-section-v183="concerts"] > .myconcerts-summary {
+  display: none !important;
+}
+#screen-myconcerts[data-music-section-v183="highlights"] > .myconcerts-summary {
+  margin-top: 20px;
+}
+#screen-myconcerts .music-last-v183 {
+  margin: 20px 0 20px;
+  padding: 0 0 13px;
+  border-bottom: 1px solid var(--border-strong);
+  min-width: 0;
+}
+#screen-myconcerts .music-last-label-v183 {
+  margin: 0 0 7px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  line-height: 1.2;
+  letter-spacing: .10em;
+  font-weight: 700;
+}
+#screen-myconcerts .music-last-row-v183 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+#screen-myconcerts .music-last-artist-v183 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--text);
+}
+#screen-myconcerts .music-last-elapsed-v183 {
+  flex: none;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+#screen-myconcerts .music-last-date-v183,
+#screen-myconcerts .music-last-empty-v183 {
+  margin: 5px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+#screen-myconcerts .music-last-empty-v183 { font-size: 12px; }
+
+/* The historical invisible positioning spacers cannot consume room inside
+   the newly separated Concerts tab. Internal banner geometry is unchanged. */
+#screen-myconcerts .section-label-v167-next,
+#screen-myconcerts .start-featured-year-spacer-v181 {
+  display: none;
+}
+
+/* Exactly the same 42px/4px/neutral treatment as toplistV96.css.
+   Only the column count changes from two to three. */
+#screen-myconcerts .myconcerts-history-tabs.music-history-tabs-v183 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  margin: 0 0 12px;
+  padding: 4px;
+  gap: 4px;
+  background: var(--surface-muted);
+  border: 0;
+  border-radius: 12px;
+  overflow: visible;
+}
+#screen-myconcerts .music-history-tabs-v183 > .myconcerts-history-tab {
+  box-sizing: border-box;
+  min-height: 42px;
+  height: 42px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+#screen-myconcerts .music-history-tabs-v183 > .myconcerts-history-tab.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+#screen-myconcerts .music-history-year-v183 {
+  justify-content: space-between;
+  align-items: center;
+  margin: 28px 0 9px;
+}
+#screen-myconcerts .music-history-year-v183[hidden],
+#screen-myconcerts .my-history-panel .music-history-first-year-v183 {
+  display: none !important;
+}
+#screen-myconcerts .music-history-year-v183 .year-divider-line { display: none; }
+#screen-myconcerts .music-history-year-v183 .year-divider-count { margin-left: auto; }
+
+/* Band Detail -> Listening uses the same muted selector inside the existing
+   statistics card, not a second blue bar underneath the main profile tabs. */
+#screen-profile .music-band-summary-v183 > .music-band-timeframe-v183 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: auto;
+  max-width: none;
+  height: auto;
+  min-height: 0;
+  margin: 0 0 12px;
+  padding: 4px;
+  gap: 4px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface-muted);
+  overflow: visible;
+}
+#screen-profile .music-band-timeframe-v183 > .listening-timeframe-btn {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 42px;
+  min-height: 42px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: clamp(10px, 3.2vw, 14px);
+  font-weight: 700;
+  white-space: nowrap;
+}
+#screen-profile .music-band-timeframe-v183 > .listening-timeframe-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+/* v182 giant numeral: lower the perceived baseline without changing the
+   banner box or crowding three- and four-digit counts. */
+#screen-myconcerts .next-concert-stage-v182 .next-concert-stage-number-v182:not(.is-three-digits):not(.is-four-plus-digits) {
+  font-size: 68px;
+  transform: translateY(2px);
+}
+@media (max-width: 355px) {
+  #screen-myconcerts .next-concert-stage-v182 .next-concert-stage-number-v182:not(.is-three-digits):not(.is-four-plus-digits) {
+    font-size: 57px;
+    transform: translateY(2px);
+  }
+  #screen-myconcerts .music-history-tabs-v183 > .myconcerts-history-tab {
+    font-size: 12px;
+  }
+}
