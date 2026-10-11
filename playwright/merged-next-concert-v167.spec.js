@@ -220,12 +220,16 @@ test('v167 concert day uses neon banner, primary tickets and ghost directions', 
     const tickets = node.querySelector('.countdown-v139-open-ticket');
     return {
       bannerBackground: getComputedStyle(banner).backgroundColor,
+      dayHeadlineColor: getComputedStyle(banner.querySelector('strong')).color,
+      dayDividerColor: getComputedStyle(banner.querySelector('.next-concert-banner-right-v181')).borderLeftColor,
       ticketBackground: getComputedStyle(tickets).backgroundColor,
       directionsBackground: getComputedStyle(directions).backgroundColor,
       directionsIconWidth: getComputedStyle(directions.querySelector('svg')).width,
     };
   });
   expect(styles.bannerBackground).toBe('rgb(94, 216, 255)');
+  expect(styles.dayHeadlineColor).toBe('rgb(0, 19, 27)');
+  expect(styles.dayDividerColor).toBe('rgba(0, 19, 27, 0.3)');
   expect(styles.ticketBackground).toBe('rgb(94, 216, 255)');
   expect(styles.directionsBackground).toBe('rgba(0, 0, 0, 0)');
   expect(styles.directionsIconWidth).toBe('16px');
