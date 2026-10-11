@@ -58,11 +58,14 @@ test('cancelled performances and ticket prices contribute zero to statistics', (
   assert.equal(stats.totalUniqueArtists, 1);
 });
 
-test('approved UI has dual tab, version-eight uppercase statuses, safeguards and retained provider ownership', () => {
+test('approved UI has three tabs, version-eight uppercase statuses, safeguards and retained provider ownership', () => {
   const app = fs.readFileSync('app.js', 'utf8');
   const css = fs.readFileSync('app.css', 'utf8');
-  assert.match(app, /data-my-history-tab="past"/);
-  assert.match(app, /data-my-history-tab="cancelled"/);
+  assert.match(app, /\['upcoming', 'Upcoming concerts'\]/);
+  assert.match(app, /\['past', 'Past concerts'\]/);
+  assert.match(app, /\['cancelled', 'Cancelled'\]/);
+  assert.match(app, /data-my-history-tab="\$\{key\}"/);
+  assert.match(app, /panel\.hidden = name !== key/);
   assert.match(app, /ATTENDED<\/span>/);
   assert.match(app, /CANCELLED<\/span>/);
   assert.match(app, /my-lifecycle-action/);
