@@ -22,6 +22,14 @@ This continuity file was compacted on 2026-09-04 after the workflow/data-enrichm
 
 **Consequence:** Ambiguity fails closed. Enrichment writes use latest-state optimistic concurrency. Newer provider evidence cannot overwrite user-owned data merely because it is newer.
 
+### v186 Asymmetric static blue light and unified concert-listing card surfaces
+
+**Decision:** Apply the approved Blue Light v3 palette to the existing BANDMARKR top banner (light behind the wordmark), active blue primary tab controls (light originates at the **first glyph**, measured from the actual label), and active bottom navigation tile (light centered near its icon), keeping strong asymmetric dark-blue edges. No other background hues or geometry changes, no animation, and no changes to muted nested tab controls. Keep the already approved Next Concert v182 hero spotlight as the visual source of the palette, not an element to redesign.
+
+**Decision:** On the Highlights Listening and Concert stats cards, retain the approved shimmering 1px blue outline with just slightly darker blue at the opposite edge than the v3 reference, preserving visibility all the way around. Across all concert **listing** cards use the existing Past concert background token (dark #232a32, light #eef1f5) regardless of upcoming/past/cancelled status: Music featured and history, Band Detail concert rows, Discover concert dates, and Venue Detail concert history. Cancelled state retains its red text/action but no separate gray surface. Generic band/venue directory cards, artist discovery suggestions, Alerts and Release notification cards are distinct UI types and not recolored.
+
+**Safety:** Pure presentation and first-letter measurement only. No changes to identity, venue grouping, user fields, provider ownership, stored data, APIs, or production workflows. Additive shell CSS/JS and synthetic QA; APP_VERSION and CACHE_NAME_LITERAL synchronized once at v186.
+
 ### v185 Highlights-only balanced card spacing
 
 **Decision:** Only beneath the unchanged Music Highlights/Concerts 33px selector, Highlights uses 12px to the Listening stats card and 12px between Listening and Concert stats. These replace approximately 20px and 16px respectively and free roughly 12px above the fixed bottom navigation on the approved phone viewport. Do not reduce space **above** the main tabs, alter card internals, bottom nav, scrolling/safe-area rules, Concerts or other screens. The CSS applies only to Music with Highlights selected.

@@ -1,6 +1,15 @@
-## Pending v185 — Music Highlights balanced spacing
+## Pending v186 — Approved asymmetric Blue Light styling and unified concert-card surfaces
 
-Branch `fix/highlights-vertical-rhythm-v185` starts from merged/deployed v184 main at `35bfdba1861b845922620e89f3ee976c3edd6211`. **Not merged or deployed.**
+Branch `feat/blue-light-unified-concert-cards-v186` starts from merged/deployed v185 `main` at `a240479b2d386c137113d5b62ee8c3318e467200`. **Not merged or deployed.**
+
+- Approved Blue Light v3 color-only theme: reuse the existing Next Concert spotlight color family. The unchanged text-only BANDMARKR wordmark banner has asymmetrically brighter blue behind its lettering and darker side edges. Every existing blue **primary segmented tab** (Music/Stats/Discover/Band Profile/Settings and Discover blue location selections) gets a static dark-edge asymmetric gradient; the lighter area is anchored at the actual **first letter** of the active tab label without altering labels or event listeners. The blue active bottom-nav tile gets a static darker asymmetric gradient with a softer light source centered on its icon. The Next Concert blue banner, cyan concert-day state, muted neutral secondary tabs, buttons, other card content and typography remain unchanged.
+- Highlights Listening stats/Concert stats frames retain their 1px blue outline and accepted subtle glow. Compared to the v3 HTML design, the two darker border stops are **slightly** deeper blue; neither is black, and card geometry/v185 12px spacing is untouched. No animation.
+- All **concert listing** card bodies (featured Next, Upcoming/Past/Cancelled Music history, Band Detail Upcoming/Past, Discover > Concerts, and Venue Detail) explicitly use the established Past surface token `--concert-card-background-v86` (dark `#232a32`, light `#eef1f5`). This also removes the historical gray background override for cancelled *listing* cards while preserving their cancellation indicators/actions. Generic band-directory rows, Discover artist recommendations and Alerts/Release notification cards are not concert-listing cards and retain their own appearance.
+- Only a new CSS and a lightweight client-side first-letter positioning helper are added to the PWA shell. There is no data change, storage/provider call, API secret, animation or production workflow. v186 app/cache versions match, with synthetic unit/browser validation and documented limitations.
+
+## Merged v185 — Music Highlights balanced spacing
+
+Branch `fix/highlights-vertical-rhythm-v185` was merged via PR #212 and deployed on GitHub Pages on 2026-10-11 at merge commit `a240479b2d386c137113d5b62ee8c3318e467200`.
 
 - The approved v185 refinement applies **only** when Music > Highlights is active: reduce the gap from the bottom of the existing 33px primary Highlights / Concerts selector to Listening stats from about 20px to 12px, and reduce the gap from Listening stats to Concert stats from 16px to 12px. The approximately 12px saved vertically provides breathing room above the unchanged bottom navigation on the reference phone viewport.
 - Do not change the space above the primary tabs, either card's contents/size/fonts/colors, any click behavior, scroll-container bottom padding, safe-area handling, Music > Concerts, other app pages, data records or providers. Single-card Highlights with no past concerts remains supported.
