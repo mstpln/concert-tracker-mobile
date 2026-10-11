@@ -145,6 +145,9 @@ test('v181: same 33px/13px segmented tabs on Stats, Discover, Alerts, Profile an
   await page.locator('#tabbar [data-tab="concerts"]').click();
   const discover = await geometry('#screen-concerts .news-subtab-switch');
   await page.locator('#tabbar [data-tab="news"]').click();
+  // Read the ordinary Alerts tab control, rather than relying on transient
+  // alert-body loading/navigation state from other QA fixtures.
+  await page.evaluate(() => renderNewsScreen());
   const alerts = await geometry('#screen-news .news-subtab-switch');
   await page.locator('#tabbar [data-tab="stats"]').click();
   const stats = await geometry('#screen-stats .stats-subtabs');
