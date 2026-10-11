@@ -73,3 +73,34 @@ test('approved UI has dual tab, version-eight uppercase statuses, safeguards and
   assert.match(css, /height:28px/);
   assert.doesNotMatch(app, /updated\.lifecycleStatus = 'active'/);
 });
+
+
+test('canonical duplicate read view preserves the user cancellation even on a less-rich row', () => {
+  const Canonical = require('../canonicalIdentityV174');
+  const index = Canonical.buildVenueIndex([{
+    venueId: 'venue-aaaabbbb', name: 'QA Example Hall',
+    city: 'Sample City', country: 'Sweden', address: '1 Fictional Avenue',
+    researchStatus: 'partial', schemaVersion: 1,
+  }]);
+  const identity = {
+    bandId: 'qa-artist', bandName: 'QA Artist', venue: 'QA Example Hall',
+    city: 'Sample City', country: 'Sweden', venueAddress: '1 Fictional Avenue',
+    date: '2027-11-20', attending: true,
+  };
+  const richProvider = { ...identity, id: 'provider-rich', notes: 'Preserve rich user data',
+    rating: 5, ticketPrice: 800, ownedTickets: [{ id: 'qa-ticket', type: 'url' }] };
+  const personal = { ...identity, id: 'user-status', personalLifecycleStatus: 'cancelled' };
+  const view = Canonical.canonicalConcertReadView([richProvider, personal], index);
+  assert.equal(view.records.length, 1);
+  assert.equal(view.records[0].id, 'provider-rich');
+  assert.equal(view.records[0].personalLifecycleStatus, 'cancelled');
+  assert.equal(view.records[0].notes, 'Preserve rich user data');
+  assert.equal(view.records[0].ownedTickets[0].id, 'qa-ticket');
+
+  const conflict = Canonical.canonicalConcertReadView([
+    { ...identity, id: 'cancelled', personalLifecycleStatus: 'cancelled' },
+    { ...identity, id: 'restored', personalLifecycleStatus: 'active' },
+  ], index);
+  assert.equal(conflict.records.length, 2);
+  assert.ok(conflict.conflicts[0].fields.includes('personalLifecycleStatus'));
+});
