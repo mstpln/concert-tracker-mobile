@@ -55,7 +55,7 @@
         <strong class="next-concert-days-v167 next-concert-stage-number-v182${numberClass}">${parts.days}</strong>
         <div class="next-concert-stage-label-v182">
           <span class="next-concert-stage-eyebrow-v182">NEXT CONCERT</span>
-          <span class="next-concert-stage-dayslabel-v182">DAYS<br>LEFT</span>
+          <span class="next-concert-stage-dayslabel-v182">DAYS<br> LEFT</span>
         </div>
         <div class="next-concert-stage-right-v182">
           ${distance ? `<span class="next-concert-distance-v167">${escapeHtml(distance)}</span>` : ''}
