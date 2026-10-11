@@ -183,7 +183,8 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
     distance: getComputedStyle(node.querySelector('.next-concert-distance-v167')).fontWeight,
   }));
   expect(Number(weights.headline)).toBeGreaterThanOrEqual(700);
-  expect(Number(weights.live)).toBeLessThan(700);
+  // Version 21 uses a semi-bold live subcount, unlike v181's light ticker.
+  expect(Number(weights.live)).toBe(700);
   expect(Number(weights.distance)).toBeLessThan(700);
 
   // Moving the existing card must preserve its established band-profile
