@@ -27,6 +27,7 @@ const USER_OWNED_FIELDS = [
   'attending', 'attended', 'rating', 'notes', 'ticketPrice', 'ticketQuantity', 'freeTicket', 'freeTickets',
   'ownedTickets', 'tickets', 'playlistUrl', 'playlistProgress', 'photoUrl', 'photos', 'eventGroupId',
   'lineupRole', 'setlist', 'prepChecklist', 'concertDay', 'userLinks', 'manuallyAdded',
+  'personalLifecycleStatus',
 ];
 
 function normalize(value) {
