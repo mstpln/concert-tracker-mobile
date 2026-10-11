@@ -326,7 +326,7 @@
 
     if (venuesEuropeOnly) groups = groups.filter((group) => group.concerts.some((concert) => dlIsEuropeCountry(concert.country)));
     else if (venuesNearbyOnly) groups = groups.filter((group) => group.concerts.some(dlIsNearby));
-    if (venuesPastOnly) groups = groups.filter((group) => group.concerts.some((concert) => concert.attending && !dlIsUpcoming(concert)));
+    if (venuesPastOnly) groups = groups.filter((group) => group.concerts.some((concert) => concert.attending && !dlIsCancelled(concert) && !dlIsUpcoming(concert)));
 
     const totalHeader = `<p class="bands-total-header"><span class="bands-total-value">${totalVenueCount.toLocaleString()}</span> venues in your collection</p>`;
     const filterRow = `
@@ -370,13 +370,14 @@
       ${venueMetadataPanelHtml(group, record)}
       ${renderWithYearDividers(sorted, (concert) => {
         const dateStr = formatDate(concert.date, concert.time);
-        const isPast = !dlIsUpcoming(concert);
+        const isCancelled = dlIsCancelled(concert);
+        const isPast = !isCancelled && !dlIsUpcoming(concert);
         return `
           <div class="row-card clickable${isPast ? ' is-past' : ''}" data-band-id="${escapeAttr(concert.bandId)}">
             <div class="row-top">
               <div class="row-title-group">
                 <span class="row-name">${escapeHtml(concert.bandName)}</span>
-                ${concert.attending ? `<span class="pill ${isPast ? 'pill-attended' : 'pill-going'}">${icon('check')} ${isPast ? 'Attended' : 'Going'}</span>` : ''}
+                ${concert.attending ? (isCancelled ? '<span class="pill pill-cancelled">Cancelled</span>' : `<span class="pill ${isPast ? 'pill-attended' : 'pill-going'}">${icon('check')} ${isPast ? 'Attended' : 'Going'}</span>`) : ''}
               </div>
               <span class="row-chevron">${icon('chevronRight')}</span>
             </div>
