@@ -30,9 +30,9 @@ test('v133 renders aligned two-line listening row and contained visible feedback
     };
   });
 
-  // v186 overrides the historical v129 Past-only gray with the same
-  // theme-aware surface as Upcoming and Cancelled concert listing cards.
-  expect(visual.pastBackground).toBe('rgb(35, 42, 50)');
+  // v186 uses the actual v129 Past gray as the shared dark concert-card
+  // background, instead of recoloring Past to the old Upcoming tint.
+  expect(visual.pastBackground).toBe('rgb(29, 33, 36)');
   expect(visual.dividerText.toLowerCase()).toBe('past concerts');
   expect(visual.dividerDisplay).toBe('flex');
   expect(visual.progressHeight).toBe('3px');

@@ -41,7 +41,7 @@ test('v186 unified past surface applies to every concert-listing renderer withou
   assert.match(css, /background-color: var\(--concert-card-background-v86\)/);
   assert.doesNotMatch(css, /#screen-news \.row-card|#screen-mybands \.row-card|\.discover-card\s*\{/);
   const shared = read('concertCardsV86.css');
-  assert.match(shared, /--concert-card-background-v86: #232a32/);
+  assert.match(shared, /--concert-card-background-v86: #1d2124/);
   assert.match(shared, /--concert-card-background-v86: #eef1f5/);
 });
 

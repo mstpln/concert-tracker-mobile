@@ -69,7 +69,7 @@ for(const width of [320,375,480]){
     test('v186 blue lighting, content isolation and all concert surfaces at '+width+'px '+scheme, async({page},testInfo)=>{
       await setup(page,width,scheme);
       await installShows(page);
-      const color = scheme==='dark' ? 'rgb(35, 42, 50)' : 'rgb(238, 241, 245)';
+      const color = scheme==='dark' ? 'rgb(29, 33, 36)' : 'rgb(238, 241, 245)';
       const banner = page.locator('.brand-banner');
       await expect(banner).toHaveCSS('background-image',/radial-gradient.*linear-gradient/s);
       const oldBrandSize = await banner.evaluate(el => ({
