@@ -35,6 +35,8 @@
 }
 
 #screen-myconcerts .myconcerts-history-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 36px 0 14px;
 }
 #screen-myconcerts .myconcerts-history-tab {
