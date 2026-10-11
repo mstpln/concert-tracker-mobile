@@ -68,6 +68,7 @@ let spotifyAuthMessage = '';
 let settingsTab = 'research';
 let settingsExpandedTool = null;
 let myConcertsRenderedDateKey = null;
+let myConcertsHistoryTab = 'past';
 
 const el = (id) => document.getElementById(id);
 
@@ -559,7 +560,7 @@ function goToTab(tab, { fromHistory = false } = {}) {
   el('settings-btn').classList.toggle('hidden', tab === 'stats');
   showScreen(TAB_SCREENS[tab] || 'screen-concerts');
   if (tab === 'concerts') renderConcertsScreen();
-  else if (tab === 'myconcerts') renderMyConcertsScreen();
+  else if (tab === 'myconcerts') { myConcertsHistoryTab = 'past'; renderMyConcertsScreen(); }
   else if (tab === 'mybands') renderMyBandsScreen();
   else if (tab === 'stats') {
     statsSubTab = 'listening';
@@ -695,7 +696,7 @@ function venuesSubTabHtml() {
   else if (venuesNearbyOnly) groups = groups.filter((g) => g.concerts.some(dlIsNearby));
   // "Past Concerts" is scoped to shows the user personally attended, per the
   // user's explicit clarification — not just any already-happened date.
-  if (venuesPastOnly) groups = groups.filter((g) => g.concerts.some((c) => c.attending && !dlIsUpcoming(c)));
+  if (venuesPastOnly) groups = groups.filter((g) => g.concerts.some((c) => c.attending && !dlIsCancelled(c) && !dlIsUpcoming(c)));
 
   // Total header — same design/copy pattern as My Bands' "145 bands in your
   // collection" (bands-total-header/bands-total-value), always the
@@ -778,13 +779,14 @@ function renderVenueDetailScreen(key) {
     <p class="section-label" style="margin-top:0">${escapeHtml(group.city)}${group.country ? ', ' + escapeHtml(group.country) : ''}</p>
     ${renderWithYearDividers(sorted, (c) => {
       const dateStr = concertDateLabel(c);
-      const isPast = !dlIsUpcoming(c);
+      const isCancelled = dlIsCancelled(c);
+      const isPast = !isCancelled && !dlIsUpcoming(c);
       return `
         <div class="row-card clickable${isPast ? ' is-past' : ''}" data-band-id="${escapeAttr(c.bandId)}">
           <div class="row-top">
             <div class="row-title-group">
               <span class="row-name">${escapeHtml(c.bandName)}</span>
-              ${c.attending ? `<span class="pill ${isPast ? 'pill-attended' : 'pill-going'}">${icon('check')} ${isPast ? 'Attended' : 'Going'}</span>` : ''}
+              ${c.attending ? (isCancelled ? '<span class="pill pill-cancelled">Cancelled</span>' : `<span class="pill ${isPast ? 'pill-attended' : 'pill-going'}">${icon('check')} ${isPast ? 'Attended' : 'Going'}</span>`) : ''}
             </div>
             <span class="row-chevron">${icon('chevronRight')}</span>
           </div>
@@ -808,7 +810,7 @@ function renderMyConcertsScreen() {
   // filter a "going"/"attended" concert for a deleted band would still show
   // up here, and tapping it would dead-end on openProfile's "Band not found."
   const liveConcerts = concerts.filter((c) => bands.some((b) => b.id === c.bandId));
-  const { upcoming, past } = dlMyConcerts(liveConcerts);
+  const { upcoming, past, cancelled } = dlMyConcerts(liveConcerts);
 
   const bandOptions = [...bands]
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -833,16 +835,22 @@ function renderMyConcertsScreen() {
   html += countdownCardHtml(EventModelV156.nextEventPresentation(upcoming));
   html += '</div>';
 
-  if (upcoming.length === 0 && past.length === 0) {
+  if (upcoming.length === 0 && past.length === 0 && cancelled.length === 0) {
     html += `<p class="screen-empty">No concerts saved yet. Tap "I'm going" on a band's page to add one, or backlog a past show below.</p>`;
   } else {
     if (upcoming.length > 0) {
       html += `<p class="section-label" style="margin-top:0">Upcoming concerts</p>`;
       html += renderWithYearDividers(upcoming, (c) => myConcertRowHtml(c, false), { showCount: true });
     }
-    if (past.length > 0) {
-      html += `<p class="section-label section-label-gap-lg">Past concerts</p>`;
-      html += renderWithYearDividers(past, (c) => myConcertRowHtml(c, true), { showCount: true });
+
+    if (past.length || cancelled.length) {
+      const selectedCancelled = myConcertsHistoryTab === 'cancelled';
+      html += `<div class="stats-subtabs myconcerts-history-tabs" role="tablist" aria-label="Concert history">
+        <button type="button" class="stats-subtab-btn${selectedCancelled ? '' : ' active'}" data-my-history-tab="past" role="tab" aria-selected="${!selectedCancelled}">PAST CONCERTS</button>
+        <button type="button" class="stats-subtab-btn${selectedCancelled ? ' active' : ''}" data-my-history-tab="cancelled" role="tab" aria-selected="${selectedCancelled}">CANCELLED</button>
+      </div>`;
+      html += `<section id="my-history-past" class="my-history-panel"${selectedCancelled ? ' hidden' : ''}>${past.length ? renderWithYearDividers(past, (c) => myConcertRowHtml(c, true), { showCount: true }) : '<p class="screen-empty">No past concerts yet.</p>'}</section>`;
+      html += `<section id="my-history-cancelled" class="my-history-panel"${selectedCancelled ? '' : ' hidden'}>${cancelled.length ? renderWithYearDividers(cancelled, (c) => myConcertRowHtml(c, false), { showCount: true }) : '<p class="screen-empty">No cancelled concerts.</p>'}</section>`;
     }
   }
 
@@ -1070,21 +1078,22 @@ function eventGroupControlsHtml(c) {
 // band name never crowds them.
 function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
   const tourName = isPast ? c.setlist?.tourName : null;
-  const showPillRow = c.type === 'festival' || isPast;
+  const isCancelled = dlIsCancelled(c);
+  const showPillRow = c.type === 'festival' || isPast || isCancelled;
   const lineupRole = LineupRoleV155.displayRole(c);
   const lineupRoleLabel = lineupRole === LineupRoleV155.SUPPORT ? 'Support' : 'Headliner';
   const lineupSelectorOpen = lineupRoleOpenConcertId === c.id;
   const lineupNotice = lineupRoleNotices.get(c.id);
   const lineupSelectorId = `lineup-role-selector-${c.id}`;
   return `
-    <div class="row-card-mc row-card clickable has-corner-delete${isPast ? ' is-past' : ''}" data-band-id="${c.bandId}">
+    <div class="row-card-mc row-card clickable has-corner-delete${isPast ? ' is-past' : ''}${isCancelled ? ' is-cancelled' : ''}" data-band-id="${c.bandId}">
       <div class="row-header">
         ${showBandName ? rowAvatarHtml(c.bandId) : ''}
         <div class="row-title-col">
           ${showPillRow ? `
           <div class="row-pill-row">
             ${c.type === 'festival' ? `<span class="pill pill-festival">Festival</span>` : ''}
-            ${isPast ? `<span class="pill pill-attended">${icon('check')} Attended</span>` : ''}
+            ${isCancelled ? '<span class="my-lifecycle-status cancelled">CANCELLED</span>' : isPast ? '<span class="my-lifecycle-status attended">ATTENDED</span>' : ''}
           </div>` : ''}
           <div class="row-name-line">
             <span class="row-name">${showBandName ? escapeHtml(c.bandName) : ''}</span>
@@ -1102,11 +1111,14 @@ function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
           ${tourName ? `<p class="row-tour">${escapeHtml(tourName)}</p>` : ''}
         </div>
       </div>
-      <p class="row-sub">${concertDateLabel(c)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
+      <p class="row-sub">${isCancelled ? (c.date ? 'Originally ' + formatDate(c.date, c.time) : 'CANCELLED · DATE TBD') : concertDateLabel(c)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
       ${venueAddressLinkHtml(c)}
       ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
       ${isPast ? pastConcertDetailsGroupHtml(c) : concertPrepGroupHtml(c)}
-      <button class="icon-btn remove-going-btn delete-corner-btn" data-concert-id="${c.id}" aria-label="Remove">${icon('trash')}</button>
+      <div class="my-concert-actions">
+        ${!isPast ? `<button type="button" class="icon-btn my-lifecycle-action" data-concert-id="${escapeAttr(c.id)}" data-action="${isCancelled ? 'restore' : 'cancel'}" aria-label="${isCancelled ? 'Restore cancelled concert' : 'Mark concert as cancelled'}">${icon(isCancelled ? 'undo' : 'ban')}<span>${isCancelled ? 'Restore' : 'Cancelled'}</span></button>` : ''}
+        <button type="button" class="icon-btn remove-going-btn delete-corner-btn" data-concert-id="${escapeAttr(c.id)}" aria-label="Remove concert">${icon('trash')}</button>
+      </div>
     </div>`;
 }
 
@@ -1462,7 +1474,7 @@ async function removeManuallyAddedConcert(concertId) {
   const next = latest.filter((item) => item.id !== concertId);
   const pdfs = ownedTicketItems(concert).filter((item) => item.type === 'pdf');
   const result = await OwnedTickets.removeConcertAfterMetadataSave({
-    saveMetadata: async () => { await dlWriteJsonFile(remote, 'concerts.json', next); concerts = next; },
+    saveMetadata: async () => { await dlWriteJsonFileIfCurrent(remote, 'concerts.json', next); concerts = next; },
     pdfTickets: pdfs,
     cleanupRemote: (item) => OwnedTickets.deletePdf(remote, concert.id, item.id),
     cleanupCache: () => OwnedTickets.removeCachedConcert(concert.id),
@@ -1476,6 +1488,16 @@ async function removeManuallyAddedConcert(concertId) {
 // a band's page redraw that page rather than jumping the user to My
 // Concerts.
 function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
+  container.querySelectorAll('[data-my-history-tab]').forEach((tab) => tab.addEventListener('click', () => {
+    myConcertsHistoryTab = tab.dataset.myHistoryTab;
+    container.querySelectorAll('[data-my-history-tab]').forEach((peer) => {
+      const selected = peer.dataset.myHistoryTab === myConcertsHistoryTab;
+      peer.classList.toggle('active', selected);
+      peer.setAttribute('aria-selected', String(selected));
+    });
+    container.querySelector('#my-history-past')?.classList.toggle('hidden', myConcertsHistoryTab !== 'past');
+    container.querySelector('#my-history-cancelled')?.classList.toggle('hidden', myConcertsHistoryTab !== 'cancelled');
+  }));
   container.querySelector('#past-concert-submit')?.addEventListener('click', onAddPastConcert);
   container.querySelector('#stats-teaser-cta')?.addEventListener('click', () => openStatsScreen({ subTab: 'concerts' }));
   container.querySelector('#start-listening-stats')?.addEventListener('click', () => openStatsScreen({ subTab: 'listening' }));
@@ -1666,12 +1688,60 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
         } catch (error) { alert(error.message || 'Could not remove this concert.'); }
         return;
       } else {
-        Object.assign(c, LineupRoleV155.withAttending(c, false));
+        if (!confirm('Remove this concert from My Music? Your Going status is removed, but the discovered concert remains saved.')) return;
       }
-      await dlWriteJsonFile(remote, 'concerts.json', concerts);
-      refresh();
+      try {
+        const latest = await dlReadJsonFile(remote, 'concerts.json', []);
+        const current = latest.find((item) => item.id === concertId);
+        if (!current) throw new Error('Concert no longer exists.');
+        const next = latest.map((item) => item.id === concertId ? LineupRoleV155.withAttending(item, false) : item);
+        await dlWriteJsonFileIfCurrent(remote, 'concerts.json', next);
+        concerts = next;
+        refresh();
+      } catch (error) { alert(error.message || 'Could not remove this concert.'); }
     });
   });
+
+  container.querySelectorAll('.my-lifecycle-action').forEach((button) => button.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
+    if (button.disabled) return;
+    button.disabled = true;
+    const action = button.dataset.action;
+    try {
+      const latest = await dlReadJsonFile(remote, 'concerts.json', []);
+      const selected = latest.find((record) => record.id === button.dataset.concertId && record.attending);
+      if (!selected) throw new Error('Concert no longer in your personal list.');
+      if (action === 'restore' && (!selected.date || !dlIsUpcoming({ ...selected, personalLifecycleStatus: 'active' }))) {
+        alert('The original date has passed or is unknown. A future date is required before this concert can return to Upcoming.');
+        return;
+      }
+      const grouped = EventModelV156.groupConcertPerformances(latest.filter((record) => record.attending))
+        .find((group) => group.validation?.valid && group.records.some((record) => record.id === selected.id)
+          && group.records.every((record) => record.date === selected.date));
+      const members = grouped?.records || [selected];
+      const changing = members.filter((record) => action === 'cancel' ? !dlIsCancelled(record) : dlIsCancelled(record));
+      if (!changing.some((record) => record.id === selected.id)) throw new Error('Concert status changed. Refresh before trying again.');
+      if (action === 'restore' && changing.some((record) => !record.date || !dlIsUpcoming({ ...record, personalLifecycleStatus: 'active' }))) {
+        throw new Error('All performances must have a confirmed future date before restoring.');
+      }
+      const label = changing.length > 1 ? 'this shared event' : 'this concert';
+      if (!confirm(action === 'cancel' ? `Mark ${label} as cancelled? All saved information will remain.` : `Restore ${label} to Upcoming Concerts? All saved information will remain.`)) return;
+      const ids = new Set(changing.map((record) => record.id));
+      const next = latest.map((record) => {
+        if (!ids.has(record.id)) return record;
+        const updated = { ...record };
+        if (action === 'cancel') updated.personalLifecycleStatus = 'cancelled';
+        else if (record.lifecycleStatus === 'cancelled') updated.personalLifecycleStatus = 'active';
+        else delete updated.personalLifecycleStatus;
+        return updated;
+      });
+      await dlWriteJsonFileIfCurrent(remote, 'concerts.json', next);
+      concerts = next;
+      myConcertsHistoryTab = action === 'cancel' ? 'cancelled' : 'past';
+      refresh();
+    } catch (error) { alert(error.message || 'Could not update concert status.'); }
+    finally { button.disabled = false; }
+  }));
 
   // Rating stars: clicking one just updates the pending value + visual fill
   // in place — the actual write happens once via the Save button below.
@@ -2415,7 +2485,7 @@ function renderProfileScreen(bandId) {
   // myConcertRowHtml used there (see below), just without that card's band
   // name line, which would be redundant on the band's own page.
   const pastAttended = concerts
-    .filter((c) => c.bandId === bandId && c.attending && !dlIsUpcoming(c))
+    .filter((c) => c.bandId === bandId && c.attending && !dlIsCancelled(c) && !dlIsUpcoming(c))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
   const initials = band.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
   const activity = dlBandActivity(band, concerts, inactivityYears);
@@ -3826,7 +3896,7 @@ function formatDate(dateStr, timeStr) {
 
 function concertDateLabel(concert) {
   if (!concert?.date && concert?.lifecycleStatus === 'postponed') return 'POSTPONED · DATE TBD';
-  if (concert?.lifecycleStatus === 'cancelled') {
+  if (dlIsCancelled(concert)) {
     const scheduled = formatDate(concert.date, concert.time);
     return scheduled ? `CANCELLED · ${scheduled}` : 'CANCELLED';
   }

@@ -44,7 +44,13 @@ function dlCurrentDate() {
   return Number.isFinite(parsed.getTime()) ? parsed : new Date();
 }
 
+function dlIsCancelled(concert) {
+  if (!concert) return false;
+  if (concert.personalLifecycleStatus === 'active') return false;
+  return concert.personalLifecycleStatus === 'cancelled' || concert.lifecycleStatus === 'cancelled';
+}
 function dlIsUpcoming(concert) {
+  if (!concert || dlIsCancelled(concert)) return false;
   if (!concert.date) return true;
   const today = dlCurrentDate();
   today.setHours(0, 0, 0, 0);
@@ -270,9 +276,11 @@ function dlPrimaryGenreGroupForBand(band) {
 // concert.
 function dlMyConcerts(concerts) {
   const mine = concerts.filter((c) => c.attending);
-  const upcoming = DLEventModel.orderPerformances(mine.filter(dlIsUpcoming).sort((a, b) => dlUpcomingDateValue(a) - dlUpcomingDateValue(b)));
-  const past = DLEventModel.orderPerformances(mine.filter((c) => !dlIsUpcoming(c)).sort((a, b) => new Date(b.date) - new Date(a.date)));
-  return { upcoming, past };
+  const cancelled = DLEventModel.orderPerformances(mine.filter(dlIsCancelled).sort((a, b) => dlUpcomingDateValue(b) - dlUpcomingDateValue(a)));
+  const active = mine.filter((c) => !dlIsCancelled(c));
+  const upcoming = DLEventModel.orderPerformances(active.filter(dlIsUpcoming).sort((a, b) => dlUpcomingDateValue(a) - dlUpcomingDateValue(b)));
+  const past = DLEventModel.orderPerformances(active.filter((c) => !dlIsUpcoming(c)).sort((a, b) => new Date(b.date) - new Date(a.date)));
+  return { upcoming, past, cancelled };
 }
 
 // Countdown card math (My Concerts, above the upcoming list) for the single
@@ -351,6 +359,8 @@ function dlVenueVisits(concerts) {
 }
 
 function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
+  attendedPast = (attendedPast || []).filter((c) => !dlIsCancelled(c));
+  upcomingGoing = (upcomingGoing || []).filter((c) => !dlIsCancelled(c));
   const performanceCount = attendedPast.length;
   const pastEvents = DLEventModel.groupConcertPerformances(attendedPast);
   const invalidEventGroupCount = pastEvents.filter((event) => event.eventGroupId && event.records.length > 1 && !event.validation.valid).length;
@@ -682,4 +692,4 @@ function dlConcertStats(attendedPast, bands = [], upcomingGoing = []) {
   };
 }
 
-if (typeof module === 'object' && module.exports) module.exports = { dlMyConcerts, dlVenueVisits, dlConcertStats };
+if (typeof module === 'object' && module.exports) module.exports = { dlIsCancelled, dlIsUpcoming, dlMyConcerts, dlVenueVisits, dlConcertStats };

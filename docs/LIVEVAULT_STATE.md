@@ -1,14 +1,25 @@
 # LiveVault Current State
 
+## v180 — personal concert cancellation and history
+
+PR #207 (`feat/cancelled-concert-history-v180`) was developed from authoritative `main` at `479ec811aa40e0871bed1a202a2572051bd6a6f3`. The v180 source pairs `APP_VERSION` and `CACHE_NAME_LITERAL` at `v180`.
+
+- The Start/My Music page replaces the Past divider with Stats-style **PAST CONCERTS / CANCELLED** tabs, Past selected by default, and matching option-8 uppercase no-icon ATTENDED (green) / CANCELLED (red) labels.
+- Upcoming records have a 28px Cancelled action beside the 28px trash control with 20px separation; cancelled records have same-size-position Restore. Both require confirmation. Both manually added deletion and discovered-concert removal require confirmation.
+- Optional user-owned `personalLifecycleStatus: 'cancelled' | 'active'` leaves all provider-owned lifecycle/evidence and other user/unknown fields intact. Cancellation remains visible in history across dates and excludes concerts from all personal attendance, travel and ticket-spending statistics and upcoming countdowns. Restore requires a confirmed future date.
+- Valid same-date event groups update their personal statuses together without splitting canonical concert/event identity.
+- The optimized venue directory/detail and Discover read caches include provider and personal lifecycle state in their cache keys, ensuring status changes neither show stale upcoming concerts nor mislabel cancelled concerts as Attended. The date-only fallback venue render path also distinguishes cancellation.
+- No Worker, R2 schema, scheduled provider workflow, production data, quota, secret or external API change is required by this release. QA uses synthetic fixtures exclusively.
+
 This continuity file was refreshed on 2026-09-04 after the full workflow/data-enrichment audit and final pre-merge PR #206 review. Earlier implementation detail remains recoverable in Git history. GitHub `main` is authoritative.
 
 ## Repository and current build
 
 LiveVault is `mstpln/concert-tracker-mobile`, a single-user concert-tracking PWA. Production is a GitHub Pages static app backed by the authenticated Cloudflare Worker and private R2 storage.
 
-Current merged `main` is **v179** at merge commit `845a5bf6a8b16603306a1b427569af74a81936a0` (PR #205). `APP_VERSION` and `CACHE_NAME_LITERAL` are synchronized at `v179`. PR #204 introduced the provider identity/lifecycle conflict safeguard; PR #205 completed post-merge ownership hardening so weaker/unrelated provider evidence cannot control top-level lifecycle or leak provider-presentation identity fields.
+The previous v179 release had merge commit `845a5bf6a8b16603306a1b427569af74a81936a0` (PR #205). Its `APP_VERSION` and `CACHE_NAME_LITERAL` were synchronized at `v179`. PR #204 introduced the provider identity/lifecycle conflict safeguard; PR #205 completed post-merge ownership hardening so weaker/unrelated provider evidence cannot control top-level lifecycle or leak provider-presentation identity fields.
 
-PR #206 (`fix/workflow-enrichment-integrity-qa`) implements the workflow/data-enrichment integrity correction. It does not change the PWA shell or version. Its scope is scheduled-run idempotency, focused Tavily canonical ingestion/reporting and failure-safe retry behavior, and explicit/latest-state fail-closed safety for the historical legacy release cleanup.
+Merged PR #206 (`fix/workflow-enrichment-integrity-qa`, merge commit `479ec811aa40e0871bed1a202a2572051bd6a6f3`) implemented the workflow/data-enrichment integrity correction without a PWA shell or version bump. Its scope is scheduled-run idempotency, focused Tavily canonical ingestion/reporting and failure-safe retry behavior, and explicit/latest-state fail-closed safety for the historical legacy release cleanup.
 
 ## Canonical identity and ingestion
 
@@ -119,6 +130,7 @@ The audit found a code-path inconsistency: focused Tavily still used the pre-v17
 7. Structured research schedule adjustment — merged PR #203.
 8. v179 provider identity/lifecycle safeguard — merged PR #204.
 9. v179 post-merge provider/lifecycle ownership QA — merged PR #205 at `845a5bf6a8b16603306a1b427569af74a81936a0`.
-10. Workflow/data-enrichment integrity QA corrections — PR #206; version remains v179; corrections cover scheduler idempotency, canonical focused Tavily persistence, retry-safe provider failure handling, and hardened cleanup rollback safety.
+10. Workflow/data-enrichment integrity QA corrections — merged PR #206; version remains v179; corrections cover scheduler idempotency, canonical focused Tavily persistence, retry-safe provider failure handling, and hardened cleanup rollback safety.
+11. v180 personal cancelled-concert history, confirmed delete/restore controls, attendance/spending exclusion and cache invalidation — PR #207.
 
 PR #134 remains intentionally open as unrelated production-inert listening backfill tooling. Production smoke remains separately authorized. No GitHub Desktop/local action is required for this webview-first work.

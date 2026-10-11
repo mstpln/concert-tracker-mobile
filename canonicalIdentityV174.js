@@ -15,6 +15,7 @@
     'attending', 'attended', 'rating', 'notes', 'ticketPrice', 'ticketQuantity', 'freeTicket', 'freeTickets',
     'ownedTickets', 'tickets', 'playlistUrl', 'playlistProgress', 'photoUrl', 'photos', 'eventGroupId',
     'lineupRole', 'setlist', 'prepChecklist', 'concertDay', 'userLinks', 'manuallyAdded',
+    'personalLifecycleStatus', // user-owned cancellation/restore
   ]);
 
   function clone(value) {
@@ -620,7 +621,14 @@
         continue;
       }
       const best = [...group.members].sort((a, b) => userRichScore(b.record) - userRichScore(a.record) || a.sourceIndex - b.sourceIndex)[0];
-      selected.push({ ...best, record: clone(best.record), duplicateCount: group.members.length });
+      const representative = clone(best.record);
+      // Preserve one unambiguous personal status even when it belongs to a
+      // less-rich provider duplicate; conflicting values are held above.
+      const personalStatuses = [...new Set(records.map((record) => record?.personalLifecycleStatus).filter(
+        (status) => typeof status === 'string' && status.trim()
+      ))];
+      if (personalStatuses.length === 1) representative.personalLifecycleStatus = personalStatuses[0];
+      selected.push({ ...best, record: representative, duplicateCount: group.members.length });
     }
     selected.push(...unresolved.map((item) => ({ sourceIndex: item.sourceIndex, record: clone(item.record), duplicateCount: 1 })));
     selected.sort((a, b) => a.sourceIndex - b.sourceIndex);

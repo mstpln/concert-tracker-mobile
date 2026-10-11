@@ -22,6 +22,10 @@ This continuity file was compacted on 2026-09-04 after the workflow/data-enrichm
 
 **Consequence:** Ambiguity fails closed. Enrichment writes use latest-state optimistic concurrency. Newer provider evidence cannot overwrite user-owned data merely because it is newer.
 
+### v180 user-owned cancellation and restorative history
+
+**Decision:** Manual cancellation/restoration uses optional `personalLifecycleStatus: 'cancelled' | 'active'`, never overwriting provider-owned `lifecycleStatus` or evidence. Absent personal state retains the provider state. A cancelled concert remains saved in its dedicated Start history tab, with unchanged tickets, prices and other user-owned fields, but is excluded from all attended-concert metrics and spending. The matched option-8 green ATTENDED and red CANCELLED statuses are uppercase text with no icon; 28px Cancelled/Restore and trash actions are separate and require confirmation. Restoring a past/TBD concert cannot silently create an attended show or upcoming countdown. Event-group peers with the same verified date are updated together where safe. Optimized venue-directory/detail and Discover render-cache signatures must reflect both provider and personal lifecycle status; otherwise a cancellation can leave stale upcoming rows or incorrect Attended labels.
+
 ## Canonical venue identity
 
 ### v164 physical grouping remains the base

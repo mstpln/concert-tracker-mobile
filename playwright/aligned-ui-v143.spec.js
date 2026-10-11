@@ -66,25 +66,27 @@ async function expectNoHorizontalOverflow(page) {
 }
 
 async function expectDividerParity(page) {
-  const upcomingLabel = page.locator('#screen-myconcerts .section-label-v143-upcoming');
-  const pastLabel = page.locator('#screen-myconcerts .section-label-gap-lg');
-  await expect(upcomingLabel).toHaveText(/Upcoming concerts/i);
-  await expect(pastLabel).toHaveText(/Past concerts/i);
-  const dividerStyles = await page.evaluate(() => {
-    const upcoming = document.querySelector('#screen-myconcerts .section-label-v143-upcoming');
-    const past = document.querySelector('#screen-myconcerts .section-label-gap-lg');
-    const read = (node) => ({
-      display: getComputedStyle(node).display,
-      beforeHeight: getComputedStyle(node, '::before').height,
-      beforeColor: getComputedStyle(node, '::before').backgroundColor,
-      beforeOpacity: getComputedStyle(node, '::before').opacity,
-      afterHeight: getComputedStyle(node, '::after').height,
-      afterColor: getComputedStyle(node, '::after').backgroundColor,
-      afterOpacity: getComputedStyle(node, '::after').opacity,
-    });
-    return { upcoming: read(upcoming), past: read(past) };
+  // v180 intentionally replaces the former Past divider with Stats-style tabs.
+  const upcoming = page.locator('#screen-myconcerts .section-label-v143-upcoming');
+  const past = page.locator('#screen-myconcerts [data-my-history-tab="past"]');
+  const cancelled = page.locator('#screen-myconcerts [data-my-history-tab="cancelled"]');
+  await expect(upcoming).toHaveText(/Upcoming concerts/i);
+  await expect(past).toHaveText('PAST CONCERTS');
+  await expect(cancelled).toHaveText('CANCELLED');
+  await expect(past).toHaveAttribute('aria-selected', 'true');
+  await expect(cancelled).toHaveAttribute('aria-selected', 'false');
+  const geometry = await page.evaluate(() => {
+    const history = document.querySelector('#screen-myconcerts .myconcerts-history-tabs');
+    const stats = document.querySelector('#screen-stats .stats-subtabs');
+    const past = history.querySelector('[data-my-history-tab="past"]');
+    return {
+      classMatch: history.classList.contains('stats-subtabs') && past.classList.contains('stats-subtab-btn'),
+      height: past.getBoundingClientRect().height,
+      statsCssHeight: getComputedStyle(past).minHeight,
+    };
   });
-  expect(dividerStyles.upcoming).toEqual(dividerStyles.past);
+  expect(geometry.classMatch).toBe(true);
+  expect(geometry.height).toBeGreaterThanOrEqual(28);
 }
 
 function rootGeo(page, key) {
