@@ -203,3 +203,72 @@ test('v181: three tabs are usable when there are no attending concerts', async (
   await page.locator('[data-my-history-tab="past"]').click();
   await expect(page.locator('#my-history-past')).toContainText('No past concerts yet.');
 });
+
+
+test('v182: taller internal banner never moves the featured card upward at initial scroll', async ({ page }) => {
+  await syntheticStart(page, 375);
+  const banner = page.locator('#screen-myconcerts .next-concert-stage-v182');
+  await expect(banner).toBeVisible();
+  for (const height of [640, 740, 820, 940]) {
+    await page.setViewportSize({ width: 375, height });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const positions = await banner.evaluate((node) => {
+      const card = node.closest('.next-concert-merged-v167');
+      const before = { card: card.getBoundingClientRect().top, banner: node.getBoundingClientRect().top };
+      node.style.height = '80px';
+      node.style.minHeight = '80px';
+      const legacyHeight = { card: card.getBoundingClientRect().top, banner: node.getBoundingClientRect().top };
+      node.style.removeProperty('height');
+      node.style.removeProperty('min-height');
+      return {
+        before, legacyHeight, restoredCardTop: card.getBoundingClientRect().top,
+        scrollY: window.scrollY,
+      };
+    });
+    expect(positions.scrollY).toBe(0);
+    expect(Math.abs(positions.before.card - positions.legacyHeight.card), `card top at ${height}px`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(positions.before.banner - positions.legacyHeight.banner), `banner top at ${height}px`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(positions.before.card - positions.restoredCardTop)).toBeLessThanOrEqual(0.5);
+  }
+});
+
+test('v182: three-digit counts and missing distances stay readable at narrow width', async ({ page }, testInfo) => {
+  await syntheticStart(page, 320);
+  await page.evaluate(() => {
+    const now = typeof dlCurrentDate === 'function' ? dlCurrentDate() : new Date();
+    const at = (days) => {
+      const d = new Date(now); d.setDate(d.getDate() + days);
+      return [d.getFullYear(), String(d.getMonth() + 1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
+    };
+    const first = concerts.find((c) => c.id === 'qa-v181-featured');
+    const second = concerts.find((c) => c.id === 'qa-v181-remaining');
+    first.date = at(130);
+    first.distanceKm = null;
+    second.date = at(180);
+    renderMyConcertsScreen();
+  });
+  const banner = page.locator('#screen-myconcerts .next-concert-stage-v182');
+  const number = banner.locator('.next-concert-stage-number-v182');
+  await expect(number).toHaveClass(/is-three-digits/);
+  await expect(number).toHaveText(/^\d{3}$/);
+  await expect(banner.locator('.next-concert-live-v167')).toContainText(/\d{3}d/);
+  const positions = await banner.evaluate((node) => {
+    const number = node.querySelector('.next-concert-stage-number-v182');
+    const label = node.querySelector('.next-concert-stage-label-v182');
+    const right = node.querySelector('.next-concert-stage-right-v182');
+    const title = label.querySelector('.next-concert-stage-eyebrow-v182');
+    return {
+      bannerOverflow: node.scrollWidth - node.clientWidth,
+      titleBeforeRight: title.getBoundingClientRect().right <= right.getBoundingClientRect().left + 1,
+      numberBeforeTitle: number.getBoundingClientRect().right <= label.getBoundingClientRect().left + 1,
+      numberFont: getComputedStyle(number).fontSize,
+      viewportOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+  expect(positions.bannerOverflow).toBeLessThanOrEqual(1);
+  expect(positions.viewportOverflow).toBeLessThanOrEqual(1);
+  expect(positions.titleBeforeRight).toBe(true);
+  expect(positions.numberBeforeTitle).toBe(true);
+  expect(positions.numberFont).toBe('35px');
+  await banner.screenshot({ path: testInfo.outputPath('v182-long-days-missing-distance-320.png') });
+});
