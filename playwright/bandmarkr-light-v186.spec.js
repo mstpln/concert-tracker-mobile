@@ -79,7 +79,10 @@ for(const width of [320,375,480]){
       expect(oldBrandSize.height).toBe(60);
       expect(oldBrandSize.width).toBe(150);
       const music = await primarySource(page,'#screen-myconcerts .music-primary-tabs-v183 .stats-subtab-btn.active');
-      expect(music.height).toBe(33);
+      // Existing v181 geometry is a 33px outer tab strip with 1px borders,
+      // so its inner buttons are 31px. The new effect must not change either.
+      await expect(page.locator('#screen-myconcerts .music-primary-tabs-v183')).toHaveCSS('height','33px');
+      expect(music.height).toBe(31);
       const nav = page.locator('#tabbar .tabitem.active');
       await expect(nav).toHaveCSS('background-image',/linear-gradient/);
       await expect(nav).toHaveCSS('background-color','rgb(2, 77, 223)');
