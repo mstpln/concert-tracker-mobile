@@ -77,3 +77,44 @@ for (const width of [375, 480]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   });
 }
+
+
+test('v180 optimized venue detail never mislabels cancelled shows as Attended and refreshes cache on status changes', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('qa-banner')).toContainText('SYNTHETIC DATA');
+  await page.evaluate(() => {
+    const band = bands[0];
+    concerts = [...concerts, {
+      id: 'qa-v180-venue-lifecycle', bandId: band.id, bandName: band.name,
+      venue: 'V180 Fictional Lifecycle Hall', city: 'Sample City',
+      country: 'Exampleland', date: '2027-10-20', time: '20:00',
+      attending: true, distanceKm: 60,
+    }];
+    const venue = LiveVaultVenueNavigationPerformanceV166.canonicalVenueGroupsFast().groups
+      .find((group) => group.concerts.some((record) => record.id === 'qa-v180-venue-lifecycle'));
+    if (!venue) throw new Error('Missing synthetic venue');
+    window.__qaV180VenueKey = venue.key;
+    openVenueDetail(venue.key);
+  });
+  const card = page.locator('#screen-venue-detail .row-card[data-band-id]')
+    .filter({ hasText: '20 Oct 2027' });
+  await expect(card.locator('.pill-going')).toContainText('Going');
+  const originalCacheBuilds = await page.evaluate(() => LiveVaultVenueNavigationPerformanceV166.getMetrics().groupBuilds);
+  await page.evaluate(() => {
+    concerts = concerts.map((record) => record.id === 'qa-v180-venue-lifecycle'
+      ? { ...record, personalLifecycleStatus: 'cancelled', date: '2027-01-20' } : record);
+    renderVenueDetailScreen(window.__qaV180VenueKey);
+  });
+  const cancelled = page.locator('#screen-venue-detail .row-card').filter({ hasText: 'V180 Fictional Lifecycle Hall' });
+  await expect(page.locator('#screen-venue-detail .pill-cancelled')).toContainText('Cancelled');
+  await expect(page.locator('#screen-venue-detail .pill-attended')).toHaveCount(0);
+  const changedCacheBuilds = await page.evaluate(() => LiveVaultVenueNavigationPerformanceV166.getMetrics().groupBuilds);
+  expect(changedCacheBuilds).toBeGreaterThan(originalCacheBuilds);
+  await page.evaluate(() => {
+    concerts = concerts.map((record) => record.id === 'qa-v180-venue-lifecycle'
+      ? { ...record, personalLifecycleStatus: 'active', date: '2027-10-20' } : record);
+    renderVenueDetailScreen(window.__qaV180VenueKey);
+  });
+  await expect(page.locator('#screen-venue-detail .pill-going')).toContainText('Going');
+  await expect(page.locator('#screen-venue-detail .pill-cancelled')).toHaveCount(0);
+});
