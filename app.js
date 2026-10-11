@@ -1473,7 +1473,7 @@ async function removeManuallyAddedConcert(concertId) {
   const next = latest.filter((item) => item.id !== concertId);
   const pdfs = ownedTicketItems(concert).filter((item) => item.type === 'pdf');
   const result = await OwnedTickets.removeConcertAfterMetadataSave({
-    saveMetadata: async () => { await dlWriteJsonFile(remote, 'concerts.json', next); concerts = next; },
+    saveMetadata: async () => { await dlWriteJsonFileIfCurrent(remote, 'concerts.json', next); concerts = next; },
     pdfTickets: pdfs,
     cleanupRemote: (item) => OwnedTickets.deletePdf(remote, concert.id, item.id),
     cleanupCache: () => OwnedTickets.removeCachedConcert(concert.id),
@@ -1487,6 +1487,16 @@ async function removeManuallyAddedConcert(concertId) {
 // a band's page redraw that page rather than jumping the user to My
 // Concerts.
 function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
+  container.querySelectorAll('[data-my-history-tab]').forEach((tab) => tab.addEventListener('click', () => {
+    myConcertsHistoryTab = tab.dataset.myHistoryTab;
+    container.querySelectorAll('[data-my-history-tab]').forEach((peer) => {
+      const selected = peer.dataset.myHistoryTab === myConcertsHistoryTab;
+      peer.classList.toggle('active', selected);
+      peer.setAttribute('aria-selected', String(selected));
+    });
+    container.querySelector('#my-history-past')?.classList.toggle('hidden', myConcertsHistoryTab !== 'past');
+    container.querySelector('#my-history-cancelled')?.classList.toggle('hidden', myConcertsHistoryTab !== 'cancelled');
+  }));
   container.querySelector('#past-concert-submit')?.addEventListener('click', onAddPastConcert);
   container.querySelector('#stats-teaser-cta')?.addEventListener('click', () => openStatsScreen({ subTab: 'concerts' }));
   container.querySelector('#start-listening-stats')?.addEventListener('click', () => openStatsScreen({ subTab: 'listening' }));
@@ -1677,12 +1687,60 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
         } catch (error) { alert(error.message || 'Could not remove this concert.'); }
         return;
       } else {
-        Object.assign(c, LineupRoleV155.withAttending(c, false));
+        if (!confirm('Remove this concert from My Music? Your Going status is removed, but the discovered concert remains saved.')) return;
       }
-      await dlWriteJsonFile(remote, 'concerts.json', concerts);
-      refresh();
+      try {
+        const latest = await dlReadJsonFile(remote, 'concerts.json', []);
+        const current = latest.find((item) => item.id === concertId);
+        if (!current) throw new Error('Concert no longer exists.');
+        const next = latest.map((item) => item.id === concertId ? LineupRoleV155.withAttending(item, false) : item);
+        await dlWriteJsonFileIfCurrent(remote, 'concerts.json', next);
+        concerts = next;
+        refresh();
+      } catch (error) { alert(error.message || 'Could not remove this concert.'); }
     });
   });
+
+  container.querySelectorAll('.my-lifecycle-action').forEach((button) => button.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
+    if (button.disabled) return;
+    button.disabled = true;
+    const action = button.dataset.action;
+    try {
+      const latest = await dlReadJsonFile(remote, 'concerts.json', []);
+      const selected = latest.find((record) => record.id === button.dataset.concertId && record.attending);
+      if (!selected) throw new Error('Concert no longer in your personal list.');
+      if (action === 'restore' && (!selected.date || !dlIsUpcoming({ ...selected, personalLifecycleStatus: 'active' }))) {
+        alert('The original date has passed or is unknown. A future date is required before this concert can return to Upcoming.');
+        return;
+      }
+      const grouped = EventModelV156.groupConcertPerformances(latest.filter((record) => record.attending))
+        .find((group) => group.validation?.valid && group.records.some((record) => record.id === selected.id)
+          && group.records.every((record) => record.date === selected.date));
+      const members = grouped?.records || [selected];
+      const changing = members.filter((record) => action === 'cancel' ? !dlIsCancelled(record) : dlIsCancelled(record));
+      if (!changing.some((record) => record.id === selected.id)) throw new Error('Concert status changed. Refresh before trying again.');
+      if (action === 'restore' && changing.some((record) => !record.date || !dlIsUpcoming({ ...record, personalLifecycleStatus: 'active' }))) {
+        throw new Error('All performances must have a confirmed future date before restoring.');
+      }
+      const label = changing.length > 1 ? 'this shared event' : 'this concert';
+      if (!confirm(action === 'cancel' ? `Mark ${label} as cancelled? All saved information will remain.` : `Restore ${label} to Upcoming Concerts? All saved information will remain.`)) return;
+      const ids = new Set(changing.map((record) => record.id));
+      const next = latest.map((record) => {
+        if (!ids.has(record.id)) return record;
+        const updated = { ...record };
+        if (action === 'cancel') updated.personalLifecycleStatus = 'cancelled';
+        else if (record.lifecycleStatus === 'cancelled') updated.personalLifecycleStatus = 'active';
+        else delete updated.personalLifecycleStatus;
+        return updated;
+      });
+      await dlWriteJsonFileIfCurrent(remote, 'concerts.json', next);
+      concerts = next;
+      myConcertsHistoryTab = action === 'cancel' ? 'cancelled' : 'past';
+      refresh();
+    } catch (error) { alert(error.message || 'Could not update concert status.'); }
+    finally { button.disabled = false; }
+  }));
 
   // Rating stars: clicking one just updates the pending value + visual fill
   // in place — the actual write happens once via the Save button below.
