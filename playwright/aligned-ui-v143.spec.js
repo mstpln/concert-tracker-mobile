@@ -87,7 +87,8 @@ async function expectDividerParity(page) {
       })),
     };
   });
-  expect(metrics.totalHeight).toBe(50);
+  // v184 continuous card: 42px buttons, 8px padding and a 1px top border.
+  expect(metrics.totalHeight).toBe(51);
   expect(metrics.buttons.every((item) => item.height === 42)).toBe(true);
   expect(metrics.buttons.every((item) => item.fontSize === '14px')).toBe(true);
   expect(Math.max(...metrics.buttons.map((item) => item.width)) -

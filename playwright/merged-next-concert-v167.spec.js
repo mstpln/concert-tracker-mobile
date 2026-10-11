@@ -161,7 +161,8 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
   expect(ordering.tabs).toBeGreaterThan(ordering.first);
   expect(ordering.separatorVisibility).toBe('hidden');
   expect(ordering.separatorHeight).toBe(0);
-  expect(ordering.tabsHeight).toBe(50);
+  // v184 combines the tab strip with the concert card (one extra outer-border pixel).
+  expect(ordering.tabsHeight).toBe(51);
   expect(ordering.bannerHeight).toBe(100);
   await expect(screen.locator('#my-history-upcoming .year-divider-v167-upcoming .year-divider-count')).toHaveText('1 more show');
 
