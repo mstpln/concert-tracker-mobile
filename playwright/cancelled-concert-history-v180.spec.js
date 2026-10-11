@@ -47,6 +47,7 @@ for (const width of [375, 480]) {
     await expect(page.locator('[data-my-history-tab="cancelled"]')).toHaveAttribute('aria-selected', 'true');
     await expect(action()).toContainText('Restore');
     await expect(page.locator('#my-history-cancelled .my-lifecycle-status.cancelled')).toContainText('CANCELLED');
+    await expect(page.locator('#my-history-cancelled .row-card-mc').filter({ has: action() }).locator('.row-sub').first()).toContainText('Originally');
     const cancelled = await stored();
     expect(cancelled.personalLifecycleStatus).toBe('cancelled');
     expect(cancelled.ticketPrice).toBe(1420);
