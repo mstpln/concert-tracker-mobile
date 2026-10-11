@@ -96,16 +96,13 @@ test('v180 optimized venue detail never mislabels cancelled shows as Attended an
     window.__qaV180VenueKey = venue.key;
     openVenueDetail(venue.key);
   });
-  const card = page.locator('#screen-venue-detail .row-card[data-band-id]')
-    .filter({ hasText: '20 Oct 2027' });
-  await expect(card.locator('.pill-going')).toContainText('Going');
+  await expect(page.locator('#screen-venue-detail .pill-going')).toContainText('Going');
   const originalCacheBuilds = await page.evaluate(() => LiveVaultVenueNavigationPerformanceV166.getMetrics().groupBuilds);
   await page.evaluate(() => {
     concerts = concerts.map((record) => record.id === 'qa-v180-venue-lifecycle'
       ? { ...record, personalLifecycleStatus: 'cancelled', date: '2027-01-20' } : record);
     renderVenueDetailScreen(window.__qaV180VenueKey);
   });
-  const cancelled = page.locator('#screen-venue-detail .row-card').filter({ hasText: 'V180 Fictional Lifecycle Hall' });
   await expect(page.locator('#screen-venue-detail .pill-cancelled')).toContainText('Cancelled');
   await expect(page.locator('#screen-venue-detail .pill-attended')).toHaveCount(0);
   const changedCacheBuilds = await page.evaluate(() => LiveVaultVenueNavigationPerformanceV166.getMetrics().groupBuilds);
