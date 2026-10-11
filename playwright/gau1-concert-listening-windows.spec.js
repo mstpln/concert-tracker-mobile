@@ -54,15 +54,15 @@ test('visible concert listening rows use GAU1 upcoming and recent-past windows',
   await expect(upcomingCard.locator('.concert-listening-row')).toContainText('2 min · 2 listens');
   await expect(pastCard.locator('.concert-listening-row')).toContainText('2 min · 2 listens');
   await expect(upcomingCard.locator('.concert-listening-row')).toBeVisible();
-  await expect(pastCard.locator('.concert-listening-row')).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-
   await upcomingCard.locator('.concert-listening-row').screenshot({
     path: testInfo.outputPath(`${testInfo.project.name}-gau1-upcoming-listening-row.png`),
   });
+  await page.locator('#screen-myconcerts [data-my-history-tab="past"]').click();
+  await expect(pastCard.locator('.concert-listening-row')).toBeVisible();
   await pastCard.locator('.concert-listening-row').screenshot({
     path: testInfo.outputPath(`${testInfo.project.name}-gau1-past-listening-row.png`),
   });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
   await page.evaluate(() => {
     window.__LIVEVAULT_QA_NOW__ = '2027-07-17T12:00:00.000Z';

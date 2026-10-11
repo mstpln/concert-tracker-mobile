@@ -18,6 +18,7 @@ test('AUB2 edits attended-card roles, survives failed writes, and updates perfor
   page.on('pageerror', (error) => errors.push(error.message));
   await openApp(page, testInfo);
 
+  await page.locator('#screen-myconcerts [data-my-history-tab="past"]').click();
   const pastCard = page.locator('.row-card-mc').filter({ has: page.locator('[data-lineup-role-toggle="qa-past-attended"]') });
   const pastBadge = pastCard.getByRole('button', { name: /Lineup role: Support/ });
   await expect(pastBadge).toBeVisible();
@@ -36,6 +37,7 @@ test('AUB2 edits attended-card roles, survives failed writes, and updates perfor
   await page.keyboard.press('Escape');
   await expect(pastCard.locator('.lineup-role-selector')).toHaveCount(0);
 
+  await page.locator('#screen-myconcerts [data-my-history-tab="upcoming"]').click();
   const upcomingCard = page.locator('.row-card-mc').filter({ has: page.locator('[data-lineup-role-toggle="qa-show-day"]') });
   await upcomingCard.getByRole('button', { name: /Lineup role: Headliner/ }).click();
   await page.evaluate(() => localStorage.setItem('livevault-qa:failures', JSON.stringify({ write: 'concerts.json' })));
@@ -52,6 +54,7 @@ test('AUB2 edits attended-card roles, survives failed writes, and updates perfor
   expect(stored.lineupRole).toBe('support');
   expect(stored.futureFeatureData).toEqual({ preserved: true, nested: { value: 'concert-preserve-me' } });
 
+  await page.locator('#screen-myconcerts [data-my-history-tab="past"]').click();
   await pastCard.getByRole('button', { name: /Lineup role: Support/ }).click();
   await pastCard.getByRole('button', { name: 'Headliner', exact: true }).click();
   await expect(pastCard.getByRole('button', { name: /Lineup role: Headliner/ })).toBeVisible();

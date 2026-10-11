@@ -38,12 +38,12 @@ test('AUB1 Start content and Music/Stats icon identities survive the v167 Next C
     return {
       next: children.findIndex((node) => node.classList.contains('section-label-v167-next')),
       card: children.findIndex((node) => node.classList.contains('next-concert-merged-v167')),
-      upcoming: children.findIndex((node) => node.classList.contains('section-label-v143-upcoming')),
+      tabs: children.findIndex((node) => node.classList.contains('myconcerts-history-tabs')),
     };
   });
   expect(separatorOrder.next).toBeGreaterThanOrEqual(0);
   expect(separatorOrder.card).toBeGreaterThan(separatorOrder.next);
-  expect(separatorOrder.upcoming).toBeGreaterThan(separatorOrder.card);
+  expect(separatorOrder.tabs).toBeGreaterThan(separatorOrder.card);
 
   const musicPaths = await page.evaluate(() => ({
     nav: document.querySelector('#tabbar [data-tab="myconcerts"] .tab-icon path')?.getAttribute('d'),

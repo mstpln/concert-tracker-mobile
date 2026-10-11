@@ -66,27 +66,32 @@ async function expectNoHorizontalOverflow(page) {
 }
 
 async function expectDividerParity(page) {
-  // v180 intentionally replaces the former Past divider with Stats-style tabs.
-  const upcoming = page.locator('#screen-myconcerts .section-label-v143-upcoming');
-  const past = page.locator('#screen-myconcerts [data-my-history-tab="past"]');
-  const cancelled = page.locator('#screen-myconcerts [data-my-history-tab="cancelled"]');
-  await expect(upcoming).toHaveText(/Upcoming concerts/i);
-  await expect(past).toHaveText('PAST CONCERTS');
-  await expect(cancelled).toHaveText('CANCELLED');
-  await expect(past).toHaveAttribute('aria-selected', 'true');
-  await expect(cancelled).toHaveAttribute('aria-selected', 'false');
-  const geometry = await page.evaluate(() => {
-    const history = document.querySelector('#screen-myconcerts .myconcerts-history-tabs');
-    const stats = document.querySelector('#screen-stats .stats-subtabs');
-    const past = history.querySelector('[data-my-history-tab="past"]');
+  // The entire Start concert list is a single 33px / 13px tab strip.
+  const root = page.locator('#screen-myconcerts .myconcerts-history-tabs');
+  const tabs = root.locator('[data-my-history-tab]');
+  await expect(tabs).toHaveCount(3);
+  await expect(tabs.nth(0)).toHaveText('Upcoming concerts');
+  await expect(tabs.nth(1)).toHaveText('Past concerts');
+  await expect(tabs.nth(2)).toHaveText('Cancelled');
+  await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'false');
+  await expect(tabs.nth(2)).toHaveAttribute('aria-selected', 'false');
+  const metrics = await root.evaluate((node) => {
+    const box = node.getBoundingClientRect();
     return {
-      classMatch: history.classList.contains('stats-subtabs') && past.classList.contains('stats-subtab-btn'),
-      height: past.getBoundingClientRect().height,
-      statsCssHeight: getComputedStyle(past).minHeight,
+      totalHeight: box.height,
+      buttons: [...node.querySelectorAll('button')].map((button) => ({
+        width: button.getBoundingClientRect().width,
+        fontSize: getComputedStyle(button).fontSize,
+        height: button.getBoundingClientRect().height,
+      })),
     };
   });
-  expect(geometry.classMatch).toBe(true);
-  expect(geometry.height).toBeGreaterThanOrEqual(28);
+  expect(metrics.totalHeight).toBe(33);
+  expect(metrics.buttons.every((item) => item.height <= 33 && item.height >= 31)).toBe(true);
+  expect(metrics.buttons.every((item) => item.fontSize === '13px')).toBe(true);
+  expect(Math.max(...metrics.buttons.map((item) => item.width)) -
+    Math.min(...metrics.buttons.map((item) => item.width))).toBeLessThanOrEqual(1);
 }
 
 function rootGeo(page, key) {
@@ -105,7 +110,9 @@ async function expectMainFilterGeometry(page) {
     return { primary: primary.height, se: { width: se.width, height: se.height }, eu: { width: eu.width, height: eu.height } };
   });
   expect(Math.abs(sizes.se.height - sizes.eu.height)).toBeLessThanOrEqual(0.5);
-  expect(Math.abs(sizes.se.height - sizes.primary)).toBeLessThanOrEqual(0.5);
+  // Primary tab controls now have 33px outer chrome and 31px inner buttons;
+  // nearby/europe filter pills deliberately keep their established 32px size.
+  expect(Math.abs(sizes.se.height - sizes.primary)).toBeLessThanOrEqual(1);
 }
 
 async function expectProfileFilterGeometry(page) {

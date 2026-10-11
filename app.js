@@ -68,7 +68,7 @@ let spotifyAuthMessage = '';
 let settingsTab = 'research';
 let settingsExpandedTool = null;
 let myConcertsRenderedDateKey = null;
-let myConcertsHistoryTab = 'past';
+let myConcertsHistoryTab = 'upcoming';
 
 const el = (id) => document.getElementById(id);
 
@@ -560,7 +560,7 @@ function goToTab(tab, { fromHistory = false } = {}) {
   el('settings-btn').classList.toggle('hidden', tab === 'stats');
   showScreen(TAB_SCREENS[tab] || 'screen-concerts');
   if (tab === 'concerts') renderConcertsScreen();
-  else if (tab === 'myconcerts') { myConcertsHistoryTab = 'past'; renderMyConcertsScreen(); }
+  else if (tab === 'myconcerts') { myConcertsHistoryTab = 'upcoming'; renderMyConcertsScreen(); }
   else if (tab === 'mybands') renderMyBandsScreen();
   else if (tab === 'stats') {
     statsSubTab = 'listening';
@@ -835,25 +835,29 @@ function renderMyConcertsScreen() {
   html += countdownCardHtml(EventModelV156.nextEventPresentation(upcoming));
   html += '</div>';
 
-  if (upcoming.length === 0 && past.length === 0 && cancelled.length === 0) {
-    html += `<p class="screen-empty">No concerts saved yet. Tap "I'm going" on a band's page to add one, or backlog a past show below.</p>`;
-  } else {
-    if (upcoming.length > 0) {
-      html += `<p class="section-label" style="margin-top:0">Upcoming concerts</p>`;
-      html += renderWithYearDividers(upcoming, (c) => myConcertRowHtml(c, false), { showCount: true });
-    }
-
-    if (past.length || cancelled.length) {
-      const selectedCancelled = myConcertsHistoryTab === 'cancelled';
-      html += `<div class="stats-subtabs myconcerts-history-tabs" role="tablist" aria-label="Concert history">
-        <button type="button" class="stats-subtab-btn${selectedCancelled ? '' : ' active'}" data-my-history-tab="past" role="tab" aria-selected="${!selectedCancelled}">PAST CONCERTS</button>
-        <button type="button" class="stats-subtab-btn${selectedCancelled ? ' active' : ''}" data-my-history-tab="cancelled" role="tab" aria-selected="${selectedCancelled}">CANCELLED</button>
-      </div>`;
-      html += `<section id="my-history-past" class="my-history-panel"${selectedCancelled ? ' hidden' : ''}>${past.length ? renderWithYearDividers(past, (c) => myConcertRowHtml(c, true), { showCount: true }) : '<p class="screen-empty">No past concerts yet.</p>'}</section>`;
-      html += `<section id="my-history-cancelled" class="my-history-panel"${selectedCancelled ? '' : ' hidden'}>${cancelled.length ? renderWithYearDividers(cancelled, (c) => myConcertRowHtml(c, false), { showCount: true }) : '<p class="screen-empty">No cancelled concerts.</p>'}</section>`;
-    }
+  // Keep Upcoming rows as direct children until the v167/v169 next-event
+  // promotion has finished. The v181 layer then moves the remaining rows
+  // under the single Upcoming / Past / Cancelled tab bar without cloning them.
+  if (upcoming.length) {
+    html += `<p class="section-label" style="margin-top:0">Upcoming concerts</p>`;
+    html += renderWithYearDividers(upcoming, (c) => myConcertRowHtml(c, false), { showCount: true });
   }
 
+  const activeHistoryTab = ['upcoming', 'past', 'cancelled'].includes(myConcertsHistoryTab)
+    ? myConcertsHistoryTab : 'upcoming';
+  const historyTabs = [
+    ['upcoming', 'Upcoming concerts'],
+    ['past', 'Past concerts'],
+    ['cancelled', 'Cancelled'],
+  ];
+  html += `<div class="stats-subtabs myconcerts-history-tabs" role="tablist" aria-label="Concert lists">
+    ${historyTabs.map(([key, title]) => `<button type="button" class="stats-subtab-btn myconcerts-history-tab${activeHistoryTab === key ? ' active' : ''}" id="my-history-tab-${key}" data-my-history-tab="${key}" role="tab" aria-selected="${activeHistoryTab === key}" aria-controls="my-history-${key}" tabindex="${activeHistoryTab === key ? 0 : -1}">${title}</button>`).join('')}
+  </div>`;
+  // The upcoming panel is populated after the existing next-event promotion;
+  // cancellation and attended history are already safe to render here.
+  html += `<section id="my-history-upcoming" class="my-history-panel" role="tabpanel" aria-labelledby="my-history-tab-upcoming"${activeHistoryTab !== 'upcoming' ? ' hidden' : ''}></section>`;
+  html += `<section id="my-history-past" class="my-history-panel" role="tabpanel" aria-labelledby="my-history-tab-past"${activeHistoryTab !== 'past' ? ' hidden' : ''}>${past.length ? renderWithYearDividers(past, (c) => myConcertRowHtml(c, true), { showCount: true }) : '<p class="screen-empty">No past concerts yet.</p>'}</section>`;
+  html += `<section id="my-history-cancelled" class="my-history-panel" role="tabpanel" aria-labelledby="my-history-tab-cancelled"${activeHistoryTab !== 'cancelled' ? ' hidden' : ''}>${cancelled.length ? renderWithYearDividers(cancelled, (c) => myConcertRowHtml(c, false), { showCount: true }) : '<p class="screen-empty">No cancelled concerts.</p>'}</section>`;
   // Placed after the lists rather than above them — it's an occasional-use
   // form, not something to lead with every time this tab is opened.
   html += `
@@ -1488,16 +1492,33 @@ async function removeManuallyAddedConcert(concertId) {
 // a band's page redraw that page rather than jumping the user to My
 // Concerts.
 function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
-  container.querySelectorAll('[data-my-history-tab]').forEach((tab) => tab.addEventListener('click', () => {
-    myConcertsHistoryTab = tab.dataset.myHistoryTab;
-    container.querySelectorAll('[data-my-history-tab]').forEach((peer) => {
-      const selected = peer.dataset.myHistoryTab === myConcertsHistoryTab;
-      peer.classList.toggle('active', selected);
-      peer.setAttribute('aria-selected', String(selected));
+  // The old v180 bug toggled a CSS class but never removed the real HTML
+  // `hidden` attribute. Use the DOM hidden property for all three panels.
+  const historyButtons = [...container.querySelectorAll('[data-my-history-tab]')];
+  const selectHistoryTab = (key, { focus = false } = {}) => {
+    myConcertsHistoryTab = key;
+    for (const button of historyButtons) {
+      const selected = button.dataset.myHistoryTab === key;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+      if (selected && focus) button.focus();
+    }
+    for (const name of ['upcoming', 'past', 'cancelled']) {
+      const panel = container.querySelector(`#my-history-${name}`);
+      if (panel) panel.hidden = name !== key;
+    }
+  };
+  historyButtons.forEach((button, index) => {
+    button.addEventListener('click', () => selectHistoryTab(button.dataset.myHistoryTab));
+    button.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      const delta = event.key === 'ArrowRight' ? 1 : -1;
+      const next = historyButtons[(index + delta + historyButtons.length) % historyButtons.length];
+      selectHistoryTab(next.dataset.myHistoryTab, { focus: true });
     });
-    container.querySelector('#my-history-past')?.classList.toggle('hidden', myConcertsHistoryTab !== 'past');
-    container.querySelector('#my-history-cancelled')?.classList.toggle('hidden', myConcertsHistoryTab !== 'cancelled');
-  }));
+  });
   container.querySelector('#past-concert-submit')?.addEventListener('click', onAddPastConcert);
   container.querySelector('#stats-teaser-cta')?.addEventListener('click', () => openStatsScreen({ subTab: 'concerts' }));
   container.querySelector('#start-listening-stats')?.addEventListener('click', () => openStatsScreen({ subTab: 'listening' }));
@@ -1737,7 +1758,7 @@ function wireMyConcertsHandlers(container, refresh = renderMyConcertsScreen) {
       });
       await dlWriteJsonFileIfCurrent(remote, 'concerts.json', next);
       concerts = next;
-      myConcertsHistoryTab = action === 'cancel' ? 'cancelled' : 'past';
+      myConcertsHistoryTab = action === 'cancel' ? 'cancelled' : 'upcoming';
       refresh();
     } catch (error) { alert(error.message || 'Could not update concert status.'); }
     finally { button.disabled = false; }

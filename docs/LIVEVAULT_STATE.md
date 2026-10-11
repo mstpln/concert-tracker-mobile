@@ -1,5 +1,16 @@
 # LiveVault Current State
 
+## v181 — Start concert tabs, restored visibility, and approved Next banner
+
+Implemented in PR #208 on `feat/start-concert-tabs-cancelled-visibility-v181`, based on `main` at `d168b60aa0a0b60c7c86071b3628d5f84feb068e` (v180 / PR #207). This section records implemented behavior; verify PR #208 and the GitHub Pages deployment workflow for authoritative merge and production-release status.
+
+- Root cause: v180 initialized inactive Past/Cancelled tab panels with native HTML `hidden`, then switched them using the CSS `.hidden` class. After navigation or reload, switching to Cancelled selected the tab visually but left `hidden` intact. The stored cancellation was not automatically deleted. v181 sets the actual `panel.hidden` property for all three tabs; automated synthetic QA reopens and reloads a cancelled concert and confirms it remains visible and restorable.
+- Start has a single Upcoming concerts / Past concerts / Cancelled tab strip, default Upcoming. Each of the three equal-width tabs has 33px outside height and 13px normal-case type. The same sizing/typography applies to the app's other primary segmented tab sections, while listening timeframe controls remain separate. The former stand-alone Upcoming and Past headings are retired.
+- The v167 Next Concert promoted card remains at the same vertical **top edge**: the retired NEXT CONCERT separator is visually hidden while preserving its old geometry. This prevents a blue-banner sliver rising into view directly above the fixed blue-selected Music navigation at the original initial scroll position. The originally approved support/headliner event grouping and ticket controls still operate before the remainder of Upcoming is moved under the new tabs; the promoted event is not duplicated.
+- The new 80px blue banner follows **exact approved option 02**: small NEXT CONCERT over 13px "12 DAYS LEFT" at left, a vertical divider and 75 km above the full live countdown at right, without an oversized day number. A special concert-day banner retains its separate CONCERT DAY styling and ticket actions.
+- Year headings within Upcoming, Past and Cancelled show the year on the left and that year's show count on the right, with no connecting horizontal line; existing count/group behavior remains.
+- Source changes are limited to the static PWA and its QA/tests. No provider calls, Worker/R2 change, production secret, source-data migration or production workflow execution. `APP_VERSION` and `CACHE_NAME_LITERAL` are both v181 and the deterministic build-state shell list includes the new modules.
+
 ## v180 — personal concert cancellation and history
 
 PR #207 (`feat/cancelled-concert-history-v180`) was developed from authoritative `main` at `479ec811aa40e0871bed1a202a2572051bd6a6f3`. The v180 source pairs `APP_VERSION` and `CACHE_NAME_LITERAL` at `v180`.

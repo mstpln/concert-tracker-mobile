@@ -60,6 +60,25 @@ for (const width of [375, 480]) {
     expect(noCancelledStats).toEqual({ upcoming: false, past: false });
     await page.locator('#screen-myconcerts').screenshot({ path: testInfo.outputPath(`v180-cancelled-${width}.png`) });
 
+    // v180 real-world regression: returning to Start made the Cancelled tab
+    // look active but left the HTML hidden attribute on its content panel.
+    await page.locator('#tabbar [data-tab="mybands"]').click();
+    await page.locator('#tabbar [data-tab="myconcerts"]').click();
+    await expect(page.locator('#screen-myconcerts [data-my-history-tab="upcoming"]')).toHaveAttribute('aria-selected', 'true');
+    await page.locator('#screen-myconcerts [data-my-history-tab="cancelled"]').click();
+    await expect(page.locator('#my-history-cancelled')).toBeVisible();
+    await expect(action()).toBeVisible();
+    expect((await stored()).personalLifecycleStatus).toBe('cancelled');
+
+    // A reload must also retain the personal cancellation without losing
+    // tickets, unknown future fields or the ability to restore.
+    await page.reload();
+    await expect(page.locator('#screen-myconcerts [data-my-history-tab="upcoming"]')).toHaveAttribute('aria-selected', 'true');
+    await page.locator('#screen-myconcerts [data-my-history-tab="cancelled"]').click();
+    await expect(page.locator('#my-history-cancelled')).toBeVisible();
+    await expect(action()).toContainText('Restore');
+    expect((await stored()).ownedTickets).toHaveLength(1);
+
     page.once('dialog', (dialog) => dialog.accept());
     await action().click();
     await expect(action()).toContainText('Cancelled');
