@@ -115,3 +115,72 @@ test('v180 optimized venue detail never mislabels cancelled shows as Attended an
   await expect(page.locator('#screen-venue-detail .pill-going')).toContainText('Going');
   await expect(page.locator('#screen-venue-detail .pill-cancelled')).toHaveCount(0);
 });
+
+
+test('v180 Discover cache updates when the personal cancellation changes', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    const band = { id: 'qa-v180-discover-band', name: 'V180 Synthetic Discover Artist', muted: false };
+    bands = [...bands, band];
+    concerts = [...concerts, {
+      id: 'qa-v180-discover', bandId: band.id, bandName: band.name,
+      date: '2027-11-20', time: '20:00', venue: 'QA Discover Hall',
+      city: 'Sample City', country: 'Exampleland', attending: true,
+    }];
+    concertsSubTab = 'concerts';
+    nearbyOnly = false; europeOnly = false;
+    if (typeof swedenOnly !== 'undefined') swedenOnly = false;
+    goToTab('concerts');
+  });
+  await expect(page.locator('#screen-concerts')).toContainText('V180 Synthetic Discover Artist');
+  const initial = await page.evaluate(() => LiveVaultVenueNavigationRenderPerformanceV166.concertsViewDataKey());
+  await page.evaluate(() => {
+    concerts = concerts.map((c) => c.id === 'qa-v180-discover' ? { ...c, personalLifecycleStatus: 'cancelled' } : c);
+    renderConcertsScreen();
+  });
+  const cancelled = await page.evaluate(() => LiveVaultVenueNavigationRenderPerformanceV166.concertsViewDataKey());
+  expect(cancelled).not.toBe(initial);
+  await expect(page.locator('#screen-concerts')).not.toContainText('V180 Synthetic Discover Artist');
+  await page.evaluate(() => {
+    concerts = concerts.map((c) => c.id === 'qa-v180-discover' ? { ...c, personalLifecycleStatus: 'active' } : c);
+    renderConcertsScreen();
+  });
+  await expect(page.locator('#screen-concerts')).toContainText('V180 Synthetic Discover Artist');
+});
+
+test('v180 one approved event-group cancellation updates every linked performance and restores safely', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(async () => {
+    const latest = await dlReadJsonFile(remote, 'concerts.json', []);
+    const records = [
+      { id: 'qa-v180-bill-head', bandId: bands[0].id, bandName: bands[0].name, lineupRole: 'headliner',
+        date: '2027-12-04', time: '19:30', venue: 'QA Paired Bill Hall', city: 'Sample City',
+        country: 'Exampleland', eventGroupId: 'qa-v180-linked-bill', attending: true, ticketPrice: 321,
+        futureProperty: { retained: true } },
+      { id: 'qa-v180-bill-support', bandId: bands[1].id, bandName: bands[1].name, lineupRole: 'support',
+        date: '2027-12-04', time: '19:30', venue: 'QA Paired Bill Hall', city: 'Sample City',
+        country: 'Exampleland', eventGroupId: 'qa-v180-linked-bill', attending: true, ticketPrice: 0,
+        futureProperty: { retained: true } },
+    ];
+    const next = [...latest.filter((r) => !records.some((x) => x.id === r.id)), ...records];
+    await dlWriteJsonFile(remote, 'concerts.json', next);
+    concerts = next;
+    renderMyConcertsScreen();
+  });
+  const readRows = () => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('livevault-qa:data') || '{}');
+    return (saved.concerts || []).filter((c) => ['qa-v180-bill-head', 'qa-v180-bill-support'].includes(c.id));
+  });
+  const cancel = page.locator('#screen-myconcerts .my-lifecycle-action[data-concert-id="qa-v180-bill-head"]');
+  await expect(cancel).toContainText('Cancelled');
+  page.once('dialog', (dialog) => dialog.accept());
+  await cancel.click();
+  await expect.poll(async () => (await readRows()).every((c) => c.personalLifecycleStatus === 'cancelled')).toBe(true);
+  const afterCancel = await readRows();
+  expect(afterCancel.every((c) => c.attending && c.futureProperty?.retained)).toBe(true);
+  await expect(page.locator('#my-history-cancelled .my-lifecycle-status.cancelled')).toHaveCount(2);
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('#my-history-cancelled .my-lifecycle-action[data-concert-id="qa-v180-bill-support"]').click();
+  await expect.poll(async () => (await readRows()).every((c) => !c.personalLifecycleStatus)).toBe(true);
+  expect((await readRows()).find((c) => c.id === 'qa-v180-bill-head').ticketPrice).toBe(321);
+});
