@@ -1111,7 +1111,7 @@ function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
           ${tourName ? `<p class="row-tour">${escapeHtml(tourName)}</p>` : ''}
         </div>
       </div>
-      <p class="row-sub">${concertDateLabel(c)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
+      <p class="row-sub">${isCancelled ? (c.date ? 'Originally ' + formatDate(c.date, c.time) : 'CANCELLED · DATE TBD') : concertDateLabel(c)} · ${escapeHtml(c.venue)}, ${escapeHtml(c.city)}${c.country ? ', ' + escapeHtml(c.country) : ''}</p>
       ${venueAddressLinkHtml(c)}
       ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
       ${isPast ? pastConcertDetailsGroupHtml(c) : concertPrepGroupHtml(c)}
