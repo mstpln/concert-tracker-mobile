@@ -32,6 +32,9 @@ test('v186 shimmering 1px stats-card outlines use a slightly deeper but still bl
 test('v186 unified past surface applies to every concert-listing renderer without recoloring unrelated UI', () => {
   const css = read('bandmarkrLightV186.css');
   assert.match(css, /#screen-myconcerts \.row-card-mc\.is-cancelled/);
+  assert.match(css, /#screen-myconcerts \.row-card-mc\.is-past/);
+  assert.match(css, /#screen-venue-detail \.row-card\.is-past/);
+  assert.match(css, /opacity: 1/);
   assert.match(css, /#screen-profile \.profile-divider \.row-card/);
   assert.match(css, /#screen-concerts \.row-card\[data-band-id\]/);
   assert.match(css, /#screen-venue-detail \.row-card\[data-band-id\]/);
