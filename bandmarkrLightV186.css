@@ -1,0 +1,127 @@
+/* BANDMARKR v186 — approved static Blue Light v3 treatment.
+   Palette and geometry follow the v182 Next Concert spotlight. No animation,
+   font, position, size, layout, or tab-label changes. */
+.brand-banner {
+  background-color: #024ddf;
+  background-image:
+    radial-gradient(ellipse 47% 134% at 44% 45%,
+      rgba(115,171,255,.13) 0%, rgba(57,118,239,.07) 43%, transparent 77%),
+    linear-gradient(103deg,#102f85 0%,#2350c1 21%,#315edf 40%,#214abd 68%,#112a7e 100%);
+}
+.brand-banner .brand-wordmark { position: relative; z-index: 1; }
+
+/* The light is anchored by bandmarkrLightV186.js at the actual first glyph of
+   each active blue primary tab; inactive and muted nested controls are intact.
+   A pixel fallback provides the same left-origin intent without JavaScript. */
+.stats-subtabs > .stats-subtab-btn.active,
+.news-subtab-switch > .news-subtab-btn.active,
+#screen-settings .settings-v123-tabs > .settings-v123-tab.is-selected,
+.discover-geo-filters-v172 .discover-geo-filter-btn-v171.active {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: var(--on-accent);
+  background-color: var(--accent);
+  background-image: linear-gradient(104deg,#102d82 0%,#1c49b8 31%,#1c48af 60%,#0b2874 100%);
+}
+.stats-subtabs > .stats-subtab-btn.active::before,
+.news-subtab-switch > .news-subtab-btn.active::before,
+#screen-settings .settings-v123-tabs > .settings-v123-tab.is-selected::before,
+.discover-geo-filters-v172 .discover-geo-filter-btn-v171.active::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 76px 53px at var(--v186-first-letter-x,30%) 50%,
+      rgba(112,173,255,.33) 0%, rgba(65,130,247,.19) 27%,
+      rgba(27,89,215,.045) 65%, transparent 89%),
+    linear-gradient(126deg,rgba(47,116,236,.012),transparent 70%);
+}
+.stats-subtabs > .stats-subtab-btn.active > *,
+.news-subtab-switch > .news-subtab-btn.active > *,
+#screen-settings .settings-v123-tabs > .settings-v123-tab.is-selected > *,
+.discover-geo-filters-v172 .discover-geo-filter-btn-v171.active > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* In the bottom bar the active icon is the emitter, as agreed. Its outer
+   blue edges are darker and intentionally not mirrored. */
+#tabbar .tabitem.active {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: #fff;
+  background-color: #024ddf;
+  background-image: linear-gradient(107deg,#102e83 0%,#2250bf 34%,#1947aa 59%,#09276e 100%);
+}
+#tabbar .tabitem.active::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(ellipse 75px 56px at 48% 29%,
+    rgba(121,179,255,.29) 0%,rgba(65,133,248,.17) 30%,
+    rgba(39,96,223,.055) 60%,transparent 86%);
+}
+#tabbar .tabitem.active > * { position: relative; z-index: 1; }
+
+/* Highlights stats cards only. Preserve the 1px blue outline, rounded
+   corners, all internal metrics/links and v185 vertical spacing. Relative to
+   approved v3, the opposite edge is just slightly deeper blue (not black).
+   The pseudo-outline is masked to the border and never intercepts taps. */
+#screen-myconcerts .myconcerts-summary > .start-top-bands-card,
+#screen-myconcerts .myconcerts-summary > .stats-teaser-card {
+  position: relative;
+  border-color: #145bd6;
+  box-shadow: 0 0 10px rgba(30,99,233,.16), 0 0 17px rgba(13,71,188,.07);
+}
+#screen-myconcerts .myconcerts-summary > .start-top-bands-card::before,
+#screen-myconcerts .myconcerts-summary > .stats-teaser-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(130deg,
+    rgba(132,186,255,.97) 0%,
+    rgba(61,140,255,.92) 13%,
+    rgba(25,102,239,.83) 34%,
+    rgba(11,69,180,.78) 58%,
+    rgba(12,73,189,.80) 76%,
+    rgba(51,119,240,.88) 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+/* All CONCERT listing cards share exactly the established Past surface.
+   A v180 cancelled status formerly changed the surface to gray; its
+   existing status label and actions remain, but its card is now the same.
+   Include the promoted Next Concert body, history, Band Detail (Upcoming
+   and Past), Discover > Concerts dates, and Venue Detail. Do not recolor
+   generic band/venue rows, release alerts, or Discover artist suggestions. */
+#screen-myconcerts .row-card-mc,
+#screen-myconcerts .row-card-mc.is-past,
+#screen-myconcerts .row-card-mc.is-cancelled,
+#screen-profile .profile-divider .row-card,
+#screen-concerts .row-card[data-band-id],
+#screen-venue-detail .row-card[data-band-id] {
+  background-color: var(--concert-card-background-v86);
+  background-image: none;
+}
+
+/* Preserve identical *visible* Past/Upcoming card surfaces: the historical
+   72% opacity dims even the correct Past background. Scope to concert rows. */
+#screen-myconcerts .row-card-mc.is-past,
+#screen-profile .profile-divider .row-card.is-past,
+#screen-venue-detail .row-card.is-past {
+  opacity: 1;
+}

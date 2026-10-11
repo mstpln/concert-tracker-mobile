@@ -130,7 +130,7 @@ test('v147 retains the canonical ticket quantity DOM contract after later presen
   }
 });
 
-test('v147 Concert Stats matches the single-pixel card outline and regular CTA weight', async ({ page }, testInfo) => {
+test('v147 Concert Stats retains its one-pixel outline and regular CTA with the approved v186 glow', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 375, height: 900 });
   await openStart(page);
 
@@ -149,7 +149,9 @@ test('v147 Concert Stats matches the single-pixel card outline and regular CTA w
   });
   expect(styles.borderTopWidth).toBe('1px');
   expect(styles.borderRightWidth).toBe('1px');
-  expect(styles.boxShadow).toBe('none');
+  // v186 intentionally adds a subtle static shadow to the existing 1px blue
+  // outline; the geometry and regular CTA typography must remain unchanged.
+  expect(styles.boxShadow).not.toBe('none');
   expect(styles.footerWeight).toBe('400');
 
   await page.locator('#screen-myconcerts').screenshot({ path: testInfo.outputPath('v147-start-375px.png') });

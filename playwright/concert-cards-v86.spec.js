@@ -4,7 +4,7 @@ async function background(locator) {
   return locator.evaluate((element) => getComputedStyle(element).backgroundColor);
 }
 
-test('v86 applies charcoal blue only to concert listing cards', async ({ page }, testInfo) => {
+test('v186 applies the true Past surface only to concert listing cards', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await page.setViewportSize(testInfo.project.name === 'mobile-chromium'
     ? { width: 375, height: 820 }
@@ -16,7 +16,7 @@ test('v86 applies charcoal blue only to concert listing cards', async ({ page },
   await page.locator('#music-tab-concerts').click();
   const startCard = page.locator('#screen-myconcerts .row-card-mc').first();
   await expect(startCard).toBeVisible();
-  expect(await background(startCard)).toBe('rgb(35, 42, 50)');
+  expect(await background(startCard)).toBe('rgb(29, 33, 36)');
 
   await page.evaluate(() => {
     const addRow = (parent, marker) => {
@@ -35,10 +35,10 @@ test('v86 applies charcoal blue only to concert listing cards', async ({ page },
     addRow(document.querySelector('#screen-mybands'), 'generic-band');
   });
 
-  expect(await background(page.locator('[data-v86-qa="dates"]'))).toBe('rgb(35, 42, 50)');
-  expect(await background(page.locator('[data-v86-qa="venue"]'))).toBe('rgb(35, 42, 50)');
-  expect(await background(page.locator('[data-v86-qa="profile-concert"]'))).toBe('rgb(35, 42, 50)');
-  expect(await background(page.locator('[data-v86-qa="generic-band"]'))).not.toBe('rgb(35, 42, 50)');
+  expect(await background(page.locator('[data-v86-qa="dates"]'))).toBe('rgb(29, 33, 36)');
+  expect(await background(page.locator('[data-v86-qa="venue"]'))).toBe('rgb(29, 33, 36)');
+  expect(await background(page.locator('[data-v86-qa="profile-concert"]'))).toBe('rgb(29, 33, 36)');
+  expect(await background(page.locator('[data-v86-qa="generic-band"]'))).not.toBe('rgb(29, 33, 36)');
 
   await page.locator('#screen-myconcerts').screenshot({
     path: testInfo.outputPath(`${testInfo.project.name}-v86-charcoal-concert-cards.png`),

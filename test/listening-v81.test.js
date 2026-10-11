@@ -164,7 +164,7 @@ test('current build facts, contrast and shell entries remain deterministic', () 
   const cacheVersion = serviceWorkerSource.match(/const CACHE_NAME_LITERAL\s*=\s*['"]([^'"]+)['"]/u)?.[1];
   assert.match(css, /start-refresh-btn svg/);
   assert.match(css, /@media\(min-width:391px\)/);
-  assert.match(concertCss, /--concert-card-background-v86:\s*#232a32/);
+  assert.match(concertCss, /--concert-card-background-v86:\s*#1d2124/);
   assert.match(brandCss, /--bandmarkr-blue:\s*#024ddf/);
   assert.equal(state.appVersion, state.serviceWorkerCacheVersion);
   assert.equal(state.appVersion, appVersion);

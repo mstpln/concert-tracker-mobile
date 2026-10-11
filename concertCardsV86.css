@@ -4,8 +4,8 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* Approved charcoal-blue option from the v86 comparison. */
-    --concert-card-background-v86: #232a32;
+    /* v186 unifies all concert cards to the actual legacy Past surface. */
+    --concert-card-background-v86: #1d2124;
   }
 }
 
