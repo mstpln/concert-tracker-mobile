@@ -24,27 +24,47 @@
     return /\bkm\b/i.test(firstPart) ? firstPart.replace(/\s+away\s*$/i, '') : '';
   }
 
-  // Keep the approved option-02 banner geometry and typography: the normal
-  // countdown headline stays 13px, not a large standalone day number.
-  // The right side shows distance above the live ticker next to a divider.
+  // v182: the selected Compact Hero Split (#21) applies only before concert
+  // day. Keep the v181 cyan concert-day layout and its ticket actions intact.
   function bannerHtml({ today, target, dateKey, distance }) {
-    const parts = !today ? countdownParts(target, typeof dlCurrentDate === 'function' ? dlCurrentDate() : new Date()) : null;
-    const right = today
-      ? (distance ? `<span class="next-concert-distance-v167">${escapeHtml(distance)}</span>` : '')
-      : `${distance ? `<span class="next-concert-distance-v167">${escapeHtml(distance)}</span>` : ''}<span class="next-concert-live-v167"><span data-v167-live-days>${parts.days}</span>d <span data-v167-hours>${String(parts.hours).padStart(2, '0')}</span>h <span data-v167-minutes>${String(parts.minutes).padStart(2, '0')}</span>m <span data-v167-seconds>${String(parts.seconds).padStart(2, '0')}</span>s</span>`;
-    const headline = today ? 'CONCERT DAY' : `<span class="next-concert-days-v167">${parts.days}</span> DAYS LEFT`;
-    const attributes = today ? ' is-concert-day' : '';
-    const tickerData = today ? '' : ` data-next-concert-target="${escapeAttr(target.toISOString())}" data-next-concert-date="${escapeAttr(dateKey)}"`;
-    return `<div class="next-concert-banner-v167${attributes}"${tickerData}>
-      <div class="next-concert-banner-split-v181">
-        <div class="next-concert-banner-left-v181">
-          <span class="next-concert-banner-label-v181">NEXT CONCERT</span>
-          <strong>${headline}</strong>
+    if (today) {
+      return `<div class="next-concert-banner-v167 is-concert-day">
+        <div class="next-concert-banner-split-v181">
+          <div class="next-concert-banner-left-v181">
+            <span class="next-concert-banner-label-v181">NEXT CONCERT</span>
+            <strong>CONCERT DAY</strong>
+          </div>
+          <div class="next-concert-banner-right-v181">${distance ? `<span class="next-concert-distance-v167">${escapeHtml(distance)}</span>` : ''}</div>
         </div>
-        <div class="next-concert-banner-right-v181">${right}</div>
+      </div>`;
+    }
+
+    const parts = countdownParts(target, typeof dlCurrentDate === 'function' ? dlCurrentDate() : new Date());
+    const digits = String(parts.days).length;
+    const numberClass = digits > 3 ? ' is-four-plus-digits' : digits === 3 ? ' is-three-digits' : '';
+    // Match #21: show days, hours and minutes in the compact secondary timer.
+    // The one-second ticker still runs to update the day count and roll into
+    // the original special concert-day treatment at the date boundary.
+    const timer = `<span class="next-concert-live-v167">
+      <span data-v167-live-days>${parts.days}</span>d <span data-v167-hours>${String(parts.hours).padStart(2, '0')}</span>h <span data-v167-minutes>${String(parts.minutes).padStart(2, '0')}</span>m
+    </span>`;
+    return `<div class="next-concert-banner-v167 next-concert-stage-v182"
+      data-next-concert-target="${escapeAttr(target.toISOString())}"
+      data-next-concert-date="${escapeAttr(dateKey)}">
+      <div class="next-concert-stage-grid-v182">
+        <strong class="next-concert-days-v167 next-concert-stage-number-v182${numberClass}">${parts.days}</strong>
+        <div class="next-concert-stage-label-v182">
+          <span class="next-concert-stage-eyebrow-v182">NEXT CONCERT</span>
+          <span class="next-concert-stage-dayslabel-v182">DAYS<br> LEFT</span>
+        </div>
+        <div class="next-concert-stage-right-v182">
+          ${distance ? `<span class="next-concert-distance-v167">${escapeHtml(distance)}</span>` : ''}
+          ${timer}
+        </div>
       </div>
     </div>`;
   }
+
   function updateCountdownBanner() {
     const banner = root.document?.querySelector('#screen-myconcerts .next-concert-banner-v167[data-next-concert-target]');
     if (!banner) return;
@@ -61,7 +81,11 @@
     const hours = banner.querySelector('[data-v167-hours]');
     const minutes = banner.querySelector('[data-v167-minutes]');
     const seconds = banner.querySelector('[data-v167-seconds]');
-    if (days) days.textContent = String(parts.days);
+    if (days) {
+      days.textContent = String(parts.days);
+      days.classList.toggle('is-three-digits', String(parts.days).length === 3);
+      days.classList.toggle('is-four-plus-digits', String(parts.days).length > 3);
+    }
     if (liveDays) liveDays.textContent = String(parts.days);
     if (hours) hours.textContent = String(parts.hours).padStart(2, '0');
     if (minutes) minutes.textContent = String(parts.minutes).padStart(2, '0');

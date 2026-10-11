@@ -22,6 +22,12 @@ This continuity file was compacted on 2026-09-04 after the workflow/data-enrichm
 
 **Consequence:** Ambiguity fails closed. Enrichment writes use latest-state optimistic concurrency. Newer provider evidence cannot overwrite user-owned data merely because it is newer.
 
+### v182 Compact Hero Split (#21) and unchanged featured-card top
+
+**Decision:** Replace only the ordinary Next Concert blue banner with the user-approved Version 21. It displays a dominant, responsive day number on the left; `NEXT CONCERT` over stacked `DAYS / LEFT` in the middle; distance over live days/hours/minutes on the right separated by a vertical rule. Use the mockup's subtle blue spotlight gradient, scaled to the true app-card width, without extra icons, new cards or a rearranged concert detail panel.
+
+**Safety constraint:** The featured card **must begin at precisely the same vertical position as v181**. Keep its existing outside geometry and invisible section-label/year spacers unchanged; resizing or redesigning *inside* the banner must not shift its top edge toward the initial viewport/bottom nav. Preserve the cyan concert-day state and ticket actions, current real data and every unrelated screen. This is a v182 user-visible build; APP_VERSION/CACHE_NAME_LITERAL advance together once.
+
 ### v181 unified Start tabs and cancellation visibility
 
 **Decision:** Start keeps the Next Concert card in its existing vertical position while replacing the visible separator with the approved 80px option-02 blue banner (small NEXT CONCERT above normal-size DAYS LEFT; distance above live countdown right of a vertical divider). The first verified upcoming event remains promoted only once; all remaining upcoming, actually attended and cancelled shows live under one default-Upcoming, three-column 33px/13px tab strip. Each tab has the same width. The year-left/show-count-right headings have no connecting horizontal rule.

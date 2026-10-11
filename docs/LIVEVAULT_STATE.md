@@ -1,5 +1,14 @@
 # LiveVault Current State
 
+## Pending v182 — Compact Hero Split (#21) for the featured Next Concert banner
+
+Branch `feat/next-concert-compact-hero-v182` implements the user-selected Version 21 (Compact Hero Split) on top of merged v181 `main` at `f4e0ffa199354bd254252dfffd7879e0d04c9955`. This build is **not merged or deployed**.
+
+- Ordinary pre-concert Next Concert cards now put one large but proportionally scaled day number at left, `NEXT CONCERT` and `DAYS / LEFT` beside it, and distance above a live days/hours/minutes countdown to the right of a vertical divider. The blue header adopts Version 21's gentle spotlight gradient.
+- The 110px-high mockup is scaled to the narrower actual PWA card: 100px banner at 375/390/480px and 88px at 320px. Very long day counts scale down separately. Seconds are intentionally not displayed in Version 21, but the existing ticker still updates the day/minute fields and concert-day rollover.
+- **Position invariant:** the Next Concert card's vertical top and its blue banner start remain **unchanged from v181**. The v181 invisible original separator and year-spacer geometry above the card remain untouched. The larger/shorter internal content must not move the card up or reveal blue sooner above fixed selected Music navigation. Synthetic browser tests compare the top edge before/after changing banner height on the same page.
+- The existing cyan CONCERT DAY version, ticket/get-directions actions, support/headliner grouping, concert tabs, and user records remain untouched. No provider calls, Worker/R2 modifications, production secrets or production workflows. `APP_VERSION` and `CACHE_NAME_LITERAL` are both v182, using existing shell assets only.
+
 ## v181 — Start concert tabs, restored visibility, and approved Next banner
 
 Implemented in PR #208 on `feat/start-concert-tabs-cancelled-visibility-v181`, based on `main` at `d168b60aa0a0b60c7c86071b3628d5f84feb068e` (v180 / PR #207). This section records implemented behavior; verify PR #208 and the GitHub Pages deployment workflow for authoritative merge and production-release status.

@@ -182,3 +182,136 @@
   line-height: normal;
   text-align: center;
 }
+
+/* v182 · Compact Hero Split (#21), approved Stage Spotlight refinement.
+   This is inside the existing featured card: do not change the invisible
+   .section-label-v167-next / year-spacer geometry above the card. Because the
+   card top does not move, no new blue strip peeks above the fixed Music nav.
+   The design scales from the 375px-wide HTML mockup to the smaller actual
+   app card, keeping the giant day numeral proportionally compact. */
+#screen-myconcerts .next-concert-banner-v167.next-concert-stage-v182 {
+  box-sizing: border-box;
+  height: 100px;
+  min-height: 100px;
+  padding: 14px 12px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 20% 38%, rgba(126,181,255,.22), transparent 34%),
+    linear-gradient(90deg, #1858eb 0%, #0e46c7 42%, #072a81 100%);
+  color: #fff;
+}
+#screen-myconcerts .next-concert-stage-grid-v182 {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+#screen-myconcerts .next-concert-banner-v167.next-concert-stage-v182 .next-concert-stage-number-v182 {
+  display: block;
+  font-size: 66px;
+  font-weight: 900;
+  line-height: .9;
+  letter-spacing: -.05em;
+  color: #fff;
+}
+#screen-myconcerts .next-concert-banner-v167.next-concert-stage-v182 .next-concert-stage-number-v182.is-three-digits {
+  font-size: 40px;
+}
+#screen-myconcerts .next-concert-banner-v167.next-concert-stage-v182 .next-concert-stage-number-v182.is-four-plus-digits {
+  font-size: 28px;
+}
+#screen-myconcerts .next-concert-stage-label-v182 {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  align-items: flex-start;
+}
+#screen-myconcerts .next-concert-stage-eyebrow-v182 {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(255,255,255,.86);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+#screen-myconcerts .next-concert-stage-dayslabel-v182 {
+  display: block;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: .96;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+#screen-myconcerts .next-concert-stage-right-v182 {
+  align-self: stretch;
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 1px solid rgba(255,255,255,.18);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+  text-align: right;
+}
+#screen-myconcerts .next-concert-banner-v167.next-concert-stage-v182 .next-concert-distance-v167 {
+  max-width: 115px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.15;
+  color: rgba(255,255,255,.88);
+}
+#screen-myconcerts .next-concert-banner-v167.next-concert-stage-v182 .next-concert-live-v167 {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0;
+  color: rgba(255,255,255,.86);
+  white-space: nowrap;
+}
+@media (max-width: 355px) {
+  #screen-myconcerts .next-concert-banner-v167.next-concert-stage-v182 {
+    height: 88px;
+    min-height: 88px;
+    padding: 10px 8px;
+  }
+  #screen-myconcerts .next-concert-stage-grid-v182 {
+    grid-template-columns: 62px minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  #screen-myconcerts .next-concert-banner-v167.next-concert-stage-v182 .next-concert-stage-number-v182 {
+    font-size: 55px;
+  }
+  #screen-myconcerts .next-concert-banner-v167.next-concert-stage-v182 .next-concert-stage-number-v182.is-three-digits {
+    font-size: 35px;
+  }
+  #screen-myconcerts .next-concert-banner-v167.next-concert-stage-v182 .next-concert-stage-number-v182.is-four-plus-digits {
+    font-size: 26px;
+  }
+  #screen-myconcerts .next-concert-stage-eyebrow-v182 {
+    font-size: 8px;
+    letter-spacing: .08em;
+    margin-bottom: 5px;
+  }
+  #screen-myconcerts .next-concert-stage-dayslabel-v182 { font-size: 16px; }
+  #screen-myconcerts .next-concert-stage-right-v182 {
+    padding-left: 8px;
+    gap: 6px;
+  }
+  #screen-myconcerts .next-concert-banner-v167.next-concert-stage-v182 .next-concert-live-v167 {
+    font-size: 11px;
+  }
+  #screen-myconcerts .next-concert-banner-v167.next-concert-stage-v182 .next-concert-distance-v167 {
+    font-size: 11px;
+  }
+}

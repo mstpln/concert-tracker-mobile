@@ -119,7 +119,10 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
   const banner = card.locator('.next-concert-banner-v167');
   await expect(banner).toContainText('DAYS LEFT');
   await expect(banner).toContainText('59 km');
-  await expect(banner.locator('.next-concert-live-v167')).toContainText(/\d+d \d{2}h \d{2}m \d{2}s/);
+  await expect(banner.locator('.next-concert-live-v167')).toContainText(/\d+d \d{2}h \d{2}m/);
+  await expect(banner.locator('.next-concert-live-v167')).not.toContainText(/\d{2}s/);
+  await expect(banner.locator('.next-concert-stage-eyebrow-v182')).toHaveText('NEXT CONCERT');
+  await expect(banner.locator('.next-concert-stage-dayslabel-v182')).toHaveText('DAYS LEFT');
   await expect(card.locator('.row-km')).toBeHidden();
 
   const presentation = await banner.evaluate((node) => {
@@ -133,8 +136,8 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
       liveDays,
     };
   });
-  expect(presentation.height).toBeGreaterThanOrEqual(44);
-  expect(presentation.headlineFontSize).toBeGreaterThanOrEqual(12);
+  expect(presentation.height).toBe(100);
+  expect(presentation.headlineFontSize).toBe(66);
   expect(presentation.liveDays).toBe(presentation.headlineDays);
 
   const ordering = await screen.evaluate((node) => {
@@ -158,7 +161,7 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
   expect(ordering.separatorVisibility).toBe('hidden');
   expect(ordering.separatorHeight).toBeGreaterThan(0);
   expect(ordering.tabsHeight).toBe(33);
-  expect(ordering.bannerHeight).toBe(80);
+  expect(ordering.bannerHeight).toBe(100);
   await expect(screen.locator('#my-history-upcoming .year-divider-v167-upcoming .year-divider-count')).toHaveText('1 more show');
 
   const spacing = await screen.evaluate((node) => {
@@ -180,7 +183,8 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
     distance: getComputedStyle(node.querySelector('.next-concert-distance-v167')).fontWeight,
   }));
   expect(Number(weights.headline)).toBeGreaterThanOrEqual(700);
-  expect(Number(weights.live)).toBeLessThan(700);
+  // Version 21 uses a semi-bold live subcount, unlike v181's light ticker.
+  expect(Number(weights.live)).toBe(700);
   expect(Number(weights.distance)).toBeLessThan(700);
 
   // Moving the existing card must preserve its established band-profile
