@@ -1,6 +1,14 @@
-## Pending v184 — Combined Band Listening card and integrated Concerts history tabs
+## Pending v185 — Music Highlights balanced spacing
 
-Branch `feat/integrated-listening-concert-cards-v184` is based on merged/deployed v183 `main` at `9b5fa6ad926c07b735bb927dcfbbe631df1e329a`. **Not merged or deployed.**
+Branch `fix/highlights-vertical-rhythm-v185` starts from merged/deployed v184 main at `35bfdba1861b845922620e89f3ee976c3edd6211`. **Not merged or deployed.**
+
+- The approved v185 refinement applies **only** when Music > Highlights is active: reduce the gap from the bottom of the existing 33px primary Highlights / Concerts selector to Listening stats from about 20px to 12px, and reduce the gap from Listening stats to Concert stats from 16px to 12px. The approximately 12px saved vertically provides breathing room above the unchanged bottom navigation on the reference phone viewport.
+- Do not change the space above the primary tabs, either card's contents/size/fonts/colors, any click behavior, scroll-container bottom padding, safe-area handling, Music > Concerts, other app pages, data records or providers. Single-card Highlights with no past concerts remains supported.
+- Scoped CSS is appended to the existing `musicSectionsV183.css` (no new runtime assets); synthetic regression tests cover both present/absent Concert stats and narrow/wide viewports. App/cache versions are synchronized at v185; deterministic build state refreshed.
+
+## Merged v184 — Combined Band Listening card and integrated Concerts history tabs
+
+Branch `feat/integrated-listening-concert-cards-v184` was merged as PR #211 and deployed to GitHub Pages on 2026-10-11 at `35bfdba1861b845922620e89f3ee976c3edd6211`.
 
 - Approved Band Detail > Listening change: the exact existing Your Listening summary and Listening Over Time chart are moved (not cloned/re-rendered) into one common neutral card frame. The v183 muted timeframe control remains at the top of the original summary section. Graph geometry, axes, metrics, timeframe calculations, labels and separate Top Tracks/Top Albums card are unchanged.
 - Approved Music > Concerts change: the 42px muted Upcoming / Past / Cancelled selector visually joins the first native concert card in the active panel, sharing one continuous outline with no gap or duplicate top border. Extra cards remain independent; later-year headings, original concert details and actions are not altered. The v183 year/count heading stays outside/above the tab-card group and keeps its current counting/text rules. Empty lists have a matching attached panel.
