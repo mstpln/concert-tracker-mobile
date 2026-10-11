@@ -28,6 +28,10 @@
       parts.push([
         concert.id || '', concert.bandId, concert.bandName || '', bandState.get(concert.bandId), concert.date || '', concert.time || '',
         concert.venue || '', concert.city || '', concert.country || '', concert.attending === true ? 1 : 0,
+        // The user's cancellation and provider status affect Discover visibility.
+        // Include both in the cheap render signature so a status edit cannot
+        // reuse a stale upcoming-concert list.
+        concert.lifecycleStatus || '', concert.personalLifecycleStatus || '',
         Number.isFinite(concert.distanceKm) ? concert.distanceKm : null,
       ]);
     }
