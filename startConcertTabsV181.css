@@ -131,6 +131,14 @@
   line-height: 1.15;
   color: rgba(255,255,255,.89);
 }
+/* Preserve the high-contrast dark text on the existing cyan concert-day
+   banner; white is reserved for the normal blue countdown banner. */
+#screen-myconcerts .next-concert-banner-v167.is-concert-day strong {
+  color: #00131b;
+}
+#screen-myconcerts .next-concert-banner-v167.is-concert-day .next-concert-banner-right-v181 {
+  border-left-color: rgba(0, 19, 27, .30);
+}
 #screen-myconcerts .next-concert-banner-v167.is-concert-day .next-concert-banner-label-v181 {
   margin-left: 0;
   color: #16323b;
