@@ -153,7 +153,7 @@ test('v181: same 33px/13px segmented tabs on Stats, Discover, Profile and Settin
   await page.evaluate(() => openProfile(bands[0].id));
   const profile = await geometry('#screen-profile .profile-tab-switch');
   await page.locator('#settings-btn').click();
-  const settings = await geometry('#screen-settings .settings-subtab-switch');
+  const settings = await geometry('#screen-settings .settings-v123-tabs');
   for (const [name, got] of Object.entries({ start, discover, stats, profile, settings })) {
     expect(got.height, name).toBe(33);
     expect(got.font, name).toBe('13px');
