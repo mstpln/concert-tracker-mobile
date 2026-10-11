@@ -149,6 +149,7 @@ test('v158 grouped promoted Next Concert and long venue cards remain safe in mob
   await openApp(page, testInfo);
   const longVenue = await makeGroupedLongVenueFixture(page);
   const seeded = await seedVenueMetadata(page);
+  await page.locator('#music-tab-concerts').click();
 
   const promoted = page.locator('#screen-myconcerts .next-concert-merged-v167');
   await expect(promoted).toBeVisible();

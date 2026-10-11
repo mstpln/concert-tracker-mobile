@@ -17,6 +17,7 @@ test('AUB2 edits attended-card roles, survives failed writes, and updates perfor
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await openApp(page, testInfo);
+  await page.locator('#music-tab-concerts').click();
 
   await page.locator('#screen-myconcerts [data-my-history-tab="past"]').click();
   const pastCard = page.locator('.row-card-mc').filter({ has: page.locator('[data-lineup-role-toggle="qa-past-attended"]') });
@@ -77,6 +78,7 @@ test('AUB2 edits attended-card roles, survives failed writes, and updates perfor
 
   if (testInfo.project.name === 'mobile-chromium') {
     await page.locator('#tabbar [data-tab="myconcerts"]').click();
+    await page.locator('#music-tab-concerts').click();
     await page.setViewportSize({ width: 480, height: 920 });
     expect(await noHorizontalOverflow(page)).toBe(true);
     await page.locator('.row-card-mc').filter({ has: page.locator('[data-lineup-role-toggle="qa-show-day"]') }).screenshot({ path: testInfo.outputPath('aub2-v155-card-480-light.png') });

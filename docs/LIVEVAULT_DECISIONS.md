@@ -22,6 +22,14 @@ This continuity file was compacted on 2026-09-04 after the workflow/data-enrichm
 
 **Consequence:** Ambiguity fails closed. Enrichment writes use latest-state optimistic concurrency. Newer provider evidence cannot overwrite user-owned data merely because it is newer.
 
+### v183 Music information hierarchy and neutral nested tabs
+
+**Decision:** Music is split into a 33px/13px Highlights (default) / Concerts primary navigation using the same main segmented control as Stats/Discover. Highlights retains the existing listening and concert stats teasers. Concerts begins with the latest genuinely attended concert: artist and elapsed calendar days aligned on one horizontal line, date below; it appears even with no upcoming concert. The promoted v182 Next Concert banner remains the featured show; correct the 1-2-digit numeral's visual bottom alignment inside the existing banner dimensions.
+
+**Decision:** The Upcoming / Past / Cancelled concert history selector has the exact muted neutral 42px Top Bands/Top Tracks selector treatment, adapted to three buttons. Year and show count keep the existing outside-card text appearance, placed above the lower selector and updated to the selected list; additional years keep their existing headings. The first validated promoted event group remains excluded from the remaining Upcoming rows.
+
+**Decision:** On Band Detail > Listening, keep Concerts/Alerts/Listening/Data blue primary tabs and move only the existing 2 weeks/3 months/1 year/All time selector into the Your Listening summary card with that same muted secondary treatment. Preserve all original concert/listening card designs, handlers, empty states, fields, and user/provider ownership. v182's absolute featured placement invariant belonged to the prior combined Start layout; the new Concerts tab deliberately removes the old invisible spacers, while banner internal height and responsive rules stay stable. No data migration or provider changes.
+
 ### v182 Compact Hero Split (#21) and unchanged featured-card top
 
 **Decision:** Replace only the ordinary Next Concert blue banner with the user-approved Version 21. It displays a dominant, responsive day number on the left; `NEXT CONCERT` over stacked `DAYS / LEFT` in the middle; distance over live days/hours/minutes on the right separated by a vertical rule. Use the mockup's subtle blue spotlight gradient, scaled to the true app-card width, without extra icons, new cards or a rearranged concert detail panel.

@@ -102,6 +102,7 @@ test('v157 missing-city and different-city pairs fail closed', async ({ page }, 
 test('v157 Add a concert wording and dynamic future year create a visible upcoming attended record', async ({ page }, testInfo) => {
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await openApp(page, testInfo);
+  await page.locator('#music-tab-concerts').click();
 
   const addCard = page.locator('.add-band-card');
   await expect(addCard.locator('.section-label')).toHaveText('ADD A CONCERT');

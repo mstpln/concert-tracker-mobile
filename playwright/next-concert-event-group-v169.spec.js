@@ -47,6 +47,7 @@ async function setGroupedNextFixture(page) {
     VenueMetadataV158.setRecords([]);
     renderMyConcertsScreen();
   });
+  await page.locator('#music-tab-concerts').click();
 }
 
 function cardById(screen, id) {
@@ -95,7 +96,7 @@ test('v169 keeps the whole next event together and preserves section rhythm', as
     height: node.getBoundingClientRect().height,
     childVisibility: [...node.children].map((child) => getComputedStyle(child).visibility),
   }));
-  expect(spacerPresentation.height).toBeGreaterThan(0);
+  expect(spacerPresentation.height).toBe(0);
   expect(spacerPresentation.childVisibility.every((value) => value === 'hidden')).toBe(true);
 
   const gaps = await screen.evaluate((node) => {
@@ -156,7 +157,7 @@ test('v169 removes Upcoming when the grouped next event is the only future event
   const screen = page.locator('#screen-myconcerts');
   await expect(screen.locator('.next-concert-event-card-v169')).toHaveCount(2);
   await expect(screen.locator('.section-label-v143-upcoming')).toHaveCount(0);
-  await expect(screen.locator('[data-my-history-tab="past"]')).toHaveText('Past concerts');
+  await expect(screen.locator('[data-my-history-tab="past"]')).toHaveText('Past');
   await screen.locator('[data-my-history-tab="past"]').click();
   await expect(cardById(screen, 'qa-v169-past')).toBeVisible();
 });

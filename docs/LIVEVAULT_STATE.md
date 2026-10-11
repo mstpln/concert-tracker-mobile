@@ -1,8 +1,18 @@
+## Pending v183 — Music Highlights/Concerts and consistent secondary selectors
+
+Branch `feat/music-highlights-concerts-navigation-v183` is under review, based on merged v182 `main` at `0fcd9e9bc4ad9efcbc381a4d927eb06465967ed3`. **Not merged or deployed.**
+
+- Music adds the approved 33px/13px primary Highlights / Concerts selector. Highlights initially opens with the existing start listening and concert stats cards, unchanged. Concerts has last attended concert (artist, calendar date, local elapsed days), the established v182 Next Concert card or its empty state, and Upcoming / Past / Cancelled history.
+- The lower concert-history selector uses the existing neutral 42px Top Bands/Top Tracks styling (three columns), with the existing year-left/show-count-right header outside the individual concert cards and above the selector. The heading follows the selected tab; the first year is not duplicated inside the list, and later year sections remain. Featured validated event group cards are not duplicated in Upcoming.
+- Band Detail > Listening keeps the blue 33px/13px primary tabs, but moves the existing timeframe control into the top of the Your Listening card using the same neutral 42px secondary-tab treatment. Its existing listeners and calculations remain unchanged.
+- The v182 day numeral gets a minimal font/baseline alignment correction within its unchanged 100px / 88px banner, while the concert-day variant, other card content, navigation actions, IDs and data are untouched. The old invisible featured-card spacers no longer consume space in the newly separated Concerts view; the original pre-v183 placement invariant remains historical to the old combined layout.
+- No new data fields, provider calls, production R2/Worker operations or manual production workflows. v183 app and service-worker versions are synchronized. QA uses synthetic fixtures and the fake backend.
+
 # LiveVault Current State
 
-## Pending v182 — Compact Hero Split (#21) for the featured Next Concert banner
+## Merged v182 — Compact Hero Split (#21) for the featured Next Concert banner
 
-Branch `feat/next-concert-compact-hero-v182` implements the user-selected Version 21 (Compact Hero Split) on top of merged v181 `main` at `f4e0ffa199354bd254252dfffd7879e0d04c9955`. This build is **not merged or deployed**.
+Branch `feat/next-concert-compact-hero-v182` implements the user-selected Version 21 (Compact Hero Split) on top of merged v181 `main` at `f4e0ffa199354bd254252dfffd7879e0d04c9955`. PR #209 was merged into `main` as `0fcd9e9bc4ad9efcbc381a4d927eb06465967ed3` on 2026-10-11; GitHub Pages deployment was automatically triggered. This paragraph retains the historical branch implementation details.
 
 - Ordinary pre-concert Next Concert cards now put one large but proportionally scaled day number at left, `NEXT CONCERT` and `DAYS / LEFT` beside it, and distance above a live days/hours/minutes countdown to the right of a vertical divider. The blue header adopts Version 21's gentle spotlight gradient.
 - The 110px-high mockup is scaled to the narrower actual PWA card: 100px banner at 375/390/480px and 88px at 320px. Very long day counts scale down separately. Seconds are intentionally not displayed in Version 21, but the existing ticker still updates the day/minute fields and concert-day rollover.

@@ -21,6 +21,7 @@ for (const width of [375, 480]) {
       concerts = next;
       renderMyConcertsScreen();
     });
+    await page.locator('#music-tab-concerts').click();
 
     const id = 'qa-v180-reversible';
     const action = () => page.locator(`#screen-myconcerts .my-lifecycle-action[data-concert-id="${id}"]`);
@@ -73,6 +74,7 @@ for (const width of [375, 480]) {
     // A reload must also retain the personal cancellation without losing
     // tickets, unknown future fields or the ability to restore.
     await page.reload();
+    await page.locator('#music-tab-concerts').click();
     await expect(page.locator('#screen-myconcerts [data-my-history-tab="upcoming"]')).toHaveAttribute('aria-selected', 'true');
     await page.locator('#screen-myconcerts [data-my-history-tab="cancelled"]').click();
     await expect(page.locator('#my-history-cancelled')).toBeVisible();
@@ -187,6 +189,7 @@ test('v180 one approved event-group cancellation updates every linked performanc
     concerts = next;
     renderMyConcertsScreen();
   });
+  await page.locator('#music-tab-concerts').click();
   const readRows = () => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('livevault-qa:data') || '{}');
     return (saved.concerts || []).filter((c) => ['qa-v180-bill-head', 'qa-v180-bill-support'].includes(c.id));

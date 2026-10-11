@@ -22,6 +22,7 @@ test('AUB1 Start content and Music/Stats icon identities survive the v167 Next C
     renderMyConcertsScreen();
   });
 
+  await page.locator('#music-tab-concerts').click();
   const promoted = page.locator('#screen-myconcerts .next-concert-merged-v167');
   await expect(promoted).toHaveCount(1);
   await expect(page.locator('#screen-myconcerts #countdown-card')).toHaveCount(0);
