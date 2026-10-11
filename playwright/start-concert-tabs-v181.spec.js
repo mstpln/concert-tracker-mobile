@@ -135,7 +135,7 @@ for (const width of [320, 375, 480]) {
   });
 }
 
-test('v181: same 33px/13px segmented tabs on Stats, Discover, Alerts, Profile and Settings', async ({ page }) => {
+test('v181: same 33px/13px segmented tabs on Stats, Discover, Profile and Settings', async ({ page }) => {
   await syntheticStart(page, 375, 'light');
   const geometry = async (selector) => page.locator(selector).evaluate((node) => {
     const button = node.querySelector('button');
@@ -144,18 +144,17 @@ test('v181: same 33px/13px segmented tabs on Stats, Discover, Alerts, Profile an
   const start = await geometry('#screen-myconcerts .myconcerts-history-tabs');
   await page.locator('#tabbar [data-tab="concerts"]').click();
   const discover = await geometry('#screen-concerts .news-subtab-switch');
+  // The v135 Alerts surface intentionally retired its Alerts/News selector.
+  // Only existing main segmented controls participate in this consistency rule.
   await page.locator('#tabbar [data-tab="news"]').click();
-  // Read the ordinary Alerts tab control, rather than relying on transient
-  // alert-body loading/navigation state from other QA fixtures.
-  await page.evaluate(() => renderNewsScreen());
-  const alerts = await geometry('#screen-news .news-subtab-switch');
+  await expect(page.locator('#screen-news .news-subtab-switch')).toHaveCount(0);
   await page.locator('#tabbar [data-tab="stats"]').click();
   const stats = await geometry('#screen-stats .stats-subtabs');
   await page.evaluate(() => openProfile(bands[0].id));
   const profile = await geometry('#screen-profile .profile-tab-switch');
   await page.locator('#settings-btn').click();
   const settings = await geometry('#screen-settings .settings-subtab-switch');
-  for (const [name, got] of Object.entries({ start, discover, alerts, stats, profile, settings })) {
+  for (const [name, got] of Object.entries({ start, discover, stats, profile, settings })) {
     expect(got.height, name).toBe(33);
     expect(got.font, name).toBe('13px');
   }
