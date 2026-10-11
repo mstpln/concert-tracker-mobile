@@ -68,6 +68,7 @@ let spotifyAuthMessage = '';
 let settingsTab = 'research';
 let settingsExpandedTool = null;
 let myConcertsRenderedDateKey = null;
+let myConcertsHistoryTab = 'past';
 
 const el = (id) => document.getElementById(id);
 
@@ -559,7 +560,7 @@ function goToTab(tab, { fromHistory = false } = {}) {
   el('settings-btn').classList.toggle('hidden', tab === 'stats');
   showScreen(TAB_SCREENS[tab] || 'screen-concerts');
   if (tab === 'concerts') renderConcertsScreen();
-  else if (tab === 'myconcerts') renderMyConcertsScreen();
+  else if (tab === 'myconcerts') { myConcertsHistoryTab = 'past'; renderMyConcertsScreen(); }
   else if (tab === 'mybands') renderMyBandsScreen();
   else if (tab === 'stats') {
     statsSubTab = 'listening';
@@ -695,7 +696,7 @@ function venuesSubTabHtml() {
   else if (venuesNearbyOnly) groups = groups.filter((g) => g.concerts.some(dlIsNearby));
   // "Past Concerts" is scoped to shows the user personally attended, per the
   // user's explicit clarification — not just any already-happened date.
-  if (venuesPastOnly) groups = groups.filter((g) => g.concerts.some((c) => c.attending && !dlIsUpcoming(c)));
+  if (venuesPastOnly) groups = groups.filter((g) => g.concerts.some((c) => c.attending && !dlIsCancelled(c) && !dlIsUpcoming(c)));
 
   // Total header — same design/copy pattern as My Bands' "145 bands in your
   // collection" (bands-total-header/bands-total-value), always the
@@ -808,7 +809,7 @@ function renderMyConcertsScreen() {
   // filter a "going"/"attended" concert for a deleted band would still show
   // up here, and tapping it would dead-end on openProfile's "Band not found."
   const liveConcerts = concerts.filter((c) => bands.some((b) => b.id === c.bandId));
-  const { upcoming, past } = dlMyConcerts(liveConcerts);
+  const { upcoming, past, cancelled } = dlMyConcerts(liveConcerts);
 
   const bandOptions = [...bands]
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -833,16 +834,22 @@ function renderMyConcertsScreen() {
   html += countdownCardHtml(EventModelV156.nextEventPresentation(upcoming));
   html += '</div>';
 
-  if (upcoming.length === 0 && past.length === 0) {
+  if (upcoming.length === 0 && past.length === 0 && cancelled.length === 0) {
     html += `<p class="screen-empty">No concerts saved yet. Tap "I'm going" on a band's page to add one, or backlog a past show below.</p>`;
   } else {
     if (upcoming.length > 0) {
       html += `<p class="section-label" style="margin-top:0">Upcoming concerts</p>`;
       html += renderWithYearDividers(upcoming, (c) => myConcertRowHtml(c, false), { showCount: true });
     }
-    if (past.length > 0) {
-      html += `<p class="section-label section-label-gap-lg">Past concerts</p>`;
-      html += renderWithYearDividers(past, (c) => myConcertRowHtml(c, true), { showCount: true });
+
+    if (past.length || cancelled.length) {
+      const selectedCancelled = myConcertsHistoryTab === 'cancelled';
+      html += `<div class="stats-subtabs myconcerts-history-tabs" role="tablist" aria-label="Concert history">
+        <button type="button" class="stats-subtab-btn${selectedCancelled ? '' : ' active'}" data-my-history-tab="past" role="tab" aria-selected="${!selectedCancelled}">PAST CONCERTS</button>
+        <button type="button" class="stats-subtab-btn${selectedCancelled ? ' active' : ''}" data-my-history-tab="cancelled" role="tab" aria-selected="${selectedCancelled}">CANCELLED</button>
+      </div>`;
+      html += `<section id="my-history-past" class="my-history-panel"${selectedCancelled ? ' hidden' : ''}>${past.length ? renderWithYearDividers(past, (c) => myConcertRowHtml(c, true), { showCount: true }) : '<p class="screen-empty">No past concerts yet.</p>'}</section>`;
+      html += `<section id="my-history-cancelled" class="my-history-panel"${selectedCancelled ? '' : ' hidden'}>${cancelled.length ? renderWithYearDividers(cancelled, (c) => myConcertRowHtml(c, false), { showCount: true }) : '<p class="screen-empty">No cancelled concerts.</p>'}</section>`;
     }
   }
 
@@ -1070,21 +1077,22 @@ function eventGroupControlsHtml(c) {
 // band name never crowds them.
 function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
   const tourName = isPast ? c.setlist?.tourName : null;
-  const showPillRow = c.type === 'festival' || isPast;
+  const isCancelled = dlIsCancelled(c);
+  const showPillRow = c.type === 'festival' || isPast || isCancelled;
   const lineupRole = LineupRoleV155.displayRole(c);
   const lineupRoleLabel = lineupRole === LineupRoleV155.SUPPORT ? 'Support' : 'Headliner';
   const lineupSelectorOpen = lineupRoleOpenConcertId === c.id;
   const lineupNotice = lineupRoleNotices.get(c.id);
   const lineupSelectorId = `lineup-role-selector-${c.id}`;
   return `
-    <div class="row-card-mc row-card clickable has-corner-delete${isPast ? ' is-past' : ''}" data-band-id="${c.bandId}">
+    <div class="row-card-mc row-card clickable has-corner-delete${isPast ? ' is-past' : ''}${isCancelled ? ' is-cancelled' : ''}" data-band-id="${c.bandId}">
       <div class="row-header">
         ${showBandName ? rowAvatarHtml(c.bandId) : ''}
         <div class="row-title-col">
           ${showPillRow ? `
           <div class="row-pill-row">
             ${c.type === 'festival' ? `<span class="pill pill-festival">Festival</span>` : ''}
-            ${isPast ? `<span class="pill pill-attended">${icon('check')} Attended</span>` : ''}
+            ${isCancelled ? '<span class="my-lifecycle-status cancelled">CANCELLED</span>' : isPast ? '<span class="my-lifecycle-status attended">ATTENDED</span>' : ''}
           </div>` : ''}
           <div class="row-name-line">
             <span class="row-name">${showBandName ? escapeHtml(c.bandName) : ''}</span>
@@ -1106,7 +1114,10 @@ function myConcertRowHtml(c, isPast, { showBandName = true } = {}) {
       ${venueAddressLinkHtml(c)}
       ${c.distanceKm !== null && c.distanceKm !== undefined ? `<p class="row-km">${formatKm(c.distanceKm)} away</p>` : ''}
       ${isPast ? pastConcertDetailsGroupHtml(c) : concertPrepGroupHtml(c)}
-      <button class="icon-btn remove-going-btn delete-corner-btn" data-concert-id="${c.id}" aria-label="Remove">${icon('trash')}</button>
+      <div class="my-concert-actions">
+        ${!isPast ? `<button type="button" class="icon-btn my-lifecycle-action" data-concert-id="${escapeAttr(c.id)}" data-action="${isCancelled ? 'restore' : 'cancel'}" aria-label="${isCancelled ? 'Restore cancelled concert' : 'Mark concert as cancelled'}">${icon(isCancelled ? 'undo' : 'ban')}<span>${isCancelled ? 'Restore' : 'Cancelled'}</span></button>` : ''}
+        <button type="button" class="icon-btn remove-going-btn delete-corner-btn" data-concert-id="${escapeAttr(c.id)}" aria-label="Remove concert">${icon('trash')}</button>
+      </div>
     </div>`;
 }
 
@@ -2415,7 +2426,7 @@ function renderProfileScreen(bandId) {
   // myConcertRowHtml used there (see below), just without that card's band
   // name line, which would be redundant on the band's own page.
   const pastAttended = concerts
-    .filter((c) => c.bandId === bandId && c.attending && !dlIsUpcoming(c))
+    .filter((c) => c.bandId === bandId && c.attending && !dlIsCancelled(c) && !dlIsUpcoming(c))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
   const initials = band.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
   const activity = dlBandActivity(band, concerts, inactivityYears);
@@ -3826,7 +3837,7 @@ function formatDate(dateStr, timeStr) {
 
 function concertDateLabel(concert) {
   if (!concert?.date && concert?.lifecycleStatus === 'postponed') return 'POSTPONED · DATE TBD';
-  if (concert?.lifecycleStatus === 'cancelled') {
+  if (dlIsCancelled(concert)) {
     const scheduled = formatDate(concert.date, concert.time);
     return scheduled ? `CANCELLED · ${scheduled}` : 'CANCELLED';
   }
