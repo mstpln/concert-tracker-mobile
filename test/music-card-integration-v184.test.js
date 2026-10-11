@@ -19,10 +19,10 @@ test('v184 card integrations ship with identical app/cache version and QA/offlin
     assert.ok(generator.includes("'" + file + "'"), 'generator missing ' + file);
     assert.ok(state.shellFiles.includes(file), 'build state missing ' + file);
   }
-  assert.match(read('version.js'), /const APP_VERSION = 'v184'/);
-  assert.match(serviceWorker, /const CACHE_NAME_LITERAL = 'v184'/);
-  assert.equal(state.appVersion, 'v184');
-  assert.equal(state.serviceWorkerCacheVersion, 'v184');
+  assert.match(read('version.js'), /const APP_VERSION = 'v185'/);
+  assert.match(serviceWorker, /const CACHE_NAME_LITERAL = 'v185'/);
+  assert.equal(state.appVersion, 'v185');
+  assert.equal(state.serviceWorkerCacheVersion, 'v185');
   assert.equal(state.versionsMatch, true);
   assert.match(html, /<script src="musicSectionsV183.js"><\/script>\s*<script src="musicCardIntegrationV184.js"><\/script>/);
 });

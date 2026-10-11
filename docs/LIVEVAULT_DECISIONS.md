@@ -22,6 +22,10 @@ This continuity file was compacted on 2026-09-04 after the workflow/data-enrichm
 
 **Consequence:** Ambiguity fails closed. Enrichment writes use latest-state optimistic concurrency. Newer provider evidence cannot overwrite user-owned data merely because it is newer.
 
+### v185 Highlights-only balanced card spacing
+
+**Decision:** Only beneath the unchanged Music Highlights/Concerts 33px selector, Highlights uses 12px to the Listening stats card and 12px between Listening and Concert stats. These replace approximately 20px and 16px respectively and free roughly 12px above the fixed bottom navigation on the approved phone viewport. Do not reduce space **above** the main tabs, alter card internals, bottom nav, scrolling/safe-area rules, Concerts or other screens. The CSS applies only to Music with Highlights selected.
+
 ### v184 Visually continuous Listening and Concerts cards
 
 **Decision:** On Band Detail > Listening, keep the existing 42px muted timeframe control and unaltered Your Listening statistics and Listening Over Time chart, but display them within a single outer card border. Remove only the duplicate card borders and inter-card gap. The chart stays full width, Top Tracks/Top Albums stays separate, and all data and interaction logic remains unchanged.

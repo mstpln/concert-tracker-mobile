@@ -178,3 +178,16 @@
     font-size: 12px;
   }
 }
+
+/* v185: approved Highlights-only spacing below the unchanged top selector.
+   Keep the header, tab height/fonts, card internals and bottom navigation.
+   Two 12px gaps recover 12px below the last card on the approved phone view. */
+#screen-myconcerts[data-music-section-v183="highlights"] > .music-primary-tabs-v183 {
+  margin-bottom: 0;
+}
+#screen-myconcerts[data-music-section-v183="highlights"] > .myconcerts-summary {
+  margin-top: 12px;
+}
+#screen-myconcerts[data-music-section-v183="highlights"] > .myconcerts-summary > .start-top-bands-card {
+  margin-bottom: 12px;
+}
