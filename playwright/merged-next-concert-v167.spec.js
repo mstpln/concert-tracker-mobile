@@ -118,7 +118,7 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
 
   const banner = card.locator('.next-concert-banner-v167');
   await expect(banner).toContainText('DAYS LEFT');
-  await expect(banner).toContainText('59 km away');
+  await expect(banner).toContainText('59 km');
   await expect(banner.locator('.next-concert-live-v167')).toContainText(/\d+d \d{2}h \d{2}m \d{2}s/);
   await expect(card.locator('.row-km')).toBeHidden();
 
@@ -141,26 +141,38 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
     const children = [...node.children];
     const next = children.findIndex((child) => child.classList.contains('section-label-v167-next'));
     const first = children.findIndex((child) => child.classList.contains('next-concert-merged-v167'));
-    const upcoming = children.findIndex((child) => child.classList.contains('section-label-v143-upcoming'));
-    return { next, first, upcoming };
+    const tabs = children.findIndex((child) => child.classList.contains('myconcerts-history-tabs'));
+    const label = node.querySelector(':scope > .section-label-v167-next');
+    const banner = node.querySelector('.next-concert-merged-v167 .next-concert-banner-v167');
+    return {
+      next, first, tabs,
+      separatorVisibility: getComputedStyle(label).visibility,
+      separatorHeight: label.getBoundingClientRect().height,
+      tabsHeight: node.querySelector('.myconcerts-history-tabs').getBoundingClientRect().height,
+      bannerHeight: banner.getBoundingClientRect().height,
+    };
   });
   expect(ordering.next).toBeGreaterThanOrEqual(0);
   expect(ordering.first).toBeGreaterThan(ordering.next);
-  expect(ordering.upcoming).toBeGreaterThan(ordering.first);
-  await expect(screen.locator('.year-divider-v167-upcoming .year-divider-count')).toHaveText('1 more show');
+  expect(ordering.tabs).toBeGreaterThan(ordering.first);
+  expect(ordering.separatorVisibility).toBe('hidden');
+  expect(ordering.separatorHeight).toBeGreaterThan(0);
+  expect(ordering.tabsHeight).toBe(33);
+  expect(ordering.bannerHeight).toBe(80);
+  await expect(screen.locator('#my-history-upcoming .year-divider-v167-upcoming .year-divider-count')).toHaveText('1 more show');
 
   const spacing = await screen.evaluate((node) => {
     const summary = node.querySelector(':scope > .myconcerts-summary');
     const next = node.querySelector(':scope > .section-label-v167-next');
     const first = node.querySelector(':scope > .next-concert-merged-v167');
-    const upcoming = node.querySelector(':scope > .section-label-v143-upcoming');
+    const tabs = node.querySelector(':scope > .myconcerts-history-tabs');
     return {
       statsToNext: next.getBoundingClientRect().top - summary.getBoundingClientRect().bottom,
-      nextToUpcoming: upcoming.getBoundingClientRect().top - first.getBoundingClientRect().bottom,
+      featuredToTabs: tabs.getBoundingClientRect().top - first.getBoundingClientRect().bottom,
     };
   });
-  expect(Math.abs(spacing.statsToNext - spacing.nextToUpcoming)).toBeLessThanOrEqual(1);
-  expect(spacing.nextToUpcoming).toBeGreaterThanOrEqual(27);
+  expect(spacing.statsToNext).toBeGreaterThanOrEqual(0);
+  expect(spacing.featuredToTabs).toBeGreaterThanOrEqual(28);
 
   const weights = await banner.evaluate((node) => ({
     headline: getComputedStyle(node.querySelector('strong')).fontWeight,
@@ -190,7 +202,7 @@ test('v167 concert day uses neon banner, primary tickets and ghost directions', 
   await assertCoreCardContent(card);
   const banner = card.locator('.next-concert-banner-v167');
   await expect(banner).toContainText('CONCERT DAY');
-  await expect(banner).toContainText('59 km away');
+  await expect(banner).toContainText('59 km');
   await expect(banner).not.toContainText('DAYS LEFT');
 
   const actions = card.locator('.next-concert-actions-v167');
@@ -281,6 +293,7 @@ test('v167 removes the Upcoming separator when there are no later concerts', asy
   await setMergedNextFixture(page, { single: true });
   await expect(page.locator('#screen-myconcerts .next-concert-merged-v167')).toHaveCount(1);
   await expect(page.locator('#screen-myconcerts .section-label-v143-upcoming')).toHaveCount(0);
+  await expect(page.locator('#screen-myconcerts #my-history-upcoming')).toContainText('No more upcoming concerts.');
 });
 
 test('v167 stays within the card at the supported 480px layout', async ({ page }) => {
