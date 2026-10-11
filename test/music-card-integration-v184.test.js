@@ -6,7 +6,7 @@ const path = require('node:path');
 
 const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 
-test('v185 card integrations ship with identical app/cache version and QA/offline shells', () => {
+test('v184 card integrations ship with identical app/cache version and QA/offline shells', () => {
   const html = read('index.html');
   const serviceWorker = read('service-worker.js');
   const qa = read('scripts/build-qa.js');
@@ -27,12 +27,12 @@ test('v185 card integrations ship with identical app/cache version and QA/offlin
   assert.match(html, /<script src="musicSectionsV183.js"><\/script>\s*<script src="musicCardIntegrationV184.js"><\/script>/);
 });
 
-test('v185 leaves production data, original concert rendering and timeframe logic unchanged', () => {
+test('v184 leaves production data, original concert rendering and timeframe logic unchanged', () => {
   const source = read('musicCardIntegrationV184.js');
   const style = read('musicCardIntegrationV184.css');
   assert.doesNotMatch(source, /dlWriteJsonFile|dlReadJsonFile|fetch\s*\(|localStorage|remoteStore|Worker|R2/);
   assert.match(source, /wrapper\.append\(summary, chart\)/);
-  assert.match(source, /music-history-first-card-v185/);
+  assert.match(source, /music-history-first-card-v184/);
   assert.match(style, /\.myconcerts-history-tabs\.music-history-tabs-v183/);
-  assert.match(style, /\.music-band-combined-v185 > \.listening-card/);
+  assert.match(style, /\.music-band-combined-v184 > \.listening-card/);
 });
