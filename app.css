@@ -1140,19 +1140,19 @@ input.narrow-input { width: 60px; text-align: center; flex-shrink: 0; margin-bot
 
 /* v180: approved status pair 8 and history tabs. */
 #screen-myconcerts .myconcerts-history-tabs {margin:36px 0 14px}
-#screen-myconcerts .my-lifecycle-status {display:inline-flex;align-items:center;min-height:22px;padding:4px 0;font-size:10px;font-weight:750;letter-spacing:.05em;line-height:1}
-#screen-myconcerts .my-lifecycle-status.attended {color:#167b3a}
-#screen-myconcerts .my-lifecycle-status.cancelled {color:#b3261e}
+.row-card-mc .my-lifecycle-status {display:inline-flex;align-items:center;min-height:22px;padding:4px 0;font-size:10px;font-weight:750;letter-spacing:.05em;line-height:1}
+.row-card-mc .my-lifecycle-status.attended {color:#167b3a}
+.row-card-mc .my-lifecycle-status.cancelled {color:#b3261e}
 #screen-myconcerts .row-card-mc.is-cancelled {background:var(--surface-muted)}
-#screen-myconcerts .my-concert-actions {position:absolute;right:8px;bottom:8px;display:flex;align-items:center;justify-content:flex-end;gap:20px}
-#screen-myconcerts .my-concert-actions .icon-btn {position:static;flex:none;height:28px;min-height:28px;border:1px solid var(--border-strong);border-radius:7px;background:transparent;color:var(--text-muted)}
-#screen-myconcerts .my-concert-actions .delete-corner-btn {width:28px;padding:0}
-#screen-myconcerts .my-concert-actions .my-lifecycle-action {width:auto;padding:0 8px;gap:5px;font-size:11px;font-weight:600;white-space:nowrap;line-height:1}
-#screen-myconcerts .my-concert-actions .my-lifecycle-action svg {height:14px;width:14px;flex:0 0 14px}
-#screen-myconcerts .my-concert-actions button:focus-visible {outline:2px solid var(--accent);outline-offset:3px}
+.row-card-mc .my-concert-actions {position:absolute;right:8px;bottom:8px;display:flex;align-items:center;justify-content:flex-end;gap:20px}
+.row-card-mc .my-concert-actions .icon-btn {position:static;flex:none;height:28px;min-height:28px;border:1px solid var(--border-strong);border-radius:7px;background:transparent;color:var(--text-muted)}
+.row-card-mc .my-concert-actions .delete-corner-btn {width:28px;padding:0}
+.row-card-mc .my-concert-actions .my-lifecycle-action {width:auto;padding:0 8px;gap:5px;font-size:11px;font-weight:600;white-space:nowrap;line-height:1}
+.row-card-mc .my-concert-actions .my-lifecycle-action svg {height:14px;width:14px;flex:0 0 14px}
+.row-card-mc .my-concert-actions button:focus-visible {outline:2px solid var(--accent);outline-offset:3px}
 @media (prefers-color-scheme:dark) {
- #screen-myconcerts .my-lifecycle-status.attended {color:#5bd894}
- #screen-myconcerts .my-lifecycle-status.cancelled {color:#e9827b}
+ .row-card-mc .my-lifecycle-status.attended {color:#5bd894}
+ .row-card-mc .my-lifecycle-status.cancelled {color:#e9827b}
  #screen-myconcerts .row-card-mc.is-cancelled {background:#1d2124}
 }
 .pill-cancelled {background:rgba(179,38,30,.12);color:var(--danger)}
