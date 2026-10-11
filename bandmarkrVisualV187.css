@@ -1,0 +1,51 @@
+/* v187 — restrained, static styling only. Preserve existing geometry and
+   interaction: neutral history controls, established concert surfaces, and
+   existing blue primary navigation / Next Concert banner. */
+
+/* Band directory *rows* match the v186 Past concert surface. Do not recolor
+   the Add Band form, genre controls, grey status pills, or other .row-card users. */
+#screen-mybands .row-card.clickable[data-band-id] {
+  background-color: var(--concert-card-background-v86);
+  background-image: none;
+}
+
+/* The blue accent word in the actual page header, not card titles or buttons.
+   Use a softer asymmetric light than the Highlights card frames. */
+#app-header .header-title .brand-blue {
+  color: #0b50c3; /* fallback when text clipping is unsupported */
+  background-image: linear-gradient(107deg,
+    #1047a4 0%, #1760ce 28%, #0b50bd 65%, #0b3f9b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 4px rgba(33,107,226,.15), 0 0 10px rgba(24,82,196,.07);
+}
+@media (prefers-color-scheme: dark) {
+  #app-header .header-title .brand-blue {
+    color: #5595f5;
+    background-image: linear-gradient(107deg,
+      #3476e2 0%, #80b8ff 28%, #4085f0 62%, #2a67d4 100%);
+    text-shadow: 0 0 5px rgba(76,149,255,.25), 0 0 12px rgba(29,95,216,.14);
+  }
+}
+
+/* Keep the existing 1px gradient outline and its masking. Only boost the
+   *outward* halo slightly, well below the reference Today's purple glow. */
+#screen-myconcerts .myconcerts-summary > .start-top-bands-card,
+#screen-myconcerts .myconcerts-summary > .stats-teaser-card {
+  box-shadow: 0 0 8px rgba(61,128,250,.24), 0 0 21px rgba(25,95,221,.13);
+}
+
+/* Every existing solid-blue primary CTA: shared .btn-primary buttons/links
+   (including Official site, tickets, forms) and Discover's Add action.
+   Do not touch neutral/grey CTAs, pills, secondary tabs or icon-only controls. */
+.btn-primary,
+.discover-actions .discover-add {
+  background-color: var(--accent);
+  background-image:
+    radial-gradient(ellipse 72% 140% at 35% 43%,
+      rgba(132,188,255,.27) 0%, rgba(67,135,252,.13) 40%, transparent 76%),
+    linear-gradient(105deg,
+      #103c9d 0%, #185bdb 32%, #1552d0 63%, #0a338d 100%);
+  color: var(--on-accent);
+}

@@ -1,6 +1,6 @@
 'use strict';
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v186';
+const CACHE_NAME_LITERAL = 'v187';
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v181'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v180'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v179'.
@@ -150,6 +150,7 @@ const SHELL_FILES = [
   './musicSectionsV183.css',
   './musicCardIntegrationV184.css',
   './bandmarkrLightV186.css',
+  './bandmarkrVisualV187.css',
   './geoFilterPreloadV143.js',
   './app.js',
   './alignedUiV143.js',

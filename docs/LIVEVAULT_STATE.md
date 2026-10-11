@@ -1,6 +1,17 @@
-## Pending v186 — Approved asymmetric Blue Light styling and unified concert-card surfaces
+## v187 — Visual consistency and Blue Light corrections
 
-Branch `feat/blue-light-unified-concert-cards-v186` starts from merged/deployed v185 `main` at `a240479b2d386c137113d5b62ee8c3318e467200`. **Not merged or deployed.**
+Implemented in PR #214 on branch `feat/visual-consistency-v187`, originally based on merged v186 `main` commit `d0b829c527874cde59eff27d9f0132ca9e781528`. For its current release status, verify PR #214, GitHub `main`, and GitHub Pages Actions; this implementation record does not itself establish whether a deployment completed.
+
+- Restore neutral Upcoming / Past / Cancelled secondary tabs by excluding the shared history selector from v186 first-letter lighting CSS and JS. Preserve the v184 continuous selector/card frame, all three active states, and 42px geometry.
+- Match My Bands list rows to the approved Past concert-card surface token (dark `#1d2124`; light `#eef1f5`) without recoloring Add Band, grey badges, or other generic cards.
+- Give only blue accent words in top page headers a restrained, static asymmetric blue glow/gradient. Keep typography and layout unchanged.
+- Preserve the v186 stats-card 1px shimmer, with a modest additional outward blue halo; no animation.
+- Use the same static asymmetric blue gradient on all filled primary CTA actions (`.btn-primary` and Discover `.discover-add`) including Official site and Add a concert. Exclude grey/outlined buttons, grey pills, neutral tabs and active state filters.
+- Presentation-only release. No schema, data, providers, persistent storage, or production workflow changes. Advance app/cache to v187 together; synthetic unit/browser QA required.
+
+## Merged v186 — Asymmetric Blue Light styling and unified concert-card surfaces
+
+Branch `feat/blue-light-unified-concert-cards-v186` was merged via PR #213 and deployed through GitHub Pages on 2026-10-11 at merge commit `d0b829c527874cde59eff27d9f0132ca9e781528`.
 
 - Approved Blue Light v3 color-only theme: reuse the existing Next Concert spotlight color family. The unchanged text-only BANDMARKR wordmark banner has asymmetrically brighter blue behind its lettering and darker side edges. Every existing blue **primary segmented tab** (Music/Stats/Discover/Band Profile/Settings and Discover blue location selections) gets a static dark-edge asymmetric gradient; the lighter area is anchored at the actual **first letter** of the active tab label without altering labels or event listeners. The blue active bottom-nav tile gets a static darker asymmetric gradient with a softer light source centered on its icon. The Next Concert blue banner, cyan concert-day state, muted neutral secondary tabs, buttons, other card content and typography remain unchanged.
 - Highlights Listening stats/Concert stats frames retain their 1px blue outline and accepted subtle glow. Compared to the v3 HTML design, the two darker border stops are **slightly** deeper blue; neither is black, and card geometry/v185 12px spacing is untouched. No animation.
