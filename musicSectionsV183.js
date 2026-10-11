@@ -124,7 +124,7 @@
       '<span class="year-divider-count">' + count + (count === 1 ? ' show' : ' shows') + '</span>';
   }
 
-  function selectMusicTab(screen, target, focus) {
+  function selectMusicTab(screen, target, focus, resetScroll) {
     musicTab = target === 'concerts' ? 'concerts' : 'highlights';
     screen.dataset.musicSectionV183 = musicTab;
     const nav = screen.querySelector(':scope > .music-primary-tabs-v183');
@@ -136,7 +136,7 @@
       if (active && focus) button.focus();
     });
     const scroll = root.document?.getElementById('content');
-    if (scroll) scroll.scrollTop = 0;
+    if (scroll && resetScroll) scroll.scrollTop = 0;
   }
 
   function makePrimaryTabs(doc) {
@@ -174,7 +174,7 @@
 
     // The old empty countdown still belongs to Concerts even when no next
     // event can be promoted. Moving nodes retains the original handlers.
-    const emptyCountdown = summary.querySelector('#countdown-card');
+    const emptyCountdown = summary.querySelector('.countdown-card');
     if (emptyCountdown) last.after(emptyCountdown);
 
     const year = root.document.createElement('p');
@@ -186,13 +186,20 @@
       button.textContent = key === 'upcoming' ? 'Upcoming' : key === 'past' ? 'Past' : 'Cancelled';
     });
     syncHistoryYear(screen);
+    // The v180 history controller switches native hidden panels in place,
+    // without re-rendering. Refresh the outside-card year/count after it runs.
+    const syncSelectedHistory = function (event) {
+      if (event.target.closest('[data-my-history-tab]')) syncHistoryYear(screen);
+    };
+    oldTabs.addEventListener('click', syncSelectedHistory);
+    oldTabs.addEventListener('keydown', syncSelectedHistory);
 
     [...screen.children].forEach(function (node) {
       if (node !== nav && node !== summary) node.classList.add('music-concert-content-v183');
     });
     nav.querySelectorAll('[data-music-section]').forEach(function (button) {
       button.addEventListener('click', function () {
-        selectMusicTab(screen, button.dataset.musicSection, false);
+        selectMusicTab(screen, button.dataset.musicSection, false, true);
       });
       button.addEventListener('keydown', function (event) {
         let next = null;
@@ -202,10 +209,10 @@
         else if (event.key === 'End') next = 'concerts';
         if (!next) return;
         event.preventDefault();
-        selectMusicTab(screen, next, true);
+        selectMusicTab(screen, next, true, true);
       });
     });
-    selectMusicTab(screen, musicTab, false);
+    selectMusicTab(screen, musicTab, false, false);
     return true;
   }
 

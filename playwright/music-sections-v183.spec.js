@@ -102,7 +102,7 @@ test('v183 last attended remains when no next concert is booked', async ({ page 
   });
   await page.locator('#music-tab-concerts').click();
   await expect(page.locator('.music-last-elapsed-v183')).toHaveText('38 days ago');
-  await expect(page.locator('#screen-myconcerts #countdown-card')).toBeVisible();
+  await expect(page.locator('#screen-myconcerts .countdown-empty')).toBeVisible();
   await expect(page.locator('#my-history-upcoming')).toContainText('No upcoming concerts.');
   await expect(page.locator('.music-history-year-v183')).toBeHidden();
 });
