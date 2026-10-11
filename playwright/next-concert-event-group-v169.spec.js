@@ -156,6 +156,6 @@ test('v169 removes Upcoming when the grouped next event is the only future event
   const screen = page.locator('#screen-myconcerts');
   await expect(screen.locator('.next-concert-event-card-v169')).toHaveCount(2);
   await expect(screen.locator('.section-label-v143-upcoming')).toHaveCount(0);
-  await expect(screen.getByText('Past concerts', { exact: true })).toBeVisible();
+  await expect(screen.locator('[data-my-history-tab="past"]')).toHaveText('PAST CONCERTS');
   await expect(cardById(screen, 'qa-v169-past')).toBeVisible();
 });
