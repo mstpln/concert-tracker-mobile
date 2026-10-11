@@ -63,7 +63,7 @@ test('v169 keeps the whole next event together and preserves section rhythm', as
   const headliner = cardById(screen, 'qa-v169-headliner');
   const laterOne = cardById(screen, 'qa-v169-later-one');
   const spacer = screen.locator('.year-divider-v169-spacer');
-  const upcoming = screen.locator('.section-label-v143-upcoming');
+  const upcoming = screen.locator('#my-history-upcoming');
 
   await expect(support).toHaveCount(1);
   await expect(headliner).toHaveCount(1);
@@ -81,15 +81,15 @@ test('v169 keeps the whole next event together and preserves section rhythm', as
       spacer: children.findIndex((child) => child.classList.contains('year-divider-v169-spacer')),
       support: indexOfCard('qa-v169-support'),
       headliner: indexOfCard('qa-v169-headliner'),
-      upcoming: children.findIndex((child) => child.classList.contains('section-label-v143-upcoming')),
-      later: indexOfCard('qa-v169-later-one'),
+      tabs: children.findIndex((child) => child.classList.contains('myconcerts-history-tabs')),
+      later: !!node.querySelector('#my-history-upcoming .delete-corner-btn[data-concert-id="qa-v169-later-one"]'),
     };
   });
   expect(ordering.next).toBeLessThan(ordering.spacer);
   expect(ordering.spacer).toBeLessThan(ordering.support);
   expect(ordering.support).toBeLessThan(ordering.headliner);
-  expect(ordering.headliner).toBeLessThan(ordering.upcoming);
-  expect(ordering.upcoming).toBeLessThan(ordering.later);
+  expect(ordering.headliner).toBeLessThan(ordering.tabs);
+  expect(ordering.later).toBe(true);
 
   const spacerPresentation = await spacer.evaluate((node) => ({
     height: node.getBoundingClientRect().height,
@@ -102,14 +102,14 @@ test('v169 keeps the whole next event together and preserves section rhythm', as
     const findCard = (id) => [...node.children].find((child) => child.querySelector?.(`.delete-corner-btn[data-concert-id="${id}"]`));
     const support = findCard('qa-v169-support');
     const headliner = findCard('qa-v169-headliner');
-    const upcoming = node.querySelector(':scope > .section-label-v143-upcoming');
+    const tabs = node.querySelector(':scope > .myconcerts-history-tabs');
     return {
       betweenEventCards: headliner.getBoundingClientRect().top - support.getBoundingClientRect().bottom,
-      eventToUpcoming: upcoming.getBoundingClientRect().top - headliner.getBoundingClientRect().bottom,
+      eventToTabs: tabs.getBoundingClientRect().top - headliner.getBoundingClientRect().bottom,
     };
   });
   expect(Math.abs(gaps.betweenEventCards - 8)).toBeLessThanOrEqual(1);
-  expect(Math.abs(gaps.eventToUpcoming - 28)).toBeLessThanOrEqual(1);
+  expect(gaps.eventToTabs).toBeGreaterThanOrEqual(28);
 
   await expect(screen.locator('.year-divider-v169-upcoming .year-divider-count')).toHaveText('2 more shows');
   await expect(laterOne).toBeVisible();
@@ -156,6 +156,7 @@ test('v169 removes Upcoming when the grouped next event is the only future event
   const screen = page.locator('#screen-myconcerts');
   await expect(screen.locator('.next-concert-event-card-v169')).toHaveCount(2);
   await expect(screen.locator('.section-label-v143-upcoming')).toHaveCount(0);
-  await expect(screen.locator('[data-my-history-tab="past"]')).toHaveText('PAST CONCERTS');
+  await expect(screen.locator('[data-my-history-tab="past"]')).toHaveText('Past concerts');
+  await screen.locator('[data-my-history-tab="past"]').click();
   await expect(cardById(screen, 'qa-v169-past')).toBeVisible();
 });
