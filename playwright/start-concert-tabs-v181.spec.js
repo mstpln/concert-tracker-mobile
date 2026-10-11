@@ -152,6 +152,10 @@ test('v181: same 33px/13px segmented tabs on Stats, Discover, Profile and Settin
   const stats = await geometry('#screen-stats .stats-subtabs');
   await page.evaluate(() => openProfile(bands[0].id));
   const profile = await geometry('#screen-profile .profile-tab-switch');
+  // The Settings gear is correctly hidden while viewing a band profile.
+  // Return to the main Music screen before using that control.
+  await page.evaluate(() => goToTab('myconcerts', { fromHistory: true }));
+  await expect(page.locator('#settings-btn')).toBeVisible();
   await page.locator('#settings-btn').click();
   const settings = await geometry('#screen-settings .settings-v123-tabs');
   for (const [name, got] of Object.entries({ start, discover, stats, profile, settings })) {
