@@ -83,6 +83,7 @@ async function setMergedNextFixture(page, { today = false, single = false } = {}
     }]);
     renderMyConcertsScreen();
   }, { showToday: today, oneOnly: single });
+  await page.locator('#music-tab-concerts').click();
 }
 
 async function assertCoreCardContent(card) {
@@ -137,7 +138,7 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
     };
   });
   expect(presentation.height).toBe(100);
-  expect(presentation.headlineFontSize).toBe(66);
+  expect(presentation.headlineFontSize).toBe(68);
   expect(presentation.liveDays).toBe(presentation.headlineDays);
 
   const ordering = await screen.evaluate((node) => {
@@ -159,8 +160,8 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
   expect(ordering.first).toBeGreaterThan(ordering.next);
   expect(ordering.tabs).toBeGreaterThan(ordering.first);
   expect(ordering.separatorVisibility).toBe('hidden');
-  expect(ordering.separatorHeight).toBeGreaterThan(0);
-  expect(ordering.tabsHeight).toBe(33);
+  expect(ordering.separatorHeight).toBe(0);
+  expect(ordering.tabsHeight).toBe(50);
   expect(ordering.bannerHeight).toBe(100);
   await expect(screen.locator('#my-history-upcoming .year-divider-v167-upcoming .year-divider-count')).toHaveText('1 more show');
 

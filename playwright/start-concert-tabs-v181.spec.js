@@ -30,6 +30,7 @@ async function syntheticStart(page, width = 375, colorScheme = 'dark') {
     ];
     renderMyConcertsScreen();
   });
+  await page.locator('#music-tab-concerts').click();
 }
 
 for (const width of [320, 375, 480]) {
@@ -66,7 +67,7 @@ for (const width of [320, 375, 480]) {
       };
     });
     expect(bannerGeometry.height).toBe(width <= 355 ? 88 : 100);
-    expect(bannerGeometry.daysSize).toBe(width <= 355 ? '55px' : '66px');
+    expect(bannerGeometry.daysSize).toBe(width <= 355 ? '57px' : '68px');
     expect(bannerGeometry.text).toMatch(/^\d+$/);
     expect(bannerGeometry.titleSize).toBe(width <= 355 ? '8px' : '10px');
     expect(bannerGeometry.distanceAbove).toBe(true);
@@ -88,7 +89,7 @@ for (const width of [320, 375, 480]) {
         navTop: document.querySelector('#tabbar').getBoundingClientRect().top,
       };
     });
-    expect(position.spacerHeight).toBeGreaterThan(0);
+    expect(position.spacerHeight).toBe(0);
     expect(position.cardTop).toBeGreaterThanOrEqual(position.labelBottom);
     expect(position.bannerTop).toBeGreaterThanOrEqual(position.cardTop - 1);
 
@@ -121,11 +122,11 @@ for (const width of [320, 375, 480]) {
         })),
       };
     });
-    expect(sizes.height).toBe(33);
+    expect(sizes.height).toBe(50);
     expect(sizes.children).toHaveLength(3);
-    expect(sizes.children.every((s) => s.font === '13px')).toBe(true);
+    expect(sizes.children.every((s) => s.font === (width <= 355 ? '12px' : '14px'))).toBe(true);
     expect(Math.max(...sizes.children.map((s) => s.width)) - Math.min(...sizes.children.map((s) => s.width))).toBeLessThanOrEqual(1);
-    await expect(tabs.locator('button')).toHaveText(['Upcoming concerts', 'Past concerts', 'Cancelled']);
+    await expect(tabs.locator('button')).toHaveText(['Upcoming', 'Past', 'Cancelled']);
     await expect(tabs.locator('button').first()).toHaveAttribute('aria-selected', 'true');
 
     await expect(screen.locator('#my-history-upcoming')).toBeVisible();
@@ -168,7 +169,7 @@ test('v181: same 33px/13px segmented tabs on Stats, Discover, Profile and Settin
     const button = node.querySelector('button');
     return { height: node.getBoundingClientRect().height, font: getComputedStyle(button).fontSize };
   });
-  const start = await geometry('#screen-myconcerts .myconcerts-history-tabs');
+  const start = await geometry('#screen-myconcerts .music-primary-tabs-v183');
   await page.locator('#tabbar [data-tab="concerts"]').click();
   const discover = await geometry('#screen-concerts .news-subtab-switch');
   // The v135 Alerts surface intentionally retired its Alerts/News selector.

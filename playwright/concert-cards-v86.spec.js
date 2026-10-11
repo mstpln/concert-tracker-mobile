@@ -13,6 +13,7 @@ test('v86 applies charcoal blue only to concert listing cards', async ({ page },
 
   await expect(page.locator('#start-version-refresh')).toHaveText(/^v\d+$/);
 
+  await page.locator('#music-tab-concerts').click();
   const startCard = page.locator('#screen-myconcerts .row-card-mc').first();
   await expect(startCard).toBeVisible();
   expect(await background(startCard)).toBe('rgb(35, 42, 50)');

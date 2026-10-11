@@ -51,6 +51,7 @@ test('v168 renders Max Capacity like venue address on next, upcoming and past ca
     renderMyConcertsScreen();
   }, { offsets: { next: dateKey(58), upcoming: dateKey(80), past: dateKey(-30) } });
 
+  await page.locator('#music-tab-concerts').click();
   const cards = page.locator('#screen-myconcerts .row-card-mc');
   await expect(cards).toHaveCount(3);
   for (const venue of ['V168 Next Arena', 'V168 Later Hall', 'V168 Past Club']) {

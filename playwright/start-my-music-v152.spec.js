@@ -27,7 +27,7 @@ async function expectNextConcertPlacement(page) {
     };
   });
   expect(state.spacer.visibility).toBe('hidden');
-  expect(state.spacer.height).toBeGreaterThan(0);
+  expect(state.spacer.height).toBe(0);
   expect(state.featuredTop).toBeGreaterThanOrEqual(state.spacer.bottom);
   expect(state.tabsTop).toBeGreaterThan(state.featuredTop);
   expect(state.sourceUpcomingLabels).toBe(0);
@@ -51,6 +51,7 @@ for (const colorScheme of ['dark', 'light']) {
     await expect(musicTab).toHaveAttribute('aria-current', 'page');
 
     await expect(page.locator('#screen-myconcerts .section-label-v152-next')).toHaveText(/Next concert/i);
+    await page.locator('#music-tab-concerts').click();
     await expectNextConcertPlacement(page);
 
     if (colorScheme === 'dark') {
