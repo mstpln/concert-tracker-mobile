@@ -33,7 +33,7 @@ async function syntheticStart(page, width = 375, colorScheme = 'dark') {
 }
 
 for (const width of [320, 375, 480]) {
-  test(`v181: approved 80px option-02 banner, equal 33px tabs and compact year totals at ${width}px`, async ({ page }, testInfo) => {
+  test(`v182: Compact Hero Split #21, equal 33px tabs and compact year totals at ${width}px`, async ({ page }, testInfo) => {
     await syntheticStart(page, width);
     const screen = page.locator('#screen-myconcerts');
     const featured = screen.locator(':scope > .next-concert-merged-v167');
@@ -42,14 +42,17 @@ for (const width of [320, 375, 480]) {
     await expect(banner).toContainText('NEXT CONCERT');
     await expect(banner).toContainText('DAYS LEFT');
     await expect(banner).toContainText('75 km');
-    await expect(banner.locator('.next-concert-live-v167')).toContainText(/\d+d \d{2}h \d{2}m \d{2}s/);
+    await expect(banner.locator('.next-concert-live-v167')).toContainText(/\d+d \d{2}h \d{2}m/);
+    await expect(banner.locator('.next-concert-live-v167')).not.toContainText(/\d{2}s/);
+    await expect(banner.locator('.next-concert-stage-eyebrow-v182')).toHaveText('NEXT CONCERT');
+    await expect(banner.locator('.next-concert-stage-dayslabel-v182')).toHaveText('DAYS LEFT');
 
     const bannerGeometry = await banner.evaluate((node) => {
-      const title = node.querySelector('.next-concert-banner-label-v181');
+      const title = node.querySelector('.next-concert-stage-eyebrow-v182');
       const days = node.querySelector('strong');
       const distance = node.querySelector('.next-concert-distance-v167');
       const ticker = node.querySelector('.next-concert-live-v167');
-      const right = node.querySelector('.next-concert-banner-right-v181');
+      const right = node.querySelector('.next-concert-stage-right-v182');
       return {
         height: node.getBoundingClientRect().height,
         titleSize: getComputedStyle(title).fontSize,
@@ -58,14 +61,19 @@ for (const width of [320, 375, 480]) {
         distanceAbove: distance.getBoundingClientRect().bottom < ticker.getBoundingClientRect().top,
         border: getComputedStyle(right).borderLeftWidth,
         noOverflow: node.scrollWidth <= node.clientWidth + 1,
+        rightWithin: right.getBoundingClientRect().right <= node.getBoundingClientRect().right + 1,
+        numberWithin: days.getBoundingClientRect().right <= node.getBoundingClientRect().right + 1,
       };
     });
-    expect(bannerGeometry.height).toBe(80);
-    expect(bannerGeometry.daysSize).toBe(width <= 355 ? '12px' : '13px');
-    expect(bannerGeometry.text).toMatch(/^\d+ DAYS LEFT$/);
+    expect(bannerGeometry.height).toBe(width <= 355 ? 88 : 100);
+    expect(bannerGeometry.daysSize).toBe(width <= 355 ? '55px' : '66px');
+    expect(bannerGeometry.text).toMatch(/^\d+$/);
+    expect(bannerGeometry.titleSize).toBe(width <= 355 ? '8px' : '10px');
     expect(bannerGeometry.distanceAbove).toBe(true);
     expect(bannerGeometry.border).toBe('1px');
     expect(bannerGeometry.noOverflow).toBe(true);
+    expect(bannerGeometry.rightWithin).toBe(true);
+    expect(bannerGeometry.numberWithin).toBe(true);
 
     const spacer = screen.locator(':scope > .section-label-v167-next');
     await expect(spacer).toHaveCSS('visibility', 'hidden');
@@ -76,10 +84,29 @@ for (const width of [320, 375, 480]) {
         spacerHeight: label.getBoundingClientRect().height,
         labelBottom: label.getBoundingClientRect().bottom,
         cardTop: card.getBoundingClientRect().top,
+        bannerTop: card.querySelector('.next-concert-banner-v167').getBoundingClientRect().top,
+        navTop: document.querySelector('#tabbar').getBoundingClientRect().top,
       };
     });
     expect(position.spacerHeight).toBeGreaterThan(0);
     expect(position.cardTop).toBeGreaterThanOrEqual(position.labelBottom);
+    expect(position.bannerTop).toBeGreaterThanOrEqual(position.cardTop - 1);
+
+    // The 110px prototype is scaled to this real card, but the upper edge is
+    // independent of banner height. Emulate the previous 80px v181 header
+    // without touching the spacer or parent card; neither top edge may move.
+    const oldBannerPosition = await banner.evaluate((node) => {
+      const card = node.closest('.next-concert-merged-v167');
+      node.style.height = '80px';
+      node.style.minHeight = '80px';
+      return {
+        cardTop: card.getBoundingClientRect().top,
+        bannerTop: node.getBoundingClientRect().top,
+      };
+    });
+    expect(Math.abs(oldBannerPosition.cardTop - position.cardTop)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(oldBannerPosition.bannerTop - position.bannerTop)).toBeLessThanOrEqual(0.5);
+    await banner.evaluate((node) => { node.style.removeProperty('height'); node.style.removeProperty('min-height'); });
 
     const tabs = screen.locator('.myconcerts-history-tabs');
     const sizes = await tabs.evaluate((node) => {
@@ -130,7 +157,7 @@ for (const width of [320, 375, 480]) {
     await expect(screen.locator('#my-history-cancelled .year-divider-line')).toHaveCSS('display', 'none');
     await expect(screen.locator('#my-history-cancelled .year-divider-count')).toHaveText('1 show');
 
-    await screen.screenshot({ path: testInfo.outputPath(`start-v181-tabs-${width}.png`), fullPage: false });
+    await screen.screenshot({ path: testInfo.outputPath(`start-v182-compact-hero-${width}.png`), fullPage: false });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   });
 }
