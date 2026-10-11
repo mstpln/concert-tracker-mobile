@@ -1,6 +1,6 @@
-## Pending v187 — Visual consistency and Blue Light corrections
+## v187 — Visual consistency and Blue Light corrections
 
-Branch `feat/visual-consistency-v187` starts at merged v186 `main` commit `d0b829c527874cde59eff27d9f0132ca9e781528`. **Not merged or deployed.**
+Implemented in PR #214 on branch `feat/visual-consistency-v187`, originally based on merged v186 `main` commit `d0b829c527874cde59eff27d9f0132ca9e781528`. For its current release status, verify PR #214, GitHub `main`, and GitHub Pages Actions; this implementation record does not itself establish whether a deployment completed.
 
 - Restore neutral Upcoming / Past / Cancelled secondary tabs by excluding the shared history selector from v186 first-letter lighting CSS and JS. Preserve the v184 continuous selector/card frame, all three active states, and 42px geometry.
 - Match My Bands list rows to the approved Past concert-card surface token (dark `#1d2124`; light `#eef1f5`) without recoloring Add Band, grey badges, or other generic cards.
