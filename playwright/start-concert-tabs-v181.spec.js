@@ -122,7 +122,8 @@ for (const width of [320, 375, 480]) {
         })),
       };
     });
-    expect(sizes.height).toBe(50);
+    // v184's integrated outer border adds 1px; each button stays 42px.
+    expect(sizes.height).toBe(51);
     expect(sizes.children).toHaveLength(3);
     expect(sizes.children.every((s) => s.font === (width <= 355 ? '12px' : '14px'))).toBe(true);
     expect(Math.max(...sizes.children.map((s) => s.width)) - Math.min(...sizes.children.map((s) => s.width))).toBeLessThanOrEqual(1);

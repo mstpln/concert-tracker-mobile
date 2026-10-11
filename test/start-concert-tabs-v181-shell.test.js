@@ -17,8 +17,8 @@ test('v181 Start tab assets belong to HTML, QA, build state and offline service-
     assert.ok(generator.includes(`'${file}'`), `build-state generator missing ${file}`);
     assert.ok(state.shellFiles.includes(file), `build state missing ${file}`);
   }
-  assert.equal(state.appVersion, 'v183');
-  assert.equal(state.serviceWorkerCacheVersion, 'v183');
+  assert.equal(state.appVersion, 'v184');
+  assert.equal(state.serviceWorkerCacheVersion, 'v184');
   assert.equal(state.versionsMatch, true);
 });
 
