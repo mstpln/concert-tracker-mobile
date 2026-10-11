@@ -1,5 +1,10 @@
 # LiveVault Current State
 
+## Pending v180 personal cancellation (unmerged branch)
+
+Based on GitHub `main` at `479ec811aa40e0871bed1a202a2572051bd6a6f3`.
+Branch `feat/cancelled-concert-history-v180` adds the approved Start-page Past/Cancelled tabbed history and option-8 paired uppercase statuses. Upcoming concert cards gain a 28px Cancelled action alongside the 28px Delete icon with 20px spacing; cancelled cards offer Restore. All destructive/removal and cancellation actions require confirmation. Manual cancellation is recorded as optional user-owned `personalLifecycleStatus`, preserving provider-owned lifecycle evidence, original IDs, user fields and tickets. All cancelled records are excluded from attendance and ticket-spending statistics, regardless of scheduled date; restoration to Upcoming requires a confirmed future date. Same-date grouped performances are updated together when their event relationship is valid. No production or provider data changes, workflow dispatch, merge or deployment is authorized.
+
 This continuity file was refreshed on 2026-09-04 after the full workflow/data-enrichment audit and final pre-merge PR #206 review. Earlier implementation detail remains recoverable in Git history. GitHub `main` is authoritative.
 
 ## Repository and current build
