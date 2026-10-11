@@ -15,11 +15,17 @@ test('v133 renders aligned two-line listening row and contained visible feedback
     const past = document.createElement('article');
     past.className = 'row-card row-card-mc is-past';
     past.textContent = 'Synthetic past concert';
-    screen.append(divider, past);
+    const upcoming = document.createElement('article');
+    upcoming.className = 'row-card row-card-mc';
+    upcoming.textContent = 'Synthetic upcoming concert';
+    screen.append(divider, past, upcoming);
+    const upcomingBackground = getComputedStyle(upcoming).backgroundColor;
+    upcoming.remove();
     const progress = document.getElementById('interaction-progress');
     const app = document.getElementById('app');
     return {
       pastBackground: getComputedStyle(past).backgroundColor,
+      upcomingBackground,
       dividerText: divider.textContent.trim(),
       dividerDisplay: getComputedStyle(divider).display,
       progressHeight: getComputedStyle(progress).height,
@@ -30,9 +36,9 @@ test('v133 renders aligned two-line listening row and contained visible feedback
     };
   });
 
-  // v186 uses the actual v129 Past gray as the shared dark concert-card
-  // background, instead of recoloring Past to the old Upcoming tint.
-  expect(visual.pastBackground).toBe('rgb(29, 33, 36)');
+  // v186 contract: Past and Upcoming concert cards share one computed
+  // surface in *both* dark and light themes. Do not hardcode dark-only RGB.
+  expect(visual.pastBackground).toBe(visual.upcomingBackground);
   expect(visual.dividerText.toLowerCase()).toBe('past concerts');
   expect(visual.dividerDisplay).toBe('flex');
   expect(visual.progressHeight).toBe('3px');
