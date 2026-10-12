@@ -16,14 +16,14 @@ function fakeUsage() {
   };
 }
 
-test('weekly configuration keeps MusicBrainz disabled while the manual runner explicitly enables it', async () => {
+test('scheduled MusicBrainz discovery is enabled while manual backfill retains a five-call cap', async () => {
   const usage = fakeUsage();
   let received;
   await runMusicbrainzBackfill({
     readBands: async () => [], loadUsage: async () => usage,
     processIdentities: async (options) => { received = options; return { updates: 0 }; }, log: () => {},
   });
-  assert.equal(config.MUSICBRAINZ.enabled, false);
+  assert.equal(config.MUSICBRAINZ.enabled, true);
   assert.equal(config.MUSICBRAINZ.perRunCap, 5);
   assert.equal(received.enabled, true);
   assert.equal(received.perRunCap, 5);
