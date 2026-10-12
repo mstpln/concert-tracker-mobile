@@ -102,7 +102,8 @@
   }
 
   function withFollowUpExplanation(row) {
-    if (row.key !== 'warning') return row;
+    // A connection prompt is not an automation failure and needs no error copy.
+    if (row.label !== 'Needs attention' || row.key !== 'warning') return row;
     if (row.name !== 'Setlists' || !row.automaticFollowUp) {
       return { ...row, problem:clean(row.problem) || 'Some checks need attention.' };
     }

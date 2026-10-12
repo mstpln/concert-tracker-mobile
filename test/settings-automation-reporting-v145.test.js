@@ -246,3 +246,12 @@ test('non-setlist attention does not falsely promise automatic retry', () => {
   assert.equal(row.problem, 'Artist could not be updated safely');
   assert.doesNotMatch(row.problem, /will try again|next scheduled run/);
 });
+
+
+test('connection prompts never acquire an invented automation failure message', () => {
+  const rows = settings.updateActivityRows({}, new Date('2026-10-12T09:00:00Z'), { connection:()=>null });
+  const listening = rows.find((row) => row.name === 'Listening history');
+  assert.equal(listening.label, 'Needs connection');
+  assert.equal(listening.key, 'warning');
+  assert.equal(listening.problem, '');
+});
