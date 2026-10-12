@@ -130,14 +130,14 @@ async function eventToConcert(event, band, attractionId, usage, fetchImpl, venue
   const attractions = event?._embedded?.attractions || [];
   const matchingAttraction = attractions.find((attraction) => attraction?.id === attractionId);
   if (!matchingAttraction) return null;
-  // The provider attraction can appear on tribute, orchestral or tribute-package
-  // event listings. The exact artist ID alone is insufficient evidence.
-  const eventNameForSafety = String(event?.name || '');
-  const safeCanonicalName = String(band?.name || '').toLowerCase();
-  const eventWithoutArtist = eventNameForSafety.replace(new RegExp(safeCanonicalName.replace(/[.*+?^${}()|[\]\\]/g, '\\  if (!matchingAttraction) return null;
-
-  const localDate'), 'ig'), '');
-  if (TRIBUTE_ACT_PATTERN.test(eventWithoutArtist)) return null;
+  // Association with a trusted attraction does not make a tribute listing genuine.
+  const eventName = String(event?.name || '');
+  const bandName = String(band?.name || '').trim();
+  const eventRemainder = bandName && eventName.toLowerCase().includes(bandName.toLowerCase())
+    ? eventName.slice(0, eventName.toLowerCase().indexOf(bandName.toLowerCase()))
+      + eventName.slice(eventName.toLowerCase().indexOf(bandName.toLowerCase()) + bandName.length)
+    : eventName;
+  if (TRIBUTE_ACT_PATTERN.test(eventRemainder)) return null;
 
   const localDate = event?.dates?.start?.localDate;
   const start = event?.dates?.start || {};
