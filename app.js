@@ -2202,6 +2202,7 @@ async function onAddBand() {
     id, name, officialUrl: url || null,
     photoUrl: null, genre: null, origin: null, formedYear: null, bio: null,
     socials: {}, addedAt: new Date().toISOString(), enrichedAt: null,
+    artistProfileResearch: { status: 'pending', nextEligibleCheckAt: null },
     _enriching: true,
   };
   bands.push(band);
