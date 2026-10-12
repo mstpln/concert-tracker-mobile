@@ -1,3 +1,10 @@
+## v189 — Identity-first, bounded new-artist profile research (proposed; PR, not live)
+
+- New Add Band records retain a small additive artistProfileResearch pending marker. The client no longer generates unsupported name-only Wikipedia/AI facts for those records. Existing artists are not rewritten by the new profile lane.
+- MusicBrainz identity lookup is enabled in the existing Monday/Wednesday/Friday structured workflow for at most two eligible artists per run; three of the shared five MusicBrainz calls remain available for confirmed-artist metadata, prioritizing new pending profiles. Existing IDs, user-reviewed decisions and unknown fields are protected, and solo artists receive the strict same-name confirmation path. Legitimate artist names with Revival do not trigger tribute rejection.
+- Confirmed MusicBrainz metadata now retains only validated official homepage, Wikipedia and Instagram relationships and a group-only formation year. A bounded two-new-profiles-per-run lane fills blank data only, with Wikipedia linked to the exact MusicBrainz identity and a 30-credit-per-month Tavily fallback only for verified official sites; Groq may extract a short, source-supported bio from official excerpts, never serve as the identity authority. No extra workflow, key or historical backfill. Existing Ticketmaster events with clear tribute wording are rejected even if they contain the trusted attraction ID.
+- The MusicBrainz metadata refresh cadence is 365 days rather than 90, reserving existing request capacity; Spotify's persisted rate-limit circuit, provider global caps and original production workflows remain unchanged. Scheduled release discovery stays disabled. No production API or R2 access has occurred during this proposal. APP_VERSION and CACHE_NAME_LITERAL advance together to v189, and synthetic QA plus PR review are required before any merge or deployment.
+
 ## v188 — Actionable automation statuses and inspectable artist candidates
 
 Implemented on branch `fix/automation-retrying-artist-review-v188` from v187 `main`; PR and release status must be checked against GitHub. Not a production deployment record.
