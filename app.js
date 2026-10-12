@@ -3748,6 +3748,8 @@ function researchPipelineSectionHtml({ expandedTool = null, groqSettingsHtml = '
 async function enrichBand(bandId) {
   const band = bands.find((b) => b.id === bandId);
   if (!band) return;
+  // New artists await identity-first source research in the scheduled pipeline.
+  if (band.artistProfileResearch?.status === 'pending') return;
 
   let homepage = null;
   if (band.officialUrl) {
