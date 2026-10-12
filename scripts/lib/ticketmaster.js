@@ -360,7 +360,7 @@ async function resolveAttractionIdentity({ band, metadata, usage, fetchImpl = fe
     const canonicalMatches = musicCandidates.filter((candidate) => {
       const candidateName = identityNorm(candidate.name);
       return canonicalNames.has(candidateName)
-        && !TRIBUTE_ACT_PATTERN.test(`${candidate.name || ''} ${candidate.url || ''}`);
+        && !TRIBUTE_ACT_PATTERN.test((candidate.url || '').replace(/[-_/]/g, ' '));
     });
     const aliasMatches = musicCandidates.filter((candidate) => {
       const candidateName = identityNorm(candidate.name);
