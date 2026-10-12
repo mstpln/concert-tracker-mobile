@@ -110,6 +110,14 @@ function spotifyArtistIdFromRelations(relations) {
 }
 
 
+function sourcedGenre(genres) {
+  const voted = (Array.isArray(genres) ? genres : [])
+    .filter(row => typeof row?.name === 'string' && /^[-a-z\s]{3,45}$/i.test(row.name) && Number(row.count) >= 2)
+    .sort((a, b) => Number(b.count) - Number(a.count));
+  return voted.length && (!voted[1] || Number(voted[0].count) > Number(voted[1].count))
+    ? voted[0].name.trim() : null;
+}
+
 function artistWebsiteRelations(relations) {
   const result = {};
   for (const rel of relations || []) {
@@ -155,7 +163,7 @@ async function requestJson(path, params, usage, fetchImpl = fetch) {
 // persist provider payloads, tags, or prose descriptions.
 async function fetchArtistMetadata(mbid, usage, fetchImpl = fetch) {
   if (!mbid) return { kind: 'skipped' };
-  const result = await requestJson(`/artist/${encodeURIComponent(mbid)}`, { inc: 'aliases+url-rels' }, usage, fetchImpl);
+  const result = await requestJson(`/artist/${encodeURIComponent(mbid)}`, { inc: 'aliases+url-rels+genres' }, usage, fetchImpl);
   if (result.kind !== 'ok') return result;
   const artist = result.data;
   if (!artist?.id || artist.id !== mbid) return { kind: 'error', error: 'Invalid MusicBrainz artist metadata' };
@@ -166,6 +174,7 @@ async function fetchArtistMetadata(mbid, usage, fetchImpl = fetch) {
       artistName: artist.name || null,
       aliases: (artist.aliases || []).map((alias) => alias?.name).filter(Boolean).slice(0, 20),
       artistType: artist.type || null,
+      genre: sourcedGenre(artist.genres),
       area: artist.area?.name || null,
       country: artist.country || null,
       disambiguation: artist.disambiguation || null,
