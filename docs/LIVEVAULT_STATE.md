@@ -1,3 +1,11 @@
+## v188 — Actionable automation statuses and inspectable artist candidates
+
+Implemented on branch `fix/automation-retrying-artist-review-v188` from v187 `main`; PR and release status must be checked against GitHub. Not a production deployment record.
+
+- Settings > Automation > Update activity distinguishes Healthy (normal), Retrying (known recoverable lookups automatically revisited), and Failed (investigate). Structured research can complete successfully while individual setlist.fm lookups are rate-limited, unavailable, or identity-uncertain: known retryable per-show failure categories show Retrying, not Failed, with a clear note that BANDMARKR will check again at the next scheduled run. Genuine failed runs, unclassified failures, and checks with no verified automatic retry remain Failed; unknown status is Not reported rather than a fabricated retry. A connected ListenBrainz device without a successful sync shows neutral Not synced, not a false automatic retry.
+- Settings > Review > Artist matches now provides safe, explicit View on Spotify and View on MusicBrainz profile links for stored candidates, including identically named artists. Spotify candidate IDs remain visible to distinguish alternatives; the existing Use this artist, None of these and Later decisions remain manual and unchanged.
+- No provider API calls, quota changes, identity-matching relaxations, stored-data/schema changes, migrations, or production workflows. Only Settings presentation/classification of existing stored activity, tests, continuity docs and synchronized v188 app/cache versions. Known limitation: no persisted repeated-failure escalation counter is introduced; a repeated recoverable lookup remains Retrying until a genuine run failure or unclassified error is reported.
+
 ## v187 — Visual consistency and Blue Light corrections
 
 Implemented in PR #214 on branch `feat/visual-consistency-v187`, originally based on merged v186 `main` commit `d0b829c527874cde59eff27d9f0132ca9e781528`. For its current release status, verify PR #214, GitHub `main`, and GitHub Pages Actions; this implementation record does not itself establish whether a deployment completed.

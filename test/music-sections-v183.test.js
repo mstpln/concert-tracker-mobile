@@ -39,8 +39,11 @@ test('v183 shell, release version and app-only navigation remain synchronized', 
   const build = JSON.parse(read('docs/LIVEVAULT_BUILD_STATE.json'));
   assert.match(html, /<script src="startConcertTabsV181.js"><\/script>\s*<script src="musicSectionsV183.js"><\/script>/);
   assert.match(html, /href="musicSectionsV183.css"/);
-  assert.match(sw, /const CACHE_NAME_LITERAL = 'v187'/);
-  assert.match(read('version.js'), /const APP_VERSION = 'v187'/);
+  const release = read('version.js').match(/^const APP_VERSION = '(v\d+)';/m)?.[1];
+  assert.ok(release, 'missing current APP_VERSION');
+  assert.equal(sw.match(/^const CACHE_NAME_LITERAL = '(v\d+)';/m)?.[1], release);
+  assert.equal(build.appVersion, release);
+  assert.equal(build.serviceWorkerCacheVersion, release);
   assert.equal(build.versionsMatch, true);
   assert.ok(build.shellFiles.includes('musicSectionsV183.css'));
   assert.ok(build.shellFiles.includes('musicSectionsV183.js'));

@@ -17,8 +17,11 @@ test('v181 Start tab assets belong to HTML, QA, build state and offline service-
     assert.ok(generator.includes(`'${file}'`), `build-state generator missing ${file}`);
     assert.ok(state.shellFiles.includes(file), `build state missing ${file}`);
   }
-  assert.equal(state.appVersion, 'v187');
-  assert.equal(state.serviceWorkerCacheVersion, 'v187');
+  const release = fs.readFileSync('version.js', 'utf8').match(/^const APP_VERSION = '(v\d+)';/m)?.[1];
+  assert.ok(release, 'missing current APP_VERSION');
+  assert.equal(worker.match(/^const CACHE_NAME_LITERAL = '(v\d+)';/m)?.[1], release);
+  assert.equal(state.appVersion, release);
+  assert.equal(state.serviceWorkerCacheVersion, release);
   assert.equal(state.versionsMatch, true);
 });
 
