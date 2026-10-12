@@ -26,7 +26,7 @@ async function applyAutomationFixture(page) {
           },
         },
         focusedTavilyConcert:{
-          startedAt:'2026-08-15T02:00:00.000Z', finishedAt:'2026-08-15T02:10:00.000Z', status:'attention',
+          startedAt:'2026-08-15T02:00:00.000Z', finishedAt:'2026-08-15T02:10:00.000Z', status:'ok',
           activities:{
             webConcertSearch:activity('attention',8,1,{
               failureCode:'provider_unavailable',
