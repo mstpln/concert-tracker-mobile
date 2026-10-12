@@ -1,5 +1,13 @@
 # LiveVault Decisions
 
+## v190 Fresh-read and reconciled-memory band persistence
+
+**Decision:** Adding a band must start from the latest remote bands.json, not an indefinitely held UI snapshot. After any band write using a transient-stripped or other cloned array, the returned reconciled value becomes the current browser band state. A 412 merge protecting the latest R2 file is incomplete without this in-memory rebase: the next write can otherwise restore stale identity and review fields.
+
+**Rollout:** Release the v190 frontend first; reload stale tabs before any restoration. Historical backup reconciliation is an offline, field-aware process, reviewed and manually authorized separately from the code release. No application user-owned fields or verified provider records may be silently sacrificed to regain coverage.
+
+
+
 ## v189 Identity-first new-artist enrichment
 
 **Decision:** New Add Band entries must not gain generated biographies, genres or dates from a name-only AI search. Confirm MusicBrainz identity first (strict matching and review); preserve user and provider decisions; use trusted MusicBrainz URL relationships and group-only begin year, linked Wikipedia or verified official-site excerpts for biography, and leave unsupported values blank.

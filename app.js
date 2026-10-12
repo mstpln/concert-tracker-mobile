@@ -2184,6 +2184,7 @@ async function onAddBand() {
   const nameInput = el('add-band-name');
   const urlInput = el('add-band-url');
   const errEl = el('add-band-error');
+  const submitButton = el('add-band-submit');
   const name = nameInput.value.trim();
   let url = urlInput.value.trim();
   errEl.classList.add('hidden');
@@ -2195,21 +2196,41 @@ async function onAddBand() {
   }
   if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
 
-  let id = dlSlugify(name);
-  if (bands.some((b) => b.id === id)) id = `${id}-${Math.floor(Math.random() * 1000)}`;
+  // Always base a new artist on the latest persisted bands. An earlier
+  // Cloudflare backfill may have happened while this PWA tab was open.
+  // Updating just the clone supplied to dlWriteJsonFile is not enough:
+  // after a 412 merge the next unconflicted write could revive old IDs.
+  submitButton.disabled = true;
+  try {
+    const latest = await dlReadJsonFile(remote, 'bands.json', []);
+    if (!Array.isArray(latest)) throw new Error('Invalid bands document');
 
-  const band = {
-    id, name, officialUrl: url || null,
-    photoUrl: null, genre: null, origin: null, formedYear: null, bio: null,
-    socials: {}, addedAt: new Date().toISOString(), enrichedAt: null,
-    artistProfileResearch: { status: 'pending', nextEligibleCheckAt: null },
-  };
-  bands.push(band);
-  await dlWriteJsonFile(remote, 'bands.json', stripTransient(bands));
-  nameInput.value = '';
-  urlInput.value = '';
-  renderMyBandsScreen();
-  // Identity-first scheduled research handles new artists; no name-only AI.
+    let id = dlSlugify(name);
+    if (latest.some((item) => item.id === id)) {
+      const baseId = id;
+      let suffix = 2;
+      while (latest.some((item) => item.id === baseId + '-' + suffix)) suffix++;
+      id = baseId + '-' + suffix;
+    }
+    const band = {
+      id, name, officialUrl: url || null,
+      photoUrl: null, genre: null, origin: null, formedYear: null, bio: null,
+      socials: {}, addedAt: new Date().toISOString(), enrichedAt: null,
+      artistProfileResearch: { status: 'pending', nextEligibleCheckAt: null },
+    };
+    // The writer returns the authoritative reconciled value after a
+    // conditional-write conflict. Make it the active in-memory band list.
+    bands = await dlWriteJsonFile(remote, 'bands.json', stripTransient([...latest, band]));
+    nameInput.value = '';
+    urlInput.value = '';
+    renderMyBandsScreen();
+    // Scheduled identity-first research replaces legacy name-only browser AI.
+  } catch (error) {
+    errEl.textContent = 'Could not save this band. Please try again.';
+    errEl.classList.remove('hidden');
+  } finally {
+    submitButton.disabled = false;
+  }
 }
 
 function stripTransient(list) {
@@ -3786,7 +3807,7 @@ async function enrichBand(bandId) {
   band.enrichedAt = new Date().toISOString();
   band._enriching = false;
 
-  await dlWriteJsonFile(remote, 'bands.json', stripTransient(bands));
+  bands = await dlWriteJsonFile(remote, 'bands.json', stripTransient(bands));
   if (currentScreen === 'profile' && activeProfileBandId === bandId) renderProfileScreen(bandId);
   if (currentScreen === 'main' && currentTab === 'mybands') renderMyBandsScreen();
 }
