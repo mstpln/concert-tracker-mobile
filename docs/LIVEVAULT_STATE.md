@@ -1,9 +1,9 @@
-## v191 — Spotify green spotlight and Settings divider highlights (PR, not live)
+## v191 — Spotify green spotlight and Settings divider highlights
 
 - Use the existing v187 blue primary CTA treatment as a *shape and light-position* reference for the green Spotify button inside Discover > Bands. Keep it green, with a static asymmetric dark-edge/bright-center gradient and white label/icon; preserve the link destination, behavior, dimensions and 3-button layout.
 - In Settings (Automation, Review, Data), keep existing 2px horizontal section borders and 4px rounded vertical accent pills at the exact positions and dimensions. Overlay the established v186/v187 Highlights stats-card blue gradient and restrained outward halo without changing content, semantics or responsive layout.
 - Do not restyle other blue accent lines, navigation, progress indicators, focus outlines, active tabs, generic cards, or any other Spotify controls. Visual-only change: no data shape, Worker, API/provider logic, quotas, migrations, or runtime dependencies.
-- APP_VERSION and CACHE_NAME_LITERAL advance together to v191. Synthetic QA tests cover gradient/glow, screenshot comparisons, keyboard and layout safety at 375/480px in light/dark themes. The v191 branch/PR is not a production release.
+- APP_VERSION and CACHE_NAME_LITERAL advance together to v191. Synthetic QA tests cover gradient/glow, screenshot comparisons, keyboard and layout safety at 375/480px in light/dark themes. Release status must be verified against GitHub PR and Pages workflows, not inferred from this implementation record.
 
 
 ## Merged v190 — Prevent stale browser writes from undoing an R2 backfill
