@@ -150,3 +150,32 @@ test('new artists get image priority without increasing the existing maintenance
   assert.equal(planned.items.length, 1);
   assert.equal(planned.items[0].bandId, 'z-new');
 });
+
+test('frequent profile completion never calls the optional web fallback', async () => {
+  let officialCalls = 0;
+  const result = await profile.researchOne(artist(), {}, '2026-10-12T12:00:00Z', {
+    wikipedia: async () => null,
+    official: async () => { officialCalls++; throw new Error('unexpected Tavily'); },
+  });
+  assert.equal(officialCalls, 0);
+  assert.equal(result.state.status, 'partial');
+});
+
+test('focused-only fallback uses partial unresolved profiles and never touches existing artists', async () => {
+  const pending = artist({ artistProfileResearch: { status: 'partial' } });
+  const old = artist({ id: 'old', artistProfileResearch: undefined });
+  const usage = { state: {}, canCallTavily: () => true, canCallGroq: () => true };
+  let saved = null;
+  const result = await profile.runNewArtistProfiles({
+    bands: [pending, old], usage, fallbackOnly: true,
+    helpers: { official: async () => ({
+      source: 'verified_official_site_excerpt',
+      sourceUrl: 'https://exampleartist.com/about',
+      bio: 'Example Act is an independent band documented on its official website.',
+    }) },
+    writeReconciled: async (_name, merge) => { saved = merge([pending, old]); },
+  });
+  assert.equal(result.considered, 1);
+  assert.equal(saved[0].artistProfileResearch.status, 'complete');
+  assert.equal(saved[1], old);
+});
