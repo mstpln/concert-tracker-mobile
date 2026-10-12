@@ -34,14 +34,17 @@ function normWords(value) {
 // Retained as a review/discovery helper and for historical regression tests.
 // It is deliberately NOT an authority for automatic concert admission.
 function namesMatch(bandName, attractionName, eventName, eventUrl) {
-  if (
-    TRIBUTE_ACT_PATTERN.test(attractionName || '') ||
-    TRIBUTE_ACT_PATTERN.test(eventName || '') ||
-    TRIBUTE_ACT_PATTERN.test((eventUrl || '').replace(/[-_/]/g, ' '))
-  ) return false;
   const band = normWords(bandName);
   const attraction = normWords(attractionName);
   if (!band || !attraction) return false;
+  // Genuine artist names/URLs may contain "Revival"; this remains a
+  // discovery helper, NEVER authority for automatic concert admission.
+  const attractionExtra = attraction === band ? '' : attraction;
+  const eventExtra = normWords(eventName).replace(band, ' ').replace(/\breunion\b/g, ' ');
+  const urlExtra = normWords(eventUrl).replace(band, ' ');
+  if (TRIBUTE_ACT_PATTERN.test(attractionExtra)
+    || TRIBUTE_ACT_PATTERN.test(eventExtra)
+    || TRIBUTE_ACT_PATTERN.test(urlExtra)) return false;
   if (band === attraction) return true;
   return containsWholeWords(attraction, band) || containsWholeWords(band, attraction);
 }
@@ -130,6 +133,20 @@ async function eventToConcert(event, band, attractionId, usage, fetchImpl, venue
   const attractions = event?._embedded?.attractions || [];
   const matchingAttraction = attractions.find((attraction) => attraction?.id === attractionId);
   if (!matchingAttraction) return null;
+  // Association with a trusted attraction does not make a tribute listing genuine.
+  const eventNameForSafety = String(event?.name || '');
+  const bandName = String(band?.name || '').trim();
+  const eventRemainder = bandName && eventNameForSafety.toLowerCase().includes(bandName.toLowerCase())
+    ? eventNameForSafety.slice(0, eventNameForSafety.toLowerCase().indexOf(bandName.toLowerCase()))
+      + eventNameForSafety.slice(eventNameForSafety.toLowerCase().indexOf(bandName.toLowerCase()) + bandName.length)
+    : eventNameForSafety;
+  // Only a clear 'Original Artist - Reunion Tour' suffix qualifies as a
+  // reunion. A different act's reunion attached to the trusted attraction
+  // must still fail closed like other suspicious event titles.
+  const literalArtistNamed = !!bandName && eventNameForSafety.toLowerCase().includes(bandName.toLowerCase());
+  const genuineReunionTitle = literalArtistNamed
+    && /^\W*(?:the\s+)?reunion(?:\s+(?:tour|show|concert|live|world|dates?|20\d\d))*\W*$/i.test(eventRemainder);
+  if (TRIBUTE_ACT_PATTERN.test(eventRemainder) && !genuineReunionTitle) return null;
 
   const localDate = event?.dates?.start?.localDate;
   const start = event?.dates?.start || {};
@@ -313,6 +330,14 @@ function aliasIdentityNames(metadata) {
   return new Set((metadata?.aliases || []).map(identityNorm).filter(Boolean));
 }
 
+function suspiciousAttractionUrl(candidate) {
+  // Only qualifying words outside the artist's legitimate literal name
+  // count as tribute evidence (e.g. Kashmir + Led Zeppelin Tribute).
+  const name = identityNorm(candidate?.name);
+  const urlWords = identityNorm(candidate?.url);
+  return TRIBUTE_ACT_PATTERN.test(name ? urlWords.replace(name, ' ') : urlWords);
+}
+
 function collisionRisk(candidate, candidates, canonicalNames, searchComplete) {
   const exact = identityNorm(candidate?.name);
   const similarCandidateExists = candidates.some((other) => {
@@ -352,13 +377,13 @@ async function resolveAttractionIdentity({ band, metadata, usage, fetchImpl = fe
     const canonicalMatches = musicCandidates.filter((candidate) => {
       const candidateName = identityNorm(candidate.name);
       return canonicalNames.has(candidateName)
-        && !TRIBUTE_ACT_PATTERN.test(`${candidate.name || ''} ${candidate.url || ''}`);
+        && !suspiciousAttractionUrl(candidate);
     });
     const aliasMatches = musicCandidates.filter((candidate) => {
       const candidateName = identityNorm(candidate.name);
       return aliasNames.has(candidateName)
         && !canonicalNames.has(candidateName)
-        && !TRIBUTE_ACT_PATTERN.test(`${candidate.name || ''} ${candidate.url || ''}`);
+        && !suspiciousAttractionUrl(candidate);
     });
     const totalElements = Number(data?.page?.totalElements);
     const searchComplete = Number.isFinite(totalElements) && totalElements <= candidates.length;

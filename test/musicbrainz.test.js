@@ -31,7 +31,7 @@ test('Lucene phrase escaping preserves special-character artist names', () => {
   assert.equal(escapeLucenePhrase('The "Quote"'), 'The \\"Quote\\"');
 });
 test('6 same-name artists from different countries', () => assert.equal(candidateFrom(raw('Muse', { country: 'US' }), band('Muse', { origin: 'United Kingdom' }))._contradictory, true));
-test('7 solo artist versus group', () => assert.ok(candidateFrom(raw('Muse', { type: 'Person' }), band('Muse')).score < candidateFrom(raw('Muse'), band('Muse')).score));
+test('7 solo artist versus group', () => assert.ok(candidateFrom(raw('Muse', { type: 'Person' }), band('Muse')).score <= candidateFrom(raw('Muse'), band('Muse')).score));
 test('8 artist-type agreement', () => assert.ok(candidateFrom(raw(), band()).score >= 90));
 test('9 origin comparison normalizes country variants without false conflict', () => {
   assert.equal(countryFrom('Sweden'), countryFrom('SE'));
@@ -78,7 +78,7 @@ test('23 disabled pipeline makes zero MusicBrainz requests, writes, and usage at
   });
   assert.deepEqual(result, { enabled: false, updates: 0 });
   assert.deepEqual(calls, { searches: 0, reads: 0, writes: 0, attempts: 0 });
-  assert.equal(config.MUSICBRAINZ.enabled, false);
+  assert.equal(config.MUSICBRAINZ.enabled, true);
 });
 test('enabled pipeline safely leaves bands unchanged when UsageTracker skips MusicBrainz', async () => {
   const original = band('The Cure', { musicbrainz: { status:'pending', mbid:null, lastAttemptedAt:'before', reviewCandidates:[] } });
@@ -174,4 +174,84 @@ test('known Sweden, US, and UK origin matches remain eligible, while conflicts s
     assert.ok((await searchArtist(band('The Cure', { origin }), fakeUsage(), response([raw('The Cure', { country })]))).automatic);
   }
   assert.equal((await searchArtist(band('The Cure', { origin:'Sweden' }), fakeUsage(), response([raw('The Cure', { country:'US' })]))).automatic, null);
+});
+
+
+test('v189 simultaneous new artists cannot acquire the same trusted MusicBrainz ID', () => {
+  const latest = [
+    { id: 'original', name: 'Original Act', artistProfileResearch: { status: 'pending' } },
+    { id: 'namesake', name: 'Other Act', artistProfileResearch: { status: 'pending' } },
+  ];
+  const updates = latest.map(row => ({
+    id: row.id, name: row.name,
+    musicbrainz: { status: 'auto_confirmed', mbid: 'same-mbid', artistName: row.name,
+      confidence: 95, source: 'MusicBrainz', reviewCandidates: [] },
+  }));
+  const merged = mergeMusicbrainzResults(latest, updates);
+  for (const record of merged) {
+    assert.equal(record.musicbrainz.status, 'needs_review');
+    assert.equal(record.musicbrainz.mbid, null);
+    assert.equal(record.musicbrainz.reviewCandidates[0].mbid, 'same-mbid');
+  }
+  assert.equal(latest[0].musicbrainz, undefined);
+});
+
+test('v189 existing trusted MBID makes conflicting new assignment review-only', () => {
+  const latest = [
+    { id:'known', name:'Established', musicbrainz:{ status:'manual_confirmed', mbid:'known-mbid' } },
+    { id:'new', name:'Namesake', favorite:true, artistProfileResearch:{ status:'pending' } },
+  ];
+  const merged = mergeMusicbrainzResults(latest, [{
+    id:'new', name:'Namesake', musicbrainz:{
+      status:'auto_confirmed', mbid:'known-mbid', artistName:'Namesake', confidence:100,
+      reviewCandidates:[], lastAttemptedAt:'2026-10-12',
+    },
+  }]);
+  assert.deepEqual(merged[0], latest[0]);
+  assert.equal(merged[1].musicbrainz.status, 'needs_review');
+  assert.equal(merged[1].musicbrainz.reviewCandidates[0].mbid, 'known-mbid');
+  assert.equal(merged[1].favorite, true);
+});
+
+test('v189 stale lookup cannot overwrite a later artist rename or reviewer decision', () => {
+  const update = { id:'band', name:'Old Name', musicbrainz:{ status:'auto_confirmed',
+    mbid:'mbid-auto', artistName:'Old Name', confidence:95 } };
+  const renamed = { id:'band', name:'New Name', musicbrainz:{ status:'pending' } };
+  assert.deepEqual(mergeMusicbrainzResults([renamed],[update]), [renamed]);
+  const held = { id:'band', name:'Old Name', musicbrainz:{ status:'needs_review', reviewCandidates:[{mbid:'mbid-manual'}] } };
+  assert.deepEqual(mergeMusicbrainzResults([held],[update]), [held]);
+  const rejected = { id:'band', name:'Old Name',
+    musicbrainz:{ status:'pending', rejectedCandidateMbids:['mbid-auto'] } };
+  assert.deepEqual(mergeMusicbrainzResults([rejected],[update]), [rejected]);
+});
+
+test('v189 new identity never silently reuses conflicting former metadata', () => {
+  const latest = { id:'band', name:'Current Name', musicbrainz:{
+    status:'pending', metadata:{ mbid:'old-mbid', artistName:'Former Act', genre:'rock' },
+  }, futureField:{keep:true} };
+  const merged = mergeMusicbrainzResults([latest],[{ id:'band', name:'Current Name',
+    musicbrainz:{ status:'auto_confirmed', mbid:'new-mbid', artistName:'Current Name', confidence:95 },
+  }])[0];
+  assert.equal(merged.musicbrainz.status, 'needs_review');
+  assert.equal(merged.musicbrainz.mbid, null);
+  assert.deepEqual(merged.futureField, {keep:true});
+});
+
+test('v189 latest nested manual provider identities survive stale automatic updates', () => {
+  const latest = { id:'band', name:'Band', musicbrainz:{
+    status:'pending', rejectedCandidateMbids:['keep'],
+    spotify:{ id:'newer-manual', status:'manual_confirmed', futureField:1 },
+    ticketmaster:{ status:'manual_rejected', id:null, reviewCandidates:[] },
+  } };
+  const old = { id:'band', name:'Band', musicbrainz:{
+    status:'auto_confirmed', mbid:'mbid-trusted', artistName:'Band', confidence:95,
+    rejectedCandidateMbids:[],
+    spotify:{ id:'old-manual', status:'manual_confirmed' },
+    ticketmaster:{ id:'stale-auto', status:'confirmed' },
+  } };
+  const merged = mergeMusicbrainzResults([latest], [old])[0];
+  assert.deepEqual(merged.musicbrainz.spotify, latest.musicbrainz.spotify);
+  assert.deepEqual(merged.musicbrainz.ticketmaster, latest.musicbrainz.ticketmaster);
+  assert.deepEqual(merged.musicbrainz.rejectedCandidateMbids, ['keep']);
+  assert.equal(merged.musicbrainz.mbid, 'mbid-trusted');
 });

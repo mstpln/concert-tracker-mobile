@@ -51,9 +51,9 @@ function candidateFrom(raw, band) {
   // A saved origin is evidence only when both sides can be deterministically
   // normalized. Unknown values remain reviewable but can never auto-confirm.
   const originUnverified = hasSavedOrigin && (!originCountry || !mbCountry);
-  const bad = IMPERSONATOR.test(`${name} ${raw?.disambiguation || ''}`);
+  const bad = IMPERSONATOR.test(raw?.disambiguation || '') || (!exact && IMPERSONATOR.test(name));
   let score = exact ? 75 : aliasExact ? 65 : 0;
-  if (type === 'Group' || type === 'Orchestra') score += 10;
+  if (type === 'Group' || type === 'Orchestra' || (type === 'Person' && exact)) score += 10;
   if (originAgreement) score += 5;
   if (Number(raw?.score) >= 95) score += 10;
   if (contradictory) score -= 30;
@@ -109,6 +109,39 @@ function spotifyArtistIdFromRelations(relations) {
   return null;
 }
 
+
+function sourcedGenre(genres) {
+  const voted = (Array.isArray(genres) ? genres : [])
+    .filter(row => typeof row?.name === 'string' && /^[-a-z\s]{3,45}$/i.test(row.name) && Number(row.count) >= 2)
+    .sort((a, b) => Number(b.count) - Number(a.count));
+  return voted.length && (!voted[1] || Number(voted[0].count) > Number(voted[1].count))
+    ? voted[0].name.trim() : null;
+}
+
+function artistWebsiteRelations(relations) {
+  const result = {};
+  for (const rel of relations || []) {
+    const type = String(rel?.type || '').toLowerCase();
+    const value = String(rel?.url?.resource || '');
+    let parsed;
+    try { parsed = new URL(value); } catch { continue; }
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port) continue;
+    if (type === 'official homepage' && !result.officialUrl
+      && !/(?:^|\.)(?:spotify\.com|wikipedia\.org|wikidata\.org|instagram\.com|facebook\.com|youtube\.com)$/i.test(parsed.hostname)) {
+      result.officialUrl = parsed.href;
+    } else if (type === 'wikipedia' && !result.wikipediaUrl
+      && /^[a-z-]+\.wikipedia\.org$/i.test(parsed.hostname) && parsed.pathname.startsWith('/wiki/')) {
+      result.wikipediaUrl = parsed.href;
+    } else if (type === 'social network' && !result.instagram
+      && /^(?:www\.)?instagram\.com$/i.test(parsed.hostname)
+      && /^\/[A-Za-z0-9._]+\/?$/.test(parsed.pathname)
+      && !['p','reel','explore','stories'].includes(parsed.pathname.split('/')[1])) {
+      result.instagram = parsed.href;
+    }
+  }
+  return result;
+}
+
 async function requestJson(path, params, usage, fetchImpl = fetch) {
   if (!usage.canCallMusicbrainz()) return { kind: 'skipped' };
   await usage.recordMusicbrainzAttempt();
@@ -130,7 +163,7 @@ async function requestJson(path, params, usage, fetchImpl = fetch) {
 // persist provider payloads, tags, or prose descriptions.
 async function fetchArtistMetadata(mbid, usage, fetchImpl = fetch) {
   if (!mbid) return { kind: 'skipped' };
-  const result = await requestJson(`/artist/${encodeURIComponent(mbid)}`, { inc: 'aliases+url-rels' }, usage, fetchImpl);
+  const result = await requestJson(`/artist/${encodeURIComponent(mbid)}`, { inc: 'aliases+url-rels+genres' }, usage, fetchImpl);
   if (result.kind !== 'ok') return result;
   const artist = result.data;
   if (!artist?.id || artist.id !== mbid) return { kind: 'error', error: 'Invalid MusicBrainz artist metadata' };
@@ -141,10 +174,14 @@ async function fetchArtistMetadata(mbid, usage, fetchImpl = fetch) {
       artistName: artist.name || null,
       aliases: (artist.aliases || []).map((alias) => alias?.name).filter(Boolean).slice(0, 20),
       artistType: artist.type || null,
+      genre: sourcedGenre(artist.genres),
       area: artist.area?.name || null,
       country: artist.country || null,
       disambiguation: artist.disambiguation || null,
       spotify: spotifyArtistIdFromRelations(artist.relations),
+      ...artistWebsiteRelations(artist.relations),
+      beginYear: artist.type === 'Group' && /^\d{4}/.test(String(artist['life-span']?.begin || ''))
+        ? String(artist['life-span'].begin).slice(0, 4) : null,
     },
   };
 }

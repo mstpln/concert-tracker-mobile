@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v188",
-  "serviceWorkerCacheVersion": "v188",
+  "appVersion": "v189",
+  "serviceWorkerCacheVersion": "v189",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 22,
@@ -150,7 +150,7 @@
   ],
   "flags": {
     "structuredResearchEnabled": true,
-    "musicbrainzEnabled": false,
+    "musicbrainzEnabled": true,
     "listenbrainzSyncEnabled": true,
     "listeningIdentityCompletionEnabled": true
   }

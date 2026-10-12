@@ -132,7 +132,7 @@ module.exports = {
 
   MUSICBRAINZ: {
     baseUrl: 'https://musicbrainz.org/ws/2',
-    enabled: false,
+    enabled: true,
     userAgent: 'TheLiveVault/1.0 (https://github.com/mstpln/concert-tracker-mobile; personal non-commercial project)',
     perRunCap: 5,
     minDelayMs: 2000,
@@ -156,7 +156,7 @@ module.exports = {
     structuredReleaseMonitoringEnabled: true,
     targetedTavilyRoutingEnabled: true,
     groqFallbackEnabled: true,
-    artistMetadataRefreshDays: 90,
+    artistMetadataRefreshDays: 365,
     unresolvedIdentityRetryDays: 90,
     temporaryErrorRetryHours: 24,
     musicbrainzReleaseRefreshDays: 7,

@@ -16,14 +16,14 @@ function fakeUsage() {
   };
 }
 
-test('weekly configuration keeps MusicBrainz disabled while the manual runner explicitly enables it', async () => {
+test('scheduled MusicBrainz discovery is enabled while manual backfill retains a five-call cap', async () => {
   const usage = fakeUsage();
   let received;
   await runMusicbrainzBackfill({
     readBands: async () => [], loadUsage: async () => usage,
     processIdentities: async (options) => { received = options; return { updates: 0 }; }, log: () => {},
   });
-  assert.equal(config.MUSICBRAINZ.enabled, false);
+  assert.equal(config.MUSICBRAINZ.enabled, true);
   assert.equal(config.MUSICBRAINZ.perRunCap, 5);
   assert.equal(received.enabled, true);
   assert.equal(received.perRunCap, 5);
@@ -105,5 +105,5 @@ test('manual workflow is hardened, shares the data-write concurrency group, and 
 test('Settings links and saving guard remain static and safe', () => {
   const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
   assert.match(app, /https:\/\/musicbrainz\.org\/artist\//); assert.match(app, /encodeURIComponent\(String\(c\.mbid/); assert.match(app, /Open MusicBrainz runs/);
-  assert.match(app, /Weekly automatic MusicBrainz lookups are off/); assert.match(app, /Saving…/); assert.match(app, /lastMusicbrainzRun/);
+  assert.match(app, /Newly added artists are checked automatically/); assert.match(app, /Saving…/); assert.match(app, /lastMusicbrainzRun/);
 });

@@ -3,6 +3,7 @@
 const worker = require('./lib/workerClient');
 const { UsageTracker } = require('./lib/usageTracker');
 const reporting = require('./lib/automationReporting');
+const newArtistProfile = require('./lib/newArtistProfile');
 const policy = require('./lib/tavilyConcertPolicy');
 const geocode = require('./lib/geocode');
 const { slugify, todayIso } = require('./lib/util');
@@ -158,6 +159,12 @@ async function main() {
     await worker.writeJsonReconciled('bands.json', (latestBands) => applyRoutingUpdates(latestBands, routingUpdates));
   }
 
+  // Low-priority new-artist official-site fallback belongs to this focused
+  // Tavily/Groq lane, never the frequent structured concert research job.
+  const profileFallback = await newArtistProfile.runNewArtistProfiles({
+    bands: await worker.readJson('bands.json', []), usage, fallbackOnly: true,
+  });
+
   const changed = reconciliationCounts.added + reconciliationCounts.merged + reconciliationCounts.lifecycle;
   reporting.recordActivity(usage, 'webConcertSearch', { result: { workCount: attempted, changeCount: changed } });
   usage.finishRun({
@@ -171,6 +178,8 @@ async function main() {
     lifecycleContinuations: reconciliationCounts.lifecycle,
     candidatesHeldForReview: reconciliationCounts.held,
     unchangedCandidateReplays: reconciliationCounts.unchanged,
+    artistProfilesAttempted: profileFallback.considered,
+    artistProfilesUpdated: profileFallback.updates,
     status: 'ok',
   });
   await usage.save();

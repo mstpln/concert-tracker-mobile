@@ -1,5 +1,18 @@
 # LiveVault Decisions
 
+## v189 Identity-first new-artist enrichment
+
+**Decision:** New Add Band entries must not gain generated biographies, genres or dates from a name-only AI search. Confirm MusicBrainz identity first (strict matching and review); preserve user and provider decisions; use trusted MusicBrainz URL relationships and group-only begin year, linked Wikipedia or verified official-site excerpts for biography, and leave unsupported values blank.
+
+**Limits:** Use the existing structured schedule and shared MusicBrainz maximum five requests/run, reserving at most two for new identity search and prioritizing verified new-artist metadata in the remaining capacity. New profile research is capped at two per run, Tavily official-site fallback only in the existing twice-monthly focused workflow at 30 credits/month inside the existing 900-credit application cap, and Groq only when official evidence warrants it. No new keys or production workflow; a provider block means deferred work, never fabricated data.
+
+**Client boundary:** The additive artistProfileResearch marker permanently opts new artists out of legacy name-only browser AI/Wikipedia, even when the profile status changes. Explicit user edits to the official URL may still refresh official-source artwork; older unmarked records retain legacy enrichment behavior.
+
+**Identity conflict handling:** A new automatic MusicBrainz match cannot take an MBID already trusted for another artist, reuse another artist's stale metadata, or replace a newer manual candidate/rejection/provider decision. Duplicate or previously associated candidate IDs are held for the existing manual review, never silently assigned. An artist renamed during lookup remains unchanged.
+
+**Event safety:** A trusted Ticketmaster attraction does not by itself prove an event is the original act; explicit tribute wording on individual event titles must be held. Literal legitimate artist names and attraction URLs containing words such as Revival remain eligible, and a genuine original-artist reunion is not automatically a tribute.
+
+
 This continuity file was compacted on 2026-09-04 after the workflow/data-enrichment integrity audit. Earlier rationale remains recoverable in Git history. The active contracts below supersede older wording where they conflict.
 
 ## v188 Actionable automation and inspectable identity review

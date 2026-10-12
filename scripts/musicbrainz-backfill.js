@@ -1,6 +1,6 @@
 'use strict';
-// Manually dispatched, MusicBrainz-only backfill. This deliberately reuses
-// the shared processor while leaving the weekly pipeline's feature flag off.
+// Manually dispatched, MusicBrainz-only backfill. This reuses the shared
+// processor with up to five lookups, independently of scheduled new-artist discovery.
 
 const worker = require('./lib/workerClient');
 const { UsageTracker } = require('./lib/usageTracker');
