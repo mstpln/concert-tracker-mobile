@@ -53,7 +53,7 @@ function candidateFrom(raw, band) {
   const originUnverified = hasSavedOrigin && (!originCountry || !mbCountry);
   const bad = IMPERSONATOR.test(`${name} ${raw?.disambiguation || ''}`);
   let score = exact ? 75 : aliasExact ? 65 : 0;
-  if (type === 'Group' || type === 'Orchestra') score += 10;
+  if (type === 'Group' || type === 'Orchestra' || (type === 'Person' && exact)) score += 10;
   if (originAgreement) score += 5;
   if (Number(raw?.score) >= 95) score += 10;
   if (contradictory) score -= 30;
@@ -145,6 +145,9 @@ async function fetchArtistMetadata(mbid, usage, fetchImpl = fetch) {
       country: artist.country || null,
       disambiguation: artist.disambiguation || null,
       spotify: spotifyArtistIdFromRelations(artist.relations),
+      ...artistWebsiteRelations(artist.relations),
+      beginYear: artist.type === 'Group' && /^\\d{4}/.test(String(artist['life-span']?.begin || ''))
+        ? String(artist['life-span'].begin).slice(0, 4) : null,
     },
   };
 }
