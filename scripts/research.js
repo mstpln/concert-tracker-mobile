@@ -36,6 +36,7 @@ const { persistLifecyclePlan } = require('./lib/releaseAlertPersistence');
 const setlistInsights = require('./lib/setlistInsights');
 const predictedSetlist = require('./lib/predictedSetlist');
 const artistImageMaintenance = require('./lib/artistImageMaintenance');
+const newArtistProfile = require('./lib/newArtistProfile');
 const { slugify, isValidFullDate, daysAgo, truncate, todayIso } = require('./lib/util');
 const config = require('./lib/config');
 const LineupRole = require('../lineupRoleV155');
@@ -1002,6 +1003,9 @@ async function main() {
 
   // Disabled by default; this cannot alter existing concert/news lookups.
   await processMusicbrainzIdentities({ bands, usage });
+  // Identity writes can confirm newly added artists. Reload before provider
+  // resolution to avoid using a stale pre-identity snapshot.
+  bands = await worker.readJson('bands.json', []);
 
   // Keep the legacy flow byte-for-byte in effect while the master flag is
   // off.  When later enabled, confirmed MBIDs can seed provider IDs and
@@ -1009,6 +1013,9 @@ async function main() {
   const structuredRun = await processStructuredResearch({ bands, news, usage });
   bands = structuredRun.bands;
   news = structuredRun.news;
+  // Complete only newly added profiles, using trusted MusicBrainz metadata.
+  await newArtistProfile.runNewArtistProfiles({ bands, usage });
+  bands = await worker.readJson('bands.json', []);
   const predictedRun = await processPredictedSetlists({ concerts, bands, usage });
   concerts = predictedRun.concerts || concerts;
 
