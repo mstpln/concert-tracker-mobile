@@ -131,12 +131,12 @@ async function eventToConcert(event, band, attractionId, usage, fetchImpl, venue
   const matchingAttraction = attractions.find((attraction) => attraction?.id === attractionId);
   if (!matchingAttraction) return null;
   // Association with a trusted attraction does not make a tribute listing genuine.
-  const eventName = String(event?.name || '');
+  const eventNameForSafety = String(event?.name || '');
   const bandName = String(band?.name || '').trim();
-  const eventRemainder = bandName && eventName.toLowerCase().includes(bandName.toLowerCase())
-    ? eventName.slice(0, eventName.toLowerCase().indexOf(bandName.toLowerCase()))
-      + eventName.slice(eventName.toLowerCase().indexOf(bandName.toLowerCase()) + bandName.length)
-    : eventName;
+  const eventRemainder = bandName && eventNameForSafety.toLowerCase().includes(bandName.toLowerCase())
+    ? eventNameForSafety.slice(0, eventNameForSafety.toLowerCase().indexOf(bandName.toLowerCase()))
+      + eventNameForSafety.slice(eventNameForSafety.toLowerCase().indexOf(bandName.toLowerCase()) + bandName.length)
+    : eventNameForSafety;
   if (TRIBUTE_ACT_PATTERN.test(eventRemainder)) return null;
 
   const localDate = event?.dates?.start?.localDate;
