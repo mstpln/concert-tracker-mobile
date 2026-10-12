@@ -179,9 +179,9 @@ test('lane-specific failure reason does not poison unrelated healthy rows', () =
   };
   const rows = settings.updateActivityRows(usage, new Date('2026-08-19T08:00:00.000Z'), { connection:()=>null });
   const setlists = rows.find((row)=>row.name === 'Setlists');
-  assert.equal(setlists.label, 'Retrying');
+  assert.equal(setlists.label, 'Needs attention');
   assert.equal(setlists.key, 'warning');
-  assert.match(setlists.problem, /setlist.fm temporarily unavailable \(HTTP 503\).*next scheduled check/);
+  assert.match(setlists.problem, /setlist.fm temporarily unavailable \(HTTP 503\).*next scheduled run/);
   assert.equal(rows.find((row)=>row.name === 'Concerts').label, 'Healthy');
   assert.equal(rows.find((row)=>row.name === 'Artist artwork').label, 'Healthy');
 });
@@ -207,9 +207,9 @@ test('setlist match uncertainty and provider 404 retry after successful run, wit
     } } } };
     const rows = settings.updateActivityRows(usage, new Date('2026-10-12T09:00:00Z'), { connection:()=>null });
     const setlists = rows.find((row) => row.name === 'Setlists');
-    assert.equal(setlists.label, 'Retrying');
+    assert.equal(setlists.label, 'Needs attention');
     assert.equal(setlists.key, 'warning');
-    assert.match(setlists.problem, /BANDMARKR will try again at the next scheduled check/);
+    assert.match(setlists.problem, /BANDMARKR will check again at the next scheduled run/);
     assert.equal(rows.find((row) => row.name === 'Concerts').label, 'Healthy');
   }
 });
@@ -226,11 +226,23 @@ test('actual failed run and unclassified setlist errors remain Failed rather tha
   }
 });
 
-test('generic warning is labelled Retrying, but an unknown run and a never-synced device do not claim retries', () => {
-  assert.equal(settings.statusFromRun({ status:'attention', failureCode:'timeout', failureReason:'Request timed out' }).label, 'Retrying');
+test('generic warning needs attention without promising retry, and unknown or unsynced state stays neutral', () => {
+  assert.equal(settings.statusFromRun({ status:'attention', failureCode:'timeout', failureReason:'Request timed out' }).label, 'Needs attention');
   assert.equal(settings.statusFromRun({ status:'mystery' }).label, 'Not reported');
   const rows = settings.updateActivityRows({}, new Date('2026-10-12T09:00:00Z'), { connection:()=>({}) });
   const listening = rows.find((row) => row.name === 'Listening history');
   assert.equal(listening.label, 'Not synced');
   assert.equal(listening.key, 'neutral');
+});
+
+
+test('non-setlist attention does not falsely promise automatic retry', () => {
+  const usage = { automationRuns:{ providerIdentity:{ status:'attention', activities:{
+    artistInformation:activity('attention',2,0,{ failureCode:'update_failed', failureReason:'Artist could not be updated safely' }),
+  } } } };
+  const row = settings.updateActivityRows(usage, new Date('2026-10-12T09:00:00Z'), { connection:()=>null }).find((item) => item.name === 'Artist information');
+  assert.equal(row.label, 'Needs attention');
+  assert.equal(row.key, 'warning');
+  assert.equal(row.problem, 'Artist could not be updated safely');
+  assert.doesNotMatch(row.problem, /will try again|next scheduled run/);
 });

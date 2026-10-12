@@ -261,7 +261,7 @@
     if (!run) return { label:'Not reported', key:'neutral', problem:'' };
     const value = clean(run.status).toLowerCase();
     if (['error','failed','failure'].includes(value) || run.error) return { label:'Failed', key:'bad', problem:clean(run.error) || 'The latest run failed.' };
-    if (['attention','partial','deferred','warning','needs_attention'].includes(value)) return { label:'Retrying', key:'warning', problem:'Automatic follow-up is pending.' };
+    if (['attention','partial','deferred','warning','needs_attention'].includes(value)) return { label:'Needs attention', key:'warning', problem:'Some checks could not be completed.' };
     if (['ok','success','successful','complete','completed'].includes(value)) return { label:'Healthy', key:'good', problem:'' };
     return { label:'Not reported', key:'neutral', problem:value ? `Latest status: ${value}.` : 'The latest outcome is not reported.' };
   }
@@ -304,7 +304,7 @@
       { name:'Listening history',label:lb ? (lb.lastSyncAt ? 'Healthy' : 'Not synced') : 'Needs connection',key:lb?.lastSyncAt ? 'good' : 'neutral',last:lb?.lastSyncAt,next:lb?.lastSyncAt ? new Date(Date.parse(lb.lastSyncAt)+21600000).toISOString() : null,result:lb?.lastSyncAt ? `Listening history synced through ${dateTime(lb.lastSyncAt)}` : (lb ? 'No successful device sync is recorded yet.' : 'Connect ListenBrainz in Data.') },
       { name:'Artist information',...artistState,last:artist?.finishedAt,next:null,result:result(artist,'identityUpdates','artists updated','spotifyCalls','Spotify checks','No recent result reported.') },
       { name:'Artist artwork',label:'Not reported',key:'neutral',last:null,next:null,result:'Artwork scheduler state is not reported to this device.' },
-      { name:'Setlists',...(setlistFailed ? {label:structured?.status==='ok'?'Retrying':'Failed',key:structured?.status==='ok'?'warning':'bad',problem:'The latest setlist update recorded an unresolved lookup.'} : structuredState),last:structured?.finishedAt,next:nextMwfUtc(now),result:finite(structured?.setlistsAdded) ? `${plural(structured.setlistsAdded,'setlist')} updated` : 'No recent result reported.' },
+      { name:'Setlists',...(setlistFailed ? {label:structured?.status==='ok'?'Needs attention':'Failed',key:structured?.status==='ok'?'warning':'bad',problem:structured?.status==='ok'?'Some setlist lookups could not be completed or verified. BANDMARKR will check again at the next scheduled run.':'The latest setlist update recorded an unresolved lookup.'} : structuredState),last:structured?.finishedAt,next:nextMwfUtc(now),result:finite(structured?.setlistsAdded) ? `${plural(structured.setlistsAdded,'setlist')} updated` : 'No recent result reported.' },
     ];
   }
 
@@ -408,7 +408,7 @@
 
   function spotifyCandidateLink(candidate) {
     const id=clean(candidate?.id);
-    if (!/^[A-Za-z0-9]+$/.test(id)) return '';
+    if (!/^[A-Za-z0-9]{22}$/.test(id)) return '';
     return `<a class="settings-v123-candidate-link" href="https://open.spotify.com/artist/${esc(id)}" target="_blank" rel="noopener noreferrer">View on Spotify</a>`;
   }
   function artistReview(item,index) {
@@ -429,7 +429,7 @@
 
   async function automationHtml() {
     const groq = await groqState();
-    return `<div class="settings-v123-section">${sectionHeader('PROVIDER USAGE','Capacity and connection status for the services BANDMARKR uses.')}<div class="settings-v123-card">${providerUsageRows().map((row)=>providerRow(row,row.id==='groq'?groqDetailHtml(groq):'')).join('')}</div></div><div class="settings-v123-section">${sectionHeader('UPDATE ACTIVITY','Healthy: working normally · Retrying: automatic follow-up · Failed: investigate.')}<div class="settings-v123-card">${updateActivityRows().map(activityRow).join('')}</div></div>`;
+    return `<div class="settings-v123-section">${sectionHeader('PROVIDER USAGE','Capacity and connection status for the services BANDMARKR uses.')}<div class="settings-v123-card">${providerUsageRows().map((row)=>providerRow(row,row.id==='groq'?groqDetailHtml(groq):'')).join('')}</div></div><div class="settings-v123-section">${sectionHeader('UPDATE ACTIVITY','Healthy: completed · Needs attention: some checks unresolved · Failed: investigate.')}<div class="settings-v123-card">${updateActivityRows().map(activityRow).join('')}</div></div>`;
   }
 
   function reviewHtml(model) {

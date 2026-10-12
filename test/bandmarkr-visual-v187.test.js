@@ -51,10 +51,11 @@ test('v187 visible build and QA shell versions are synchronized', () => {
   const html = read('index.html');
   const sw = read('service-worker.js');
   const build = JSON.parse(read('docs/LIVEVAULT_BUILD_STATE.json'));
-  assert.match(read('version.js'), /const APP_VERSION = 'v187'/);
-  assert.match(sw, /const CACHE_NAME_LITERAL = 'v187'/);
-  assert.equal(build.appVersion, 'v187');
-  assert.equal(build.serviceWorkerCacheVersion, 'v187');
+  const release = read('version.js').match(/^const APP_VERSION = '(v\d+)';/m)?.[1];
+  assert.ok(release, 'missing current APP_VERSION');
+  assert.equal(sw.match(/^const CACHE_NAME_LITERAL = '(v\d+)';/m)?.[1], release);
+  assert.equal(build.appVersion, release);
+  assert.equal(build.serviceWorkerCacheVersion, release);
   assert.equal(build.versionsMatch, true);
   assert.ok(html.includes('<link rel="stylesheet" href="bandmarkrVisualV187.css" />'));
   assert.ok(sw.includes("'./bandmarkrVisualV187.css'"));

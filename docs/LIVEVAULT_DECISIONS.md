@@ -4,7 +4,7 @@ This continuity file was compacted on 2026-09-04 after the workflow/data-enrichm
 
 ## v188 Actionable automation and inspectable identity review
 
-**Decision:** Settings Update activity uses Healthy for successful operation, Retrying for retryable/automatically revisited work, and Failed for actual run failure or an unclassified error requiring investigation. A successful parent research run with a known retryable individual setlist failure must not appear as a total automation failure. Never imply a retry from unknown status or an unverified retry path. Connected listening without a successful sync is neutral Not synced. Review badges remain Needs review because they genuinely require a user decision.
+**Decision:** Settings Update activity uses Healthy for successful operation, Needs attention for unresolved individual checks, and Failed for actual run failure or an unclassified error requiring investigation. Automatic follow-up is stated only for known retryable setlist outcomes after a completed parent run. A successful parent research run with a known retryable individual setlist failure must not appear as a total automation failure. Never imply a retry from unknown status or an unverified retry path. Connected listening without a successful sync is neutral Not synced. Review badges remain Needs review because they genuinely require a user decision.
 
 **Decision:** Artist identity candidates must be inspectable via provider-specific, ID-validated links before manual confirmation. Preserve the existing conservative identity review, stable IDs, manual decision ownership, candidate freshness checks and fail-closed storage rules. Do not fetch live provider data merely to display candidate links.
 

@@ -82,31 +82,32 @@
     const value = clean(run.status).toLowerCase();
     const problem = safeFailureReason(run, provider);
     if (['error','failed','failure'].includes(value)) return { label:'Failed', key:'bad', problem:problem || 'The latest update could not be completed safely.' };
-    if (['attention','partial','deferred','warning','needs_attention'].includes(value)) return { label:'Retrying', key:'warning', problem };
+    if (['attention','partial','deferred','warning','needs_attention'].includes(value)) return { label:'Needs attention', key:'warning', problem:problem || 'Some checks could not be completed.' };
     if (['ok','success','successful','complete','completed','healthy'].includes(value)) return { label:'Healthy', key:'good', problem:'' };
     if (problem) return { label:'Not reported', key:'neutral', problem };
     return { label:'Not reported', key:'neutral', problem:'' };
   }
 
-  // A completed research run may contain failed individual setlist lookups.
-  // They remain retryable; an unclassified or failed parent run still shows Failed.
+  // A completed research run can have unresolved individual setlist lookups.
+  // Only known retryable codes on a successful parent run get follow-up copy.
   function setlistActivityStatus(activity, parent) {
     const state = statusFromRun(activity, 'setlist.fm');
     const parentStatus = clean(parent?.status).toLowerCase();
-    if (state.key === 'bad' && ['ok','success','successful','complete','completed'].includes(parentStatus)
-      && RETRYABLE_SETLIST_FAILURES.has(clean(activity?.failureCode).toLowerCase())) {
-      return { ...state, label:'Retrying', key:'warning' };
+    const completed = ['ok','success','successful','complete','completed'].includes(parentStatus);
+    const retryable = RETRYABLE_SETLIST_FAILURES.has(clean(activity?.failureCode).toLowerCase());
+    if (completed && retryable && ['bad','warning'].includes(state.key)) {
+      return { ...state, label:'Needs attention', key:'warning', automaticFollowUp:true };
     }
     return state;
   }
 
-  function withRetryExplanation(row) {
-    if (row.label !== 'Retrying') return row;
-    const reason = clean(row.problem).replace(/[.!?]+$/, '');
-    const followUp = row.next
-      ? 'BANDMARKR will try again at the next scheduled check.'
-      : 'BANDMARKR will try again when this task next runs.';
-    return { ...row, problem: reason ? `${reason}. ${followUp}` : followUp };
+  function withFollowUpExplanation(row) {
+    if (row.key !== 'warning') return row;
+    if (row.name !== 'Setlists' || !row.automaticFollowUp) {
+      return { ...row, problem:clean(row.problem) || 'Some checks need attention.' };
+    }
+    const reason = clean(row.problem).replace(/[.!?]+$/, '') || 'Some lookups could not be completed or verified';
+    return { ...row, problem:`${reason}. BANDMARKR will check again at the next scheduled run.` };
   }
   function latestRun(...runs) {
     return runs.filter(Boolean).sort((a,b) => (Date.parse(b.finishedAt || b.startedAt || '') || 0) - (Date.parse(a.finishedAt || a.startedAt || '') || 0))[0] || null;
@@ -145,7 +146,7 @@
     const note = run.notes.find((value) => /setlist/i.test(clean(value)) && /(failed|returned\s+[45]\d\d|unparseable|invalid|conflict|ambiguous)/i.test(clean(value)));
     if (!note) return null;
     const retry = ['ok','success','successful','complete','completed'].includes(clean(run.status).toLowerCase());
-    return { label:retry ? 'Retrying' : 'Failed', key:retry ? 'warning' : 'bad', problem:safeFailureReason({ error:note }, 'setlist.fm') || 'The latest setlist update recorded a problem.' };
+    return { label:retry ? 'Needs attention' : 'Failed', key:retry ? 'warning' : 'bad', automaticFollowUp:retry, problem:safeFailureReason({ error:note }, 'setlist.fm') || 'The latest setlist update recorded a problem.' };
   }
 
   function updateActivityRows(usage = {}, now = new Date(), listenBrainz = root.LiveVaultListenBrainz) {
@@ -219,7 +220,7 @@
         name:'Setlists', ...setlistState, last:setlistsActivity?.finishedAt || (setlistsActivity ? structured?.finishedAt : selectedLegacyStructured?.finishedAt), next:nextMwfUtc(now),
         result:reportResult(setlistsActivity,'show','shows','checked','setlist','setlists','added') || legacyPair(selectedLegacyStructured,'setlistChecksAttempted','show','shows','checked','setlistsAdded','setlist','setlists','added') || 'No recent result reported.',
       },
-    ].map(withRetryExplanation);
+    ].map(withFollowUpExplanation);
   }
 
   function coverageLevel(percent) {
