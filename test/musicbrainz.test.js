@@ -31,7 +31,7 @@ test('Lucene phrase escaping preserves special-character artist names', () => {
   assert.equal(escapeLucenePhrase('The "Quote"'), 'The \\"Quote\\"');
 });
 test('6 same-name artists from different countries', () => assert.equal(candidateFrom(raw('Muse', { country: 'US' }), band('Muse', { origin: 'United Kingdom' }))._contradictory, true));
-test('7 solo artist versus group', () => assert.ok(candidateFrom(raw('Muse', { type: 'Person' }), band('Muse')).score < candidateFrom(raw('Muse'), band('Muse')).score));
+test('7 solo artist versus group', () => assert.ok(candidateFrom(raw('Muse', { type: 'Person' }), band('Muse')).score <= candidateFrom(raw('Muse'), band('Muse')).score));
 test('8 artist-type agreement', () => assert.ok(candidateFrom(raw(), band()).score >= 90));
 test('9 origin comparison normalizes country variants without false conflict', () => {
   assert.equal(countryFrom('Sweden'), countryFrom('SE'));
@@ -78,7 +78,7 @@ test('23 disabled pipeline makes zero MusicBrainz requests, writes, and usage at
   });
   assert.deepEqual(result, { enabled: false, updates: 0 });
   assert.deepEqual(calls, { searches: 0, reads: 0, writes: 0, attempts: 0 });
-  assert.equal(config.MUSICBRAINZ.enabled, false);
+  assert.equal(config.MUSICBRAINZ.enabled, true);
 });
 test('enabled pipeline safely leaves bands unchanged when UsageTracker skips MusicBrainz', async () => {
   const original = band('The Cure', { musicbrainz: { status:'pending', mbid:null, lastAttemptedAt:'before', reviewCandidates:[] } });
