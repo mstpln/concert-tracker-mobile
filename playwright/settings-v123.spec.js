@@ -164,5 +164,10 @@ test('Review shows safe distinct provider profile links before choosing same-nam
     'https://open.spotify.com/artist/2222222222222222222222',
   ]);
   expect(spotifyLinks.every((link) => link.target === '_blank' && link.rel.includes('noopener') && link.rel.includes('noreferrer'))).toBe(true);
+  const profileLink = spotify.getByRole('link', { name:'View on Spotify' }).first();
+  for (const [scheme, expectedColor] of [['light','rgb(11, 87, 208)'], ['dark','rgb(127, 176, 255)']]) {
+    await page.emulateMedia({ colorScheme:scheme });
+    await expect(profileLink).toHaveCSS('color', expectedColor);
+  }
   await expectNoHorizontalOverflow(page);
 });
