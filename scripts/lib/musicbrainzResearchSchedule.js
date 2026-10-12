@@ -58,7 +58,7 @@ function metadataTask(band, nowMs, refreshDays) {
     if (nextEligible > nowMs) return null;
     return {
       key: taskKey(band.id, 'metadata'), bandId: band.id, kind: 'metadata',
-      priority: metadata.errorCategory ? 0 : 1, dueAt: nextEligible,
+      priority: band.artistProfileResearch?.status === 'pending' ? -1 : (metadata.errorCategory ? 0 : 1), dueAt: nextEligible,
       reason: metadata.errorCategory ? 'metadata_retry_due' : 'metadata_retained_due',
     };
   }
@@ -68,7 +68,7 @@ function metadataTask(band, nowMs, refreshDays) {
   if (dueAt > nowMs) return null;
   return {
     key: taskKey(band.id, 'metadata'), bandId: band.id, kind: 'metadata',
-    priority: lastSuccess == null ? 0 : 1, dueAt,
+    priority: band.artistProfileResearch?.status === 'pending' ? -1 : (lastSuccess == null ? 0 : 1), dueAt,
     reason: lastSuccess == null ? 'metadata_bootstrap' : 'metadata_retained_due',
   };
 }
