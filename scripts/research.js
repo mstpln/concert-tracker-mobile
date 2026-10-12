@@ -77,6 +77,7 @@ async function processMusicbrainzIdentities({
   usage,
   enabled = config.MUSICBRAINZ.enabled,
   perRunCap = config.MUSICBRAINZ.perRunCap,
+  newArtistsOnly = false,
   searchArtist = musicbrainz.searchArtist,
   identityResult = musicbrainz.identityResult,
   readBands = worker.readJson,
@@ -86,7 +87,7 @@ async function processMusicbrainzIdentities({
   if (!enabled) return { enabled: false, updates: 0 };
   const identityUpdates = [];
   let fatalError = null;
-  for (const band of bands.filter(musicbrainzEligible).slice(0, perRunCap)) {
+  for (const band of bands.filter(musicbrainzEligible).filter(b => !newArtistsOnly || b.artistProfileResearch?.status === 'pending').slice(0, perRunCap)) {
     const result = await searchArtist(band, usage);
     // A quota/cap skip made no provider request, so it must never be
     // translated into a no-match decision or written back to the band.
@@ -1004,7 +1005,7 @@ async function main() {
 
 
   // Disabled by default; this cannot alter existing concert/news lookups.
-  await processMusicbrainzIdentities({ bands, usage, perRunCap: 2 });
+  await processMusicbrainzIdentities({ bands, usage, perRunCap: 2, newArtistsOnly: true });
   // Identity writes can confirm newly added artists. Reload before provider
   // resolution to avoid using a stale pre-identity snapshot.
   bands = await worker.readJson('bands.json', []);
