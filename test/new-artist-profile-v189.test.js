@@ -146,6 +146,8 @@ test('new artists get image priority without increasing the existing maintenance
   const { planArtistImageMaintenance } = require('../scripts/lib/artistImageMaintenance');
   const old = artist({ id: 'a-old', artistProfileResearch: undefined });
   const added = artist({ id: 'z-new' });
+  old.musicbrainz.spotify.id = 'spotify-old';
+  added.musicbrainz.spotify.id = 'spotify-new';
   const planned = planArtistImageMaintenance([old, added], null, { cap: 1 });
   assert.equal(planned.items.length, 1);
   assert.equal(planned.items[0].bandId, 'z-new');
