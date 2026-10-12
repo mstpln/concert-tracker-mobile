@@ -152,9 +152,9 @@ async function researchOne(band, usage, now, helpers = {}) {
   let bio = null;
   let provenance = null;
   if (!text(band.bio) && !text(band.generatedBio)) {
-    bio = await (helpers.wikipedia || fetchVerifiedWikipediaBio)(metadata.wikipediaUrl, helpers);
+    if (!helpers.fallbackOnly) bio = await (helpers.wikipedia || fetchVerifiedWikipediaBio)(metadata.wikipediaUrl, helpers);
     if (bio) provenance = { owner: 'generated', source: 'musicbrainz_linked_wikipedia', sourceUrl: metadata.wikipediaUrl, updatedAt: now };
-    else {
+    else if (helpers.fallbackOnly) {
       const official = await (helpers.official || fallbackOfficialBio)(band, metadata, usage, now, helpers);
       if (official) {
         bio = official.bio;
@@ -173,6 +173,7 @@ async function researchOne(band, usage, now, helpers = {}) {
     bio, provenance,
     state: {
       status: complete ? 'complete' : 'partial',
+      ...(helpers.fallbackOnly ? { fallbackAttemptedAt: now } : {}),
       lastAttemptedAt: now,
       lastSuccessfulAt: now,
       nextEligibleCheckAt: complete ? null : new Date(Date.parse(now) + RETRY_DAYS * 86400000).toISOString(),
@@ -210,13 +211,24 @@ function mergeProfilePatches(latestBands, patches) {
 }
 
 async function runNewArtistProfiles({
-  bands, usage, now = new Date().toISOString(), helpers = {},
+  bands, usage, now = new Date().toISOString(), helpers = {}, fallbackOnly = false,
   writeReconciled = worker.writeJsonReconciled,
 } = {}) {
-  const planned = (bands || []).filter((band) => profileDue(band, new Date(now))).slice(0, PER_RUN_CAP);
+  const due = fallbackOnly
+    ? (band) => trustedMetadata(band) && band.artistProfileResearch?.status === 'partial'
+      && !text(band.bio) && !text(band.generatedBio)
+      && (!band.artistProfileResearch.fallbackAttemptedAt
+        || Date.parse(band.artistProfileResearch.fallbackAttemptedAt) + RETRY_DAYS * 86400000 <= Date.parse(now))
+      && safeOfficialHost(band.officialUrl || band.musicbrainz.metadata.officialUrl)
+    : (band) => profileDue(band, new Date(now));
+  if (fallbackOnly && (!monthlyProfileTavilyAllowance(usage, now) || !usage.canCallGroq?.(1000))) {
+    return { considered: 0, updates: 0, patches: [] };
+  }
+  const planned = (bands || []).filter(due).slice(0, PER_RUN_CAP);
   const patches = [];
   for (const band of planned) {
-    const patch = await researchOne(band, usage, now, helpers);
+    if (fallbackOnly && (!monthlyProfileTavilyAllowance(usage, now) || !usage.canCallGroq?.(1000))) break;
+    const patch = await researchOne(band, usage, now, { ...helpers, fallbackOnly });
     if (patch) patches.push(patch);
   }
   if (patches.length) {
