@@ -4,7 +4,7 @@
 
 **Decision:** New Add Band entries must not gain generated biographies, genres or dates from a name-only AI search. Confirm MusicBrainz identity first (strict matching and review); preserve user and provider decisions; use trusted MusicBrainz URL relationships and group-only begin year, linked Wikipedia or verified official-site excerpts for biography, and leave unsupported values blank.
 
-**Limits:** Use the existing structured schedule and shared MusicBrainz maximum five requests/run, reserving at most two for new identity search and prioritizing verified new-artist metadata in the remaining capacity. New profile research is capped at two per run, Tavily official-site fallback at 30 credits/month inside the existing 900-credit application cap, and Groq only when official evidence warrants it. No new keys or production workflow; a provider block means deferred work, never fabricated data.
+**Limits:** Use the existing structured schedule and shared MusicBrainz maximum five requests/run, reserving at most two for new identity search and prioritizing verified new-artist metadata in the remaining capacity. New profile research is capped at two per run, Tavily official-site fallback only in the existing twice-monthly focused workflow at 30 credits/month inside the existing 900-credit application cap, and Groq only when official evidence warrants it. No new keys or production workflow; a provider block means deferred work, never fabricated data.
 
 **Event safety:** A trusted Ticketmaster attraction does not by itself prove an event is the original act; explicit tribute wording on individual event titles must be held. Literal legitimate artist names containing words such as Revival remain eligible.
 
