@@ -12,7 +12,7 @@ const artist = (overrides = {}) => ({
   musicbrainz: {
     status: 'auto_confirmed', mbid: 'mbid-1',
     metadata: { mbid: 'mbid-1', artistName: 'Example Act', artistType: 'Group',
-      country: 'SE', beginYear: '2002',
+      country: 'SE', beginYear: '2002', genre: 'indie rock',
       officialUrl: 'https://exampleartist.com', instagram: 'https://www.instagram.com/exampleact/',
       wikipediaUrl: 'https://en.wikipedia.org/wiki/Example_Act' },
     spotify: { status: 'confirmed', id: 'spotify-1' },
@@ -30,7 +30,7 @@ test('profile merging preserves user and unknown fields and only fills blank val
   const base = artist({ futureField: { nested: 2 }, photoUrl: 'https://user.example/image.jpg' });
   const patch = {
     bandId: base.id, expectedMbid: 'mbid-1', officialUrl: 'https://exampleartist.com',
-    instagram: 'https://www.instagram.com/exampleact/', country: 'Sweden', formedYear: '2002',
+    instagram: 'https://www.instagram.com/exampleact/', country: 'Sweden', formedYear: '2002', genre: 'indie rock',
     bio: 'An artist biography recorded by a trustworthy source.',
     provenance: { source: 'musicbrainz_linked_wikipedia', sourceUrl: 'https://en.wikipedia.org/wiki/Example_Act' },
     state: { status: 'complete', lastAttemptedAt: '2026-10-12' },
@@ -40,6 +40,7 @@ test('profile merging preserves user and unknown fields and only fills blank val
   assert.deepEqual(out.futureField, { nested: 2 });
   assert.equal(out.photoUrl, base.photoUrl);
   assert.equal(out.formedYear, '2002');
+  assert.equal(out.genre, 'indie rock');
   assert.equal(out.origin, 'Sweden');
   assert.equal(out.generatedBio, patch.bio);
   assert.equal(out.generatedBioProvenance.source, 'musicbrainz_linked_wikipedia');
@@ -111,4 +112,32 @@ test('exact genuine band names can contain Revival', () => {
   const record = mb.candidateFrom({ id:'ccr', name:'Creedence Clearwater Revival', score:100, type:'Group' },
     { name:'Creedence Clearwater Revival' });
   assert.equal(record._bad, false);
+});
+
+test('MusicBrainz profile metadata exposes only voted unambiguous genres and official URLs', async () => {
+  const sample = { id: 'm', name: 'Example Act', type: 'Group', country: 'SE',
+    'life-span': { begin: '2002-01-01' },
+    genres: [{ name: 'indie rock', count: 5 }, { name: 'rock', count: 2 }],
+    relations: [
+      { type: 'official homepage', url: { resource: 'https://exampleartist.com/' } },
+      { type: 'wikipedia', url: { resource: 'https://en.wikipedia.org/wiki/Example_Act' } },
+      { type: 'social network', url: { resource: 'https://www.instagram.com/exampleact/' } },
+    ] };
+  let requested = '';
+  const usage = { canCallMusicbrainz: () => true, recordMusicbrainzAttempt: async () => {} };
+  const read = await mb.fetchArtistMetadata('m', usage, async (url) => {
+    requested = url.searchParams.get('inc');
+    return { ok:true, json:async () => sample };
+  });
+  assert.equal(requested, 'aliases+url-rels+genres');
+  assert.equal(read.metadata.genre, 'indie rock');
+  assert.equal(read.metadata.beginYear, '2002');
+  assert.equal(read.metadata.officialUrl, 'https://exampleartist.com/');
+  assert.equal(read.metadata.wikipediaUrl, 'https://en.wikipedia.org/wiki/Example_Act');
+  assert.equal(read.metadata.instagram, 'https://www.instagram.com/exampleact/');
+  sample.type = 'Person';
+  sample.genres = [{ name:'rock', count:1 }];
+  const solo = await mb.fetchArtistMetadata('m', usage, async () => ({ ok:true, json:async () => sample }));
+  assert.equal(solo.metadata.beginYear, null);
+  assert.equal(solo.metadata.genre, null);
 });
