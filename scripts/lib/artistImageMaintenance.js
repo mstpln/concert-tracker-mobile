@@ -56,7 +56,11 @@ function planArtistImageMaintenance(bands, aggregate, { now = new Date(), cap = 
     const priority = useListeningPriority ? bandActivity(aggregate.records[band.id]) : bandActivity(null);
     items.push({ bandId: band.id, spotifyId, identityFirst: !spotifyId, ...priority });
   }
-  items.sort((a, b) => BUCKET_ORDER.indexOf(a.bucket) - BUCKET_ORDER.indexOf(b.bucket)
+  // New additions receive one early exact-ID artwork chance before routine
+  // listening-based maintenance. Existing artist ordering is unchanged.
+  const newArtistIds = new Set((bands || []).filter(b => b?.artistProfileResearch).map(b => b.id));
+  items.sort((a, b) => Number(newArtistIds.has(b.bandId)) - Number(newArtistIds.has(a.bandId))
+    || BUCKET_ORDER.indexOf(a.bucket) - BUCKET_ORDER.indexOf(b.bucket)
     || Number(a.identityFirst) - Number(b.identityFirst)
     || b.listenCount - a.listenCount
     || (a.recencyRank ?? Number.MAX_SAFE_INTEGER) - (b.recencyRank ?? Number.MAX_SAFE_INTEGER)
