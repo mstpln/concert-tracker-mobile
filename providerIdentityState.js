@@ -586,12 +586,16 @@
       band._enriching = false;
 
       try {
-        const persisted = await dlWriteJsonFile(remote, 'bands.json', persistentBandsSnapshot(rows));
-        // The snapshot is a clone. Reconcile the actual current app list as
-        // well, or the next normal write can undo a successfully merged R2
-        // update with an old browser-only copy.
-        const activeRows = currentBands();
-        if (Array.isArray(activeRows)) activeRows.splice(0, activeRows.length, ...persisted);
+        const snapshot = persistentBandsSnapshot(rows);
+        const submitted = JSON.stringify(snapshot);
+        const persisted = await dlWriteJsonFile(remote, 'bands.json', snapshot);
+        // Rebase the live list only when a 412 merge has changed the submitted
+        // snapshot. Ordinary successful writes must retain existing object
+        // references for the current profile/artwork render lifecycle.
+        if (JSON.stringify(persisted) !== submitted) {
+          const activeRows = currentBands();
+          if (Array.isArray(activeRows)) activeRows.splice(0, activeRows.length, ...persisted);
+        }
       } catch (error) {
         band.artistEnrichment = nextArtistEnrichmentState(band.artistEnrichment, { failures: ['storage_write'], now: new Date().toISOString() });
         throw error;
