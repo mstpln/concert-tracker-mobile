@@ -537,6 +537,15 @@
         } catch (_) { failures.push('official_site'); }
       }
 
+      // Newly added artists wait for a confirmed MusicBrainz identity; a
+      // name-only Wikipedia/AI lookup can conflate namesakes or birth years.
+      if (band.artistProfileResearch?.status === 'pending') {
+        band._enriching = false;
+        band.artistEnrichment = { ...(band.artistEnrichment || {}), status: 'waiting_for_identity', lastAttemptedAt: attemptedAt };
+        await dlWriteJsonFile(remote, 'bands.json', persistentBandsSnapshot(rows));
+        return;
+      }
+
       let wikiText = null;
       try {
         const expectedWikiName = nonEmptyString(band.name) || '';
