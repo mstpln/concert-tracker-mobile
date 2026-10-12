@@ -130,6 +130,14 @@ async function eventToConcert(event, band, attractionId, usage, fetchImpl, venue
   const attractions = event?._embedded?.attractions || [];
   const matchingAttraction = attractions.find((attraction) => attraction?.id === attractionId);
   if (!matchingAttraction) return null;
+  // The provider attraction can appear on tribute, orchestral or tribute-package
+  // event listings. The exact artist ID alone is insufficient evidence.
+  const eventNameForSafety = String(event?.name || '');
+  const safeCanonicalName = String(band?.name || '').toLowerCase();
+  const eventWithoutArtist = eventNameForSafety.replace(new RegExp(safeCanonicalName.replace(/[.*+?^${}()|[\]\\]/g, '\\  if (!matchingAttraction) return null;
+
+  const localDate'), 'ig'), '');
+  if (TRIBUTE_ACT_PATTERN.test(eventWithoutArtist)) return null;
 
   const localDate = event?.dates?.start?.localDate;
   const start = event?.dates?.start || {};
