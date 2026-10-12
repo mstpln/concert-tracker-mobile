@@ -63,7 +63,10 @@ function mergeMusicbrainzResults(latestBands, updates) {
   return latestBands.map((band) => {
     const update = byId.get(band.id);
     if (!update || TRUSTED_MUSICBRAINZ_STATUSES.has(band.musicbrainz?.status) || band.musicbrainz?.status === 'manual_rejected') return band;
-    return { ...band, musicbrainz: update };
+    return { ...band, musicbrainz: { ...(band.musicbrainz || {}), ...update,
+      ...(band.musicbrainz?.spotify && !update.spotify ? { spotify: band.musicbrainz.spotify } : {}),
+      ...(band.musicbrainz?.ticketmaster && !update.ticketmaster ? { ticketmaster: band.musicbrainz.ticketmaster } : {}),
+    } };
   });
 }
 
@@ -997,12 +1000,11 @@ async function main() {
   let imageMaintenanceAggregate = null;
   try { imageMaintenanceAggregate = await worker.readJson(artistImageMaintenance.PATH, null); }
   catch (error) { usage.note(`Artist image maintenance aggregate unavailable: ${error.message}`); }
-  const imageMaintenanceBands = bands;
-  const imageMaintenancePlan = artistImageMaintenance.planArtistImageMaintenance(bands, imageMaintenanceAggregate);
-  if (imageMaintenancePlan.prioritySource === 'fallback_no_listening') usage.note(`Artist image maintenance using no-listening fallback: ${imageMaintenancePlan.reason}`);
+  // Artwork priority is determined after identity resolution, below.
+
 
   // Disabled by default; this cannot alter existing concert/news lookups.
-  await processMusicbrainzIdentities({ bands, usage });
+  await processMusicbrainzIdentities({ bands, usage, perRunCap: 2 });
   // Identity writes can confirm newly added artists. Reload before provider
   // resolution to avoid using a stale pre-identity snapshot.
   bands = await worker.readJson('bands.json', []);
@@ -1305,6 +1307,9 @@ async function main() {
 
   // Intentionally last among provider work. DAB7 still owns the run lease,
   // and DAB6/UsageTracker remain the only path to Spotify and its backoff.
+  const imageMaintenanceBands = bands;
+  const imageMaintenancePlan = artistImageMaintenance.planArtistImageMaintenance(bands, imageMaintenanceAggregate);
+  if (imageMaintenancePlan.prioritySource === 'fallback_no_listening') usage.note(`Artist image maintenance using no-listening fallback: ${imageMaintenancePlan.reason}`);
   const imageMaintenanceRun = await artistImageMaintenance.runArtistImageMaintenance({
     plan: imageMaintenancePlan, plannedBands: imageMaintenanceBands, bands, usage, spotify, worker,
   });
