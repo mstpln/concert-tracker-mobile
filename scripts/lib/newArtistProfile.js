@@ -140,7 +140,10 @@ async function fallbackOfficialBio(band, metadata, usage, now, {
   const bio = shortBio(result?.bio);
   const matched = evidence && evidence.length >= 35 && accepted.find((item) =>
     item.content.replace(/\s+/g, ' ').includes(evidence.replace(/\s+/g, ' ')));
-  return bio && matched ? { bio, sourceUrl: matched.url, source: 'verified_official_site_excerpt' } : null;
+  // Persist only the actual attributable excerpt, never speculative model prose.
+  const supportedBio = matched ? shortBio(evidence) : null;
+  return bio && supportedBio && matched
+    ? { bio: supportedBio, sourceUrl: matched.url, source: 'verified_official_site_excerpt' } : null;
 }
 
 async function researchOne(band, usage, now, helpers = {}) {
