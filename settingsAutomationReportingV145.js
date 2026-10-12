@@ -6,7 +6,8 @@
   if (root) root.BandmarkrSettingsAutomationReportingV145 = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   const MAX_REASON_LENGTH = 140;
-  const RETRYABLE_SETLIST_FAILURES = new Set(['rate_limited','provider_unavailable','timeout','network_error','provider_error','invalid_response','match_uncertain']);
+  const RETRYABLE_TRANSIENT_FAILURES = new Set(['rate_limited','provider_unavailable','timeout','network_error','invalid_response']);
+  const RETRYABLE_SETLIST_FAILURES = new Set([...RETRYABLE_TRANSIENT_FAILURES, 'match_uncertain']);
   let observer = null;
   let applying = false;
   let scheduled = false;
@@ -82,33 +83,32 @@
     const value = clean(run.status).toLowerCase();
     const problem = safeFailureReason(run, provider);
     if (['error','failed','failure'].includes(value)) return { label:'Failed', key:'bad', problem:problem || 'The latest update could not be completed safely.' };
-    if (['attention','partial','deferred','warning','needs_attention'].includes(value)) return { label:'Needs attention', key:'warning', problem:problem || 'Some checks could not be completed.' };
+    if (['attention','partial','deferred','warning','needs_attention'].includes(value)) return { label:'Failed', key:'bad', problem:problem || 'Some checks could not be completed; investigate the latest run.' };
     if (['ok','success','successful','complete','completed','healthy'].includes(value)) return { label:'Healthy', key:'good', problem:'' };
     if (problem) return { label:'Not reported', key:'neutral', problem };
     return { label:'Not reported', key:'neutral', problem:'' };
   }
 
-  // A completed research run can have unresolved individual setlist lookups.
-  // Only known retryable codes on a successful parent run get follow-up copy.
-  function setlistActivityStatus(activity, parent) {
-    const state = statusFromRun(activity, 'setlist.fm');
-    const parentStatus = clean(parent?.status).toLowerCase();
-    const completed = ['ok','success','successful','complete','completed'].includes(parentStatus);
-    const retryable = RETRYABLE_SETLIST_FAILURES.has(clean(activity?.failureCode).toLowerCase());
-    if (completed && retryable && ['bad','warning'].includes(state.key)) {
-      return { ...state, label:'Needs attention', key:'warning', automaticFollowUp:true };
+  // Only an actually scheduled, successful parent run with a known retryable
+  // per-item outcome can promise automatic follow-up. Unknown failures stay red.
+  function scheduledActivityStatus(activity, parent, provider, allowSetlistCodes = false) {
+    const state = statusFromRun(activity, provider);
+    const completed = ['ok','success','successful','complete','completed'].includes(clean(parent?.status).toLowerCase());
+    const code = clean(activity?.failureCode).toLowerCase();
+    const reason = clean(activity?.failureReason);
+    const retryable = RETRYABLE_TRANSIENT_FAILURES.has(code)
+      || (allowSetlistCodes && (RETRYABLE_SETLIST_FAILURES.has(code)
+        || (code === 'provider_error' && /\bHTTP 404\b/i.test(reason))));
+    if (completed && retryable && state.key === 'bad') {
+      return { ...state, label:'Retrying', key:'warning', automaticFollowUp:true };
     }
     return state;
   }
 
   function withFollowUpExplanation(row) {
-    // A connection prompt is not an automation failure and needs no error copy.
-    if (row.label !== 'Needs attention' || row.key !== 'warning') return row;
-    if (row.name !== 'Setlists' || !row.automaticFollowUp) {
-      return { ...row, problem:clean(row.problem) || 'Some checks need attention.' };
-    }
+    if (row.label !== 'Retrying' || row.key !== 'warning' || !row.automaticFollowUp) return row;
     const reason = clean(row.problem).replace(/[.!?]+$/, '') || 'Some lookups could not be completed or verified';
-    return { ...row, problem:`${reason}. BANDMARKR will check again at the next scheduled run.` };
+    return { ...row, problem:`${reason}. BANDMARKR will check again at the next scheduled run. No action is needed now.` };
   }
   function latestRun(...runs) {
     return runs.filter(Boolean).sort((a,b) => (Date.parse(b.finishedAt || b.startedAt || '') || 0) - (Date.parse(a.finishedAt || a.startedAt || '') || 0))[0] || null;
@@ -146,8 +146,10 @@
     if (!Array.isArray(run?.notes)) return null;
     const note = run.notes.find((value) => /setlist/i.test(clean(value)) && /(failed|returned\s+[45]\d\d|unparseable|invalid|conflict|ambiguous)/i.test(clean(value)));
     if (!note) return null;
-    const retry = ['ok','success','successful','complete','completed'].includes(clean(run.status).toLowerCase());
-    return { label:retry ? 'Needs attention' : 'Failed', key:retry ? 'warning' : 'bad', automaticFollowUp:retry, problem:safeFailureReason({ error:note }, 'setlist.fm') || 'The latest setlist update recorded a problem.' };
+    const completed = ['ok','success','successful','complete','completed'].includes(clean(run.status).toLowerCase());
+    const retryable = /\b(?:HTTP\s*(?:404|429|5\d\d)|returned\s*(?:404|429|5\d\d)|unparseable|invalid|conflict|ambiguous)\b/i.test(clean(note));
+    const retry = completed && retryable;
+    return { label:retry ? 'Retrying' : 'Failed', key:retry ? 'warning' : 'bad', automaticFollowUp:retry, problem:safeFailureReason({ error:note }, 'setlist.fm') || 'The latest setlist update recorded a problem.' };
   }
 
   function updateActivityRows(usage = {}, now = new Date(), listenBrainz = root.LiveVaultListenBrainz) {
@@ -174,17 +176,17 @@
       ? statusFromRun(concertsActivity, 'Concert research')
       : (selectedLegacyStructured ? statusFromRun(selectedLegacyStructured, 'Concert research') : { label:'Not reported', key:'neutral', problem:'' });
     const focusedState = focusedActivity
-      ? statusFromRun(focusedActivity, 'Web concert search')
+      ? scheduledActivityStatus(focusedActivity, focused, 'Web concert search')
       : (selectedLegacyFocused ? statusFromRun(selectedLegacyFocused, 'Web concert search') : { label:'Not reported', key:'neutral', problem:'' });
     const artistState = artistActivity
       ? statusFromRun(artistActivity, 'Artist information')
       : (selectedLegacyIdentity ? statusFromRun(selectedLegacyIdentity, 'Artist information') : { label:'Not reported', key:'neutral', problem:'' });
     const artworkState = artworkActivity
-      ? statusFromRun(artworkActivity, 'Artist artwork')
+      ? scheduledActivityStatus(artworkActivity, structured, 'Artist artwork')
       : (selectedLegacyStructured && finite(selectedLegacyStructured.artistImagesUpdated) ? statusFromRun(selectedLegacyStructured, 'Artist artwork') : { label:'Not reported', key:'neutral', problem:'' });
     const legacySetlist = legacySetlistState(selectedLegacyStructured);
     const setlistState = setlistsActivity
-      ? setlistActivityStatus(setlistsActivity, structured)
+      ? scheduledActivityStatus(setlistsActivity, structured, 'setlist.fm', true)
       : (selectedLegacyStructured ? (legacySetlist || statusFromRun(selectedLegacyStructured, 'setlist.fm')) : { label:'Not reported', key:'neutral', problem:'' });
 
     const listeningResult = lb?.lastSyncResult && finite(lb.lastSyncResult.processed) && finite(lb.lastSyncResult.added)
@@ -203,7 +205,7 @@
       {
         name:'Listening history',
         label:lb ? (lb.lastSyncAt ? 'Healthy' : 'Not synced') : 'Needs connection',
-        key:lb?.lastSyncAt ? 'good' : (lb ? 'neutral' : 'warning'),
+        key:lb?.lastSyncAt ? 'good' : 'neutral',
         problem:'',
         last:lb?.lastSyncAt,
         next:lb?.lastSyncAt ? new Date(Date.parse(lb.lastSyncAt)+21600000).toISOString() : null,

@@ -137,9 +137,17 @@ test('artist artwork automation state stays unreported when the trusted-local sc
 
 test('legacy automation statuses distinguish retrying from investigation without treating unknown state as retry', () => {
   assert.equal(settings.statusFromRun({ status:'ok' }).label, 'Healthy');
-  assert.equal(settings.statusFromRun({ status:'attention' }).label, 'Needs attention');
+  assert.equal(settings.statusFromRun({ status:'attention' }).label, 'Failed');
   assert.equal(settings.statusFromRun({ status:'error' }).label, 'Failed');
   assert.equal(settings.statusFromRun({ status:'unexpected' }).label, 'Not reported');
-  const rows = settings.updateActivityRows({ lastRun:{ status:'ok', notes:['setlist search failed for one show'] } }, new Date('2026-10-12T09:00:00Z'));
-  assert.equal(rows.find((row) => row.name === 'Setlists').label, 'Needs attention');
+  const rows = settings.updateActivityRows({ lastRun:{ status:'ok', notes:['setlist failed: returned 404 for one show'] } }, new Date('2026-10-12T09:00:00Z'));
+  assert.equal(rows.find((row) => row.name === 'Setlists').label, 'Retrying');
+});
+
+test('legacy unclassified setlist failure is red, never an invented retry', () => {
+  const rows = settings.updateActivityRows({ lastRun:{ status:'ok', notes:['setlist lookup failed for an unknown reason'] } }, new Date('2026-10-12T09:00:00Z'));
+  const row = rows.find((item)=>item.name==='Setlists');
+  assert.equal(row.label, 'Failed');
+  assert.equal(row.key, 'bad');
+  assert.doesNotMatch(row.problem, /will check again/);
 });

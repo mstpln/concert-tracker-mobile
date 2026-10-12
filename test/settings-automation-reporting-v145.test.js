@@ -179,7 +179,7 @@ test('lane-specific failure reason does not poison unrelated healthy rows', () =
   };
   const rows = settings.updateActivityRows(usage, new Date('2026-08-19T08:00:00.000Z'), { connection:()=>null });
   const setlists = rows.find((row)=>row.name === 'Setlists');
-  assert.equal(setlists.label, 'Needs attention');
+  assert.equal(setlists.label, 'Retrying');
   assert.equal(setlists.key, 'warning');
   assert.match(setlists.problem, /setlist.fm temporarily unavailable \(HTTP 503\).*next scheduled run/);
   assert.equal(rows.find((row)=>row.name === 'Concerts').label, 'Healthy');
@@ -207,7 +207,7 @@ test('setlist match uncertainty and provider 404 retry after successful run, wit
     } } } };
     const rows = settings.updateActivityRows(usage, new Date('2026-10-12T09:00:00Z'), { connection:()=>null });
     const setlists = rows.find((row) => row.name === 'Setlists');
-    assert.equal(setlists.label, 'Needs attention');
+    assert.equal(setlists.label, 'Retrying');
     assert.equal(setlists.key, 'warning');
     assert.match(setlists.problem, /BANDMARKR will check again at the next scheduled run/);
     assert.equal(rows.find((row) => row.name === 'Concerts').label, 'Healthy');
@@ -226,8 +226,8 @@ test('actual failed run and unclassified setlist errors remain Failed rather tha
   }
 });
 
-test('generic warning needs attention without promising retry, and unknown or unsynced state stays neutral', () => {
-  assert.equal(settings.statusFromRun({ status:'attention', failureCode:'timeout', failureReason:'Request timed out' }).label, 'Needs attention');
+test('unverified warning requires investigation, and unknown or unsynced state stays neutral', () => {
+  assert.equal(settings.statusFromRun({ status:'attention', failureCode:'timeout', failureReason:'Request timed out' }).label, 'Failed');
   assert.equal(settings.statusFromRun({ status:'mystery' }).label, 'Not reported');
   const rows = settings.updateActivityRows({}, new Date('2026-10-12T09:00:00Z'), { connection:()=>({}) });
   const listening = rows.find((row) => row.name === 'Listening history');
@@ -236,13 +236,13 @@ test('generic warning needs attention without promising retry, and unknown or un
 });
 
 
-test('non-setlist attention does not falsely promise automatic retry', () => {
+test('non-retryable artist identity attention is red rather than a false automatic retry', () => {
   const usage = { automationRuns:{ providerIdentity:{ status:'attention', activities:{
     artistInformation:activity('attention',2,0,{ failureCode:'update_failed', failureReason:'Artist could not be updated safely' }),
   } } } };
   const row = settings.updateActivityRows(usage, new Date('2026-10-12T09:00:00Z'), { connection:()=>null }).find((item) => item.name === 'Artist information');
-  assert.equal(row.label, 'Needs attention');
-  assert.equal(row.key, 'warning');
+  assert.equal(row.label, 'Failed');
+  assert.equal(row.key, 'bad');
   assert.equal(row.problem, 'Artist could not be updated safely');
   assert.doesNotMatch(row.problem, /will try again|next scheduled run/);
 });
@@ -252,6 +252,39 @@ test('connection prompts never acquire an invented automation failure message', 
   const rows = settings.updateActivityRows({}, new Date('2026-10-12T09:00:00Z'), { connection:()=>null });
   const listening = rows.find((row) => row.name === 'Listening history');
   assert.equal(listening.label, 'Needs connection');
-  assert.equal(listening.key, 'warning');
+  assert.equal(listening.key, 'neutral');
   assert.equal(listening.problem, '');
+});
+
+test('v188 yellow means verified scheduled retry for focused search and artist artwork, never a manual identity review', () => {
+  const usage = { automationRuns:{
+    focusedTavilyConcert:{ status:'ok', activities:{
+      webConcertSearch:activity('attention',8,0,{ failureCode:'provider_unavailable', failureReason:'Web concert search temporarily unavailable (HTTP 503)' }),
+    } },
+    structuredResearch:{ status:'ok', activities:{
+      artistArtwork:activity('attention',2,0,{ failureCode:'rate_limited', failureReason:'Rate limit reached; the item will be retried' }),
+      setlists:activity('error',3,0,{ failureCode:'provider_error', failureReason:'setlist.fm request failed (HTTP 401)' }),
+    } },
+    providerIdentity:{ status:'ok', activities:{
+      artistInformation:activity('attention',2,0,{ failureCode:'match_uncertain', failureReason:'Artist could not be matched safely' }),
+    } },
+  } };
+  const rows = Object.fromEntries(settings.updateActivityRows(usage, new Date('2026-10-12T09:00:00Z'), { connection:()=>null }).map(row=>[row.name,row]));
+  for (const name of ['Web concert search','Artist artwork']) {
+    assert.equal(rows[name].label, 'Retrying');
+    assert.equal(rows[name].key, 'warning');
+    assert.match(rows[name].problem, /No action is needed now/);
+  }
+  assert.equal(rows.Setlists.label, 'Failed');
+  assert.doesNotMatch(rows.Setlists.problem, /will check again/);
+  assert.equal(rows['Artist information'].label, 'Failed');
+  assert.doesNotMatch(rows['Artist information'].problem, /will check again/);
+});
+test('v188 a failed parent never claims retry even for transient errors', () => {
+  const usage = { automationRuns:{ focusedTavilyConcert:{ status:'error', activities:{
+    webConcertSearch:activity('attention',3,0,{ failureCode:'timeout', failureReason:'Request timed out' }),
+  } } } };
+  const row = settings.updateActivityRows(usage, new Date('2026-10-12T09:00:00Z'), { connection:()=>null }).find(x=>x.name==='Web concert search');
+  assert.equal(row.label, 'Failed');
+  assert.equal(row.key, 'bad');
 });

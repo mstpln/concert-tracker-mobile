@@ -261,7 +261,7 @@
     if (!run) return { label:'Not reported', key:'neutral', problem:'' };
     const value = clean(run.status).toLowerCase();
     if (['error','failed','failure'].includes(value) || run.error) return { label:'Failed', key:'bad', problem:clean(run.error) || 'The latest run failed.' };
-    if (['attention','partial','deferred','warning','needs_attention'].includes(value)) return { label:'Needs attention', key:'warning', problem:'Some checks could not be completed.' };
+    if (['attention','partial','deferred','warning','needs_attention'].includes(value)) return { label:'Failed', key:'bad', problem:'Some checks could not be completed; investigate the latest run.' };
     if (['ok','success','successful','complete','completed'].includes(value)) return { label:'Healthy', key:'good', problem:'' };
     return { label:'Not reported', key:'neutral', problem:value ? `Latest status: ${value}.` : 'The latest outcome is not reported.' };
   }
@@ -291,6 +291,9 @@
     const focusedState = statusFromRun(focused);
     const artistState = statusFromRun(artist);
     const setlistFailed = Array.isArray(structured?.notes) && structured.notes.some((note)=>/setlist.*failed/i.test(clean(note)));
+    const setlistRetryable = structured?.status==='ok' && Array.isArray(structured?.notes)
+      && structured.notes.some((note)=>/setlist.*failed/i.test(clean(note))
+        && /(?:returned\s+(?:404|429|5\d\d)|unparseable|invalid|conflict|ambiguous)/i.test(clean(note)));
     const result = (run,a,aLabel,b,bLabel,fallback) => {
       if (!run) return fallback;
       const parts=[];
@@ -304,7 +307,7 @@
       { name:'Listening history',label:lb ? (lb.lastSyncAt ? 'Healthy' : 'Not synced') : 'Needs connection',key:lb?.lastSyncAt ? 'good' : 'neutral',last:lb?.lastSyncAt,next:lb?.lastSyncAt ? new Date(Date.parse(lb.lastSyncAt)+21600000).toISOString() : null,result:lb?.lastSyncAt ? `Listening history synced through ${dateTime(lb.lastSyncAt)}` : (lb ? 'No successful device sync is recorded yet.' : 'Connect ListenBrainz in Data.') },
       { name:'Artist information',...artistState,last:artist?.finishedAt,next:null,result:result(artist,'identityUpdates','artists updated','spotifyCalls','Spotify checks','No recent result reported.') },
       { name:'Artist artwork',label:'Not reported',key:'neutral',last:null,next:null,result:'Artwork scheduler state is not reported to this device.' },
-      { name:'Setlists',...(setlistFailed ? {label:structured?.status==='ok'?'Needs attention':'Failed',key:structured?.status==='ok'?'warning':'bad',problem:structured?.status==='ok'?'Some setlist lookups could not be completed or verified. BANDMARKR will check again at the next scheduled run.':'The latest setlist update recorded an unresolved lookup.'} : structuredState),last:structured?.finishedAt,next:nextMwfUtc(now),result:finite(structured?.setlistsAdded) ? `${plural(structured.setlistsAdded,'setlist')} updated` : 'No recent result reported.' },
+      { name:'Setlists',...(setlistFailed ? {label:setlistRetryable?'Retrying':'Failed',key:setlistRetryable?'warning':'bad',problem:setlistRetryable?'Some setlist lookups could not be completed or verified. BANDMARKR will check again at the next scheduled run. No action is needed now.':'The latest setlist update recorded an unresolved lookup.'} : structuredState),last:structured?.finishedAt,next:nextMwfUtc(now),result:finite(structured?.setlistsAdded) ? `${plural(structured.setlistsAdded,'setlist')} updated` : 'No recent result reported.' },
     ];
   }
 
@@ -429,7 +432,7 @@
 
   async function automationHtml() {
     const groq = await groqState();
-    return `<div class="settings-v123-section">${sectionHeader('PROVIDER USAGE','Capacity and connection status for the services BANDMARKR uses.')}<div class="settings-v123-card">${providerUsageRows().map((row)=>providerRow(row,row.id==='groq'?groqDetailHtml(groq):'')).join('')}</div></div><div class="settings-v123-section">${sectionHeader('UPDATE ACTIVITY','Healthy: completed · Needs attention: some checks unresolved · Failed: investigate.')}<div class="settings-v123-card">${updateActivityRows().map(activityRow).join('')}</div></div>`;
+    return `<div class="settings-v123-section">${sectionHeader('PROVIDER USAGE','Capacity and connection status for the services BANDMARKR uses.')}<div class="settings-v123-card">${providerUsageRows().map((row)=>providerRow(row,row.id==='groq'?groqDetailHtml(groq):'')).join('')}</div></div><div class="settings-v123-section">${sectionHeader('UPDATE ACTIVITY','Healthy: working normally · Retrying: automatic follow-up, no action needed · Failed: investigate.')}<div class="settings-v123-card">${updateActivityRows().map(activityRow).join('')}</div></div>`;
   }
 
   function reviewHtml(model) {

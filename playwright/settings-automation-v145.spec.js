@@ -71,8 +71,8 @@ for (const colorScheme of ['dark','light']) {
 
     const problems = update.locator('.settings-v123-problem');
     await expect(problems).toHaveCount(1);
-    await expect(problems).toHaveText('Web concert search temporarily unavailable (HTTP 503)');
-    await expect(update.getByText('Needs attention', { exact:true })).toHaveCount(1);
+    await expect(problems).toContainText('Web concert search temporarily unavailable (HTTP 503). BANDMARKR will check again at the next scheduled run.');
+    await expect(update.getByText('Retrying', { exact:true })).toHaveCount(1);
     await expectNoHorizontalOverflow(update);
 
     await update.screenshot({ path:testInfo.outputPath(`settings-update-activity-${colorScheme}.png`) });
@@ -123,7 +123,7 @@ test('v145 long safe failure reason wraps without changing the existing Settings
   expect(await update.evaluate((node) => node.querySelectorAll(':scope > .settings-v123-card > .settings-v123-row').length)).toBe(6);
 });
 
-test('v188 completed research with uncertain setlists needs attention, while a failed run stays red', async ({ page }) => {
+test('v188 completed research with uncertain setlists retries, while a failed run stays red', async ({ page }) => {
   await openSettings(page);
   const update = page.locator('#screen-settings .settings-v123-section').filter({ hasText:'UPDATE ACTIVITY' });
   await page.evaluate(() => {
@@ -135,7 +135,7 @@ test('v188 completed research with uncertain setlists needs attention, while a f
     window.BandmarkrSettingsAutomationReportingV145.applyCurrent();
   });
   const row = update.locator('.settings-v123-row').filter({ hasText:'Setlists' });
-  await expect(row.locator('.settings-v123-status')).toHaveText('Needs attention');
+  await expect(row.locator('.settings-v123-status')).toHaveText('Retrying');
   await expect(row.locator('.settings-v123-status')).toHaveClass(/is-warning/);
   await expect(row.locator('.settings-v123-problem')).toContainText('BANDMARKR will check again at the next scheduled run.');
   await expect(row).toContainText('27 shows checked · 0 setlists added');
