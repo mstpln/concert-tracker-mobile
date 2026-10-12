@@ -166,6 +166,7 @@ async function researchOne(band, usage, now, helpers = {}) {
   return {
     bandId: band.id, expectedMbid: metadata.mbid,
     officialUrl: text(metadata.officialUrl), instagram: text(metadata.instagram),
+    genre: text(metadata.genre),
     spotifyUrl: text(metadata.spotify?.url), country: regionName(metadata.country),
     formedYear: metadata.artistType === 'Group' && /^[12]\d{3}$/.test(String(metadata.beginYear || ''))
       ? String(metadata.beginYear) : null,
@@ -187,7 +188,7 @@ function mergeProfilePatches(latestBands, patches) {
     if (!patch || !trustedMetadata(band) || band.musicbrainz.mbid !== patch.expectedMbid
       || !['pending', 'partial', 'retryable'].includes(band.artistProfileResearch?.status)) return band;
     const next = { ...band };
-    for (const [field, value] of [['officialUrl', patch.officialUrl], ['origin', patch.country], ['formedYear', patch.formedYear]]) {
+    for (const [field, value] of [['officialUrl', patch.officialUrl], ['genre', patch.genre], ['origin', patch.country], ['formedYear', patch.formedYear]]) {
       if (!text(next[field]) && text(value)) next[field] = value;
     }
     if (!text(next.bio) && !text(next.generatedBio) && patch.bio) {
