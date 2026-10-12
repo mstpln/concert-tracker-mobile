@@ -1,5 +1,13 @@
 # LiveVault Decisions
 
+## v191 Restrained green Spotify spotlight and Settings blue separators
+
+**Decision:** The green Spotify links in Discover > Bands retain Spotify green, the white icon/label and the original link semantics, but use the same fixed asymmetric spotlight composition as BANDMARKR's blue primary CTAs. Only the existing 2px horizontal section separators and 4px vertical accent pills in Settings inherit the 1px Highlights stats-frame gradient color distribution and understated static halo; no spacing or thickness changes. Other blue lines, active/focus states, progress bars, the stats-card reference frames and unrelated CTAs remain unchanged.
+
+**Safety and rollout:** CSS-only presentation plus synchronized app/cache version bump. Synthetic QA verifies 375px and 480px in dark/light themes; do not merge/deploy or touch production data or workflows without separate authorization.
+
+
+
 ## v190 Fresh-read and reconciled-memory band persistence
 
 **Decision:** Adding a band must start from the latest remote bands.json, not an indefinitely held UI snapshot. After any band write using a transient-stripped or other cloned array, the returned reconciled value becomes the current browser band state. A 412 merge protecting the latest R2 file is incomplete without this in-memory rebase: the next write can otherwise restore stale identity and review fields.

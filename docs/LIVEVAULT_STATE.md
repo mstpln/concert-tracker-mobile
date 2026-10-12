@@ -1,9 +1,17 @@
-## v190 — Prevent stale browser writes from undoing an R2 backfill (PR, not live)
+## v191 — Spotify green spotlight and Settings divider highlights (PR, not live)
+
+- Use the existing v187 blue primary CTA treatment as a *shape and light-position* reference for the green Spotify button inside Discover > Bands. Keep it green, with a static asymmetric dark-edge/bright-center gradient and white label/icon; preserve the link destination, behavior, dimensions and 3-button layout.
+- In Settings (Automation, Review, Data), keep existing 2px horizontal section borders and 4px rounded vertical accent pills at the exact positions and dimensions. Overlay the established v186/v187 Highlights stats-card blue gradient and restrained outward halo without changing content, semantics or responsive layout.
+- Do not restyle other blue accent lines, navigation, progress indicators, focus outlines, active tabs, generic cards, or any other Spotify controls. Visual-only change: no data shape, Worker, API/provider logic, quotas, migrations, or runtime dependencies.
+- APP_VERSION and CACHE_NAME_LITERAL advance together to v191. Synthetic QA tests cover gradient/glow, screenshot comparisons, keyboard and layout safety at 375/480px in light/dark themes. The v191 branch/PR is not a production release.
+
+
+## Merged v190 — Prevent stale browser writes from undoing an R2 backfill
 
 - A stale pre-backfill PWA session can lose artist-enrichment and review decisions after two Add Band operations: the first 412 response merges the latest R2 document safely, but Add Band passed a transient-stripped copy and never reconciled the in-memory list, so the next ordinary write could revert to the old IDs. This was identified through an offline comparison of two privately supplied backups (379 corrected artist records versus 381 after two additions); those backups are not in the repository or QA fixtures.
 - Add Band now performs a fresh authorized bands.json read before appending one artist, serializes its own submit action, and makes the reconciled write result the active in-memory list. A failed read/write cannot add an unsaved artist to the active list. Legacy browser enrichment code paths that write cloned snapshots likewise restore the persisted reconciled list after saving. No provider APIs, quota caps, Worker code, storage schema, or existing ID ownership changed.
 - Synthetic, isolated ETag/412 browser regression QA covers an out-of-band update during the first Add Band save followed by a second Add Band save, protecting reviewed identity decisions, unknown fields, and newly added artists. The backup/recovery file is a separate offline operation and requires explicit production-data authorization; v190 does not modify any R2 data during build or QA.
-- Important operational limitation: already-open stale pre-v190 tabs cannot receive new JavaScript protections until reloaded. After release, fully close/reopen the app and confirm v190 before restoring the corrected bands.json backup. v190 must be merged/deployed only after separate explicit approval.
+- v190 was merged via PR #217 and deployed through GitHub Pages on 2026-10-12 at merge commit `8d96337c866b7a9044182f1029947d98e5377562`. Already-open stale pre-v190 tabs require a full reload; the manually prepared corrected bands.json backup is a separate production-data operation, not part of the code release.
 
 
 ## v189 — Identity-first, bounded new-artist profile research (PR #216; verify release via GitHub)
