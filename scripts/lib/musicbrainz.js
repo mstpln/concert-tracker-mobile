@@ -51,7 +51,7 @@ function candidateFrom(raw, band) {
   // A saved origin is evidence only when both sides can be deterministically
   // normalized. Unknown values remain reviewable but can never auto-confirm.
   const originUnverified = hasSavedOrigin && (!originCountry || !mbCountry);
-  const bad = IMPERSONATOR.test(`${name} ${raw?.disambiguation || ''}`);
+  const bad = IMPERSONATOR.test(raw?.disambiguation || '') || (!exact && IMPERSONATOR.test(name));
   let score = exact ? 75 : aliasExact ? 65 : 0;
   if (type === 'Group' || type === 'Orchestra' || (type === 'Person' && exact)) score += 10;
   if (originAgreement) score += 5;
