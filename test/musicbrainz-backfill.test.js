@@ -105,5 +105,5 @@ test('manual workflow is hardened, shares the data-write concurrency group, and 
 test('Settings links and saving guard remain static and safe', () => {
   const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
   assert.match(app, /https:\/\/musicbrainz\.org\/artist\//); assert.match(app, /encodeURIComponent\(String\(c\.mbid/); assert.match(app, /Open MusicBrainz runs/);
-  assert.match(app, /Weekly automatic MusicBrainz lookups are off/); assert.match(app, /Saving…/); assert.match(app, /lastMusicbrainzRun/);
+  assert.match(app, /Newly added artists are checked automatically/); assert.match(app, /Saving…/); assert.match(app, /lastMusicbrainzRun/);
 });

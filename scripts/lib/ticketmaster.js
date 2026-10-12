@@ -140,8 +140,13 @@ async function eventToConcert(event, band, attractionId, usage, fetchImpl, venue
     ? eventNameForSafety.slice(0, eventNameForSafety.toLowerCase().indexOf(bandName.toLowerCase()))
       + eventNameForSafety.slice(eventNameForSafety.toLowerCase().indexOf(bandName.toLowerCase()) + bandName.length)
     : eventNameForSafety;
-  // An original-artist reunion is not, by itself, a tribute performance.
-  if (TRIBUTE_ACT_PATTERN.test(eventRemainder.replace(/\breunion\b/gi, ' '))) return null;
+  // Only a clear 'Original Artist - Reunion Tour' suffix qualifies as a
+  // reunion. A different act's reunion attached to the trusted attraction
+  // must still fail closed like other suspicious event titles.
+  const literalArtistNamed = !!bandName && eventNameForSafety.toLowerCase().includes(bandName.toLowerCase());
+  const genuineReunionTitle = literalArtistNamed
+    && /^\W*(?:the\s+)?reunion(?:\s+(?:tour|show|concert|live|world|dates?|20\d\d))*\W*$/i.test(eventRemainder);
+  if (TRIBUTE_ACT_PATTERN.test(eventRemainder) && !genuineReunionTitle) return null;
 
   const localDate = event?.dates?.start?.localDate;
   const start = event?.dates?.start || {};

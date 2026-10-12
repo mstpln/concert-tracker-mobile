@@ -59,14 +59,76 @@ function musicbrainzEligible(band, now = Date.now()) {
 }
 
 function mergeMusicbrainzResults(latestBands, updates) {
-  const byId = new Map(updates.map((u) => [u.id, u.musicbrainz]));
+  const byId = new Map(updates.map((update) => [update.id, update]));
+  const trustedOwners = new Map();
+  for (const band of latestBands) {
+    const mb = band.musicbrainz;
+    if (!mb?.mbid || !TRUSTED_MUSICBRAINZ_STATUSES.has(mb.status)) continue;
+    if (!trustedOwners.has(mb.mbid)) trustedOwners.set(mb.mbid, new Set());
+    trustedOwners.get(mb.mbid).add(band.id);
+  }
+  const eligibleUpdate = (band) => {
+    const record = byId.get(band.id);
+    const current = band.musicbrainz || {};
+    if (!record?.musicbrainz || (record.name && band.name !== record.name)) return null;
+    // "Later" is a held reviewer decision. An in-flight automatic lookup
+    // cannot supersede it or a later manual confirmation/rejection.
+    if (TRUSTED_MUSICBRAINZ_STATUSES.has(current.status)
+      || ['manual_rejected', 'needs_review'].includes(current.status)) return null;
+    const candidate = record.musicbrainz;
+    if (candidate.mbid && (current.rejectedCandidateMbids || []).includes(candidate.mbid)) return null;
+    return candidate;
+  };
+  const proposals = new Map();
+  for (const band of latestBands) {
+    const update = eligibleUpdate(band);
+    if (update?.status !== 'auto_confirmed' || !update.mbid) continue;
+    proposals.set(update.mbid, (proposals.get(update.mbid) || 0) + 1);
+  }
   return latestBands.map((band) => {
-    const update = byId.get(band.id);
-    if (!update || TRUSTED_MUSICBRAINZ_STATUSES.has(band.musicbrainz?.status) || band.musicbrainz?.status === 'manual_rejected') return band;
-    return { ...band, musicbrainz: { ...(band.musicbrainz || {}), ...update,
-      ...(band.musicbrainz?.spotify && !update.spotify ? { spotify: band.musicbrainz.spotify } : {}),
-      ...(band.musicbrainz?.ticketmaster && !update.ticketmaster ? { ticketmaster: band.musicbrainz.ticketmaster } : {}),
-    } };
+    const update = eligibleUpdate(band);
+    if (!update) return band;
+    const previous = band.musicbrainz || {};
+    const previousMetadata = previous.metadata || {};
+    const priorIdentityConflict = update.status === 'auto_confirmed' && update.mbid
+      && ((previous.mbid && previous.mbid !== update.mbid)
+        || (previousMetadata.artistName && previousMetadata.mbid !== update.mbid));
+    const duplicateTrusted = update.status === 'auto_confirmed' && update.mbid
+      && [...(trustedOwners.get(update.mbid) || [])].some((owner) => owner !== band.id);
+    const duplicateNew = update.status === 'auto_confirmed' && update.mbid
+      && (proposals.get(update.mbid) || 0) > 1;
+    let incoming = update;
+    if (priorIdentityConflict || duplicateTrusted || duplicateNew) {
+      // Preserve candidate evidence for manual review rather than assigning
+      // one external identity to multiple distinct BANDMARKR artists.
+      const reviewCandidate = {
+        mbid: update.mbid, artistName: update.artistName, area: update.area || null,
+        country: update.country || null, artistType: update.artistType || null,
+        disambiguation: update.disambiguation || null, score: update.confidence,
+        matchReasons: ['Identity conflicts with another or previously stored artist'],
+      };
+      const candidates = new Map((previous.reviewCandidates || []).filter(row => row?.mbid).map(row => [row.mbid, row]));
+      candidates.set(reviewCandidate.mbid, reviewCandidate);
+      incoming = {
+        ...update, mbid: null, artistName: null, area: null, country: null,
+        artistType: null, disambiguation: null, confidence: null,
+        matchedAt: null, matchMethod: null, status: 'needs_review',
+        reviewCandidates: [...candidates.values()].slice(0, 5),
+      };
+    }
+    const next = {
+      ...previous, ...incoming,
+      rejectedCandidateMbids: [...new Set([
+        ...(previous.rejectedCandidateMbids || []), ...(incoming.rejectedCandidateMbids || []),
+      ])],
+    };
+    // Provider-specific human choices own the whole nested record.
+    for (const provider of ['spotify', 'ticketmaster']) {
+      if (['manual_confirmed', 'manual_rejected'].includes(previous[provider]?.status)) {
+        next[provider] = previous[provider];
+      }
+    }
+    return { ...band, musicbrainz: next };
   });
 }
 
@@ -93,7 +155,7 @@ async function processMusicbrainzIdentities({
     // translated into a no-match decision or written back to the band.
     if (result.kind === 'skipped') break;
     const identity = identityResult(band, result);
-    if (identity) identityUpdates.push({ id: band.id, musicbrainz: identity });
+    if (identity) identityUpdates.push({ id: band.id, name: band.name, musicbrainz: identity });
     if (result.kind === 'fatal') {
       if (result.error) usage.note(result.error);
       fatalError = result.error || 'MusicBrainz provider failed';

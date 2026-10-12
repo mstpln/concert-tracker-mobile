@@ -843,6 +843,8 @@ test('original Revival artist and genuine reunion are accepted, while same-name 
   const payload = { _embedded: { events: [
     event({ id: 'real', attractionId: 'tm-ccr', attractionName: original, name: original + ' - Reunion Tour' }),
     event({ id: 'cover', attractionId: 'tm-ccr', attractionName: original, name: original + ' - Led Zeppelin Tribute' }),
+    event({ id: 'wrong-reunion', attractionId: 'tm-ccr', attractionName: original, name: original + ' - Led Zeppelin Reunion' }),
+    event({ id: 'unspecified-reunion', attractionId: 'tm-ccr', attractionName: original, name: 'Led Zeppelin Reunion' }),
   ] }, page: { totalPages: 1 } };
   const concerts = await ticketmaster.fetchUpcomingEvents(band(original, 'ccr', 'tm-ccr'), usage(), {
     now: '2026-08-24T00:00:00.000Z',

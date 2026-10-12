@@ -8,6 +8,8 @@
 
 **Client boundary:** The additive artistProfileResearch marker permanently opts new artists out of legacy name-only browser AI/Wikipedia, even when the profile status changes. Explicit user edits to the official URL may still refresh official-source artwork; older unmarked records retain legacy enrichment behavior.
 
+**Identity conflict handling:** A new automatic MusicBrainz match cannot take an MBID already trusted for another artist, reuse another artist's stale metadata, or replace a newer manual candidate/rejection/provider decision. Duplicate or previously associated candidate IDs are held for the existing manual review, never silently assigned. An artist renamed during lookup remains unchanged.
+
 **Event safety:** A trusted Ticketmaster attraction does not by itself prove an event is the original act; explicit tribute wording on individual event titles must be held. Literal legitimate artist names and attraction URLs containing words such as Revival remain eligible, and a genuine original-artist reunion is not automatically a tribute.
 
 
