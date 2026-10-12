@@ -1,0 +1,114 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const profile = require('../scripts/lib/newArtistProfile');
+const mb = require('../scripts/lib/musicbrainz');
+const { planMusicbrainzResearch } = require('../scripts/lib/musicbrainzResearchSchedule');
+const ticketmaster = require('../scripts/lib/ticketmaster');
+
+const artist = (overrides = {}) => ({
+  id: 'new-artist', name: 'Example Act', notes: 'user-owned',
+  artistProfileResearch: { status: 'pending' },
+  musicbrainz: {
+    status: 'auto_confirmed', mbid: 'mbid-1',
+    metadata: { mbid: 'mbid-1', artistName: 'Example Act', artistType: 'Group',
+      country: 'SE', beginYear: '2002',
+      officialUrl: 'https://exampleartist.com', instagram: 'https://www.instagram.com/exampleact/',
+      wikipediaUrl: 'https://en.wikipedia.org/wiki/Example_Act' },
+    spotify: { status: 'confirmed', id: 'spotify-1' },
+  }, ...overrides,
+});
+
+test('new profile only runs after trusted exact MusicBrainz metadata', () => {
+  assert.equal(profile.profileDue(artist()), true);
+  assert.equal(profile.profileDue(artist({ musicbrainz: { status: 'needs_review', mbid: null } })), false);
+  assert.equal(profile.profileDue(artist({ artistProfileResearch: undefined })), false);
+  assert.equal(profile.profileDue(artist({ artistProfileResearch: { status: 'complete' } })), false);
+});
+
+test('profile merging preserves user and unknown fields and only fills blank values', () => {
+  const base = artist({ futureField: { nested: 2 }, photoUrl: 'https://user.example/image.jpg' });
+  const patch = {
+    bandId: base.id, expectedMbid: 'mbid-1', officialUrl: 'https://exampleartist.com',
+    instagram: 'https://www.instagram.com/exampleact/', country: 'Sweden', formedYear: '2002',
+    bio: 'An artist biography recorded by a trustworthy source.',
+    provenance: { source: 'musicbrainz_linked_wikipedia', sourceUrl: 'https://en.wikipedia.org/wiki/Example_Act' },
+    state: { status: 'complete', lastAttemptedAt: '2026-10-12' },
+  };
+  const [out] = profile.mergeProfilePatches([base], [patch]);
+  assert.equal(out.notes, 'user-owned');
+  assert.deepEqual(out.futureField, { nested: 2 });
+  assert.equal(out.photoUrl, base.photoUrl);
+  assert.equal(out.formedYear, '2002');
+  assert.equal(out.origin, 'Sweden');
+  assert.equal(out.generatedBio, patch.bio);
+  assert.equal(out.generatedBioProvenance.source, 'musicbrainz_linked_wikipedia');
+  assert.equal(out.socials.spotify, 'https://open.spotify.com/artist/spotify-1');
+  const rerun = profile.mergeProfilePatches([out], [patch])[0];
+  assert.deepEqual(rerun, out);
+  assert.equal(profile.mergeProfilePatches([], [patch]).length, 0);
+});
+
+test('solo performers never gain a group formation year', async () => {
+  const a = artist();
+  a.musicbrainz.metadata.artistType = 'Person';
+  const result = await profile.researchOne(a, {}, '2026-10-12T12:00:00Z', {
+    wikipedia: async () => 'A documented singer and musician from a reliable source.'
+  });
+  assert.equal(result.formedYear, null);
+  assert.equal(result.bio.startsWith('A documented'), true);
+});
+
+test('Wikipedia lookup is exact-link-only, disambiguation-safe and no guesses', async () => {
+  assert.equal(profile.wikipediaSummaryUrl('http://en.wikipedia.org/wiki/Example'), null);
+  assert.equal(profile.wikipediaSummaryUrl('https://en.wikipedia.org/wiki/Example'), 'https://en.wikipedia.org/api/rest_v1/page/summary/Example');
+  assert.equal(await profile.fetchVerifiedWikipediaBio('https://en.wikipedia.org/wiki/Example', {
+    sleep: async () => {},
+    fetchImpl: async () => ({ ok: true, json: async () => ({ type: 'disambiguation', extract: 'An untrusted paragraph about a different performer.' }) })
+  }), null);
+  assert.equal(profile.safeOfficialHost('https://en.wikipedia.org/wiki/Example'), null);
+  assert.equal(profile.safeOfficialHost('https://exampleartist.com/about'), 'exampleartist.com');
+});
+
+test('Tavily extra profile budget uses same application cap and monthly reserve', () => {
+  const usage = { state: { artistProfileResearch: { month: '2026-10', tavilyCalls: 30 } }, canCallTavily: () => true };
+  assert.equal(profile.monthlyProfileTavilyAllowance(usage, '2026-10-12'), false);
+  assert.equal(profile.monthlyProfileTavilyAllowance(usage, '2026-11-01'), true);
+  usage.canCallTavily = () => false;
+  assert.equal(profile.monthlyProfileTavilyAllowance(usage, '2026-11-01'), false);
+});
+
+test('new bands take priority in scheduled MusicBrainz metadata refresh', () => {
+  const regular = artist({ id: 'a', artistProfileResearch: undefined });
+  const recent = artist({ id: 'b' });
+  const plan = planMusicbrainzResearch([regular, recent], { perRunCap: 1, now: '2026-10-12T12:00:00Z', releaseMonitoringEnabled: false });
+  assert.equal(plan.selected[0].bandId, 'b');
+});
+
+test('solo artists can pass strict exact match; suspicious namesake still review', async () => {
+  const candidate = { id: 'mb-person', name: 'Example Act', type: 'Person', score: 100, country: 'SE' };
+  const input = { id:'b', name:'Example Act' };
+  const fake = async () => ({ ok:true, json:async () => ({ artists: [candidate] }) });
+  const usage = { canCallMusicbrainz: () => true, recordMusicbrainzAttempt: async () => {} };
+  const result = await mb.searchArtist(input, usage, fake);
+  assert.equal(result.automatic.mbid, 'mb-person');
+  const conflict = await mb.searchArtist(input, usage, async () => ({ ok:true, json:async () => ({ artists:[candidate, { ...candidate, id:'other' }] }) }));
+  assert.equal(conflict.automatic, null);
+});
+
+test('source-backed profile run never processes more than two artists', async () => {
+  const bands = Array.from({ length: 4 }, (_, i) => artist({ id: 'new-' + i }));
+  let saved;
+  const result = await profile.runNewArtistProfiles({
+    bands, usage: {}, helpers: { wikipedia: async () => 'The artist is an independently documented musical group.' },
+    writeReconciled: async (_name, reconcile) => { saved = reconcile(bands); },
+  });
+  assert.equal(result.considered, 2);
+  assert.equal(saved.filter(b => b.artistProfileResearch.status === 'complete').length, 2);
+});
+
+test('exact genuine band names can contain Revival', () => {
+  const record = mb.candidateFrom({ id:'ccr', name:'Creedence Clearwater Revival', score:100, type:'Group' },
+    { name:'Creedence Clearwater Revival' });
+  assert.equal(record._bad, false);
+});
