@@ -48,7 +48,8 @@ function metadataTask(band, nowMs, refreshDays) {
     if (nextEligible != null && nextEligible > nowMs) return null;
     return {
       key: taskKey(band.id, 'metadata'), bandId: band.id, kind: 'metadata',
-      priority: 0, dueAt: nextEligible ?? validTime(metadata.lastAttemptedAt) ?? 0,
+      priority: band.artistProfileResearch?.status === 'pending' ? -1 : 0,
+      dueAt: nextEligible ?? validTime(metadata.lastAttemptedAt) ?? 0,
       reason: metadata.errorCategory ? 'metadata_retry_due' : 'metadata_bootstrap',
     };
   }
