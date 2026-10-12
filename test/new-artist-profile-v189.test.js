@@ -141,3 +141,12 @@ test('MusicBrainz profile metadata exposes only voted unambiguous genres and off
   assert.equal(solo.metadata.beginYear, null);
   assert.equal(solo.metadata.genre, null);
 });
+
+test('new artists get image priority without increasing the existing maintenance cap', () => {
+  const { planArtistImageMaintenance } = require('../scripts/lib/artistImageMaintenance');
+  const old = artist({ id: 'a-old', artistProfileResearch: undefined });
+  const added = artist({ id: 'z-new' });
+  const planned = planArtistImageMaintenance([old, added], null, { cap: 1 });
+  assert.equal(planned.items.length, 1);
+  assert.equal(planned.items[0].bandId, 'z-new');
+});
