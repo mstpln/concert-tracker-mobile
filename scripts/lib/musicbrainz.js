@@ -109,6 +109,31 @@ function spotifyArtistIdFromRelations(relations) {
   return null;
 }
 
+
+function artistWebsiteRelations(relations) {
+  const result = {};
+  for (const rel of relations || []) {
+    const type = String(rel?.type || '').toLowerCase();
+    const value = String(rel?.url?.resource || '');
+    let parsed;
+    try { parsed = new URL(value); } catch { continue; }
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port) continue;
+    if (type === 'official homepage' && !result.officialUrl
+      && !/(?:^|\.)(?:spotify\.com|wikipedia\.org|wikidata\.org|instagram\.com|facebook\.com|youtube\.com)$/i.test(parsed.hostname)) {
+      result.officialUrl = parsed.href;
+    } else if (type === 'wikipedia' && !result.wikipediaUrl
+      && /^[a-z-]+\.wikipedia\.org$/i.test(parsed.hostname) && parsed.pathname.startsWith('/wiki/')) {
+      result.wikipediaUrl = parsed.href;
+    } else if (type === 'social network' && !result.instagram
+      && /^(?:www\.)?instagram\.com$/i.test(parsed.hostname)
+      && /^\/[A-Za-z0-9._]+\/?$/.test(parsed.pathname)
+      && !['p','reel','explore','stories'].includes(parsed.pathname.split('/')[1])) {
+      result.instagram = parsed.href;
+    }
+  }
+  return result;
+}
+
 async function requestJson(path, params, usage, fetchImpl = fetch) {
   if (!usage.canCallMusicbrainz()) return { kind: 'skipped' };
   await usage.recordMusicbrainzAttempt();
@@ -146,7 +171,7 @@ async function fetchArtistMetadata(mbid, usage, fetchImpl = fetch) {
       disambiguation: artist.disambiguation || null,
       spotify: spotifyArtistIdFromRelations(artist.relations),
       ...artistWebsiteRelations(artist.relations),
-      beginYear: artist.type === 'Group' && /^\\d{4}/.test(String(artist['life-span']?.begin || ''))
+      beginYear: artist.type === 'Group' && /^\d{4}/.test(String(artist['life-span']?.begin || ''))
         ? String(artist['life-span'].begin).slice(0, 4) : null,
     },
   };
