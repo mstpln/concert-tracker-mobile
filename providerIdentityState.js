@@ -437,6 +437,13 @@
   function artistEnrichmentRetryDue(band, now = new Date()) {
     const state = band?.artistEnrichment;
     const eligible = Date.parse(state?.nextEligibleCheckAt || '');
+    // Marked artists never resume name-only research after any status change.
+    // A failed explicitly edited official-site artwork fetch may retry.
+    if (band?.artistProfileResearch) {
+      return !!safeHttpsUrl(band.officialUrl) && state?.status === 'retryable'
+        && String(state.errorCategory || '').split(',').includes('official_site')
+        && (!Number.isFinite(eligible) || eligible <= now.getTime());
+    }
     if (officialArtworkNeedsRefresh(band)) {
       if (state?.status !== 'retryable') return true;
       return !Number.isFinite(eligible) || eligible <= now.getTime();
@@ -512,6 +519,8 @@
       const rows = currentBands();
       const band = rows.find((item) => item?.id === bandId);
       if (!band) return;
+      const identityFirst = Boolean(band.artistProfileResearch);
+      if (identityFirst && !nonEmptyString(band.officialUrl)) return;
       decorateBandForArtistEnrichment(band);
       const attemptedAt = new Date().toISOString();
       const failures = [];
@@ -537,41 +546,37 @@
         } catch (_) { failures.push('official_site'); }
       }
 
-      // Newly added artists wait for a confirmed MusicBrainz identity; a
-      // name-only Wikipedia/AI lookup can conflate namesakes or birth years.
-      if (band.artistProfileResearch?.status === 'pending') {
-        band._enriching = false;
-        band.artistEnrichment = { ...(band.artistEnrichment || {}), status: 'waiting_for_identity', lastAttemptedAt: attemptedAt };
-        await dlWriteJsonFile(remote, 'bands.json', persistentBandsSnapshot(rows));
-        return;
-      }
-
-      let wikiText = null;
-      try {
-        const expectedWikiName = nonEmptyString(band.name) || '';
-        const captured = await captureEnrichmentFetchOutcome(
-          () => fetchWikipediaText(band.name),
-          (url) => url.hostname === 'en.wikipedia.org' && (
-            url.pathname.includes('/api/rest_v1/page/summary/') ||
-            (url.pathname.includes('/w/api.php') && (url.searchParams.get('search') || '') === expectedWikiName)
-          ),
-        );
-        if (captured.nonOk) failures.push('wikipedia');
-        else wikiText = captured.value;
-      } catch (_) { failures.push('wikipedia'); }
-
-      let groqApiKey = '';
-      try {
-        const stored = await chrome.storage.local.get('groqApiKey');
-        groqApiKey = stored?.groqApiKey || '';
-      } catch (_) {}
-
+      // Verified new profiles never use unlinked Wikipedia/AI, even after
+      // their scheduled research status is partial, complete, or retryable.
       let ai = null;
-      try {
-        const prompt = buildEnrichPrompt(band.name, homepage, wikiText);
-        ai = groqApiKey ? await callGroq(prompt, groqApiKey) : await callPollinations(prompt);
-      } catch (_) {
-        failures.push(groqApiKey ? 'groq' : 'pollinations');
+      if (!identityFirst) {
+        let wikiText = null;
+        try {
+          const expectedWikiName = nonEmptyString(band.name) || '';
+          const captured = await captureEnrichmentFetchOutcome(
+            () => fetchWikipediaText(band.name),
+            (url) => url.hostname === 'en.wikipedia.org' && (
+              url.pathname.includes('/api/rest_v1/page/summary/') ||
+              (url.pathname.includes('/w/api.php') && (url.searchParams.get('search') || '') === expectedWikiName)
+            ),
+          );
+          if (captured.nonOk) failures.push('wikipedia');
+          else wikiText = captured.value;
+        } catch (_) { failures.push('wikipedia'); }
+
+        let groqApiKey = '';
+        try {
+          const stored = await chrome.storage.local.get('groqApiKey');
+          groqApiKey = stored?.groqApiKey || '';
+        } catch (_) {}
+
+        try {
+          const prompt = buildEnrichPrompt(band.name, homepage, wikiText);
+          ai = groqApiKey ? await callGroq(prompt, groqApiKey) : await callPollinations(prompt);
+        } catch (_) {
+          failures.push(groqApiKey ? 'groq' : 'pollinations');
+        }
+
       }
 
       applyGeneratedEnrichment(band, ai, attemptedAt);

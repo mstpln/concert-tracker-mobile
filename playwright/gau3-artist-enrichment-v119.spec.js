@@ -77,6 +77,7 @@ async function addManualBand(page, name, officialUrl = '') {
   await screen.locator('#add-band-name').fill(name);
   if (officialUrl) await screen.locator('#add-band-url').fill(officialUrl);
   await screen.locator('#add-band-submit').click();
+  await expect.poll(async () => (await readStoredBand(page, name))?.artistProfileResearch?.status).toBe('pending');
   await expect(screen.getByText(name, { exact: true })).toBeVisible();
 }
 
@@ -87,11 +88,23 @@ async function readStoredBand(page, name) {
   }, name);
 }
 
-test('manual add enrichment exposes only trusted Spotify artwork and preserves manual artwork', async ({ page }) => {
+async function runLegacyEnrichment(page, name) {
+  // Retain GAU3 coverage on an actual legacy (pre-v189 unmarked) record.
+  // Newly added v189 artists must NOT acquire a guessed name-only biography.
+  await page.evaluate(async (bandName) => {
+    const existing = bands.find((item) => item.name === bandName);
+    if (!existing) throw new Error('Missing synthetic legacy band');
+    delete existing.artistProfileResearch;
+    await enrichBand(existing.id);
+  }, name);
+}
+
+test('legacy enrichment exposes only trusted Spotify artwork and preserves manual artwork', async ({ page }) => {
   await page.goto('/');
   await installSyntheticProviderStubs(page);
 
   await addManualBand(page, 'Synthetic Added Artist');
+  await runLegacyEnrichment(page, 'Synthetic Added Artist');
   await expect.poll(async () => (await readStoredBand(page, 'Synthetic Added Artist'))?.artistEnrichment?.status).toBe('complete');
   const enriched = await readStoredBand(page, 'Synthetic Added Artist');
   expect(enriched.id).toBe('synthetic-added-artist');
@@ -99,6 +112,7 @@ test('manual add enrichment exposes only trusted Spotify artwork and preserves m
   expect(enriched.bio ?? null).toBeNull();
 
   await addManualBand(page, 'Synthetic Manual Artwork');
+  await runLegacyEnrichment(page, 'Synthetic Manual Artwork');
   await expect.poll(async () => (await readStoredBand(page, 'Synthetic Manual Artwork'))?.artistEnrichment?.status).toBe('complete');
 
   await page.evaluate(() => {
@@ -150,6 +164,7 @@ test('unconfirmed Spotify candidate stays initials-only', async ({ page }) => {
   await page.goto('/');
   await installSyntheticProviderStubs(page);
   await addManualBand(page, 'Synthetic Candidate Only');
+  await runLegacyEnrichment(page, 'Synthetic Candidate Only');
   await expect.poll(async () => (await readStoredBand(page, 'Synthetic Candidate Only'))?.artistEnrichment?.status).toBe('complete');
 
   await page.evaluate(() => {
@@ -182,6 +197,7 @@ test('successful no-evidence enrichment completes without inventing generated fi
   await page.goto('/');
   await installSyntheticProviderStubs(page);
   await addManualBand(page, 'Synthetic No Evidence');
+  await runLegacyEnrichment(page, 'Synthetic No Evidence');
 
   await expect.poll(async () => (await readStoredBand(page, 'Synthetic No Evidence'))?.artistEnrichment?.status).toBe('complete');
   const band = await readStoredBand(page, 'Synthetic No Evidence');
@@ -198,6 +214,7 @@ test('non-OK Wikipedia and official-site responses remain retryable and their pa
   await installSyntheticProviderStubs(page);
 
   await addManualBand(page, 'Synthetic Wikipedia Failure');
+  await runLegacyEnrichment(page, 'Synthetic Wikipedia Failure');
   await expect.poll(async () => (await readStoredBand(page, 'Synthetic Wikipedia Failure'))?.artistEnrichment?.status).toBe('retryable');
   const wikipediaFailure = await readStoredBand(page, 'Synthetic Wikipedia Failure');
   expect(wikipediaFailure.artistEnrichment.errorCategory).toContain('wikipedia');
@@ -205,6 +222,7 @@ test('non-OK Wikipedia and official-site responses remain retryable and their pa
   expect(Date.parse(wikipediaFailure.artistEnrichment.nextEligibleCheckAt)).toBeGreaterThan(Date.parse(wikipediaFailure.artistEnrichment.lastAttemptedAt));
 
   await addManualBand(page, 'Synthetic Official Failure', 'https://example.invalid/official-failure');
+  await runLegacyEnrichment(page, 'Synthetic Official Failure');
   await expect.poll(async () => (await readStoredBand(page, 'Synthetic Official Failure'))?.artistEnrichment?.status).toBe('retryable');
   const officialFailure = await readStoredBand(page, 'Synthetic Official Failure');
   expect(officialFailure.artistEnrichment.errorCategory).toContain('official_site');
@@ -216,6 +234,7 @@ test('adding an official URL through Edit schedules and completes refreshed offi
   await installSyntheticProviderStubs(page);
 
   await addManualBand(page, 'Synthetic Official Edit');
+  await runLegacyEnrichment(page, 'Synthetic Official Edit');
   await expect.poll(async () => (await readStoredBand(page, 'Synthetic Official Edit'))?.artistEnrichment?.status).toBe('complete');
 
   await page.locator('#screen-mybands').getByText('Synthetic Official Edit', { exact: true }).click();
@@ -224,10 +243,88 @@ test('adding an official URL through Edit schedules and completes refreshed offi
   await page.locator('#screen-profile .edit-save').click();
 
   await expect.poll(async () => (await readStoredBand(page, 'Synthetic Official Edit'))?.officialUrl).toBe('https://example.invalid/official-success');
-  await expect.poll(async () => (await readStoredBand(page, 'Synthetic Official Edit'))?.artistEnrichment?.status).toBe('complete');
+  await expect.poll(async () => (await readStoredBand(page, 'Synthetic Official Edit'))?.artistArtwork?.officialSite?.url)
+    .toBe('https://example.invalid/images/official-success.svg');
   const refreshed = await readStoredBand(page, 'Synthetic Official Edit');
   expect(refreshed.artistArtwork.officialSite.url).toBe('https://example.invalid/images/official-success.svg');
   expect(refreshed.artistArtwork.officialSite.sourceUrl).toBe('https://example.invalid/official-success');
   expect(refreshed.artistArtwork.officialSite.source).toBe('official_site_og_image');
   await expect(page.locator('#screen-profile .profile-avatar img')).toHaveAttribute('src', 'https://example.invalid/images/official-success.svg');
+});
+
+
+test('v189 Add Band persists immediately and displays verified later data without browser AI', async ({ page }) => {
+  await page.goto('/');
+  await installSyntheticProviderStubs(page);
+  await addManualBand(page, 'Synthetic Verified Later');
+  const pending = await readStoredBand(page, 'Synthetic Verified Later');
+  expect(pending.id).toBe('synthetic-verified-later');
+  expect(pending.artistProfileResearch.status).toBe('pending');
+  expect(pending.generatedBio).toBeUndefined();
+  expect(pending.artistEnrichment).toBeUndefined();
+  expect(pending._enriching).toBeUndefined();
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Bands' }).click();
+  await expect(page.locator('#screen-mybands').getByText('Synthetic Verified Later', { exact: true })).toBeVisible();
+  expect((await readStoredBand(page, 'Synthetic Verified Later')).artistProfileResearch.status).toBe('pending');
+
+  // Simulate confirmed scheduled provider research against QA fake storage.
+  await page.evaluate(() => {
+    const data = JSON.parse(localStorage.getItem('livevault-qa:data') || '{}');
+    const band = data.bands.find((item) => item.name === 'Synthetic Verified Later');
+    band.musicbrainz = {
+      status: 'manual_confirmed', mbid: 'synthetic-mbid',
+      metadata: { mbid: 'synthetic-mbid', artistName: band.name },
+      spotify: { id: 'synthetic-spotify-id', status: 'confirmed',
+        images: [{ url: 'https://example.invalid/images/trusted-artist.svg', width: 640, height: 640 }] },
+    };
+    band.generatedBio = 'Synthetic Verified Later is an independently documented performing group.';
+    band.generatedBioProvenance = {
+      source: 'musicbrainz_linked_wikipedia',
+      sourceUrl: 'https://en.wikipedia.org/wiki/Synthetic_Verified_Later',
+    };
+    band.artistProfileResearch = { ...band.artistProfileResearch, status: 'complete' };
+    localStorage.setItem('livevault-qa:data', JSON.stringify(data));
+  });
+
+  await page.reload();
+  await installSyntheticProviderStubs(page);
+  await page.getByRole('button', { name: 'Bands' }).click();
+  await page.locator('#screen-mybands').getByText('Synthetic Verified Later', { exact: true }).click();
+  await expect(page.locator('#screen-profile')).toContainText('independently documented performing group');
+  await expect(page.locator('#screen-profile .profile-avatar img'))
+    .toHaveAttribute('src', 'https://example.invalid/images/trusted-artist.svg');
+});
+
+test('v189 marked profiles never run name-only AI after any lifecycle transition', async ({ page }) => {
+  await page.goto('/');
+  await installSyntheticProviderStubs(page);
+  await addManualBand(page, 'Synthetic Identity Guard');
+  await page.evaluate(async () => {
+    const band = bands.find((item) => item.name === 'Synthetic Identity Guard');
+    for (const status of ['pending', 'partial', 'complete', 'retryable', 'needs_review']) {
+      band.artistProfileResearch.status = status;
+      await enrichBand(band.id);
+    }
+  });
+  const stored = await readStoredBand(page, 'Synthetic Identity Guard');
+  expect(stored.generatedBio).toBeUndefined();
+  expect(stored.artistEnrichment).toBeUndefined();
+});
+
+test('v189 edited official site refreshes artwork without unverified bio', async ({ page }) => {
+  await page.goto('/');
+  await installSyntheticProviderStubs(page);
+  await addManualBand(page, 'Synthetic Verified Artwork');
+  await page.locator('#screen-mybands').getByText('Synthetic Verified Artwork', { exact: true }).click();
+  await page.locator('#screen-profile').getByRole('button', { name: 'Edit band' }).click();
+  await page.locator('#screen-profile .edit-url').fill('https://example.invalid/official-success');
+  await page.locator('#screen-profile .edit-save').click();
+  await expect.poll(async () => (await readStoredBand(page, 'Synthetic Verified Artwork'))?.artistArtwork?.officialSite?.url)
+    .toBe('https://example.invalid/images/official-success.svg');
+  const marked = await readStoredBand(page, 'Synthetic Verified Artwork');
+  expect(marked.artistProfileResearch.status).toBe('pending');
+  expect(marked.generatedBio).toBeUndefined();
+  expect(marked.bio ?? null).toBeNull();
 });

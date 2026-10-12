@@ -819,3 +819,49 @@ test('missing or invalid band/date evidence can never establish physical identit
   assert.equal(Integrity.validFullDate(invalidDate.date), false);
   assert.equal(Integrity.sameBandAndDate(invalidDate, invalidDate), false);
 });
+
+
+test('original Revival artist and genuine reunion are accepted, while same-name tributes remain held', async () => {
+  const original = 'Creedence Clearwater Revival';
+  assert.equal(ticketmaster.namesMatch(original, original, original + ' Reunion Tour'), true);
+
+  const identified = await ticketmaster.resolveAttractionIdentity({
+    band: { id: 'ccr', name: original, musicbrainz: { status: 'confirmed', mbid: 'mb-ccr' } },
+    metadata: { artistName: original, aliases: [] },
+    usage: usage(), now: '2026-08-24T00:00:00.000Z',
+    fetchImpl: async () => ({ ok: true, json: async () => ({
+      _embedded: { attractions: [{
+        id: 'tm-ccr', name: original,
+        url: 'https://www.ticketmaster.com/creedence-clearwater-revival-tickets/artist/tm-ccr',
+        classifications: [{ segment: { name: 'Music' } }],
+      }] },
+      page: { totalElements: 1 },
+    }) }),
+  });
+  assert.equal(identified.kind, 'confirmed');
+
+  const payload = { _embedded: { events: [
+    event({ id: 'real', attractionId: 'tm-ccr', attractionName: original, name: original + ' - Reunion Tour' }),
+    event({ id: 'cover', attractionId: 'tm-ccr', attractionName: original, name: original + ' - Led Zeppelin Tribute' }),
+  ] }, page: { totalPages: 1 } };
+  const concerts = await ticketmaster.fetchUpcomingEvents(band(original, 'ccr', 'tm-ccr'), usage(), {
+    now: '2026-08-24T00:00:00.000Z',
+    fetchImpl: async () => ({ ok: true, json: async () => payload }),
+  });
+  assert.deepEqual(concerts.map((concert) => concert.providerEventId), ['real']);
+
+  const impersonator = await ticketmaster.resolveAttractionIdentity({
+    band: { id: 'kashmir', name: 'Kashmir', musicbrainz: { status: 'confirmed', mbid: 'mb-kashmir' } },
+    metadata: { artistName: 'Kashmir', aliases: [] },
+    usage: usage(), now: '2026-08-24T00:00:00.000Z',
+    fetchImpl: async () => ({ ok: true, json: async () => ({
+      _embedded: { attractions: [{
+        id: 'tm-tribute', name: 'Kashmir',
+        url: 'https://www.ticketmaster.com/kashmir-led-zeppelin-tribute/artist/tm-tribute',
+        classifications: [{ segment: { name: 'Music' } }],
+      }] },
+      page: { totalElements: 1 },
+    }) }),
+  });
+  assert.notEqual(impersonator.kind, 'confirmed');
+});

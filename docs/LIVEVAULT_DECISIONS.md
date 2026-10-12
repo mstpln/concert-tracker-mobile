@@ -6,7 +6,9 @@
 
 **Limits:** Use the existing structured schedule and shared MusicBrainz maximum five requests/run, reserving at most two for new identity search and prioritizing verified new-artist metadata in the remaining capacity. New profile research is capped at two per run, Tavily official-site fallback only in the existing twice-monthly focused workflow at 30 credits/month inside the existing 900-credit application cap, and Groq only when official evidence warrants it. No new keys or production workflow; a provider block means deferred work, never fabricated data.
 
-**Event safety:** A trusted Ticketmaster attraction does not by itself prove an event is the original act; explicit tribute wording on individual event titles must be held. Literal legitimate artist names containing words such as Revival remain eligible.
+**Client boundary:** The additive artistProfileResearch marker permanently opts new artists out of legacy name-only browser AI/Wikipedia, even when the profile status changes. Explicit user edits to the official URL may still refresh official-source artwork; older unmarked records retain legacy enrichment behavior.
+
+**Event safety:** A trusted Ticketmaster attraction does not by itself prove an event is the original act; explicit tribute wording on individual event titles must be held. Literal legitimate artist names and attraction URLs containing words such as Revival remain eligible, and a genuine original-artist reunion is not automatically a tribute.
 
 
 This continuity file was compacted on 2026-09-04 after the workflow/data-enrichment integrity audit. Earlier rationale remains recoverable in Git history. The active contracts below supersede older wording where they conflict.

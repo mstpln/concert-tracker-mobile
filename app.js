@@ -2203,15 +2203,13 @@ async function onAddBand() {
     photoUrl: null, genre: null, origin: null, formedYear: null, bio: null,
     socials: {}, addedAt: new Date().toISOString(), enrichedAt: null,
     artistProfileResearch: { status: 'pending', nextEligibleCheckAt: null },
-    _enriching: true,
   };
   bands.push(band);
   await dlWriteJsonFile(remote, 'bands.json', stripTransient(bands));
   nameInput.value = '';
   urlInput.value = '';
   renderMyBandsScreen();
-
-  enrichBand(band.id);
+  // Identity-first scheduled research handles new artists; no name-only AI.
 }
 
 function stripTransient(list) {
@@ -2374,11 +2372,17 @@ function wireBandEditForm(container, bandId) {
     const url = container.querySelector('.edit-url').value.trim();
     if (!name) return;
     const band = bands.find((x) => x.id === bandId);
+    const previousOfficialUrl = band.officialUrl || '';
     band.name = name;
     band.officialUrl = url || null;
     await dlWriteJsonFile(remote, 'bands.json', bands);
     editingBandId = null;
     renderProfileScreen(bandId);
+    // User-edited official URLs may refresh sourced artwork. v189 artists
+    // are still forbidden from legacy name-only Wikipedia/AI research.
+    if (band.officialUrl && band.officialUrl !== previousOfficialUrl) {
+      enrichBand(bandId).catch(() => {});
+    }
   });
   container.querySelector('.edit-cancel').addEventListener('click', () => {
     editingBandId = null;
