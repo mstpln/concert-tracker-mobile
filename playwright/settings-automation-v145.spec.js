@@ -71,7 +71,8 @@ for (const colorScheme of ['dark','light']) {
 
     const problems = update.locator('.settings-v123-problem');
     await expect(problems).toHaveCount(1);
-    await expect(problems).toHaveText('Web concert search temporarily unavailable (HTTP 503)');
+    await expect(problems).toContainText('Web concert search temporarily unavailable (HTTP 503). BANDMARKR will try again at the next scheduled check.');
+    await expect(update.getByText('Retrying', { exact:true })).toHaveCount(1);
     await expectNoHorizontalOverflow(update);
 
     await update.screenshot({ path:testInfo.outputPath(`settings-update-activity-${colorScheme}.png`) });
@@ -120,4 +121,28 @@ test('v145 long safe failure reason wraps without changing the existing Settings
   await expect(update.locator('.settings-v123-problem')).toHaveCount(1);
   await expectNoHorizontalOverflow(update);
   expect(await update.evaluate((node) => node.querySelectorAll(':scope > .settings-v123-card > .settings-v123-row').length)).toBe(6);
+});
+
+test('v188 completed research with uncertain setlists is yellow Retrying, while a failed run stays red', async ({ page }) => {
+  await openSettings(page);
+  const update = page.locator('#screen-settings .settings-v123-section').filter({ hasText:'UPDATE ACTIVITY' });
+  await page.evaluate(() => {
+    apiUsage = { automationRuns:{ structuredResearch:{ status:'ok', activities:{
+      concerts:{ status:'ok', result:{ workCount:379, changeCount:67 } },
+      artistArtwork:{ status:'ok', result:{ workCount:0, changeCount:0 } },
+      setlists:{ status:'error', failureCode:'match_uncertain', failureReason:'Show could not be matched safely', result:{ workCount:27, changeCount:0 } },
+    } } } };
+    window.BandmarkrSettingsAutomationReportingV145.applyCurrent();
+  });
+  const row = update.locator('.settings-v123-row').filter({ hasText:'Setlists' });
+  await expect(row.locator('.settings-v123-status')).toHaveText('Retrying');
+  await expect(row.locator('.settings-v123-status')).toHaveClass(/is-warning/);
+  await expect(row.locator('.settings-v123-problem')).toContainText('BANDMARKR will try again at the next scheduled check.');
+  await expect(row).toContainText('27 shows checked · 0 setlists added');
+  await page.evaluate(() => {
+    apiUsage.automationRuns.structuredResearch.status = 'error';
+    window.BandmarkrSettingsAutomationReportingV145.applyCurrent();
+  });
+  await expect(row.locator('.settings-v123-status')).toHaveText('Failed');
+  await expect(row.locator('.settings-v123-status')).toHaveClass(/is-bad/);
 });

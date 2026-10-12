@@ -261,8 +261,9 @@
     if (!run) return { label:'Not reported', key:'neutral', problem:'' };
     const value = clean(run.status).toLowerCase();
     if (['error','failed','failure'].includes(value) || run.error) return { label:'Failed', key:'bad', problem:clean(run.error) || 'The latest run failed.' };
+    if (['attention','partial','deferred','warning','needs_attention'].includes(value)) return { label:'Retrying', key:'warning', problem:'Automatic follow-up is pending.' };
     if (['ok','success','successful','complete','completed'].includes(value)) return { label:'Healthy', key:'good', problem:'' };
-    return { label:'Needs attention', key:'warning', problem:value ? `Latest status: ${value}.` : 'The latest outcome is not reported.' };
+    return { label:'Not reported', key:'neutral', problem:value ? `Latest status: ${value}.` : 'The latest outcome is not reported.' };
   }
 
   function latestRun(...runs) {
@@ -300,10 +301,10 @@
     return [
       { name:'Concerts',...structuredState,last:structured?.finishedAt,next:nextMwfUtc(now),result:result(structured,'bandsProcessed','artists checked','concertsAdded','concerts added','No recent result reported.') },
       { name:'Web concert search',...focusedState,last:focused?.finishedAt,next:nextFocusedWebUtc(now),result:result(focused,'bandsAttempted','artists checked','concertsAdded','concerts added','No recent result reported.') },
-      { name:'Listening history',label:lb ? (lb.lastSyncAt ? 'Healthy' : 'Needs attention') : 'Needs connection',key:lb?.lastSyncAt ? 'good' : 'warning',last:lb?.lastSyncAt,next:lb?.lastSyncAt ? new Date(Date.parse(lb.lastSyncAt)+21600000).toISOString() : null,result:lb?.lastSyncAt ? `Listening history synced through ${dateTime(lb.lastSyncAt)}` : (lb ? 'No successful device sync is recorded yet.' : 'Connect ListenBrainz in Data.') },
+      { name:'Listening history',label:lb ? (lb.lastSyncAt ? 'Healthy' : 'Not synced') : 'Needs connection',key:lb?.lastSyncAt ? 'good' : 'neutral',last:lb?.lastSyncAt,next:lb?.lastSyncAt ? new Date(Date.parse(lb.lastSyncAt)+21600000).toISOString() : null,result:lb?.lastSyncAt ? `Listening history synced through ${dateTime(lb.lastSyncAt)}` : (lb ? 'No successful device sync is recorded yet.' : 'Connect ListenBrainz in Data.') },
       { name:'Artist information',...artistState,last:artist?.finishedAt,next:null,result:result(artist,'identityUpdates','artists updated','spotifyCalls','Spotify checks','No recent result reported.') },
       { name:'Artist artwork',label:'Not reported',key:'neutral',last:null,next:null,result:'Artwork scheduler state is not reported to this device.' },
-      { name:'Setlists',...(setlistFailed ? {label:'Failed',key:'bad',problem:'The latest setlist update recorded a failure.'} : structuredState),last:structured?.finishedAt,next:nextMwfUtc(now),result:finite(structured?.setlistsAdded) ? `${plural(structured.setlistsAdded,'setlist')} updated` : 'No recent result reported.' },
+      { name:'Setlists',...(setlistFailed ? {label:structured?.status==='ok'?'Retrying':'Failed',key:structured?.status==='ok'?'warning':'bad',problem:'The latest setlist update recorded an unresolved lookup.'} : structuredState),last:structured?.finishedAt,next:nextMwfUtc(now),result:finite(structured?.setlistsAdded) ? `${plural(structured.setlistsAdded,'setlist')} updated` : 'No recent result reported.' },
     ];
   }
 
@@ -332,7 +333,7 @@
 
   function activityRow(row) {
     const meta=[row.last?`Last updated ${dateOnly(row.last)}`:null,row.next?`Next check ${dateOnly(row.next)}`:null].filter(Boolean).join(' · ');
-    return `<div class="settings-v123-row"><div class="settings-v123-row-head"><div><strong>${esc(row.name)}</strong>${meta?`<p>${esc(meta)}</p>`:''}<p>${esc(row.result)}</p>${row.problem?`<p class="settings-v123-problem">${esc(row.problem)}</p>`:''}</div><span class="settings-v123-status is-${row.key || 'neutral'}"><i></i>${esc(row.label)}</span></div></div>`;
+    return `<div class="settings-v123-row"><div class="settings-v123-row-head"><div><strong>${esc(row.name)}</strong>${meta?`<p>${esc(meta)}</p>`:''}<p>${esc(row.result)}</p>${row.problem?`<p class="settings-v123-problem${row.key==='warning'?' is-warning':''}">${esc(row.problem)}</p>`:''}</div><span class="settings-v123-status is-${row.key || 'neutral'}"><i></i>${esc(row.label)}</span></div></div>`;
   }
 
   function groupHtml(title,rows) {
@@ -399,11 +400,22 @@
     };
   }
 
+  function musicbrainzCandidateLink(candidate) {
+    const id=clean(candidate?.mbid || candidate?.id);
+    if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id)) return '';
+    return `<a class="settings-v123-candidate-link" href="https://musicbrainz.org/artist/${esc(id)}" target="_blank" rel="noopener noreferrer">View on MusicBrainz</a>`;
+  }
+
+  function spotifyCandidateLink(candidate) {
+    const id=clean(candidate?.id);
+    if (!/^[A-Za-z0-9]+$/.test(id)) return '';
+    return `<a class="settings-v123-candidate-link" href="https://open.spotify.com/artist/${esc(id)}" target="_blank" rel="noopener noreferrer">View on Spotify</a>`;
+  }
   function artistReview(item,index) {
     if (item.kind==='musicbrainz') {
-      return `<article class="settings-v123-review-item" data-v123-artist-review="${index}"><div class="settings-v123-row-head"><div><strong>${esc(item.band.name)}</strong><p>${plural(item.candidates.length,'possible artist match','possible artist matches')} found.</p></div><span class="settings-v123-status is-warning"><i></i>Needs review</span></div><div class="settings-v123-candidates">${item.candidates.map((candidate)=>{const id=clean(candidate.mbid || candidate.id);return `<div><span><strong>${esc(candidate.artistName || 'Unnamed artist')}</strong><small>${esc([candidate.area,candidate.country,candidate.disambiguation].filter(Boolean).join(' · ') || 'MusicBrainz candidate')}</small></span><button type="button" class="btn-primary" data-v123-mb-use="${esc(id)}">Use this artist</button></div>`;}).join('')}</div><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-mb-none>None of these</button><button type="button" class="btn-secondary" data-v123-review-later>Later</button></div></article>`;
+      return `<article class="settings-v123-review-item" data-v123-artist-review="${index}"><div class="settings-v123-row-head"><div><strong>${esc(item.band.name)}</strong><p>${plural(item.candidates.length,'possible artist match','possible artist matches')} found.</p></div><span class="settings-v123-status is-warning"><i></i>Needs review</span></div><div class="settings-v123-candidates">${item.candidates.map((candidate)=>{const id=clean(candidate.mbid || candidate.id);return `<div><span><strong>${esc(candidate.artistName || 'Unnamed artist')}</strong><small>${esc([candidate.area,candidate.country,candidate.disambiguation].filter(Boolean).join(' · ') || 'MusicBrainz candidate')}</small>${musicbrainzCandidateLink(candidate)}</span><button type="button" class="btn-primary" data-v123-mb-use="${esc(id)}">Use this artist</button></div>`;}).join('')}</div><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-mb-none>None of these</button><button type="button" class="btn-secondary" data-v123-review-later>Later</button></div></article>`;
     }
-    return `<article class="settings-v123-review-item" data-v123-artist-review="${index}"><div class="settings-v123-row-head"><div><strong>${esc(item.row.bandName)}</strong><p>${item.row.duplicateConflict?'Spotify has a conflicting artist match.':'Spotify needs you to confirm the artist match.'}</p></div><span class="settings-v123-status is-warning"><i></i>Needs review</span></div><div class="settings-v123-candidates">${(item.row.candidates||[]).map((candidate)=>`<div><span><strong>${esc(candidate.artistName || candidate.name || candidate.id)}</strong><small>Spotify candidate</small></span><button type="button" class="btn-primary" data-v123-spotify-use="${esc(candidate.id)}">Use this artist</button></div>`).join('')}</div><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-spotify-none>None of these</button><button type="button" class="btn-secondary" data-v123-review-later>Later</button></div></article>`;
+    return `<article class="settings-v123-review-item" data-v123-artist-review="${index}"><div class="settings-v123-row-head"><div><strong>${esc(item.row.bandName)}</strong><p>${item.row.duplicateConflict?'Spotify has a conflicting artist match.':'Spotify needs you to confirm the artist match.'}</p></div><span class="settings-v123-status is-warning"><i></i>Needs review</span></div><div class="settings-v123-candidates">${(item.row.candidates||[]).map((candidate)=>`<div><span><strong>${esc(candidate.artistName || candidate.name || candidate.id)}</strong><small>Spotify candidate · ID ${esc(candidate.id)}</small>${spotifyCandidateLink(candidate)}</span><button type="button" class="btn-primary" data-v123-spotify-use="${esc(candidate.id)}">Use this artist</button></div>`).join('')}</div><div class="settings-v123-actions"><button type="button" class="btn-secondary" data-v123-spotify-none>None of these</button><button type="button" class="btn-secondary" data-v123-review-later>Later</button></div></article>`;
   }
 
   function eventSummary(event) {
@@ -417,7 +429,7 @@
 
   async function automationHtml() {
     const groq = await groqState();
-    return `<div class="settings-v123-section">${sectionHeader('PROVIDER USAGE','Capacity and connection status for the services BANDMARKR uses.')}<div class="settings-v123-card">${providerUsageRows().map((row)=>providerRow(row,row.id==='groq'?groqDetailHtml(groq):'')).join('')}</div></div><div class="settings-v123-section">${sectionHeader('UPDATE ACTIVITY','What BANDMARKR updates automatically and when it last ran.')}<div class="settings-v123-card">${updateActivityRows().map(activityRow).join('')}</div></div>`;
+    return `<div class="settings-v123-section">${sectionHeader('PROVIDER USAGE','Capacity and connection status for the services BANDMARKR uses.')}<div class="settings-v123-card">${providerUsageRows().map((row)=>providerRow(row,row.id==='groq'?groqDetailHtml(groq):'')).join('')}</div></div><div class="settings-v123-section">${sectionHeader('UPDATE ACTIVITY','Healthy: working normally · Retrying: automatic follow-up · Failed: investigate.')}<div class="settings-v123-card">${updateActivityRows().map(activityRow).join('')}</div></div>`;
   }
 
   function reviewHtml(model) {

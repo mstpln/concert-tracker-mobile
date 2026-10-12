@@ -2,6 +2,14 @@
 
 This continuity file was compacted on 2026-09-04 after the workflow/data-enrichment integrity audit. Earlier rationale remains recoverable in Git history. The active contracts below supersede older wording where they conflict.
 
+## v188 Actionable automation and inspectable identity review
+
+**Decision:** Settings Update activity uses Healthy for successful operation, Retrying for retryable/automatically revisited work, and Failed for actual run failure or an unclassified error requiring investigation. A successful parent research run with a known retryable individual setlist failure must not appear as a total automation failure. Never imply a retry from unknown status or an unverified retry path. Connected listening without a successful sync is neutral Not synced. Review badges remain Needs review because they genuinely require a user decision.
+
+**Decision:** Artist identity candidates must be inspectable via provider-specific, ID-validated links before manual confirmation. Preserve the existing conservative identity review, stable IDs, manual decision ownership, candidate freshness checks and fail-closed storage rules. Do not fetch live provider data merely to display candidate links.
+
+**Consequence:** v188 is a presentation/status-classification release only; no provider/storage contract changes. Repeated-failure escalation requires a separately designed and evidenced persisted policy, not a fabricated threshold.
+
 ## Repository, safety and release control
 
 ### GitHub `main` is authoritative

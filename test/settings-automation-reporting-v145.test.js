@@ -179,8 +179,9 @@ test('lane-specific failure reason does not poison unrelated healthy rows', () =
   };
   const rows = settings.updateActivityRows(usage, new Date('2026-08-19T08:00:00.000Z'), { connection:()=>null });
   const setlists = rows.find((row)=>row.name === 'Setlists');
-  assert.equal(setlists.label, 'Failed');
-  assert.equal(setlists.problem, 'setlist.fm temporarily unavailable (HTTP 503)');
+  assert.equal(setlists.label, 'Retrying');
+  assert.equal(setlists.key, 'warning');
+  assert.match(setlists.problem, /setlist.fm temporarily unavailable \(HTTP 503\).*next scheduled check/);
   assert.equal(rows.find((row)=>row.name === 'Concerts').label, 'Healthy');
   assert.equal(rows.find((row)=>row.name === 'Artist artwork').label, 'Healthy');
 });
@@ -191,4 +192,45 @@ test('failure rendering never echoes raw secret-looking diagnostic text', () => 
   assert.equal(reason, 'The latest update could not be completed safely.');
   assert.doesNotMatch(reason, /abcdef|very-secret|private\.example|Bearer|Authorization/i);
   assert.equal(settings.safeFailureReason({ error:'provider returned HTTP 503 token=secret' }, 'Artist artwork'), 'Artist artwork temporarily unavailable (HTTP 503)');
+});
+
+test('setlist match uncertainty and provider 404 retry after successful run, without changing healthy lanes', () => {
+  for (const [code, reason] of [
+    ['match_uncertain', 'Show could not be matched safely'],
+    ['provider_error', 'setlist.fm request failed (HTTP 404)'],
+    ['rate_limited', 'Rate limit reached; the item will be retried'],
+  ]) {
+    const usage = { automationRuns:{ structuredResearch:{ status:'ok', activities:{
+      concerts:activity('ok',8,2),
+      artistArtwork:activity('ok',0,0),
+      setlists:activity('error',27,0,{ failureCode:code, failureReason:reason }),
+    } } } };
+    const rows = settings.updateActivityRows(usage, new Date('2026-10-12T09:00:00Z'), { connection:()=>null });
+    const setlists = rows.find((row) => row.name === 'Setlists');
+    assert.equal(setlists.label, 'Retrying');
+    assert.equal(setlists.key, 'warning');
+    assert.match(setlists.problem, /BANDMARKR will try again at the next scheduled check/);
+    assert.equal(rows.find((row) => row.name === 'Concerts').label, 'Healthy');
+  }
+});
+
+test('actual failed run and unclassified setlist errors remain Failed rather than promising a retry', () => {
+  for (const [parent, code] of [['error','match_uncertain'], ['ok','update_failed']]) {
+    const usage = { automationRuns:{ structuredResearch:{ status:parent, activities:{
+      setlists:activity('error',27,0,{ failureCode:code, failureReason:'Setlist update stopped safely' }),
+    } } } };
+    const row = settings.updateActivityRows(usage, new Date('2026-10-12T09:00:00Z'), { connection:()=>null }).find((item) => item.name === 'Setlists');
+    assert.equal(row.label, 'Failed');
+    assert.equal(row.key, 'bad');
+    assert.doesNotMatch(row.problem, /will try again/);
+  }
+});
+
+test('generic warning is labelled Retrying, but an unknown run and a never-synced device do not claim retries', () => {
+  assert.equal(settings.statusFromRun({ status:'attention', failureCode:'timeout', failureReason:'Request timed out' }).label, 'Retrying');
+  assert.equal(settings.statusFromRun({ status:'mystery' }).label, 'Not reported');
+  const rows = settings.updateActivityRows({}, new Date('2026-10-12T09:00:00Z'), { connection:()=>({}) });
+  const listening = rows.find((row) => row.name === 'Listening history');
+  assert.equal(listening.label, 'Not synced');
+  assert.equal(listening.key, 'neutral');
 });

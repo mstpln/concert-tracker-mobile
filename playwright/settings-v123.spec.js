@@ -128,3 +128,41 @@ for (const width of [360,390,430]) {
     }
   });
 }
+
+test('Review shows safe distinct provider profile links before choosing same-name artists', async ({ page }) => {
+  await page.setViewportSize({ width:360, height:800 });
+  await openSettings(page);
+  await page.evaluate(() => {
+    bands = [{ id:'qa-mb', name:'Synthetic MusicBrainz Artist', musicbrainz:{
+      status:'needs_review', reviewCandidates:[
+        { mbid:'11111111-1111-4111-8111-111111111111', artistName:'Same Name', area:'Sweden' },
+        { mbid:'22222222-2222-4222-8222-222222222222', artistName:'Same Name', area:'Denmark' },
+      ],
+    } }];
+    window.ListeningSpotifyIdentityReview.auditSpotifyArtistIdentities = () => [{
+      bandId:'qa-spotify', bandName:'Synthetic Spotify Artist', status:'needs_review',
+      actionState:'candidate_available', duplicateConflict:false,
+      candidates:[
+        { id:'1111111111111111111111', artistName:'Same Name' },
+        { id:'2222222222222222222222', artistName:'Same Name' },
+      ],
+      affectedListens:{ allTime:0, twoWeeks:0, threeMonths:0, oneYear:0, spotify:0 },
+      distinctSpotifyTrackIds:0, firstAffectedAt:null, lastAffectedAt:null,
+    }];
+  });
+  const screen = page.locator('#screen-settings');
+  await screen.getByRole('tab', { name:'Review' }).click();
+  const spotify = screen.locator('[data-v123-artist-review]').filter({ hasText:'Synthetic Spotify Artist' });
+  const musicbrainz = screen.locator('[data-v123-artist-review]').filter({ hasText:'Synthetic MusicBrainz Artist' });
+  await expect(spotify.getByRole('button', { name:'Use this artist' })).toHaveCount(2);
+  await expect(spotify.getByRole('link', { name:'View on Spotify' })).toHaveCount(2);
+  await expect(musicbrainz.getByRole('link', { name:'View on MusicBrainz' })).toHaveCount(2);
+  const spotifyLinks = await spotify.getByRole('link', { name:'View on Spotify' }).evaluateAll((links) =>
+    links.map((link) => ({ href:link.href, target:link.target, rel:link.rel })));
+  expect(spotifyLinks.map((link) => link.href)).toEqual([
+    'https://open.spotify.com/artist/1111111111111111111111',
+    'https://open.spotify.com/artist/2222222222222222222222',
+  ]);
+  expect(spotifyLinks.every((link) => link.target === '_blank' && link.rel.includes('noopener') && link.rel.includes('noreferrer'))).toBe(true);
+  await expectNoHorizontalOverflow(page);
+});

@@ -6,6 +6,7 @@
   if (root) root.BandmarkrSettingsAutomationReportingV145 = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   const MAX_REASON_LENGTH = 140;
+  const RETRYABLE_SETLIST_FAILURES = new Set(['rate_limited','provider_unavailable','timeout','network_error','provider_error','invalid_response','match_uncertain']);
   let observer = null;
   let applying = false;
   let scheduled = false;
@@ -81,12 +82,32 @@
     const value = clean(run.status).toLowerCase();
     const problem = safeFailureReason(run, provider);
     if (['error','failed','failure'].includes(value)) return { label:'Failed', key:'bad', problem:problem || 'The latest update could not be completed safely.' };
-    if (['attention','partial','deferred','warning','needs_attention'].includes(value)) return { label:'Needs attention', key:'warning', problem };
+    if (['attention','partial','deferred','warning','needs_attention'].includes(value)) return { label:'Retrying', key:'warning', problem };
     if (['ok','success','successful','complete','completed','healthy'].includes(value)) return { label:'Healthy', key:'good', problem:'' };
-    if (problem) return { label:'Needs attention', key:'warning', problem };
+    if (problem) return { label:'Not reported', key:'neutral', problem };
     return { label:'Not reported', key:'neutral', problem:'' };
   }
 
+  // A completed research run may contain failed individual setlist lookups.
+  // They remain retryable; an unclassified or failed parent run still shows Failed.
+  function setlistActivityStatus(activity, parent) {
+    const state = statusFromRun(activity, 'setlist.fm');
+    const parentStatus = clean(parent?.status).toLowerCase();
+    if (state.key === 'bad' && ['ok','success','successful','complete','completed'].includes(parentStatus)
+      && RETRYABLE_SETLIST_FAILURES.has(clean(activity?.failureCode).toLowerCase())) {
+      return { ...state, label:'Retrying', key:'warning' };
+    }
+    return state;
+  }
+
+  function withRetryExplanation(row) {
+    if (row.label !== 'Retrying') return row;
+    const reason = clean(row.problem).replace(/[.!?]+$/, '');
+    const followUp = row.next
+      ? 'BANDMARKR will try again at the next scheduled check.'
+      : 'BANDMARKR will try again when this task next runs.';
+    return { ...row, problem: reason ? `${reason}. ${followUp}` : followUp };
+  }
   function latestRun(...runs) {
     return runs.filter(Boolean).sort((a,b) => (Date.parse(b.finishedAt || b.startedAt || '') || 0) - (Date.parse(a.finishedAt || a.startedAt || '') || 0))[0] || null;
   }
@@ -123,7 +144,8 @@
     if (!Array.isArray(run?.notes)) return null;
     const note = run.notes.find((value) => /setlist/i.test(clean(value)) && /(failed|returned\s+[45]\d\d|unparseable|invalid|conflict|ambiguous)/i.test(clean(value)));
     if (!note) return null;
-    return { label:'Failed', key:'bad', problem:safeFailureReason({ error:note }, 'setlist.fm') || 'The latest setlist update recorded a failure.' };
+    const retry = ['ok','success','successful','complete','completed'].includes(clean(run.status).toLowerCase());
+    return { label:retry ? 'Retrying' : 'Failed', key:retry ? 'warning' : 'bad', problem:safeFailureReason({ error:note }, 'setlist.fm') || 'The latest setlist update recorded a problem.' };
   }
 
   function updateActivityRows(usage = {}, now = new Date(), listenBrainz = root.LiveVaultListenBrainz) {
@@ -160,7 +182,7 @@
       : (selectedLegacyStructured && finite(selectedLegacyStructured.artistImagesUpdated) ? statusFromRun(selectedLegacyStructured, 'Artist artwork') : { label:'Not reported', key:'neutral', problem:'' });
     const legacySetlist = legacySetlistState(selectedLegacyStructured);
     const setlistState = setlistsActivity
-      ? statusFromRun(setlistsActivity, 'setlist.fm')
+      ? setlistActivityStatus(setlistsActivity, structured)
       : (selectedLegacyStructured ? (legacySetlist || statusFromRun(selectedLegacyStructured, 'setlist.fm')) : { label:'Not reported', key:'neutral', problem:'' });
 
     const listeningResult = lb?.lastSyncResult && finite(lb.lastSyncResult.processed) && finite(lb.lastSyncResult.added)
@@ -178,8 +200,8 @@
       },
       {
         name:'Listening history',
-        label:lb ? (lb.lastSyncAt ? 'Healthy' : 'Needs attention') : 'Needs connection',
-        key:lb?.lastSyncAt ? 'good' : 'warning',
+        label:lb ? (lb.lastSyncAt ? 'Healthy' : 'Not synced') : 'Needs connection',
+        key:lb?.lastSyncAt ? 'good' : (lb ? 'neutral' : 'warning'),
         problem:'',
         last:lb?.lastSyncAt,
         next:lb?.lastSyncAt ? new Date(Date.parse(lb.lastSyncAt)+21600000).toISOString() : null,
@@ -197,7 +219,7 @@
         name:'Setlists', ...setlistState, last:setlistsActivity?.finishedAt || (setlistsActivity ? structured?.finishedAt : selectedLegacyStructured?.finishedAt), next:nextMwfUtc(now),
         result:reportResult(setlistsActivity,'show','shows','checked','setlist','setlists','added') || legacyPair(selectedLegacyStructured,'setlistChecksAttempted','show','shows','checked','setlistsAdded','setlist','setlists','added') || 'No recent result reported.',
       },
-    ];
+    ].map(withRetryExplanation);
   }
 
   function coverageLevel(percent) {
@@ -238,7 +260,7 @@
 
   function activityMarkup(row) {
     const meta = [row.last ? `Last updated ${dateOnly(row.last)}` : null, row.next ? `Next check ${dateOnly(row.next)}` : null].filter(Boolean).join(' · ');
-    return `<div class="settings-v123-row-head"><div><strong>${esc(row.name)}</strong>${meta ? `<p>${esc(meta)}</p>` : ''}<p>${esc(row.result)}</p>${row.problem ? `<p class="settings-v123-problem">${esc(row.problem)}</p>` : ''}</div><span class="settings-v123-status is-${row.key || 'neutral'}"><i></i>${esc(row.label)}</span></div>`;
+    return `<div class="settings-v123-row-head"><div><strong>${esc(row.name)}</strong>${meta ? `<p>${esc(meta)}</p>` : ''}<p>${esc(row.result)}</p>${row.problem ? `<p class="settings-v123-problem${row.key==='warning'?' is-warning':''}">${esc(row.problem)}</p>` : ''}</div><span class="settings-v123-status is-${row.key || 'neutral'}"><i></i>${esc(row.label)}</span></div>`;
   }
 
   function applyActivityRows(screen, usage, now, listenBrainz) {
