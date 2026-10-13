@@ -1,3 +1,10 @@
+## v192 — Softer Spotify CTA Variant 4 (PR, not deployed)
+
+- Discover > Bands green Spotify links now use approved Variant 4: closer to Spotify's original hue, a restrained top-edge lightening and a nearly flat green body. This replaces the darker metallic v191 vignette only for `#screen-concerts .discover-actions .discover-spotify`.
+- Spotify icon, label, original link destination, card text, button dimensions, border width, responsive three-action row, keyboard focus and Dismiss/Add actions remain unchanged. All Settings divider glows and other v191 styling remain unchanged. This is a CSS-only styling correction; no application data, provider calls, quota or Worker changes.
+- The existing synthetic Playwright regression now verifies the v192 matte dual-linear gradient, absence of the old radial vignette, original link and icon, untouched Settings styling, narrow 375/480px layouts and light/dark themes. `APP_VERSION` and `CACHE_NAME_LITERAL` advance together once to v192. Branch/PR/QA status must be confirmed against GitHub; this record does not authorize or establish a production release.
+- Focused QA correction on this same unreleased v192 build: the legacy NB1 browser test waited for the synthetic QA banner (before asynchronous v127 render initialization), replaced global data, then invoked a full Music-page re-render and intermittently blocked the page thread. It now waits for the real v127 row renderer, tests the same inline countdown and 1px real CSS borders on an attached synthetic card, and restores globals. All other end-to-end Music page tests remain unchanged; no production code or version change.
+
 ## v191 — Spotify green spotlight and Settings divider highlights
 
 - Use the existing v187 blue primary CTA treatment as a *shape and light-position* reference for the green Spotify button inside Discover > Bands. Keep it green, with a static asymmetric dark-edge/bright-center gradient and white label/icon; preserve the link destination, behavior, dimensions and 3-button layout.
