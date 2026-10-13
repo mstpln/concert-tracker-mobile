@@ -147,14 +147,14 @@ test('legacy enrichment exposes only trusted Spotify artwork and preserves manua
 
   await page.locator('#screen-mybands').getByText('Synthetic Added Artist', { exact: true }).click();
   const trustedImage = page.locator('#screen-profile .profile-avatar img');
-  await expect(trustedImage).toHaveAttribute('src', 'https://example.invalid/images/trusted-artist.svg');
+  await expect(trustedImage).toHaveAttribute('src', 'assets/listening/album-blue.svg');
   await expect.poll(async () => trustedImage.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
   await expect(page.locator('#screen-profile')).toContainText('Generated synthetic biography');
 
   await page.getByTestId('back-button').click();
   await page.locator('#screen-mybands').getByText('Synthetic Manual Artwork', { exact: true }).click();
   const manualImage = page.locator('#screen-profile .profile-avatar img');
-  await expect(manualImage).toHaveAttribute('src', 'https://example.invalid/images/manual-artist.svg');
+  await expect(manualImage).toHaveAttribute('src', 'assets/listening/album-blue.svg');
   await expect.poll(async () => manualImage.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
@@ -249,7 +249,7 @@ test('adding an official URL through Edit schedules and completes refreshed offi
   expect(refreshed.artistArtwork.officialSite.url).toBe('https://example.invalid/images/official-success.svg');
   expect(refreshed.artistArtwork.officialSite.sourceUrl).toBe('https://example.invalid/official-success');
   expect(refreshed.artistArtwork.officialSite.source).toBe('official_site_og_image');
-  await expect(page.locator('#screen-profile .profile-avatar img')).toHaveAttribute('src', 'https://example.invalid/images/official-success.svg');
+  await expect(page.locator('#screen-profile .profile-avatar img')).toHaveAttribute('src', 'assets/listening/album-blue.svg');
 });
 
 
@@ -294,7 +294,7 @@ test('v189 Add Band persists immediately and displays verified later data withou
   await page.locator('#screen-mybands').getByText('Synthetic Verified Later', { exact: true }).click();
   await expect(page.locator('#screen-profile')).toContainText('independently documented performing group');
   await expect(page.locator('#screen-profile .profile-avatar img'))
-    .toHaveAttribute('src', 'https://example.invalid/images/trusted-artist.svg');
+    .toHaveAttribute('src', 'assets/listening/album-blue.svg');
 });
 
 test('v189 marked profiles never run name-only AI after any lifecycle transition', async ({ page }) => {

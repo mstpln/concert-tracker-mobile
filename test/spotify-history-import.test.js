@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const SpotifyHistory = require('../spotifyHistoryImport.js');
 
 test('sanitizes a valid Spotify history event to the strict allowlist', () => {
@@ -65,4 +66,10 @@ test('deduplicates stable listen IDs and sorts chronologically', () => {
   assert.equal(result.events.length, 2);
   assert.equal(result.rejected, 1);
   assert.deepEqual(result.events.map((event) => event.stableListenId), ['a', 'b']);
+});
+
+test('synthetic listening fixtures stay visible while the import module remains available', () => {
+  const source = fs.readFileSync('spotifyHistoryImport.js', 'utf8');
+  assert.match(source, /async function bootstrap\(\) \{\s*observeSettings\(\);\s*if \(root\.__LIVEVAULT_QA_SYNTHETIC_LISTENING__ === true\) return;/);
+  assert.match(fs.readFileSync('index.html', 'utf8'), /<script src="spotifyHistoryImport\.js"><\/script>/);
 });

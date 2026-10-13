@@ -2,6 +2,7 @@ modules = ["web", "nodejs-22"]
 
 [nix]
 channel = "stable-25_05"
+packages = ["glib", "nss", "nspr", "atk", "at-spi2-atk", "dbus", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXext", "xorg.libXfixes", "xorg.libXrandr", "mesa", "xorg.libxcb", "libxkbcommon", "alsa-lib", "at-spi2-core", "cups", "cairo", "pango", "libgbm"]
 
 [agent]
 expertMode = true
@@ -22,13 +23,13 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [[ports]]
 localPort = 5000

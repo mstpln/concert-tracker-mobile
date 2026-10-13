@@ -194,11 +194,13 @@ test('worker exposes only explicit bounded ListenBrainz object paths', () => {
   assert.doesNotMatch(worker, /listenbrainz\/\.\*/);
 });
 
-test('public QA strips every private v80 listening module', () => {
+test('synthetic QA keeps listening modules available while guarding private history integrations', () => {
   const build = fs.readFileSync('scripts/build-qa.js', 'utf8');
   for (const file of ['listeningHistoryV2.js', 'listeningIncrementalVault.js', 'listenbrainzSync.js']) {
-    assert.match(build, new RegExp(`replace\\('<script src="${file.replace('.', '\\.')}"><\\/script>', ''\\)`));
+    assert.match(fs.readFileSync('index.html', 'utf8'), new RegExp(`<script src="${file.replace('.', '\\.')}"></script>`));
   }
+  assert.doesNotMatch(build, /replace\('<script src="listeningHistoryV2\.js"/);
+  assert.match(fs.readFileSync('qa/qa-bootstrap.js', 'utf8'), /indexedDB\.open =/);
 });
 
 test('incremental restore waits until the base Spotify archive bootstrap has run', () => {

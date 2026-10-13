@@ -4,9 +4,13 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const root = process.cwd();
-const out = path.join(root, 'dist');
+const out = process.env.QA_OUTPUT_DIR ? path.resolve(process.env.QA_OUTPUT_DIR) : path.join(root, 'dist');
+if (out === root || out === path.dirname(root) || !out.startsWith(root + path.sep)) {
+  throw new Error('QA output directory must remain inside the project and may not replace its root');
+}
 const sourceId = process.env.QA_BUILD_ID || process.env.GITHUB_SHA || process.env.CF_PAGES_COMMIT_SHA || 'local-qa';
 const id = String(sourceId).replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 80) || 'local-qa';
+const liveReload = process.env.QA_LIVE_RELOAD === '1';
 const shell = [
   'app.css', 'v72Corrections.css', 'listeningV81.css', 'concertCardsV86.css', 'bandmarkrV87.css', 'listeningReviewRollout.css', 'toplistV96.css', 'trustedListeningV99.css', 'gau2SettingsV118.css', 'settingsV123.css', 'stateFeedbackV129.css', 'nextConcertV138.css', 'nextConcertV139.css', 'nextConcertV140.css', 'nextConcertV146.css', 'startVisualV147.css', 'nextConcertV148.css', 'alignedUiV143.css', 'alignedListeningBandsV144.css', 'startStatsV149.css', 'appUpdateAub1V153.css', 'appUpdateAub2V155.css', 'appUpdateAub3V156.css', 'venueMetadataV158.css', 'mergedNextConcertV167.css', 'nextConcertEventGroupV169.css', 'discoverV170.css', 'discoverCorrectionsV171.css', 'discoverFilterPillsV172.css', 'startConcertTabsV181.css', 'musicSectionsV183.css', 'musicCardIntegrationV184.css', 'bandmarkrLightV186.css', 'bandmarkrVisualV187.css', 'geoFilterPreloadV143.js', 'app.js', 'alignedUiV143.js', 'nextConcertV138.js', 'nextConcertV140.js', 'nextConcertV146.js', 'nextConcertV148.js', 'interactionFeedbackV129.js', 'stateFeedbackIntegrationV129.js', 'providerReleaseCleanupV135.js', 'gau2SettingsV118.js', 'settingsV123.js', 'settingsAutomationReportingV145.js', 'listeningReviewRollout.js', 'listeningReviewReconcile.js', 'listeningCanonicalActivation.js', 'listeningPreparationRecovery.js', 'listeningPreparationV121.js', 'gau5PreparationIntegrationV121.js', 'listeningSpotifyIdentityReview.js', 'listeningSpotifyIdentityReviewUi.js', 'listeningIdentityPacingV105.js', 'listeningIdentityCompletionV104.js', 'listeningIdentityRecordingV106.js', 'listeningIdentityGroupingV104.js', 'devicePrivacy.js',
   'browserFetchPolicy.js', 'v72Corrections.js', 'v72FinalAdjustments.js',
@@ -27,6 +31,14 @@ fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(path.join(out, 'icons'), { recursive: true });
 fs.mkdirSync(path.join(out, 'assets', 'listening'), { recursive: true });
 for (const file of shell) fs.copyFileSync(path.join(root, file), path.join(out, file));
+const listenbrainzSource = path.join(out, 'listenbrainzSync.js');
+fs.writeFileSync(
+  listenbrainzSource,
+  fs.readFileSync(listenbrainzSource, 'utf8').replace(
+    'https://api.listenbrainz.org',
+    'https://qa.invalid/listenbrainz'
+  )
+);
 for (const file of fs.readdirSync(path.join(root, 'icons'))) fs.copyFileSync(path.join(root, 'icons', file), path.join(out, 'icons', file));
 for (const file of fs.readdirSync(path.join(root, 'assets', 'listening'))) fs.copyFileSync(path.join(root, 'assets', 'listening', file), path.join(out, 'assets', 'listening', file));
 for (const file of ['qa/qa-bootstrap.js', 'qa/qa.css', 'qa/fixtures/qa-fixtures.js', 'qa/qa-v77-fixtures.js']) {
@@ -34,23 +46,22 @@ for (const file of ['qa/qa-bootstrap.js', 'qa/qa.css', 'qa/fixtures/qa-fixtures.
 }
 
 let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+html = html.replace(
+  /<meta http-equiv="Content-Security-Policy" content="[^"]*" \/>/,
+  '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; connect-src \'self\' https://qa.invalid; img-src \'self\' data: blob:; style-src \'self\' \'unsafe-inline\'; script-src \'self\'; worker-src \'self\' blob:; object-src \'none\'; base-uri \'none\'; form-action \'self\'; frame-src \'none\'" />'
+);
 html = html.replace('</head>', '<link rel="stylesheet" href="qa.css" /></head>');
 html = html.replace(
   '<script src="ownedTickets.js"></script>',
   '<script src="qa-fixtures.js"></script><script src="qa-v77-fixtures.js"></script><script src="qa-build-config.js"></script><script src="qa-bootstrap.js"></script><script src="ownedTickets.js"></script>'
 );
-html = html
-  .replace('<script src="listeningBandActivity.js"></script>', '')
-  .replace('<script src="spotifyHistoryImport.js"></script>', '')
-  .replace('<script src="listeningVaultBridge.js"></script>', '')
-  .replace('<script src="listeningVault.js"></script>', '')
-  .replace('<script src="listeningHistoryV2.js"></script>', '')
-  .replace('<script src="listeningIncrementalVault.js"></script>', '')
-  .replace('<script src="listenbrainzSync.js"></script>', '')
-  .replace('<script src="listenbrainzReportingV145.js"></script>', '')
-  .replace('<script src="spotifyHistoryBootstrap.js"></script>', '');
+if (liveReload) html = html.replace('</body>', '<script src="qa-live-reload.js"></script></body>');
 fs.writeFileSync(path.join(out, 'index.html'), html);
-fs.writeFileSync(path.join(out, 'qa-build-config.js'), `window.__LIVEVAULT_QA_BUILD_ID__ = ${JSON.stringify(id)};\n`);
+fs.writeFileSync(
+  path.join(out, 'qa-build-config.js'),
+  `window.__LIVEVAULT_QA_BUILD_ID__ = ${JSON.stringify(id)};\nwindow.__LIVEVAULT_QA_LIVE_RELOAD__ = ${liveReload};\n`
+);
+if (liveReload) fs.writeFileSync(path.join(out, 'qa-live-reload.js'), '');
 
 let sw = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
 sw = sw
@@ -82,5 +93,8 @@ for (const file of files) {
 for (const src of [...html.matchAll(/(?:src|href)="([^"#?]+)"/g)].map((match) => match[1])) {
   if (!src.startsWith('http') && !fs.existsSync(path.join(out, src))) throw new Error(`QA build generated missing shell reference: ${src}`);
 }
+for (const script of [...html.matchAll(/<script src="([^"]+)"/g)].map((match) => match[1])) {
+  if (!fs.existsSync(path.join(out, script))) throw new Error(`QA build omitted frontend module: ${script}`);
+}
 fs.writeFileSync(path.join(out, 'qa-build.json'), `${JSON.stringify({ synthetic: true, buildId: id, checksum: crypto.createHash('sha256').update(id).digest('hex').slice(0, 12) }, null, 2)}\n`);
-console.log(`Built synthetic QA preview: dist (${id})`);
+console.log(`Built synthetic QA preview: ${path.relative(root, out)} (${id}${liveReload ? ', live reload' : ''})`);
