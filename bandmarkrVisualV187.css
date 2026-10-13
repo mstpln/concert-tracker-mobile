@@ -50,17 +50,17 @@
   color: var(--on-accent);
 }
 
-/* v191 — Spotify's green CTA uses the same dark-edge, off-center static
-   spotlight as the approved blue Add band CTA. Preserve the existing
-   icon, label, dimensions and external-link behavior. */
+/* v192 — approved Spotify green, Variant 4: near-original matte body
+   with a faint top highlight instead of v191's dark metallic vignette.
+   Preserve the link, logo, label, sizing, spacing and focus behavior. */
 #screen-concerts .discover-actions .discover-spotify {
-  background-color: #0f763b;
-  border-color: #147d40;
+  background-color: #138647;
+  border-color: #15964a;
   background-image:
-    radial-gradient(ellipse 72% 140% at 35% 43%,
-      rgba(130,241,168,.1) 0%, rgba(67,198,114,.06) 40%, transparent 76%),
-    linear-gradient(105deg,
-      #084e28 0%, #10783e 32%, #0e713b 63%, #073f23 100%);
+    linear-gradient(180deg,
+      rgba(255,255,255,.08) 0%, rgba(255,255,255,.025) 18%, transparent 36%),
+    linear-gradient(95deg,
+      #128448 0%, #148749 48%, #128247 100%);
   color: #fff;
 }
 

@@ -1,5 +1,12 @@
 # LiveVault Decisions
 
+## v192 Spotify CTA Variant 4 — restrained matte green
+
+**Decision:** Replace only the v191 metallic green Spotify treatment in Discover > Bands with the approved Variant 4: green much closer to Spotify's original tone, a barely visible top highlight over a near-flat green body, and no radial vignette or dramatic dark edges. Retain the existing white Spotify icon and text, external-link behavior, 1px outline, dimensions, spacing and keyboard accessibility. All other visual treatments, including the v191 Settings lines, stay untouched.
+
+**Release safety:** Pure CSS and targeted synthetic QA, with a single synchronized v192 app/service-worker version bump. No production/provider/data workflow actions are authorized by this decision.
+
+
 ## v191 Restrained green Spotify spotlight and Settings blue separators
 
 **Decision:** The green Spotify links in Discover > Bands retain Spotify green, the white icon/label and the original link semantics, but use the same fixed asymmetric spotlight composition as BANDMARKR's blue primary CTAs. Only the existing 2px horizontal section separators and 4px vertical accent pills in Settings inherit the 1px Highlights stats-frame gradient color distribution and understated static halo; no spacing or thickness changes. Other blue lines, active/focus states, progress bars, the stats-card reference frames and unrelated CTAs remain unchanged.

@@ -46,7 +46,7 @@ async function seedSyntheticDiscover(page) {
 
 for (const width of [375, 480]) {
   for (const colorScheme of ['dark', 'light']) {
-    test('v191 focused Spotify + Settings Blue Light ' + width + 'px ' + colorScheme, async ({ page }, info) => {
+    test('v192 matte Spotify + unchanged Settings Blue Light ' + width + 'px ' + colorScheme, async ({ page }, info) => {
       const errors = [];
       page.on('pageerror', e => errors.push(e.message));
       await openSyntheticApp(page, width, colorScheme);
@@ -62,7 +62,7 @@ for (const width of [375, 480]) {
       await expect(card).toContainText('Synthetic Spotify Candidate');
       const spotify = card.locator('a.discover-spotify');
       await expect(spotify).toBeVisible();
-      await expect(spotify).toHaveCSS('background-image', /radial-gradient.*linear-gradient/s);
+      await expect(spotify).toHaveCSS('background-image', /linear-gradient.*linear-gradient/s);
       await expect(spotify).toHaveCSS('color', 'rgb(255, 255, 255)');
       await expect(spotify).toHaveAttribute('href', 'https://open.spotify.com/search/Synthetic%20Spotify%20Candidate');
       const green = await spotify.evaluate(el => ({
@@ -71,15 +71,20 @@ for (const width of [375, 480]) {
         iconPresent: !!el.querySelector('svg'),
         label: el.textContent.trim(),
       }));
-      expect(green.background).toContain('rgb(16, 120, 62)');
-      expect(green.background).not.toContain('rgb(16, 60, 157)');
+      expect(green.background).toContain('rgb(20, 135, 73)');
+      expect(green.background).toContain('rgba(255, 255, 255, 0.08)');
+      expect(green.background).not.toContain('radial-gradient');
+      expect(green.background).not.toContain('rgb(8, 78, 40)');
+      await expect(spotify).toHaveCSS('border-top-width', '1px');
+      await expect(spotify).toHaveCSS('border-top-color', 'rgb(21, 150, 74)');
+      await expect(spotify).toHaveCSS('box-shadow', 'none');
       expect(green.dimensions.height).toBeGreaterThanOrEqual(34);
       expect(green.iconPresent).toBe(true);
       expect(green.label).toBe('Spotify');
       const add = card.locator('.discover-add');
       await expect(add).toHaveCSS('background-image', /radial-gradient.*linear-gradient/s);
       await expect(card.locator('.discover-dismiss')).toHaveCSS('background-image', 'none');
-      await page.screenshot({ path: info.outputPath('v191-discover-' + width + '-' + colorScheme + '.png') });
+      await page.screenshot({ path: info.outputPath('v192-discover-' + width + '-' + colorScheme + '.png') });
 
       await page.getByTestId('settings-button').click();
       await expect(page.locator('#screen-settings')).toBeVisible();
