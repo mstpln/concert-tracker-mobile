@@ -1,0 +1,1 @@
+- [Portable dependency locks](portable-dependency-locks.md) — Replit installs can rewrite lockfiles to internal registry URLs; preserve public URLs for GitHub CI.
