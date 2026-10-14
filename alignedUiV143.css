@@ -49,3 +49,9 @@
   border: 1px solid var(--border-strong);
 }
 .section-label-filters .icon-btn.active#profile-sweden-toggle-btn { border-color: var(--accent); }
+
+/* The paired two-letter controls must share a width; glyph metrics differ slightly. */
+#profile-sweden-toggle-btn,
+#profile-europe-toggle-btn {
+  width: 35px;
+}

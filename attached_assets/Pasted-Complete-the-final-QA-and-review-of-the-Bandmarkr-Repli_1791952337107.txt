@@ -1,0 +1,48 @@
+Complete the final QA and review of the Bandmarkr Replit development environment.
+
+The Live Preview, automatic reload, and synthetic data isolation are already working. Preserve everything that currently works.
+
+### 1. Resolve remaining issues
+
+* Investigate and fix the four failing Sweden/Europe filter-alignment tests.
+* Determine whether the 0.89 px difference is an actual UI issue or an overly strict test tolerance.
+* Check why the generated screenshots show a white background instead of Bandmarkr's normal dark theme. Verify that the preview preserves the actual production styling and fix any QA-only styling issue.
+* Avoid unrelated design or layout changes.
+
+### 2. Complete QA
+
+* Investigate why the full 420-case Playwright suite did not complete.
+* Fix genuine application or test-environment issues.
+* Run the full suite if feasible.
+* If infrastructure limitations prevent completion, report the exact blocker rather than repeatedly attempting expensive runs.
+* Run all relevant Node tests and verify that automatic Live Preview updates still work.
+* Confirm production data, Cloudflare services, and external API access remain isolated.
+
+### 3. Final code review
+
+Review all changes made for the Replit development environment.
+
+Verify that:
+
+* Production HTML, CSS, JavaScript, and application behavior remain unchanged.
+* No unnecessary dependencies or duplicated frontend implementations were introduced.
+* Existing GitHub CI compatibility is preserved.
+* The Replit-specific configuration remains isolated.
+* Only synthetic data is available in Preview.
+
+Fix any blocking issues and rerun the relevant checks.
+
+### 4. Final report
+
+Provide a concise report containing:
+
+* Tests passed, failed, and skipped.
+* Any remaining limitations.
+* Confirmation of correct dark-theme rendering.
+* Confirmation that Live Preview and automatic updates work.
+* Git branch and commit status.
+* Whether the setup is ready for actual frontend development.
+
+**Important: Work only on `setup/replit-preview`. Do not push, merge, publish, deploy, or modify Cloudflare. Do not spend excessive time on non-blocking test infrastructure issues.**
+
+Complete the review and wait for my approval.
