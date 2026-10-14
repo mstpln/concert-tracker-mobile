@@ -282,6 +282,7 @@
 
   async function bootstrap() {
     observeSettings();
+    if (root.__LIVEVAULT_QA_SYNTHETIC_LISTENING__ === true) return;
     await applyToApp();
   }
 

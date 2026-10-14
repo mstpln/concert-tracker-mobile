@@ -1,0 +1,105 @@
+Extend the existing Bandmarkr Live Preview into a complete, safe visual frontend development environment.
+
+## Goal
+
+I want to use Replit as my primary frontend development environment for Bandmarkr.
+
+I should be able to:
+
+* See the actual Bandmarkr application in Live Preview.
+* Navigate through every page, tab, card, dialog, and screen.
+* Request visual changes through the AI chat and see those changes immediately in Preview.
+* Test responsive layouts, especially mobile.
+* Review and approve changes before pushing them to GitHub.
+
+The preview must look and behave as closely as possible to the real production application, but use only synthetic test data.
+
+## 1. Preserve the existing application
+
+The application already exists and is fully developed.
+
+* Keep the existing HTML, CSS, and JavaScript architecture.
+* Preserve the current visual design, styling, components, animations, navigation, and interactions.
+* Do not rebuild the application in React, Vite, or another framework.
+* Do not redesign, simplify, or replace existing UI.
+* Use the latest imported source code as the single source of truth.
+
+## 2. Complete the synthetic preview
+
+The current QA preview works but does not include all functionality.
+
+Investigate the full application and extend the existing QA infrastructure to support every relevant frontend screen and interaction, including:
+
+* Music: Highlights, Concerts, Upcoming, Past, Cancelled.
+* Band and artist details.
+* Discover, including bands and concerts.
+* Listening statistics and listening history.
+* Stats and analytics.
+* Alerts.
+* Settings.
+* Search, filters, dialogs, confirmations, and navigation.
+
+Support realistic synthetic examples for empty, populated, loading, and error states where relevant.
+
+All existing frontend modules should remain available. Do not remove features just because they require external data in production.
+
+## 3. Strict production isolation
+
+* Never connect the preview to the production Cloudflare Worker.
+* Never use real access tokens, credentials, personal data, or R2 objects.
+* Mock external APIs and data providers using local synthetic fixtures.
+* Block unexpected external network requests.
+* Isolate browser storage and service-worker caches from production.
+* Keep the visible QA PREVIEW / SYNTHETIC DATA banner.
+* Do not modify Cloudflare configuration or production services.
+
+The connected Cloudflare MCP integration is read-only and must not be used to retrieve production records for preview fixtures.
+
+## 4. Live development workflow
+
+Configure Replit so that frontend source-code changes automatically update the running preview, preferably without requiring a manual QA rebuild after every edit.
+
+Avoid duplicating frontend code or maintaining a separate visual implementation.
+
+The preview must render the same frontend source components and CSS that are used in production.
+
+Any Replit-specific configuration should be kept separate from production settings.
+
+## 5. GitHub safety
+
+Continue working exclusively on the existing `setup/replit-preview` branch.
+
+* Do not modify or merge into `main`.
+* Do not push changes without my explicit approval.
+* Do not deploy or publish through Replit.
+* Preserve the existing GitHub Pages production setup and Cloudflare backend.
+* Keep dependency versions and lockfiles compatible with the repository's CI.
+
+## 6. Quality assurance
+
+After implementation:
+
+1. Run the existing relevant tests and QA checks.
+2. Verify that all primary screens and navigation flows work.
+3. Check mobile and desktop responsiveness.
+4. Confirm that no production network requests are possible from the preview.
+5. Check that frontend changes appear correctly in Live Preview.
+6. Review all changes for regressions, security issues, unnecessary complexity, and repository portability.
+7. Fix any issues found and repeat the relevant checks.
+
+Do not push, merge, or deploy.
+
+## 7. Final report
+
+Keep the report concise and explain:
+
+* Which screens and interactions are now supported.
+* Any remaining preview limitations.
+* Whether Live Preview automatically updates after frontend edits.
+* Tests and review results.
+* Files changed.
+* Git branch and commit status.
+
+**Important:** Prefer the simplest maintainable solution. Reuse existing QA infrastructure and minimize new code, dependencies, and AI usage. Do not build a separate version of Bandmarkr.
+
+Complete the implementation and internal review, but wait for my approval before pushing anything to GitHub.

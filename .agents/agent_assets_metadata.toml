@@ -1,0 +1,30 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "yitxjxoUb0dCzvEuyTLd_"
+uri = "file://qa-artifacts/qa-preview-desktop.jpg"
+type = "image"
+title = "Bandmarkr QA preview — desktop"
+description = "Desktop screenshot of the Replit-only synthetic-data preview."
+logical_id = "4dfc93a2-ea2d-4e2d-9c9c-9685eb2ff094"
+content_hash = "sha256:3260ecfb62a0dd047fd33361f5fb26e9ec5fcfdf00b83b0620438919f65b7e46"
+size = 58500
+mtime_ms = 1791924912784
+storage_uri = "gcs://replit-rams-assets-archer/rams/assets/repl:d2f501b1-9c8a-43c2-8fa6-61ca9df0db6b/4dfc93a2-ea2d-4e2d-9c9c-9685eb2ff094/f531dfca-81b4-4a76-b18c-894e2ea23990"
+storage_version_token = "1791924930290903"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "l6S2zjLebWI900KhvHoRL"
+uri = "file://qa-artifacts/qa-preview-mobile.jpg"
+type = "image"
+title = "Bandmarkr QA preview — mobile"
+description = "Mobile screenshot of the Replit-only synthetic-data preview."
+logical_id = "53a729ac-dd2b-4edd-bca5-ae770f1ef8e9"
+content_hash = "sha256:68f3678e86f49167b2b7f05ec9b000e75c578a73bf9f2e84be985dc31f661f9d"
+size = 46462
+mtime_ms = 1791924917092
+storage_uri = "gcs://replit-rams-assets-archer/rams/assets/repl:d2f501b1-9c8a-43c2-8fa6-61ca9df0db6b/53a729ac-dd2b-4edd-bca5-ae770f1ef8e9/6bb68b11-7d85-4dc6-b0da-364d133a4952"
+storage_version_token = "1791924931077975"
+content_type = "image/jpeg"

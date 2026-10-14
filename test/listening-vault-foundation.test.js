@@ -73,8 +73,12 @@ test('listening settings keep one import component and no permanent backup butto
   assert.match(vaultSource, /restoreIfLocalEmpty/);
 });
 
-test('QA build strips all private listening-vault modules', () => {
+test('synthetic QA build retains listening-history modules without enabling Cloudflare restore', () => {
   const build = fs.readFileSync('scripts/build-qa.js', 'utf8');
-  assert.match(build, /replace\('<script src="listeningVaultBridge\.js"><\/script>', ''\)/);
-  assert.match(build, /replace\('<script src="listeningVault\.js"><\/script>', ''\)/);
+  for (const file of ['listeningVaultBridge.js', 'listeningVault.js', 'listeningHistoryV2.js', 'listeningIncrementalVault.js', 'listenbrainzSync.js', 'spotifyHistoryImport.js', 'spotifyHistoryBootstrap.js']) {
+    assert.match(fs.readFileSync('index.html', 'utf8'), new RegExp(`<script src="${file.replace('.', '\\.')}"></script>`));
+  }
+  assert.match(fs.readFileSync('listeningVault.js', 'utf8'), /__LIVEVAULT_QA_SYNTHETIC_LISTENING__ === true\) return/);
+  assert.match(fs.readFileSync('spotifyHistoryBootstrap.js', 'utf8'), /__LIVEVAULT_QA_SYNTHETIC_LISTENING__ === true\) return/);
+  assert.doesNotMatch(build, /replace\('<script src="listeningVault/);
 });
