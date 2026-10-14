@@ -8,16 +8,26 @@ const { execFileSync } = require('node:child_process');
 
 const node = process.execPath;
 const root = path.resolve(__dirname, '..');
+const qaBuildOutput = path.join(root, 'qa-artifacts', 'qa-build-unit');
 
-test('QA build installs fixtures and bootstrap before app without inline configuration', () => {
+fs.mkdirSync(path.dirname(qaBuildOutput), { recursive: true });
+
+function buildQa(extraEnv) {
+  fs.rmSync(qaBuildOutput, { recursive: true, force: true });
   execFileSync(node, ['scripts/build-qa.js'], {
     cwd: root,
-    env: { ...process.env, QA_BUILD_ID: 'safe-test-id' },
+    env: { ...process.env, ...extraEnv, QA_OUTPUT_DIR: qaBuildOutput },
   });
+}
 
-  const html = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8');
-  const config = fs.readFileSync(path.join(root, 'dist/qa-build-config.js'), 'utf8');
-  const sw = fs.readFileSync(path.join(root, 'dist/service-worker.js'), 'utf8');
+test.after(() => fs.rmSync(qaBuildOutput, { recursive: true, force: true }));
+
+test('QA build installs fixtures and bootstrap before app without inline configuration', () => {
+  buildQa({ QA_BUILD_ID: 'safe-test-id' });
+
+  const html = fs.readFileSync(path.join(qaBuildOutput, 'index.html'), 'utf8');
+  const config = fs.readFileSync(path.join(qaBuildOutput, 'qa-build-config.js'), 'utf8');
+  const sw = fs.readFileSync(path.join(qaBuildOutput, 'service-worker.js'), 'utf8');
 
   assert.ok(html.indexOf('qa-fixtures.js') < html.indexOf('qa-bootstrap.js'));
   assert.ok(html.indexOf('qa-bootstrap.js') < html.indexOf('app.js'));
@@ -28,12 +38,9 @@ test('QA build installs fixtures and bootstrap before app without inline configu
 });
 
 test('QA service worker removes only obsolete QA caches', () => {
-  execFileSync(node, ['scripts/build-qa.js'], {
-    cwd: root,
-    env: { ...process.env, QA_BUILD_ID: 'cache-isolation-test' },
-  });
+  buildQa({ QA_BUILD_ID: 'cache-isolation-test' });
 
-  const sw = fs.readFileSync(path.join(root, 'dist/service-worker.js'), 'utf8');
+  const sw = fs.readFileSync(path.join(qaBuildOutput, 'service-worker.js'), 'utf8');
   assert.match(
     sw,
     /keys\.filter\(\(k\) => k\.startsWith\('concert-tracker-qa-'\) && k !== CACHE_NAME\)/
@@ -42,15 +49,12 @@ test('QA service worker removes only obsolete QA caches', () => {
 });
 
 test('synthetic shell includes every app script referenced by the production HTML and blocks live providers', () => {
-  execFileSync(node, ['scripts/build-qa.js'], {
-    cwd: root,
-    env: { ...process.env, QA_BUILD_ID: 'complete-shell-test' },
-  });
+  buildQa({ QA_BUILD_ID: 'complete-shell-test' });
 
   const sourceHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-  const html = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(qaBuildOutput, 'index.html'), 'utf8');
   const scriptFiles = [...sourceHtml.matchAll(/<script src="([^"]+)"/g)].map((match) => match[1]);
-  for (const file of scriptFiles) assert.ok(fs.existsSync(path.join(root, 'dist', file)), `missing synthetic app module ${file}`);
+  for (const file of scriptFiles) assert.ok(fs.existsSync(path.join(qaBuildOutput, file)), `missing synthetic app module ${file}`);
   for (const file of ['listeningVaultBridge.js', 'listeningVault.js', 'listeningHistoryV2.js', 'listeningIncrementalVault.js', 'listenbrainzSync.js', 'spotifyHistoryImport.js']) {
     assert.match(html, new RegExp(`<script src="${file.replace('.', '\\.')}"></script>`));
   }
