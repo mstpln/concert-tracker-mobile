@@ -114,3 +114,15 @@ jobs:
             dist/qa-build.json
           if-no-files-found: ignore
           retention-days: 14
+
+  pages-artifact-safety:
+    name: GitHub Pages artifact safety
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697 # v1
+        with:
+          source: ./
+          destination: ./_site
+      - name: Verify generated Pages output
+        run: node scripts/verify-pages-build.js ./_site

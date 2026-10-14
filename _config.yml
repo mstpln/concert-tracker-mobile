@@ -1,0 +1,22 @@
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - .git/
+  - .jekyll-cache/
+  - .sass-cache/
+  - attached_assets/
+  - node_modules/
+  - playwright/
+  - playwright.config.js
+  - qa/
+  - test/
+  - vendor/
+  - scripts/build-qa.js
+  - scripts/qa-cloudflare-builds.js
+  - scripts/qa-safety.js
+  - scripts/qa-syntax.js
+  - scripts/qa-version.js
+  - scripts/qa-workflows.js
+  - scripts/serve-qa.js
+  - scripts/validate-qa-fixtures.js
+  - scripts/verify-pages-build.js
