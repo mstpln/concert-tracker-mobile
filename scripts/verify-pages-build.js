@@ -113,12 +113,15 @@ const forbiddenPaths = [
   'playwright.config.js',
   'qa',
   'test',
+  'listeningFixtures.js',
+  'listeningFixturesV99.js',
   'scripts/build-qa.js',
   'scripts/qa-cloudflare-builds.js',
   'scripts/qa-safety.js',
   'scripts/qa-syntax.js',
   'scripts/qa-version.js',
   'scripts/qa-workflows.js',
+  'scripts/qa-output-path.js',
   'scripts/serve-qa.js',
   'scripts/validate-qa-fixtures.js',
   'scripts/verify-pages-build.js',
@@ -130,7 +133,15 @@ for (const forbidden of forbiddenPaths) {
   }
 }
 
-const syntheticMarkers = ['QA Artist One', 'Synthetic Blue Record', 'qa-synthetic-token', 'qa.invalid'];
+const syntheticMarkers = [
+  'QA Artist One',
+  'Synthetic Blue Record',
+  'qa-synthetic-token',
+  'qa.invalid',
+  'synthetic-listenbrainz',
+  'Synthetic ListenBrainz Track',
+  'Unmatched Synthetic Release',
+];
 const textExtensions = new Set(['.css', '.html', '.js', '.json', '.md', '.svg', '.txt', '.webmanifest', '.xml']);
 
 function scanForSyntheticExamples(directory) {

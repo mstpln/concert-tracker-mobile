@@ -18,7 +18,7 @@ const state = {
     'listeningInsightsV81.js','listeningV81BootFix.js','listeningV81ReviewFix.js','listeningV82Corrections.js','listeningV82GenreFix.js','listeningV82FailSafe.js','listeningV83ChartFix.js','listeningV83WindowFix.js','listeningV84ChartRenderFix.js','listeningV85RankingAndStatsUnits.js','dataLib.js','europeScopeV160.js','listeningStats.js','listeningStatsV81.js','listeningFixtures.js','listeningFixturesV99.js','listeningIdentityContracts.js','listeningDerivedStorage.js','listeningDerivedMigration.js','listeningBandActivity.js','spotifyHistoryImport.js','listeningVaultBridge.js',
     'listeningVault.js','listeningHistoryV2.js','listeningIncrementalVault.js','listenbrainzSync.js','listenbrainzReportingV145.js',
     'spotifyHistoryBootstrap.js','conflictMerge.js','remoteStore.js','ownedTickets.js','spotifyUserV100.js','service-worker.js'
-  ],
+  ].filter((file) => !['listeningFixtures.js', 'listeningFixturesV99.js'].includes(file)),
   flags: {
     structuredResearchEnabled: /STRUCTURED_RESEARCH:\s*\{[^}]*enabled:\s*true/s.test(fs.readFileSync('scripts/lib/config.js','utf8')),
     musicbrainzEnabled: /MUSICBRAINZ:\s*\{[^}]*enabled:\s*true/s.test(fs.readFileSync('scripts/lib/config.js','utf8')),

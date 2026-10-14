@@ -1,6 +1,7 @@
 'use strict';
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v192';
+const CACHE_NAME_LITERAL = 'v193';
+// Previous release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v192'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v181'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v180'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v179'.
@@ -220,8 +221,6 @@ const SHELL_FILES = [
   './europeScopeV160.js',
   './listeningStats.js',
   './listeningStatsV81.js',
-  './listeningFixtures.js',
-  './listeningFixturesV99.js',
   './listeningIdentityContracts.js',
   './listeningDerivedStorage.js',
   './listeningDerivedMigration.js',

@@ -183,7 +183,8 @@ test('current build facts, contrast and shell entries remain deterministic', () 
   assert.ok(state.shellFiles.includes('spotifyListeningMetadataV99.js'));
   assert.ok(state.shellFiles.includes('spotifyListeningMetadataV101.js'));
   assert.ok(state.shellFiles.includes('trustedListeningV99.js'));
-  assert.ok(state.shellFiles.includes('listeningFixturesV99.js'));
+  assert.ok(!state.shellFiles.includes('listeningFixtures.js'));
+  assert.ok(!state.shellFiles.includes('listeningFixturesV99.js'));
   assert.ok(state.shellFiles.includes('listeningIdentityContracts.js'));
   assert.ok(state.shellFiles.includes('listeningDerivedStorage.js'));
   assert.ok(state.shellFiles.includes('listeningDerivedMigration.js'));

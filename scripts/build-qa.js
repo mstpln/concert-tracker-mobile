@@ -2,12 +2,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const resolveQaOutputPath = require('./qa-output-path');
 
 const root = process.cwd();
-const out = process.env.QA_OUTPUT_DIR ? path.resolve(process.env.QA_OUTPUT_DIR) : path.join(root, 'dist');
-if (out === root || out === path.dirname(root) || !out.startsWith(root + path.sep)) {
-  throw new Error('QA output directory must remain inside the project and may not replace its root');
-}
+const out = resolveQaOutputPath(root, process.env.QA_OUTPUT_DIR);
 const sourceId = process.env.QA_BUILD_ID || process.env.GITHUB_SHA || process.env.CF_PAGES_COMMIT_SHA || 'local-qa';
 const id = String(sourceId).replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 80) || 'local-qa';
 const liveReload = process.env.QA_LIVE_RELOAD === '1';
@@ -55,6 +53,10 @@ html = html.replace(
   '<script src="ownedTickets.js"></script>',
   '<script src="qa-fixtures.js"></script><script src="qa-v77-fixtures.js"></script><script src="qa-build-config.js"></script><script src="qa-bootstrap.js"></script><script src="ownedTickets.js"></script>'
 );
+html = html.replace(
+  '<script src="app.js"></script>',
+  '<script src="listeningFixtures.js"></script><script src="listeningFixturesV99.js"></script><script src="app.js"></script>'
+);
 if (liveReload) html = html.replace('</body>', '<script src="qa-live-reload.js"></script></body>');
 fs.writeFileSync(path.join(out, 'index.html'), html);
 fs.writeFileSync(
@@ -68,7 +70,7 @@ sw = sw
   .replace(/const CACHE_NAME = 'concert-tracker-shell-' \+ CACHE_NAME_LITERAL;/, `const CACHE_NAME = 'concert-tracker-qa-' + CACHE_NAME_LITERAL + '-${id}';`)
   .replace(
     /(['"]\.\/version\.js['"],)/,
-    "$1\n  './qa-fixtures.js',\n  './qa-v77-fixtures.js',\n  './qa-build-config.js',\n  './qa-bootstrap.js',\n  './qa.css',"
+    "$1\n  './qa-fixtures.js',\n  './qa-v77-fixtures.js',\n  './qa-build-config.js',\n  './qa-bootstrap.js',\n  './qa.css',\n  './listeningFixtures.js',\n  './listeningFixturesV99.js',"
   )
   .replace(
     "k.startsWith('concert-tracker-shell-') && k !== CACHE_NAME",

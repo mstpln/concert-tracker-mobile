@@ -4,7 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
+const resolveQaOutputPath = require('../scripts/qa-output-path');
 
 const node = process.execPath;
 const root = path.resolve(__dirname, '..');
@@ -22,6 +23,33 @@ function buildQa(extraEnv) {
 
 test.after(() => fs.rmSync(qaBuildOutput, { recursive: true, force: true }));
 
+test('QA output path accepts only dedicated generated directories and rejects symlinks', () => {
+  assert.equal(resolveQaOutputPath(root, 'dist'), path.join(root, 'dist'));
+  assert.equal(resolveQaOutputPath(root, 'qa-artifacts/playwright'), path.join(root, 'qa-artifacts/playwright'));
+  assert.throws(() => resolveQaOutputPath(root, path.join(root, '.git')), /dedicated generated-output directory/);
+  assert.throws(() => resolveQaOutputPath(root, path.resolve(root, '..', 'outside')), /dedicated generated-output directory/);
+
+  const symlink = path.join(root, 'qa-artifacts', `unsafe-output-${process.pid}`);
+  fs.symlinkSync(path.join(root, '.git'), symlink, 'dir');
+  try {
+    assert.throws(() => resolveQaOutputPath(root, path.join(symlink, 'build')), /symbolic links/);
+  } finally {
+    fs.unlinkSync(symlink);
+  }
+});
+
+test('QA build rejects Git metadata and other non-generated output locations', () => {
+  const result = spawnSync(node, ['scripts/build-qa.js'], {
+    cwd: root,
+    env: { ...process.env, QA_OUTPUT_DIR: path.join(root, '.git') },
+    encoding: 'utf8',
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /dedicated generated-output directory/);
+  assert.ok(fs.existsSync(path.join(root, '.git')), 'Git metadata must remain intact');
+});
+
 test('QA build installs fixtures and bootstrap before app without inline configuration', () => {
   buildQa({ QA_BUILD_ID: 'safe-test-id' });
 
@@ -29,8 +57,15 @@ test('QA build installs fixtures and bootstrap before app without inline configu
   const config = fs.readFileSync(path.join(qaBuildOutput, 'qa-build-config.js'), 'utf8');
   const sw = fs.readFileSync(path.join(qaBuildOutput, 'service-worker.js'), 'utf8');
 
+  assert.doesNotMatch(fs.readFileSync(path.join(root, 'index.html'), 'utf8'), /<script src="listeningFixtures(?:V99)?\.js"><\/script>/);
   assert.ok(html.indexOf('qa-fixtures.js') < html.indexOf('qa-bootstrap.js'));
   assert.ok(html.indexOf('qa-bootstrap.js') < html.indexOf('app.js'));
+  assert.match(html, /<script src="listeningFixtures\.js"><\/script>/);
+  assert.match(html, /<script src="listeningFixturesV99\.js"><\/script>/);
+  assert.ok(html.indexOf('listeningFixtures.js') < html.indexOf('app.js'));
+  assert.ok(html.indexOf('listeningFixturesV99.js') < html.indexOf('app.js'));
+  assert.match(sw, /'\.\/listeningFixtures\.js'/);
+  assert.match(sw, /'\.\/listeningFixturesV99\.js'/);
   assert.match(config, /safe-test-id/);
   assert.equal(/<script>window\.__LIVEVAULT_QA_BUILD_ID__/.test(html), false);
   assert.match(sw, /concert-tracker-qa-' \+ CACHE_NAME_LITERAL \+ '-safe-test-id/);

@@ -4,11 +4,10 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const resolveQaOutputPath = require('./qa-output-path');
 
 const projectRoot = path.resolve('.');
-const root = process.env.QA_OUTPUT_DIR
-  ? path.resolve(projectRoot, process.env.QA_OUTPUT_DIR)
-  : path.join(projectRoot, 'dist');
+const root = resolveQaOutputPath(projectRoot, process.env.QA_OUTPUT_DIR);
 const staging = path.join(projectRoot, '.qa-build-staging');
 const previous = path.join(projectRoot, '.qa-build-previous');
 const host = process.env.HOST || '127.0.0.1';
