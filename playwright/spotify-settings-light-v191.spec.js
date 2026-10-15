@@ -54,7 +54,7 @@ for (const width of [375, 480]) {
       // Approved blue CTA and Highlights stats-frame remain the references.
       const statsFrame = page.locator('#screen-myconcerts .myconcerts-summary > .start-top-bands-card');
       await expect(statsFrame).toHaveCSS('border-top-width', '1px');
-      await expect(statsFrame).toHaveCSS('box-shadow', /rgba\(61, 128, 250, 0\.24\)/);
+      await expect(statsFrame).toHaveCSS('box-shadow', 'rgba(61, 128, 250, 0.5) 0px 0px 12px 0px, rgba(25, 95, 221, 0.32) 0px 0px 30px 0px');
       await seedSyntheticDiscover(page);
       await page.locator('#tabbar [data-tab="concerts"]').click();
       await page.locator('[data-discover-tab="bands"]').click();

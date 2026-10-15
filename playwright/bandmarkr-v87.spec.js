@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('v88 keeps the BANDMARKR banner and exposes the simplified installed identity', async ({ page }, testInfo) => {
+test('Bandmarkr keeps its banner and installs the branded Music waveform icons', async ({ page }, testInfo) => {
   await page.setViewportSize(testInfo.project.name === 'mobile-chromium'
     ? { width: 375, height: 820 }
     : { width: 480, height: 900 });
@@ -54,7 +54,12 @@ test('v88 keeps the BANDMARKR banner and exposes the simplified installed identi
       context.drawImage(bitmap, 0, 0);
       const center = [...context.getImageData(Math.floor(expected / 2), Math.floor(expected * 0.38), 1, 1).data];
       const corner = [...context.getImageData(0, 0, 1, 1).data];
-      const result = { src, expected, width: bitmap.width, height: bitmap.height, center, corner };
+      const oppositeCorner = [...context.getImageData(expected - 1, expected - 1, 1, 1).data];
+      // Sample inside each of the five strokes from the Music navigation mark.
+      const bars = [[96, 306], [176, 286], [256, 236], [336, 306], [416, 276]]
+        .map(([x, y]) => [...context.getImageData(Math.floor(x * expected / 512), Math.floor(y * expected / 512), 1, 1).data]);
+      const gap = [...context.getImageData(Math.floor(136 * expected / 512), Math.floor(306 * expected / 512), 1, 1).data];
+      const result = { src, expected, width: bitmap.width, height: bitmap.height, center, corner, oppositeCorner, bars, gap };
       bitmap.close();
       return result;
     }));
@@ -62,8 +67,14 @@ test('v88 keeps the BANDMARKR banner and exposes the simplified installed identi
   for (const icon of decodedIcons) {
     expect(icon.width, icon.src).toBe(icon.expected);
     expect(icon.height, icon.src).toBe(icon.expected);
-    expect(icon.center, `${icon.src} has a solid white bookmark interior`).toEqual([255, 255, 255, 255]);
-    expect(icon.corner, `${icon.src} keeps the blue safe area`).toEqual([2, 77, 223, 255]);
+    expect(icon.center, `${icon.src} has a white central waveform stroke`).toEqual([255, 255, 255, 255]);
+    for (const bar of icon.bars) expect(bar, `${icon.src} renders all five white waveform strokes`).toEqual([255, 255, 255, 255]);
+    expect(icon.gap, `${icon.src} keeps the strokes separate`).not.toEqual([255, 255, 255, 255]);
+    expect(icon.corner[3], `${icon.src} keeps an opaque safe area`).toBe(255);
+    expect(icon.corner[2], `${icon.src} keeps the branded blue safe area`).toBeGreaterThan(icon.corner[1] + 50);
+    expect(icon.corner[1]).toBeGreaterThan(icon.corner[0] + 20);
+    expect(icon.oppositeCorner[3]).toBe(255);
+    expect(icon.corner, `${icon.src} retains the blue gradient toning`).not.toEqual(icon.oppositeCorner);
   }
 
   await expect(page.locator('#start-version-refresh')).toHaveText(/^v\d+$/);

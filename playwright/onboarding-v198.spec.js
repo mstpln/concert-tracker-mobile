@@ -68,3 +68,23 @@ test('the original tablet-sized preview keeps the connection action in view', as
   expect(layout.connectVisible).toBe(true);
   expect(layout.noHorizontalOverflow).toBe(true);
 });
+
+for (const submitWith of ['button', 'Enter']) {
+  test(`connection form opens the app using ${submitWith} with synthetic QA credentials only`, async ({ page }) => {
+    const externalRequests = [];
+    page.on('request', request => {
+      if (new URL(request.url()).origin !== 'http://127.0.0.1:4173') externalRequests.push(request.url());
+    });
+    await page.goto('/?qa-screen=connect');
+    await expect(page.locator('#onboarding')).toBeVisible();
+    await page.locator('#connect-endpoint').fill('https://qa.invalid');
+    await page.locator('#connect-token').fill('qa-synthetic-token');
+    if (submitWith === 'Enter') await page.locator('#connect-token').press('Enter');
+    else await page.locator('#connect-submit').click();
+    await expect(page.locator('#onboarding')).toBeHidden();
+    await expect(page.locator('#app')).toBeVisible();
+    await expect(page.getByTestId('qa-banner')).toContainText('SYNTHETIC DATA');
+    await expect(page.locator('#onboarding-error')).toBeHidden();
+    expect(externalRequests).toEqual([]);
+  });
+}
