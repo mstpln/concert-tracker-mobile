@@ -7,9 +7,21 @@
   const PDF_KEY = `${PREFIX}pdfs`;
   const FAILURE_KEY = `${PREFIX}failures`;
   const PROFILE_KEY = `${PREFIX}profile`;
+  const CARD_VIEW_KEY = `${PREFIX}next-concert-view`;
+  const SCREEN_KEY = `${PREFIX}screen`;
+  const SCREEN_QUERY = new URLSearchParams(location.search).get('qa-screen');
   const QA_TICKET_DB = 'live-vault-qa-owned-tickets';
   const PRODUCTION_TICKET_DB = 'live-vault-owned-tickets';
-  const QA_NOW = '2027-07-16T12:00:00.000Z';
+  const QA_CARD_VIEW = (() => {
+    try {
+      return localStorage.getItem(CARD_VIEW_KEY) === 'countdown' ? 'countdown' : 'concert-day';
+    } catch {
+      return 'concert-day';
+    }
+  })();
+  const QA_NOW = QA_CARD_VIEW === 'countdown'
+    ? '2027-07-15T12:00:00.000Z'
+    : '2027-07-16T12:00:00.000Z';
   const JSON_FILES = new Set(['bands.json', 'concerts.json', 'news.json', 'apiUsage.json', 'discoverRecommendations.json']);
   const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
   const MAX_PDF_BYTES = 10 * 1024 * 1024;
@@ -36,6 +48,9 @@
   const saveJson = (key, value) => localStorage.setItem(key, JSON.stringify(value));
   const loadData = () => loadJson(DATA_KEY, initial());
   const saveData = (value) => saveJson(DATA_KEY, value);
+  const selectedScreen = () => SCREEN_QUERY === 'connect'
+    ? 'connect'
+    : loadJson(SCREEN_KEY, 'app') === 'connect' ? 'connect' : 'app';
   const isSyntheticToken = (value) => typeof value === 'string' && /^(?:qa-)?synthetic-/i.test(value);
   const safeSettings = (value) => Object.fromEntries(Object.entries(value || {}).filter(([key, candidate]) => {
     if (!/(?:secret|token|api.?key|credential|password|authorization)/i.test(key)) return true;
@@ -105,13 +120,16 @@
     if (window.indexedDB?.deleteDatabase) window.indexedDB.deleteDatabase(QA_TICKET_DB);
   }
 
+  document.documentElement.dataset.qaPreview = 'true';
   window.__LIVEVAULT_QA_NOW__ = QA_NOW;
   window.__LIVEVAULT_QA_SYNTHETIC_LISTENING__ = true;
   window.__LIVEVAULT_QA_FAKE_BACKEND__ = true;
   if (window.__LIVEVAULT_QA_LIVE_RELOAD__ === true && 'serviceWorker' in navigator) {
     navigator.serviceWorker.register = async () => null;
   }
-  window.rsGetConnection = () => ({ endpoint: 'https://qa.invalid', token: 'qa-synthetic-token' });
+  window.rsGetConnection = () => selectedScreen() === 'connect'
+    ? null
+    : ({ endpoint: 'https://qa.invalid', token: 'qa-synthetic-token' });
   window.rsSaveConnection = () => {};
   window.rsClearConnection = () => resetQaData();
   const nativeWindowOpen = window.open.bind(window);
@@ -277,13 +295,30 @@
     const banner = document.createElement('aside');
     banner.dataset.testid = 'qa-banner';
     banner.className = 'qa-banner';
-    banner.innerHTML = `QA PREVIEW · SYNTHETIC DATA <small>${window.__LIVEVAULT_QA_BUILD_ID__ || 'local'}</small> <label class="qa-state-control">State <select aria-label="Synthetic preview state" data-testid="qa-state"><option value="populated">Populated</option><option value="empty">Empty</option><option value="loading">Slow loading</option><option value="error">Load error</option></select></label> <button type="button" data-testid="qa-reset">Reset QA Data</button>`;
+    banner.innerHTML = `<span class="qa-banner-title"><span class="qa-banner-title-wide">QA PREVIEW · SYNTHETIC DATA</span><span class="qa-banner-title-compact">QA · SYNTHETIC</span></span><small>${window.__LIVEVAULT_QA_BUILD_ID__ || 'local'}</small><label class="qa-state-control">Data <select aria-label="Synthetic preview state" data-testid="qa-state"><option value="populated">Populated</option><option value="empty">Empty</option><option value="loading">Slow loading</option><option value="error">Load error</option></select></label><label class="qa-card-control">Card <select aria-label="Next concert card view" data-testid="qa-concert-view"><option value="countdown">Countdown</option><option value="concert-day">Concert day</option></select></label><label class="qa-screen-control">Screen <select aria-label="QA preview screen" data-testid="qa-screen"><option value="app">App</option><option value="connect">Connect</option></select></label><button type="button" data-testid="qa-reset" aria-label="Reset QA data">Reset</button>`;
     document.body.prepend(banner);
     const stateControl = banner.querySelector('[data-testid="qa-state"]');
     stateControl.value = loadJson(PROFILE_KEY, 'populated');
     stateControl.addEventListener('change', () => {
       saveJson(PROFILE_KEY, stateControl.value);
       resetQaData();
+      location.reload();
+    });
+    const cardControl = banner.querySelector('[data-testid="qa-concert-view"]');
+    cardControl.value = QA_CARD_VIEW;
+    cardControl.addEventListener('change', () => {
+      localStorage.setItem(CARD_VIEW_KEY, cardControl.value);
+      location.reload();
+    });
+    const screenControl = banner.querySelector('[data-testid="qa-screen"]');
+    screenControl.value = selectedScreen();
+    screenControl.addEventListener('change', () => {
+      saveJson(SCREEN_KEY, screenControl.value);
+      if (SCREEN_QUERY) {
+        const nextUrl = new URL(location.href);
+        nextUrl.searchParams.delete('qa-screen');
+        history.replaceState(null, '', nextUrl);
+      }
       location.reload();
     });
     banner.querySelector('button').addEventListener('click', () => {

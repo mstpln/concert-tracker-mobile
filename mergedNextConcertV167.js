@@ -25,7 +25,7 @@
   }
 
   // v182: the selected Compact Hero Split (#21) applies only before concert
-  // day. Keep the v181 cyan concert-day layout and its ticket actions intact.
+  // day. The concert-day card has its separate gold treatment.
   function bannerHtml({ today, target, dateKey, distance }) {
     if (today) {
       return `<div class="next-concert-banner-v167 is-concert-day">
@@ -196,6 +196,7 @@
     const now = typeof dlCurrentDate === 'function' ? dlCurrentDate() : new Date();
     const datePart = rawTarget.slice(0, 10);
     const today = countdown.dataset.today === 'true' || (datePart && datePart === localDateKey(now));
+    card.classList.toggle('is-concert-day-v167', today);
     if (Number.isFinite(target.getTime())) card.insertAdjacentHTML('afterbegin', bannerHtml({ today, target, dateKey: datePart, distance }));
     if (today) moveConcertDayActions(countdown, card);
     applyCapacityTone(card);

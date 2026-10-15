@@ -199,12 +199,13 @@ test('v167 promotes the first upcoming card and preserves its full preparation c
   await screen.screenshot({ path: testInfo.outputPath('v167-start-next-concert-375px.png') });
 });
 
-test('v167 concert day uses neon banner, primary tickets and ghost directions', async ({ page }, testInfo) => {
+test('v167 concert day uses antique-gold styling with a luminous frame and aligned tickets', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 375, height: 1100 });
   await openStart(page);
   await setMergedNextFixture(page, { today: true });
 
   const card = page.locator('#screen-myconcerts .next-concert-merged-v167');
+  await expect(card).toHaveClass(/is-concert-day-v167/);
   await assertCoreCardContent(card);
   const banner = card.locator('.next-concert-banner-v167');
   await expect(banner).toContainText('CONCERT DAY');
@@ -228,18 +229,50 @@ test('v167 concert day uses neon banner, primary tickets and ghost directions', 
       bannerBackground: getComputedStyle(banner).backgroundColor,
       dayHeadlineColor: getComputedStyle(banner.querySelector('strong')).color,
       dayDividerColor: getComputedStyle(banner.querySelector('.next-concert-banner-right-v181')).borderLeftColor,
+      cardFrame: getComputedStyle(node.closest('.next-concert-merged-v167')).boxShadow,
       ticketBackground: getComputedStyle(tickets).backgroundColor,
+      ticketTextColor: getComputedStyle(tickets).color,
+      ticketBackgroundImage: getComputedStyle(tickets).backgroundImage,
+      iconCenterY: tickets.querySelector('svg').getBoundingClientRect().top + tickets.querySelector('svg').getBoundingClientRect().height / 2,
+      labelCenterY: tickets.querySelector('span').getBoundingClientRect().top + tickets.querySelector('span').getBoundingClientRect().height / 2,
+      buttonCenterX: tickets.getBoundingClientRect().left + tickets.getBoundingClientRect().width / 2,
+      contentCenterX: (tickets.querySelector('svg').getBoundingClientRect().left + tickets.querySelector('span').getBoundingClientRect().right) / 2,
       directionsBackground: getComputedStyle(directions).backgroundColor,
       directionsIconWidth: getComputedStyle(directions.querySelector('svg')).width,
     };
   });
-  expect(styles.bannerBackground).toBe('rgb(94, 216, 255)');
-  expect(styles.dayHeadlineColor).toBe('rgb(0, 19, 27)');
-  expect(styles.dayDividerColor).toBe('rgba(0, 19, 27, 0.3)');
-  expect(styles.ticketBackground).toBe('rgb(94, 216, 255)');
+  expect(styles.bannerBackground).toBe('rgb(133, 93, 27)');
+  expect(styles.dayHeadlineColor).toBe('rgb(255, 255, 255)');
+  expect(styles.dayDividerColor).toBe('rgba(255, 255, 255, 0.3)');
+  expect(styles.cardFrame).toContain('rgba(247, 193, 82, 0.5)');
+  expect(styles.cardFrame).toContain('rgba(178, 117, 27, 0.32)');
+  expect(styles.ticketBackground).toBe('rgb(133, 93, 27)');
+  expect(styles.ticketTextColor).toBe('rgb(255, 255, 255)');
+  expect(styles.ticketBackgroundImage).toContain('linear-gradient');
+  expect(Math.abs(styles.iconCenterY - styles.labelCenterY)).toBeLessThanOrEqual(1);
+  expect(Math.abs(styles.buttonCenterX - styles.contentCenterX)).toBeLessThanOrEqual(1);
   expect(styles.directionsBackground).toBe('rgba(0, 0, 0, 0)');
   expect(styles.directionsIconWidth).toBe('16px');
   await page.locator('#screen-myconcerts').screenshot({ path: testInfo.outputPath('v167-start-concert-day-375px.png') });
+});
+
+test('v167 concert day omits the ticket CTA when there is no saved link or PDF', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 1100 });
+  await openStart(page);
+  await setMergedNextFixture(page, { today: true, single: true });
+  await page.evaluate(() => {
+    const next = concerts.find((record) => record.id === 'qa-v167-next');
+    next.ownedTickets = [];
+    renderMyConcertsScreen();
+  });
+
+  const card = page.locator('#screen-myconcerts .next-concert-merged-v167');
+  const actions = card.locator('.next-concert-actions-v167');
+  await expect(actions.locator('.countdown-v139-open-ticket')).toHaveCount(0);
+  await expect(actions.locator('.countdown-v139-ticket-none')).toHaveCount(0);
+  await expect(actions.locator('.next-concert-directions-v167')).toContainText('Get directions');
+  const directionsGridColumn = await actions.locator('.next-concert-directions-v167').evaluate((node) => getComputedStyle(node).gridColumn);
+  expect(directionsGridColumn).toBe('1 / -1');
 });
 
 test('v167 moved multiple PDF tickets keep their menu chrome and delegated identities', async ({ page }) => {

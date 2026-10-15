@@ -9,8 +9,8 @@
 <meta name="application-name" content="Bandmarkr" />
 <meta name="apple-mobile-web-app-title" content="Bandmarkr" />
 <link rel="manifest" href="manifest.json" />
-<link rel="icon" href="icons/icon-192.png" />
-<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<link rel="icon" href="icons/icon-192.png?v=197" />
+<link rel="apple-touch-icon" href="icons/icon-192.png?v=197" />
 <meta name="theme-color" content="#111214" />
 <link rel="stylesheet" href="app.css" />
 <link rel="stylesheet" href="v72Corrections.css" />
@@ -46,24 +46,44 @@
 <link rel="stylesheet" href="musicCardIntegrationV184.css" />
 <link rel="stylesheet" href="bandmarkrLightV186.css" />
 <link rel="stylesheet" href="bandmarkrVisualV187.css" />
+<link rel="stylesheet" href="onboarding.css" />
 </head>
 <body>
 
 <div id="onboarding" class="screen">
   <div class="onboarding-inner">
-    <div class="onboarding-icon"></div>
-    <h1>Concert tracker</h1>
-    <p>
-      Connect this app to your Cloudflare Worker so it can read and write your
-      band list and concert data. See SETUP.md for how to get the URL and
-      token below.
-    </p>
-    <label for="connect-endpoint">Worker URL</label>
-    <input type="text" id="connect-endpoint" placeholder="https://concert-tracker-api.yoursubdomain.workers.dev" />
-    <label for="connect-token">Access token</label>
-    <input type="password" id="connect-token" placeholder="Paste the token from your Worker setup" />
-    <button id="connect-submit" class="btn-primary btn-block">Connect</button>
-    <p id="onboarding-error" class="error hidden"></p>
+    <div class="onboarding-story">
+      <div class="onboarding-brand">
+        <img class="onboarding-icon" src="icons/icon-192.png?v=197" alt="" />
+        <span class="onboarding-brand-copy">
+          <strong>Bandmarkr</strong>
+          <span>Music that leaves a mark.</span>
+        </span>
+      </div>
+      <p class="onboarding-kicker">From headphones to the front row.</p>
+      <h1>A home for the<br /><em>music you love.</em></h1>
+      <p class="onboarding-intro">
+        Log the shows you go to, follow the bands you love, and explore your concert and listening stats.
+      </p>
+      <div class="onboarding-features" aria-label="What Bandmarkr helps you keep track of">
+        <span><i class="feature-wave" aria-hidden="true"></i> Bands you love</span>
+        <span><i class="feature-ticket" aria-hidden="true"></i> Shows &amp; tickets</span>
+        <span><i class="feature-stats" aria-hidden="true"></i> Your music stats</span>
+      </div>
+    </div>
+    <form id="connect-form" class="onboarding-form" aria-labelledby="connect-heading">
+      <div class="form-heading">
+        <h2 id="connect-heading">Connect your Worker</h2>
+        <p>Enter the URL and access token from your setup. Need a hand? Follow the <a href="SETUP.md">Worker setup guide</a>.</p>
+      </div>
+      <label for="connect-endpoint">Worker URL</label>
+      <input type="text" id="connect-endpoint" placeholder="https://your-worker.your-subdomain.workers.dev" autocomplete="url" />
+      <label for="connect-token">Access token</label>
+      <input type="password" id="connect-token" placeholder="Paste the token from your Worker setup" autocomplete="current-password" />
+      <button id="connect-submit" class="btn-primary btn-block">Connect to Bandmarkr <span aria-hidden="true">→</span></button>
+      <p class="form-footnote">Your Worker URL and token are the connection details Bandmarkr needs to read and write your music data.</p>
+      <p id="onboarding-error" class="error hidden" role="alert"></p>
+    </form>
   </div>
 </div>
 

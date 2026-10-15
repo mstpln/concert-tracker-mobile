@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Bandmarkr</title>
+  <defs>
+    <linearGradient id="background" x1="0" y1=".55" x2="1" y2=".45">
+      <stop offset="0%" stop-color="#103c9d"/>
+      <stop offset="32%" stop-color="#185bdb"/>
+      <stop offset="63%" stop-color="#1552d0"/>
+      <stop offset="100%" stop-color="#0a338d"/>
+    </linearGradient>
+    <radialGradient id="cta-highlight">
+      <stop offset="0%" stop-color="#84bcff" stop-opacity=".27"/>
+      <stop offset="40%" stop-color="#4387fc" stop-opacity=".13"/>
+      <stop offset="76%" stop-color="#4387fc" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#background)"/>
+  <ellipse cx="179.2" cy="220.2" rx="368.6" ry="716.8" fill="url(#cta-highlight)"/>
+  <g transform="translate(256 256) scale(20) translate(-13 -11.5)"
+     fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 16v-4M9 18V8M13 16V5M17 18v-8M21 15v-5"/>
+  </g>
+</svg>

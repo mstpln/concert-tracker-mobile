@@ -27,7 +27,7 @@ for (const width of [320, 375, 480]) {
       await expect.poll(() => primary.evaluate(el => el.style.getPropertyValue('--v186-first-letter-x'))).toMatch(/px$/);
       const frame = page.locator('#screen-myconcerts .myconcerts-summary > .start-top-bands-card');
       const frameGlow = await frame.evaluate(el => getComputedStyle(el).boxShadow);
-      expect(frameGlow).toContain('rgba(61, 128, 250, 0.24)');
+      expect(frameGlow).toBe('rgba(61, 128, 250, 0.5) 0px 0px 12px 0px, rgba(25, 95, 221, 0.32) 0px 0px 30px 0px');
       await expect(frame).toHaveCSS('border-top-width', '1px');
 
       await page.locator('#music-tab-concerts').click();

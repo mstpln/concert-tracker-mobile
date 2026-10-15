@@ -1,7 +1,7 @@
 'use strict';
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v193';
-// Previous release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v192'.
+const CACHE_NAME_LITERAL = 'v199';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v197'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v181'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v180'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v179'.
@@ -119,6 +119,7 @@ const SHELL_FILES = [
   './',
   './index.html',
   './app.css',
+  './onboarding.css',
   './v72Corrections.css',
   './listeningV81.css',
   './concertCardsV86.css',
@@ -253,11 +254,12 @@ const SHELL_FILES = [
   './spotifyUserV100.js',
   './version.js',
   './manifest.json',
+  './SETUP.md',
   './icons/bandmarkr-wordmark.svg',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-192-maskable.png',
-  './icons/icon-512-maskable.png',
+  './icons/icon-192.png?v=197',
+  './icons/icon-512.png?v=197',
+  './icons/icon-192-maskable.png?v=197',
+  './icons/icon-512-maskable.png?v=197',
   './assets/listening/album-blue.svg',
   './assets/listening/album-purple.svg',
   './assets/listening/album-cyan.svg',

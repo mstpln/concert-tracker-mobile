@@ -89,7 +89,7 @@
   flex-direction: column;
   align-items: flex-start;
   min-width: 0;
-  gap: 7px;
+  gap: 6px;
 }
 #screen-myconcerts .next-concert-banner-label-v181 {
   display: block;
@@ -131,21 +131,21 @@
   line-height: 1.15;
   color: rgba(255,255,255,.89);
 }
-/* Preserve the high-contrast dark text on the existing cyan concert-day
-   banner; white is reserved for the normal blue countdown banner. */
+/* Keep all concert-day banner text and separators high-contrast on the gold
+   treatment; the countdown banner retains its white-on-blue styling. */
 #screen-myconcerts .next-concert-banner-v167.is-concert-day strong {
-  color: #00131b;
+  color: #fff;
 }
 #screen-myconcerts .next-concert-banner-v167.is-concert-day .next-concert-banner-right-v181 {
-  border-left-color: rgba(0, 19, 27, .30);
+  border-left-color: rgba(255, 255, 255, .30);
 }
 #screen-myconcerts .next-concert-banner-v167.is-concert-day .next-concert-banner-label-v181 {
   margin-left: 0;
-  color: #16323b;
+  color: rgba(255, 255, 255, .88);
 }
 #screen-myconcerts .next-concert-banner-v167.is-concert-day .next-concert-distance-v167 {
   margin-left: 0;
-  color: #16323b;
+  color: rgba(255, 255, 255, .88);
 }
 @media (max-width: 355px) {
   #screen-myconcerts .myconcerts-history-tab {
@@ -313,5 +313,36 @@
   }
   #screen-myconcerts .next-concert-banner-v167.next-concert-stage-v182 .next-concert-distance-v167 {
     font-size: 11px;
+  }
+}
+
+/* Match the countdown banner's NEXT CONCERT / DAYS LEFT typography on
+   concert day, without applying its large numeral treatment. */
+#screen-myconcerts .next-concert-banner-v167.is-concert-day .next-concert-banner-label-v181 {
+  margin: 0;
+  color: rgba(255, 255, 255, .86);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+#screen-myconcerts .next-concert-banner-v167.is-concert-day .next-concert-banner-left-v181 > strong {
+  color: #fff;
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: .96;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+@media (max-width: 355px) {
+  #screen-myconcerts .next-concert-banner-v167.is-concert-day .next-concert-banner-label-v181 {
+    font-size: 8px;
+    letter-spacing: .08em;
+  }
+  #screen-myconcerts .next-concert-banner-v167.is-concert-day .next-concert-banner-left-v181 > strong {
+    font-size: 16px;
   }
 }

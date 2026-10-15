@@ -35,7 +35,7 @@ test('v187 restrained header accent and stats-frame halo preserve layout', () =>
   assert.match(css, /prefers-color-scheme: dark/);
   assert.match(css, /#screen-myconcerts \.myconcerts-summary > \.start-top-bands-card/);
   assert.match(css, /#screen-myconcerts \.myconcerts-summary > \.stats-teaser-card/);
-  assert.match(css, /box-shadow: 0 0 8px rgba\(61,128,250,\.24\)/);
+  assert.match(css, /box-shadow: 0 0 12px rgba\(61,128,250,\.5\), 0 0 30px rgba\(25,95,221,\.32\)/);
   assert.doesNotMatch(css, /animation:|@keyframes|transition:|\.brand-banner\s*\{/);
 });
 
