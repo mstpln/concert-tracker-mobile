@@ -1,1 +1,145 @@
-:root{--qa-banner-height:44px}.qa-banner{position:fixed;top:0;right:0;left:0;z-index:9999;height:var(--qa-banner-height);box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:10px;overflow:hidden;background:#f0c419;color:#111214;padding:6px 12px;font:700 12px/1.2 system-ui;text-align:center;white-space:nowrap}.qa-banner small{min-width:0;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400}.qa-banner button{flex:0 0 auto;border:1px solid #111;background:#111;color:#fff;border-radius:4px;padding:4px 8px;font:inherit}.qa-state-control{display:inline-flex;align-items:center}.qa-state-control select{max-width:112px;border:1px solid #111;border-radius:4px;background:#fff;color:#111;padding:4px 5px;font:500 11px/1.2 system-ui}#app,#onboarding.screen{top:var(--qa-banner-height)}@media(max-width:480px){.qa-banner{gap:5px;padding:6px 8px;font-size:10px}.qa-banner small{max-width:35px}.qa-state-control select{max-width:78px;padding:4px 3px;font-size:10px}.qa-banner button{padding:4px 5px}}
+:root {
+  --qa-banner-height: 44px;
+}
+
+.qa-banner {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 9999;
+  height: var(--qa-banner-height);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  overflow: hidden;
+  background: #f0c419;
+  color: #111214;
+  padding: 6px 12px;
+  font: 700 12px/1.2 system-ui;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.qa-banner-title {
+  flex: 0 0 auto;
+}
+
+.qa-banner-title-compact {
+  display: none;
+}
+
+.qa-banner small {
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+.qa-banner button {
+  flex: 0 0 auto;
+  border: 1px solid #111;
+  background: #111;
+  color: #fff;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font: inherit;
+}
+
+.qa-state-control,
+.qa-card-control,
+.qa-screen-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.qa-state-control select,
+.qa-card-control select,
+.qa-screen-control select {
+  width: auto;
+  max-width: 112px;
+  border: 1px solid #111;
+  border-radius: 4px;
+  background: #fff;
+  color: #111;
+  padding: 4px 5px;
+  font: 500 11px/1.2 system-ui;
+}
+
+#app,
+#onboarding.screen {
+  top: var(--qa-banner-height);
+}
+
+@media (max-width: 640px) {
+  :root {
+    --qa-banner-height: 64px;
+  }
+
+  .qa-banner {
+    flex-wrap: wrap;
+    justify-content: center;
+    align-content: center;
+    gap: 3px 7px;
+    padding: 4px 6px;
+    font-size: 9px;
+  }
+
+  .qa-banner-title-wide {
+    display: none;
+  }
+
+  .qa-banner-title-compact {
+    display: inline;
+  }
+
+  .qa-banner small {
+    display: none;
+  }
+
+  .qa-state-control,
+  .qa-card-control,
+  .qa-screen-control {
+    gap: 2px;
+  }
+
+  .qa-state-control select,
+  .qa-card-control select,
+  .qa-screen-control select {
+    max-width: 76px;
+    padding: 4px 3px;
+    font-size: 9px;
+  }
+
+  .qa-screen-control select {
+    max-width: 58px;
+  }
+
+  .qa-banner button {
+    padding: 4px 5px;
+    font-size: 9px;
+  }
+}
+
+@media (max-width: 360px) {
+  :root {
+    --qa-banner-height: 62px;
+  }
+
+  .qa-banner {
+    flex-wrap: wrap;
+    justify-content: center;
+    align-content: center;
+    gap: 3px 7px;
+    padding: 4px 6px;
+  }
+
+  .qa-banner-title {
+    flex-basis: 100%;
+  }
+}

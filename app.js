@@ -210,8 +210,8 @@ function showOnboarding(errorMessage) {
 }
 
 function wireOnboarding() {
-  el('onboarding').querySelector('.onboarding-icon').innerHTML = icon('folder');
-  el('connect-submit').addEventListener('click', async () => {
+  el('connect-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
     const errEl = el('onboarding-error');
     errEl.classList.add('hidden');
     const endpoint = el('connect-endpoint').value.trim().replace(/\/$/, '');

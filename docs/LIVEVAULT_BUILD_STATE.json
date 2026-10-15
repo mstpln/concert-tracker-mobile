@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatorVersion": 1,
-  "appVersion": "v193",
-  "serviceWorkerCacheVersion": "v193",
+  "appVersion": "v199",
+  "serviceWorkerCacheVersion": "v199",
   "versionsMatch": true,
   "runtime": "plain-html-css-javascript-pwa",
   "expectedNodeMajor": 22,
@@ -17,6 +17,8 @@
     "production-smoke.yml"
   ],
   "shellFiles": [
+    "onboarding.css",
+    "SETUP.md",
     "index.html",
     "app.css",
     "listeningV81.css",

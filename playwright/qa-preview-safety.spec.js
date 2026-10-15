@@ -65,3 +65,35 @@ test('synthetic preview keeps common navigation, state profiles, and storage loc
   expect(new URL(guardResult.href).origin).toBe('http://127.0.0.1:4173');
   expect(externalRequests).toEqual([]);
 });
+
+test('QA-only card view selector switches countdown and concert-day without changing fixture data', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('qa-banner')).toContainText('SYNTHETIC DATA');
+  await expect(page.locator('#screen-myconcerts')).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-qa-preview', 'true');
+  await page.getByRole('tab', { name: 'Concerts' }).click();
+
+  const view = page.getByTestId('qa-concert-view');
+  await expect(view).toHaveValue('concert-day');
+  await expect(page.locator('#screen-myconcerts .next-concert-banner-v167.is-concert-day')).toHaveCount(1);
+  const seededConcertCount = await page.evaluate(() => JSON.parse(localStorage.getItem('livevault-qa:data')).concerts.length);
+
+  await Promise.all([
+    page.waitForNavigation(),
+    view.selectOption('countdown'),
+  ]);
+  await page.getByRole('tab', { name: 'Concerts' }).click();
+  await expect(page.getByTestId('qa-concert-view')).toHaveValue('countdown');
+  await expect(page.locator('#screen-myconcerts .next-concert-banner-v167.next-concert-stage-v182')).toBeVisible();
+  await expect(page.locator('#screen-myconcerts .next-concert-banner-v167.is-concert-day')).toHaveCount(0);
+  expect(await page.evaluate(() => dlCurrentDate().toISOString())).toBe('2027-07-15T12:00:00.000Z');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('livevault-qa:data')).concerts.length)).toBe(seededConcertCount);
+
+  await Promise.all([
+    page.waitForNavigation(),
+    page.getByTestId('qa-concert-view').selectOption('concert-day'),
+  ]);
+  await page.getByRole('tab', { name: 'Concerts' }).click();
+  await expect(page.locator('#screen-myconcerts .next-concert-banner-v167.is-concert-day')).toHaveCount(1);
+  expect(await page.evaluate(() => dlCurrentDate().toISOString())).toBe('2027-07-16T12:00:00.000Z');
+});

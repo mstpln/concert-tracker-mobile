@@ -104,10 +104,14 @@ function pixel(image, x, y) {
 function validateIcon(file, expectedSize) {
   const image = decodePng(file);
   assert.deepEqual({ width: image.width, height: image.height }, { width: expectedSize, height: expectedSize });
-  const blue = [2, 77, 223, 255];
+  const topLeft = pixel(image, 0, 0);
+  const bottomRight = pixel(image, image.width - 1, image.height - 1);
   const white = [255, 255, 255, 255];
-  assert.deepEqual(pixel(image, 0, 0), blue, `${file} keeps the approved blue background`);
-  assert.deepEqual(pixel(image, image.width - 1, image.height - 1), blue, `${file} keeps blue safe-area corners`);
+  for (const [corner, color] of [['top-left', topLeft], ['bottom-right', bottomRight]]) {
+    assert.equal(color.length, 4, `${file} ${corner} corner is opaque`);
+    assert.ok(color[2] > color[0] && color[2] > color[1], `${file} ${corner} corner remains blue-toned`);
+  }
+  assert.notDeepEqual(topLeft, bottomRight, `${file} uses a tonal gradient rather than a flat background`);
 
   const whitePoints = [];
   for (let y = 0; y < image.height; y += 1) {
@@ -115,7 +119,7 @@ function validateIcon(file, expectedSize) {
       if (pixel(image, x, y).every((channel, index) => channel === white[index])) whitePoints.push([x, y]);
     }
   }
-  assert.ok(whitePoints.length > expectedSize * expectedSize * 0.12, `${file} contains a visible white bookmark`);
+  assert.ok(whitePoints.length > expectedSize * expectedSize * 0.04, `${file} contains a visible white waveform`);
   const xs = whitePoints.map(([x]) => x);
   const ys = whitePoints.map(([, y]) => y);
   const bounds = {
@@ -123,22 +127,28 @@ function validateIcon(file, expectedSize) {
   };
   const widthRatio = (bounds.right - bounds.left + 1) / image.width;
   const heightRatio = (bounds.bottom - bounds.top + 1) / image.height;
-  assert.ok(widthRatio >= 0.34 && widthRatio <= 0.38, `${file} bookmark is approximately 10% smaller in width`);
-  assert.ok(heightRatio >= 0.54 && heightRatio <= 0.58, `${file} bookmark is approximately 10% smaller in height`);
-  assert.ok(Math.abs((bounds.left + bounds.right) / 2 - image.width / 2) <= 1, `${file} bookmark is horizontally centered`);
+  assert.ok(widthRatio >= 0.68 && widthRatio <= 0.74, `${file} waveform stays compact and readable in width`);
+  assert.ok(heightRatio >= 0.56 && heightRatio <= 0.63, `${file} waveform stays compact and readable in height`);
+  assert.ok(Math.abs((bounds.left + bounds.right) / 2 - image.width / 2) <= 1, `${file} waveform is horizontally centered`);
 
-  const interiorY = Math.floor(bounds.top + (bounds.bottom - bounds.top) * 0.3);
-  for (let x = bounds.left + 4; x <= bounds.right - 4; x += 1) {
-    assert.deepEqual(pixel(image, x, interiorY), white, `${file} bookmark interior contains no BM lettering`);
+  const centerY = Math.floor(image.height * 0.57);
+  let whiteRuns = 0;
+  let insideRun = false;
+  for (let x = bounds.left; x <= bounds.right; x += 1) {
+    const isWhite = pixel(image, x, centerY).every((channel, index) => channel === white[index]);
+    if (isWhite && !insideRun) whiteRuns += 1;
+    insideRun = isWhite;
   }
-  assert.deepEqual(pixel(image, Math.floor(image.width / 2), Math.floor(image.height * 0.72)), blue, `${file} retains the bookmark notch`);
+  assert.equal(whiteRuns, 5, `${file} contains five distinct waveform bars`);
+  assert.deepEqual(pixel(image, Math.floor(image.width / 2), Math.floor(image.height / 2)), white, `${file} has a bright center waveform bar`);
 }
 
-test('v88 keeps the in-app BANDMARKR banner while simplifying the installed identity', () => {
+test('Bandmarkr keeps its wordmark and uses a CTA-toned waveform for the installed icon', () => {
   const html = read('index.html');
   const manifest = JSON.parse(read('manifest.json'));
   const css = read('bandmarkrV87.css');
   const wordmark = read('icons/bandmarkr-wordmark.svg');
+  const appIcon = read('icons/bandmarkr-app-icon.svg');
   const version = read('version.js');
   const serviceWorker = read('service-worker.js');
 
@@ -148,11 +158,14 @@ test('v88 keeps the in-app BANDMARKR banner while simplifying the installed iden
   assert.match(html, /brand-wordmark" src="icons\/bandmarkr-wordmark\.svg" alt="BANDMARKR"/);
   assert.equal(manifest.name, 'Bandmarkr');
   assert.equal(manifest.short_name, 'Bandmarkr');
+  assert.ok(manifest.icons.every(({ src }) => src.endsWith('?v=197')), 'manifest icon URLs refresh for v197');
   assert.match(css, /--bandmarkr-blue:\s*#024ddf/);
   assert.match(wordmark, /<title id="title">BANDMARKR<\/title>/);
   assert.equal((wordmark.match(/<path /g) || []).length, 9);
-  assert.match(version, /APP_VERSION = 'v88'/);
-  assert.match(serviceWorker, /CACHE_NAME_LITERAL = 'v88'/);
+  assert.match(appIcon, /d="M5 16v-4M9 18V8M13 16V5M17 18v-8M21 15v-5"/);
+  assert.match(appIcon, /id="cta-highlight"/);
+  assert.match(version, /APP_VERSION = 'v199'/);
+  assert.match(serviceWorker, /CACHE_NAME_LITERAL = 'v199'/);
   assert.match(serviceWorker, /concert-tracker-shell-/);
   assert.match(serviceWorker, /icons\/bandmarkr-wordmark\.svg/);
 

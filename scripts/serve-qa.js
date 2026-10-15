@@ -15,6 +15,7 @@ const port = Number(process.env.PORT || 4173);
 const watchMode = process.env.QA_WATCH === '1';
 const liveClients = new Set();
 const contentTypes = {
+  '.md': 'text/markdown; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
