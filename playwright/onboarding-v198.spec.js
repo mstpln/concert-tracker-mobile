@@ -13,8 +13,12 @@ test('QA preview shows the branded Bandmarkr connection screen without changing 
   await expect(page.getByTestId('qa-screen')).toHaveValue('connect');
   await expect(page.locator('#onboarding')).toBeVisible();
   await expect(page.locator('#app')).toBeHidden();
-  await expect(page.getByText('Bandmarkr', { exact: true })).toBeVisible();
+  await expect(page.getByText('BANDMARKR', { exact: true })).toBeVisible();
   await expect(page.locator('.onboarding-brand-copy > span')).toHaveText('Music that leaves a mark.');
+  await expect(page.locator('.onboarding-brand-copy > span')).toHaveCSS('text-transform', 'none');
+  await expect(page.locator('.feature-bands-icon')).toBeVisible();
+  await expect(page.locator('.feature-bands-icon circle')).toHaveCount(2);
+  await expect(page.locator('.feature-wave')).toHaveCount(0);
   await expect(page.locator('.onboarding-kicker')).toHaveText('From headphones to the front row.');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(/A home for the\s*music you love/);
   await expect(page.locator('.onboarding-intro')).toHaveText('Log the shows you go to, follow the bands you love, and explore your concert and listening stats.');

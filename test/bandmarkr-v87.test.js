@@ -164,8 +164,8 @@ test('Bandmarkr keeps its wordmark and uses a CTA-toned waveform for the install
   assert.equal((wordmark.match(/<path /g) || []).length, 9);
   assert.match(appIcon, /d="M5 16v-4M9 18V8M13 16V5M17 18v-8M21 15v-5"/);
   assert.match(appIcon, /id="cta-highlight"/);
-  assert.match(version, /APP_VERSION = 'v199'/);
-  assert.match(serviceWorker, /CACHE_NAME_LITERAL = 'v199'/);
+  assert.match(version, /APP_VERSION = 'v200'/);
+  assert.match(serviceWorker, /CACHE_NAME_LITERAL = 'v200'/);
   assert.match(serviceWorker, /concert-tracker-shell-/);
   assert.match(serviceWorker, /icons\/bandmarkr-wordmark\.svg/);
 
