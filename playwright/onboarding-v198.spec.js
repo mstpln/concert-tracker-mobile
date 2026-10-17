@@ -21,16 +21,12 @@ test('QA preview shows the branded Bandmarkr connection screen without changing 
   await expect(page.locator('.feature-wave')).toHaveCount(0);
   await expect(page.locator('.onboarding-kicker')).toHaveText('From headphones to the front row.');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(/A home for the\s*music you love/);
+  await expect(page.locator('#onboarding h1 em')).toHaveCSS('color', 'rgb(233, 193, 112)');
   await expect(page.locator('.onboarding-intro')).toHaveText('Log the shows you go to, follow the bands you love, and explore your concert and listening stats.');
-  await expect(page.locator('.form-step, .onboarding-note')).toHaveCount(0);
-  await expect(page.locator('.onboarding-icon')).toHaveAttribute('src', 'icons/icon-192.png?v=197');
+  await expect(page.locator('.form-step, .onboarding-note, .form-heading p, .form-footnote')).toHaveCount(0);
+  await expect(page.locator('.onboarding-icon')).toHaveAttribute('src', 'icons/icon-192.png?v=201');
   await expect(page.getByLabel('Worker URL')).toBeVisible();
   await expect(page.getByLabel('Access token')).toHaveAttribute('type', 'password');
-  await expect(page.getByRole('link', { name: 'Worker setup guide' })).toHaveAttribute('href', /\/SETUP\.md$/);
-
-  const guideResponse = await page.request.get('/SETUP.md');
-  expect(guideResponse.ok()).toBe(true);
-
   const noHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
   expect(noHorizontalOverflow).toBe(true);
 

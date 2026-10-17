@@ -1,6 +1,7 @@
 'use strict';
 importScripts('./version.js');
-const CACHE_NAME_LITERAL = 'v200';
+const CACHE_NAME_LITERAL = 'v201';
+// Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v200'.
 // Previous release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v199'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v197'.
 // Previous merged release marker retained for regression coverage: CACHE_NAME_LITERAL = 'v181'.
@@ -257,10 +258,10 @@ const SHELL_FILES = [
   './manifest.json',
   './SETUP.md',
   './icons/bandmarkr-wordmark.svg',
-  './icons/icon-192.png?v=197',
-  './icons/icon-512.png?v=197',
-  './icons/icon-192-maskable.png?v=197',
-  './icons/icon-512-maskable.png?v=197',
+  './icons/icon-192.png?v=201',
+  './icons/icon-512.png?v=201',
+  './icons/icon-192-maskable.png?v=201',
+  './icons/icon-512-maskable.png?v=201',
   './assets/listening/album-blue.svg',
   './assets/listening/album-purple.svg',
   './assets/listening/album-cyan.svg',

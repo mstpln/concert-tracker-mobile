@@ -71,10 +71,10 @@ test('Bandmarkr keeps its banner and installs the branded Music waveform icons',
     for (const bar of icon.bars) expect(bar, `${icon.src} renders all five white waveform strokes`).toEqual([255, 255, 255, 255]);
     expect(icon.gap, `${icon.src} keeps the strokes separate`).not.toEqual([255, 255, 255, 255]);
     expect(icon.corner[3], `${icon.src} keeps an opaque safe area`).toBe(255);
-    expect(icon.corner[2], `${icon.src} keeps the branded blue safe area`).toBeGreaterThan(icon.corner[1] + 50);
-    expect(icon.corner[1]).toBeGreaterThan(icon.corner[0] + 20);
+    expect(icon.corner[0], `${icon.src} keeps the gold safe area`).toBeGreaterThan(icon.corner[1]);
+    expect(icon.corner[1]).toBeGreaterThan(icon.corner[2]);
     expect(icon.oppositeCorner[3]).toBe(255);
-    expect(icon.corner, `${icon.src} retains the blue gradient toning`).not.toEqual(icon.oppositeCorner);
+    expect(icon.corner, `${icon.src} retains the gold gradient toning`).not.toEqual(icon.oppositeCorner);
   }
 
   await expect(page.locator('#start-version-refresh')).toHaveText(/^v\d+$/);

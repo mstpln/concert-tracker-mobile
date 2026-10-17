@@ -50,7 +50,8 @@
   height: 42px;
   margin: 0;
   border-radius: 11px;
-  box-shadow: 0 5px 22px rgba(20, 88, 218, .24);
+  filter: drop-shadow(0 0 12px rgba(255, 216, 134, .62))
+    drop-shadow(0 0 30px rgba(204, 148, 57, .4));
 }
 .onboarding-brand-copy {
   display: flex;
@@ -88,7 +89,7 @@
   letter-spacing: -.055em;
 }
 #onboarding h1 em {
-  color: #8db8ff;
+  color: #e9c170;
   font-style: normal;
 }
 #onboarding .onboarding-intro {
@@ -186,17 +187,6 @@
   font-weight: 620;
   letter-spacing: -.035em;
 }
-#onboarding .form-heading p {
-  margin: 0;
-  color: #9da8b9;
-  font-size: 12px;
-  line-height: 1.65;
-}
-.form-heading a {
-  color: #9fc2ff;
-  text-decoration-color: rgba(159, 194, 255, .45);
-  text-underline-offset: 3px;
-}
 #onboarding label {
   margin: 0 0 7px;
   color: #c1cada;
@@ -240,12 +230,6 @@
 #onboarding #connect-submit:hover { transform: translateY(-1px); }
 #onboarding #connect-submit:active { transform: translateY(0); opacity: .9; }
 #onboarding #connect-submit span { font-size: 17px; line-height: 1; }
-#onboarding .form-footnote {
-  margin: 14px 0 0;
-  color: #778397;
-  font-size: 10px;
-  line-height: 1.6;
-}
 #onboarding #onboarding-error {
   margin: 13px 0 0;
   color: #ff9d9b;
@@ -257,15 +241,25 @@
   .onboarding-inner {
     width: min(100%, 540px);
     grid-template-columns: minmax(0, 1fr);
-    gap: 31px;
-    padding: max(24px, env(safe-area-inset-top)) 22px max(28px, env(safe-area-inset-bottom));
+    gap: 24px;
+    padding: max(20px, env(safe-area-inset-top)) 22px max(22px, env(safe-area-inset-bottom));
   }
-  .onboarding-brand { margin-bottom: 31px; }
-  #onboarding h1 { font-size: clamp(39px, 11vw, 52px); }
-  #onboarding .onboarding-intro { font-size: 14px; }
-  .onboarding-features { gap: 10px 15px; margin-top: 21px; }
+  .onboarding-brand { margin-bottom: 23px; }
+  .onboarding-kicker { margin-bottom: 11px !important; }
+  #onboarding h1 {
+    margin-bottom: 12px;
+    font-size: clamp(36px, 10.6vw, 49px);
+  }
+  #onboarding .onboarding-intro { font-size: 13px; line-height: 1.6; }
+  .onboarding-features { gap: 9px 15px; margin-top: 17px; }
   .onboarding-note { display: none; }
-  .onboarding-form { padding: 23px 21px; border-radius: 15px; }
+  .onboarding-form { padding: 20px 19px; border-radius: 15px; }
+  .form-heading { margin-bottom: 20px; }
+  #onboarding input[type="text"],
+  #onboarding input[type="password"] {
+    height: 44px;
+    margin-bottom: 15px;
+  }
 }
 
 @media (max-height: 700px) and (min-width: 741px) {
