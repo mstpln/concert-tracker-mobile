@@ -109,7 +109,7 @@ function validateIcon(file, expectedSize) {
   const white = [255, 255, 255, 255];
   for (const [corner, color] of [['top-left', topLeft], ['bottom-right', bottomRight]]) {
     assert.equal(color.length, 4, `${file} ${corner} corner is opaque`);
-    assert.ok(color[2] > color[0] && color[2] > color[1], `${file} ${corner} corner remains blue-toned`);
+    assert.ok(color[0] > color[1] && color[1] > color[2], `${file} ${corner} corner remains gold-toned`);
   }
   assert.notDeepEqual(topLeft, bottomRight, `${file} uses a tonal gradient rather than a flat background`);
 
@@ -158,14 +158,16 @@ test('Bandmarkr keeps its wordmark and uses a CTA-toned waveform for the install
   assert.match(html, /brand-wordmark" src="icons\/bandmarkr-wordmark\.svg" alt="BANDMARKR"/);
   assert.equal(manifest.name, 'Bandmarkr');
   assert.equal(manifest.short_name, 'Bandmarkr');
-  assert.ok(manifest.icons.every(({ src }) => src.endsWith('?v=197')), 'manifest icon URLs refresh for v197');
+  assert.ok(manifest.icons.every(({ src }) => src.endsWith('?v=201')), 'manifest icon URLs refresh for v201');
   assert.match(css, /--bandmarkr-blue:\s*#024ddf/);
   assert.match(wordmark, /<title id="title">BANDMARKR<\/title>/);
   assert.equal((wordmark.match(/<path /g) || []).length, 9);
   assert.match(appIcon, /d="M5 16v-4M9 18V8M13 16V5M17 18v-8M21 15v-5"/);
+  assert.match(appIcon, /stop-color="#b7863b"/);
   assert.match(appIcon, /id="cta-highlight"/);
-  assert.match(version, /APP_VERSION = 'v200'/);
-  assert.match(serviceWorker, /CACHE_NAME_LITERAL = 'v200'/);
+  assert.match(version, /APP_VERSION = 'v201'/);
+  assert.match(serviceWorker, /CACHE_NAME_LITERAL = 'v201'/);
+  assert.match(serviceWorker, /icons\/icon-512\.png\?v=201/);
   assert.match(serviceWorker, /concert-tracker-shell-/);
   assert.match(serviceWorker, /icons\/bandmarkr-wordmark\.svg/);
 
