@@ -3,6 +3,7 @@
 const config = require('./config');
 const { haversineKm, slugify, isValidFullDate } = require('./util');
 const ConcertIntegrity = require('./ticketmasterConcertIntegrityV163');
+const ConcertEuropeAdmission = require('./concertEuropeAdmission');
 
 function apiKey() {
   const key = process.env[config.TICKETMASTER.apiKeyEnv];
@@ -163,6 +164,9 @@ async function eventToConcert(event, band, attractionId, usage, fetchImpl, venue
     return null;
   }
 
+  // Only new, explicitly European provider observations proceed. Historical
+  // records are never inspected or removed by this admission rule.
+  if (!ConcertEuropeAdmission.canAutoAdmitConcert(venue)) return null;
   const distanceKm = haversineKm(config.HOME_LAT, config.HOME_LON, venue.latitude, venue.longitude);
   const eventName = typeof event?.name === 'string' && event.name.trim() ? event.name.trim() : null;
   return {
