@@ -35,8 +35,8 @@ test('mixed automatic candidates retain only Europe without mutating their origi
 });
 
 test('focused research cannot add foreign or unknown-country candidates, and retains all historical records', () => {
-  const savedOutside = { ...show('USA', 'user-owned'), attending: true, notes: 'Do not delete', favorite: true, unknownFutureField: { kept: 1 } };
-  const savedUnknown = { ...show('', 'unknown-user-owned'), attending: false, ticketUrl: 'https://example.invalid/ticket', manuallyAdded: true };
+  const savedOutside = { ...show('USA', 'user-owned'), date: '2024-07-18', attending: true, notes: 'Do not delete', favorite: true, unknownFutureField: { kept: 1 } };
+  const savedUnknown = { ...show('', 'unknown-user-owned'), date: '2025-07-18', attending: false, ticketUrl: 'https://example.invalid/ticket', manuallyAdded: true };
   const original = [savedOutside, savedUnknown];
   const incoming = [show('Japan', 'new-jp'), show('', 'new-missing'), show('Sweden', 'new-se')];
 
