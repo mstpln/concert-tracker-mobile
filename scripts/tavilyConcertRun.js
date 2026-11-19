@@ -11,6 +11,7 @@ const { fetchTourDatesViaTavily } = require('./research');
 const CanonicalIdentity = require('../canonicalIdentityV174');
 const CanonicalIngestion = require('./lib/canonicalConcertIngestionV175');
 const LineupRole = require('../lineupRoleV155');
+const ConcertEuropeAdmission = require('./lib/concertEuropeAdmission');
 
 let sharedUsage = null;
 
@@ -64,7 +65,7 @@ function reconcileFocusedCandidates(concerts, candidates, venues, now = new Date
   const results = [];
   const counts = { added: 0, merged: 0, lifecycle: 0, held: 0, unchanged: 0 };
 
-  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+  for (const candidate of ConcertEuropeAdmission.europeOnlyCandidates(candidates)) {
     const applied = CanonicalIngestion.ingestCandidate(records, candidate, { venueIndex, now });
     records = applied.records;
     results.push(applied.result);
@@ -119,7 +120,7 @@ async function main() {
       reporting.recordProblem(usage, 'webConcertSearch', error, 'Web concert search', 'attention');
     }
 
-    const upcomingCandidates = candidates
+    const upcomingCandidates = ConcertEuropeAdmission.europeOnlyCandidates(candidates)
       .filter((candidate) => candidate.date && candidate.date >= todayIso())
       .map(attachResearchGeocode);
     observed += upcomingCandidates.length;
