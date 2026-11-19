@@ -1,7 +1,7 @@
 'use strict';
 // Human-readable build/version label, displayed in Settings and the Start header.
 // Keep APP_VERSION synchronized with CACHE_NAME_LITERAL in service-worker.js.
-const APP_VERSION = 'v201';
+const APP_VERSION = 'v202';
 // Previous merged release marker retained for regression coverage: APP_VERSION = 'v200'.
 // Previous release marker retained for regression coverage: APP_VERSION = 'v199'.
 // Previous release marker retained for regression coverage: APP_VERSION = 'v192'.

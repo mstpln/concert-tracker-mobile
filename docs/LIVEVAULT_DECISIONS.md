@@ -1,5 +1,13 @@
 # LiveVault Decisions
 
+## v202 Non-destructive Europe-only future discovery
+
+**Decision:** Scheduled Ticketmaster and Tavily/Groq discoveries admit only events in BANDMARKR's existing app-defined European country set; missing or unfamiliar country values fail closed for new automatic observations. The filter applies before persistence in both the regular structured and focused tour-date workflows. Keep existing records untouched, independent of attendance, manual/import origin, ticket links, user edits or other stored fields. Never use the region filter to clean up existing history or to reject manual entries.
+
+**Limits:** This release does not perform historical deletion, data migration, JSON size optimization, API quota changes or a production research run. The existing country set is a product scope rather than an exhaustive geographical list; changing that set requires separate discussion. Preserve other provider ownership and review rules. v202 app and service-worker versions stay synchronized.
+
+
+
 ## v192 Spotify CTA Variant 4 — restrained matte green
 
 **Decision:** Replace only the v191 metallic green Spotify treatment in Discover > Bands with the approved Variant 4: green much closer to Spotify's original tone, a barely visible top highlight over a near-flat green body, and no radial vignette or dramatic dark edges. Retain the existing white Spotify icon and text, external-link behavior, 1px outline, dimensions, spacing and keyboard accessibility. All other visual treatments, including the v191 Settings lines, stay untouched.

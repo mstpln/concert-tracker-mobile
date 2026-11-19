@@ -1,3 +1,10 @@
+## v202 — Europe-only automatic concert discovery
+
+- The scheduled structured research and focused Tavily concert workflows apply the existing `europeScopeV160.js` Europe country classifier to newly discovered event observations before canonical ingestion. Ticketmaster also excludes non-European/unknown-country events before returning an automatic concert candidate. The Tavily/Groq extractor has a matching instruction and a deterministic country check before geocoding.
+- No historical concert is filtered, modified, migrated or deleted by this change, including attended, saved, manually created and imported records. New outside-Europe and country-unknown observations are excluded; the entire existing `concerts.json` document is preserved as the merge baseline. Existing setlist enrichment, manual app entry, quotas, identities and event conflict rules stay unchanged.
+- Region membership follows the **existing app-defined Europe scope**, not EU membership; this scope includes the UK, Norway, Switzerland, Turkey and Serbia but currently excludes several geographically European countries (for example Albania/Ukraine). A later scope expansion requires separate approval.
+- No JSON compacting or historical cleanup is included here. The known 10 MB production concerts.json write ceiling remains unresolved, so scheduled research can still fail until separately addressed. Tests use synthetic data and the fake backend only. `APP_VERSION` and `CACHE_NAME_LITERAL` advance together to v202. PR/CI/release status must be verified on GitHub; this does not authorize deployment.
+
 ## v192 — Softer Spotify CTA Variant 4 (PR, not deployed)
 
 - Discover > Bands green Spotify links now use approved Variant 4: closer to Spotify's original hue, a restrained top-edge lightening and a nearly flat green body. This replaces the darker metallic v191 vignette only for `#screen-concerts .discover-actions .discover-spotify`.
