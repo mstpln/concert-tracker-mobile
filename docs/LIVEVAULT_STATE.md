@@ -1,4 +1,4 @@
-## v202 — Europe-only automatic concert discovery (PR, not deployed)
+## v202 — Europe-only automatic concert discovery
 
 - The scheduled structured research and focused Tavily concert workflows apply the existing `europeScopeV160.js` Europe country classifier to newly discovered event observations before canonical ingestion. Ticketmaster also excludes non-European/unknown-country events before returning an automatic concert candidate. The Tavily/Groq extractor has a matching instruction and a deterministic country check before geocoding.
 - No historical concert is filtered, modified, migrated or deleted by this change, including attended, saved, manually created and imported records. New outside-Europe and country-unknown observations are excluded; the entire existing `concerts.json` document is preserved as the merge baseline. Existing setlist enrichment, manual app entry, quotas, identities and event conflict rules stay unchanged.
