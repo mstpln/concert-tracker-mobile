@@ -43,6 +43,7 @@ const LineupRole = require('../lineupRoleV155');
 const TicketmasterIntegrity = require('./lib/ticketmasterConcertIntegrityV163');
 const CanonicalIdentity = require('../canonicalIdentityV174');
 const CanonicalIngestion = require('./lib/canonicalConcertIngestionV175');
+const ConcertEuropeAdmission = require('./lib/concertEuropeAdmission');
 
 // How long to wait before re-checking a past-attended show that didn't have
 // a setlist logged last time — setlist.fm is crowd-sourced, so a fan may
@@ -928,6 +929,7 @@ async function fetchTourDatesViaTavily(band, usage, { allowGroq = true, seenFing
     `Today's date is ${today}. This is critical: search results often describe shows that have ALREADY HAPPENED (tour recaps, reviews, "last night" reporting) — only include a show if its date is on or after today's date. When in doubt about whether a show is in the past, leave it out.`,
     'Rules:',
     '- Only include a show if the source explicitly states a full calendar date including the YEAR.',
+    '- Only include concerts within the app\'s European region. Exclude shows elsewhere and shows without a clearly identified country.',
     '- If a date has no explicit year stated anywhere in the text, DO NOT GUESS OR INFER a year — omit that show entirely.',
     `- If the date is before ${today}, omit it — this tool only tracks upcoming shows, never past ones.`,
     '- Only include shows for the exact band named by the user, not support acts, or unrelated artists. Watch especially for tribute/cover/parody acts that reuse the real band\'s name with an extra qualifier word — e.g. "Ultimate <band>", "<band> Tribute", "Not <band>", "The <band> Experience" — these are impersonator acts, not the real band, even though the name looks similar. If the billing includes any such qualifier, or the event is part of an obvious multi-act tribute/nostalgia festival, leave it out.',
@@ -945,7 +947,7 @@ async function fetchTourDatesViaTavily(band, usage, { allowGroq = true, seenFing
   // Defensive filter, independent of what the model was told: never trust
   // the LLM alone to enforce "upcoming only" — this is the second layer of
   // whatever the merge-time check in main() also does.
-  const valid = shows.filter((s) => isValidFullDate(s.date) && s.venue && s.date >= today);
+  const valid = shows.filter((s) => isValidFullDate(s.date) && s.venue && s.date >= today && ConcertEuropeAdmission.canAutoAdmitConcert(s));
 
   // Sequential, not Promise.all — geocode.js rate-limits itself to 1
   // req/sec per Nominatim's usage policy, so concurrent calls would just
@@ -1123,6 +1125,9 @@ async function main() {
       usage.note(`Ticketmaster lookup failed for "${band.name}": ${e.message}`);
     }
 
+    // Do not admit new non-European or country-unknown provider observations.
+    // This never filters or deletes an existing concert from concerts.json.
+    candidates = ConcertEuropeAdmission.europeOnlyCandidates(candidates);
     if (candidates.length > 0) ticketmasterHits += 1;
 
     // Legacy runs retain the broad supplement.  Structured runs instead use
@@ -1169,6 +1174,9 @@ async function main() {
     }
 
     for (const candidate of candidates) {
+      // Final admission boundary covers Ticketmaster and Tavily/Groq, even
+      // if a provider-specific guard is bypassed in a future refactor.
+      if (!ConcertEuropeAdmission.canAutoAdmitConcert(candidate)) continue;
       // Third, final layer of the upcoming-only guarantee — independent of
       // Ticketmaster's own filtering and of what the Tavily/Groq fallback
       // was told. Nothing with a past date is ever written, regardless of
